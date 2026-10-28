@@ -44,7 +44,15 @@ function scalar(text) {
     if (!value.endsWith("'")) throw new Error('Unclosed quoted value.');
     return value.slice(1, -1).replaceAll("''", "'");
   }
-  if (value === '[]') return [];
+  if (value.startsWith('[') && value.endsWith(']')) {
+    const inner = value.slice(1, -1).trim();
+    return inner ? splitOutside(inner, ',').map(scalar) : [];
+  }
+  if (value.startsWith('{') && value.endsWith('}')) {
+    const object = Object.create(null);
+    for (const field of splitOutside(value.slice(1, -1), ',')) assign(object, field);
+    return object;
+  }
   if (!value || value === 'null' || value === '~') return null;
   if (/^[>|&*!{\[]/.test(value)) throw new Error('Unsupported ticket value. Use a scalar or a flat object list.');
   return value;
@@ -58,6 +66,38 @@ function assign(object, text) {
   return match[1];
 }
 
+function blockScalar(lines, index, indicator) {
+  const parentIndent = lines[index].match(/^ */)[0].length;
+  const content = [];
+  let indent;
+  let end = index + 1;
+  for (; end < lines.length; end++) {
+    const line = lines[end];
+    if (!line.trim()) { content.push(''); continue; }
+    const spaces = line.match(/^ */)[0].length;
+    if (spaces <= parentIndent) break;
+    indent ??= spaces;
+    if (spaces < indent) throw new Error('Invalid indentation in a block scalar.');
+    content.push(line.slice(indent));
+  }
+  const lastContent = content.findLastIndex((line) => line.length > 0);
+  const trailingLines = content.length - lastContent - 1;
+  const body = content.slice(0, lastContent + 1);
+  let text = '';
+  for (let i = 0; i < body.length; i++) {
+    const line = body[i];
+    const next = body[i + 1];
+    text += line;
+    if (indicator[0] === '|' || next === undefined || /^\s/.test(line) || /^\s/.test(next)) text += '\n';
+    else if (line && next) text += ' ';
+    else if (!line) text += '\n';
+  }
+  if (indicator.endsWith('+')) text += '\n'.repeat(trailingLines);
+  if (indicator.endsWith('-')) text = text.replace(/\n+$/, '');
+  else if (!indicator.endsWith('+')) text = text.replace(/\n+$/, '') + (content.some((line) => line.length) ? '\n' : '');
+  return { text, end };
+}
+
 export function parseTicket(text) {
   const source = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
   const match = /^---\n([\s\S]*?)\n---(?:\n|$)/.exec(source);
@@ -65,8 +105,16 @@ export function parseTicket(text) {
   const data = Object.create(null);
   let list = null;
   let current = null;
-  for (const line of match[1].split('\n')) {
+  const lines = match[1].split('\n');
+  for (let index = 0; index < lines.length; index++) {
+    let line = lines[index];
     if (/^\s*(#|$)/.test(line)) continue;
+    const block = /^(\s*(?:-\s+)?[a-zA-Z][\w-]*:\s*)([>|][+-]?)(?:\s+#.*)?\s*$/.exec(line);
+    if (block) {
+      const { text, end } = blockScalar(lines, index, block[2]);
+      line = block[1] + JSON.stringify(text);
+      index = end - 1;
+    }
     if (!/^\s/.test(line)) {
       const key = assign(data, line);
       list = ['gates', 'changes'].includes(key) ? key : null;
@@ -93,7 +141,7 @@ export function parseTicket(text) {
       throw new Error('Ticket fields must be scalars; only gates and changes accept object lists.');
     }
   }
-  for (const key of ['key', 'title', 'phase', 'state', 'track', 'next']) {
+  for (const key of ['key', 'title', 'phase', 'state', 'next']) {
     if (typeof data[key] !== 'string' || !data[key].trim()) throw new Error(`Missing or invalid ${key}.`);
   }
   for (const key of ['item', 'waiting_on', 'branch', 'worktree', 'updated']) {
@@ -101,9 +149,10 @@ export function parseTicket(text) {
   }
   if (!STATES.includes(data.state)) throw new Error(`Unknown ticket state: ${data.state}`);
   if (!PHASES.includes(data.phase)) throw new Error(`Unknown ticket phase: ${data.phase}`);
-  if (!['S', 'M', 'L'].includes(data.track)) throw new Error(`Unknown ticket track: ${data.track}`);
+  if (data.track != null && !['S', 'M', 'L'].includes(data.track)) throw new Error(`Unknown ticket track: ${data.track}`);
   for (const gate of data.gates ?? []) {
-    if (typeof gate.name !== 'string' || !GATE_STATUSES.includes(gate.status)) throw new Error('Invalid gate name or status.');
+    if (!gate || typeof gate !== 'object' || Array.isArray(gate)
+      || typeof gate.name !== 'string' || !GATE_STATUSES.includes(gate.status)) throw new Error('Invalid gate name or status.');
     if (!['required', 'recommended'].includes(gate.need)) throw new Error(`Invalid gate need: ${gate.name}`);
     for (const key of ['doc', 'date', 'hash', 'note']) {
       if (gate[key] != null && typeof gate[key] !== 'string') throw new Error(`Invalid gate ${key}: ${gate.name}`);
@@ -113,14 +162,15 @@ export function parseTicket(text) {
     }
   }
   for (const change of data.changes ?? []) {
-    if (typeof change.url !== 'string' || !['draft', 'open', 'merged', 'closed', 'abandoned'].includes(change.state)) {
+    if (!change || typeof change !== 'object' || Array.isArray(change)
+      || typeof change.url !== 'string' || !['draft', 'open', 'merged', 'closed', 'abandoned'].includes(change.state)) {
       throw new Error('Invalid change request URL or state.');
     }
     if (change.label != null && typeof change.label !== 'string') throw new Error('Invalid change request label.');
   }
   return {
     key: data.key, title: data.title, phase: data.phase, state: data.state,
-    track: data.track, next: data.next, waitingOn: data.waiting_on ?? '',
+    track: data.track ?? 'Unspecified', next: data.next, waitingOn: data.waiting_on ?? '',
     branch: data.branch ?? '', worktree: data.worktree ?? '', updated: data.updated ?? '',
     item: data.item ?? '', gates: data.gates ?? [], changes: data.changes ?? [],
   };

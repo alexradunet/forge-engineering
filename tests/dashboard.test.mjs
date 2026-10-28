@@ -70,6 +70,47 @@ test('the repository ticket template parses after its placeholders are filled', 
   assert.deepEqual(parsed.changes, []);
 });
 
+test('folded ticket fields preserve paragraphs, indentation, and chomping', () => {
+  for (const [indicator, expected] of [
+    ['>-', 'First line second line\nThird paragraph\n  indented\nlast'],
+    ['>', 'First line second line\nThird paragraph\n  indented\nlast\n'],
+    ['>+', 'First line second line\nThird paragraph\n  indented\nlast\n\n'],
+    ['|-', 'First line\nsecond line\n\nThird paragraph\n  indented\nlast'],
+    ['|', 'First line\nsecond line\n\nThird paragraph\n  indented\nlast\n'],
+  ]) {
+    const source = ticket(`worktree: ${indicator} # block comment
+  First line
+  second line
+
+  Third paragraph
+    indented
+  last
+
+branch: feature/test
+`).replace('next: Run tests', 'next: >-\n  Run tests\n  and inspect results');
+    const parsed = parseTicket(source);
+    assert.equal(parsed.next, 'Run tests and inspect results');
+    assert.equal(parsed.worktree, expected);
+    assert.equal(parsed.branch, 'feature/test');
+  }
+});
+
+test('inline object lists support changes and gates without losing quoted punctuation', () => {
+  const parsed = parseTicket(ticket(`changes: [{ url: https://example.test/42, label: "#42, fix", state: draft }]
+gates: [{ name: "Designed?", need: required, status: todo }]
+`));
+  assert.equal(parsed.changes[0].label, '#42, fix');
+  assert.equal(parsed.gates[0].name, 'Designed?');
+  assert.throws(() => parseTicket(ticket('changes: [null]\n')), /Invalid change/);
+  assert.throws(() => parseTicket(ticket('gates: [null]\n')), /Invalid gate/);
+});
+
+test('legacy tickets without a track show Unspecified instead of an inferred size', () => {
+  assert.equal(parseTicket(ticket().replace('track: M\n', '')).track, 'Unspecified');
+  assert.equal(parseTicket(ticket().replace('track: M', 'track:')).track, 'Unspecified');
+  assert.throws(() => parseTicket(ticket().replace('track: M', 'track: XL')), /Unknown ticket track/);
+});
+
 test('invalid frontmatter reports errors rather than guessing', () => {
   for (const [source, pattern] of [
     ['# no frontmatter', /needs frontmatter/],
@@ -85,7 +126,7 @@ test('invalid frontmatter reports errors rather than guessing', () => {
     [ticket('gates:\n  - { name: Go?, need: optional, status: todo }\n'), /gate need/],
     [ticket('gates: nope\n'), /must be a list/],
     [ticket('changes:\n  - { url: https://example.test, state: typo }\n'), /Invalid change/],
-    [ticket().replace('title: Build dashboard', 'title: >\n  Multiline'), /Unsupported/],
+    [ticket().replace('title: Build dashboard', 'title: &anchor text'), /Unsupported/],
   ]) assert.throws(() => parseTicket(source), pattern);
 });
 

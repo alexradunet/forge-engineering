@@ -155,9 +155,13 @@ Each server binds only to `127.0.0.1` on a free port and stops when the canvas i
 The panel needs no database; ticket files preserve its data across sessions.
 
 The reader supports the [ticket template](plugins/forge/skills/ticket/templates/README.md):
-one-line scalar fields, comments, quoted strings, and flat object lists for `gates` and `changes`.
-Lists can use inline objects or indented fields. YAML anchors, tags, and multiline values
-are not supported; the dashboard reports them as read errors. Use the template's one-line fields.
+scalar fields, comments, quoted strings, folded text (`>`), literal text (`|`), and flat object lists
+for `gates` and `changes`. Text blocks support strip (`-`) and keep (`+`) chomping.
+Lists can use inline arrays, inline objects, or indented fields.
+YAML anchors, tags, and explicit block indentation indicators are not supported;
+the dashboard reports them as read errors. Existing tickets need no rewrite for supported YAML forms.
+Older tickets without a track remain visible as `Track Unspecified`. The reader never infers their size
+or changes their files. An unknown track value still produces a read error.
 
 ## 📚 Shared wiki
 
