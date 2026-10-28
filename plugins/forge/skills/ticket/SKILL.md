@@ -59,8 +59,8 @@ This skill does not repeat other tools. Use them:
 | Company guidance | the sources that the policy sections name |
 | Session plan inside Copilot | plan mode (`plan.md` in session state) |
 | Human review of ticket documents | VS Code comment threads (see Review gates) |
-| Ticket board, ticket pages, visual briefing | `node "<plugin>/scripts/board.mjs" [--ticket <key>]` (see Board) |
-| Frontmatter check | `node "<plugin>/scripts/board.mjs" --check [--ticket <key>]` (see Frontmatter) |
+| Visual briefing | `briefing.md` with Mermaid diagrams, in the Markdown preview (see Visual briefing) |
+| Frontmatter check | compare each file with the tables in Frontmatter |
 
 ## 🗂️ Folder layout
 
@@ -72,7 +72,7 @@ The folder name is `<key>`, for example `app-123`.
   ticket.md          work item snapshot
   context.md         pre-investigation brief: problem, history, related work, open questions, people to ask
   map.md             living code map: purpose, flow, files, data, tests, changes (grows in every phase)
-  briefing.json      data for the visual briefing (written by the agent, shown by the board)
+  briefing.md        visual briefing: timeline, concept graph, people (Mermaid)
   interview.md       scope questions and user answers
   investigation.md   hypotheses table and findings
   evidence/          sanitized tool outputs, one file per item
@@ -182,10 +182,10 @@ Procedure for each gate:
    - Resolve each comment that you handled with `resolveComments`.
    - Summarize what changed in 5 lines or less before you show the form again.
 7. Record the approval:
-   1. Get the hash: `(Get-FileHash <document> -Algorithm SHA256).Hash`.
+   1. Get the hash: `git hash-object <document>` (SHA-1 of the Git blob; it works in every shell).
    2. Append to `decisions.md`: the date, the gate, the document, the hash, the method (`form` or `chat`), and the user's exact answer.
    3. In the README `gates` list, set `status: approved`, `date: <yyyy-mm-dd>`, and `hash: <first 12 hash characters>`. Update `state`, `next`, and `updated`, then the session title.
-   4. Run `node "<plugin>/scripts/board.mjs" --check --ticket <key>`. Fix each reported problem. Open boards update by themselves.
+   4. Check the README frontmatter against the tables in Frontmatter. Fix each problem.
    5. For Designed?, copy `plan.draft.md` to `plan.md`.
 
 ### ✅ Approval form
@@ -225,7 +225,7 @@ Rules:
    - In the frontmatter, put `phase: start`, `state: needs-me`, the proposed `track`, `next`, `item` (the work item URL), and the gates of the track.
    - Put the `branch` and the `worktree` when they exist.
    - In the body, put the toolkit table for this ticket.
-   - Run `node "<plugin>/scripts/board.mjs" --check --ticket <key>`.
+   - Check the frontmatter against the tables in Frontmatter.
 6. Seed `investigation.md` from [templates/investigation.md](templates/investigation.md) with one hypothesis row for each suspected cause in the work item.
 7. Seed `map.md` from the template: the purpose, the terms, and a first guess of the areas. Mark guesses `(unverified)`.
 8. Add the ticket to the "🎫 Tickets → Active" list in `<wiki>/index.md`.
@@ -286,34 +286,26 @@ A spike is a short read-only check that answers one fact before a scope question
 Track L: run it after Understood? is approved and before the interview. Tracks S and M: offer it in one line after the context. Run it only when the user says yes.
 It is read-only and needs no gate. The user gets a broad view of the ticket, its history, and the concepts around it.
 
-1. Write `briefing.json` in the ticket folder from `context.md`, `ticket.md`, and `evidence/`. Use only facts already in those files. Apply the data rules.
-2. Open the Briefing tab of the board: run `node "<plugin>/scripts/board.mjs" --ticket <key>`, then open the printed URL with `/briefing` added (for example `http://127.0.0.1:<port>/#/APP-123/briefing`) with `openBrowserPage`.
-3. Tell the user the sections: Overview, History (filterable timeline), Concepts (clickable graph), Related work, People, Open questions.
-4. Wait until the user says they are ready. Answer concept questions in chat. Fix `briefing.json` if the user finds a mistake. The open page updates by itself.
+1. Write `briefing.md` in the ticket folder from `context.md`, `ticket.md`, and `evidence/`. Use only facts already in those files. Apply the data rules.
+2. Open it in the Markdown preview: `code -r "<absolute path>"`, then ask the user to press `Ctrl+Shift+V` (macOS: `Cmd+Shift+V`).
+3. Tell the user the sections: Overview, History, Concepts, Related work, People, Open questions.
+4. Wait until the user says they are ready. Answer concept questions in chat. Fix `briefing.md` if the user finds a mistake.
 5. Start the interview only after the user says they are ready. Log the briefing in `log.md`.
 
-`briefing.json` shape (all fields optional except `key` and `title`; every string is plain text):
+`briefing.md` sections (frontmatter `type: briefing`, `ticket: <KEY>`, `updated`):
 
-```json
-{
-  "key": "APP-123", "title": "…", "summary": "one sentence",
-  "meta": { "Status": "…", "Reporter": "…", "Area": "…" },
-  "problem": ["paragraph", "paragraph"], "impact": "why it matters",
-  "features": [{ "name": "Invoice inbox", "note": "how it is affected" }],
-  "facts": [{ "text": "fact", "link": "https://… (optional)" }],
-  "timeline": [{ "date": "2026-01-02", "kind": "problem|fix|decision|info", "title": "…", "detail": "…", "ref": "change 123", "link": "https://…" }],
-  "concepts": [{ "id": "c1", "name": "Outbox", "core": true, "what": "what it is", "role": "role in this ticket", "refs": [{ "title": "wiki page", "link": "https://…" }] }],
-  "links": [{ "from": "c1", "to": "c2", "label": "triggers" }],
-  "related": [{ "title": "APP-1", "type": "ticket|change|doc", "status": "Done", "relation": "how related", "link": "https://…" }],
-  "people": [{ "name": "…", "role": "…", "why": "…", "ask": ["question"] }],
-  "questions": [{ "text": "open question", "why": "why it matters" }]
-}
-```
+| Section | Content |
+|---|---|
+| 🧭 Overview | One-sentence summary, problem, impact, affected features |
+| 🕰️ History | A Mermaid `timeline`, then one line per event with its link |
+| 🧩 Concepts | A Mermaid `flowchart` of the concepts and their links, then a table: name, what it is, role in this ticket |
+| 🔗 Related work | Table: item, type, status, relation, link |
+| 👥 People | Table: name, role, why, what to ask |
+| ❓ Open questions | Question and why it matters |
 
-- Mark 1 to 3 concepts `core: true`: the center of the graph. Keep 6 to 15 concepts in total.
+- Mark 1 to 3 core concepts with a thick border (`classDef core stroke-width:3px`). Keep 6 to 15 concepts in total.
 - Add concepts for features, components, and terms the user may not know. Explain each in plain words. Copy each concept to the **📖 Terms** table of `map.md`.
-- Only `http(s)` links render as links.
-
+- Quote Mermaid labels that hold punctuation, for example `A["Outbox (v2)"]`.
 ### 🎤 Interview
 
 Track L: start after Understood? is approved and the briefing is done. Track M: start right after you present the context. Track S has no interview (see Start). Ground each question in `context.md`.
@@ -357,7 +349,7 @@ Keys of one project have the same width, and the emoji has a fixed width, so the
 
 - Write a short verb phrase in sentence case, for example `Fix outbox retry on timeout`.
 - Use the work item summary as the source. Make it specific to this session's goal, for example the investigation or the implementer goal.
-- Do not repeat the key, the phase, or the gate name. The README and the board show them.
+- Do not repeat the key, the phase, or the gate name. The README shows them.
 - Keep the goal stable. Change it only when the session goal changes.
 
 Examples:
@@ -374,24 +366,20 @@ Use only these emoji in the title. Do not end the title with `?`, because `renam
 - Make the `rename_chat` call the last tool call of the turn.
 - Keep the title under 60 characters. Shorten `<session goal>` when needed.
 
-### 🛩️ Board (local web app)
+### 📋 Ticket overview
 
-`node "<plugin>/scripts/board.mjs"` starts a small local Node server (`127.0.0.1`, read only). Each wiki gets its own port. The command prints the URL. It reads the ticket folders live and shows:
+When the user asks for "the board", "my tickets", or a ticket status, answer in chat. The frontmatter is the source (see Frontmatter).
 
-- `#/`: the focus view. Open tickets are grouped into lanes by who must act, and "Recently done" shows the 10 newest closed tickets.
-- `#/<KEY>`: one ticket. The phase stepper, next step, waiting on, gates, change requests, problems, the recent log, and the README.
-- `#/<KEY>/briefing`: the visual briefing from `briefing.json`.
-- `#/<KEY>/<file>`: any document of the ticket, rendered, with its frontmatter and an "Open in VS Code" button.
+1. Read the README frontmatter of each folder in `<wiki>/raw/tickets/`.
+2. Group the open tickets by who must act: 🟡 Your move, ▶️ Agent working, ⏳ Waiting, 🔴 Blocked.
+3. Show one table for each group: key (as a link to the README), title, phase, next step, waiting on.
+4. Add the 5 newest done tickets in one line each.
 
-The page has no own data. The frontmatter is the source (see Frontmatter). Open pages update by themselves within one second after a file changes, so there is no refresh step.
-
-- When the user asks for the board or a ticket page, run `node "<plugin>/scripts/board.mjs" [--ticket <key>]`. Open the printed URL with `openBrowserPage`. Reuse an open page when one exists.
-- The script reuses a running server. `--restart` restarts it, and `--stop` stops it.
-- Show "Waiting on" with the README `waiting_on` key. Start it with `you:`, `colleague:`, or `outside:`. A `you:` value, `state: needs-me`, or a gate `in-review` puts the card in the "🟡 Your move" lane.
-
+- A `you:` value of `waiting_on`, `state: needs-me`, or a gate `in-review` puts the ticket in "🟡 Your move".
+- Start `waiting_on` with `you:`, `colleague:`, or `outside:`.
 ### 🏷️ Frontmatter
 
-Each Markdown file in the ticket folder starts with YAML frontmatter. The board reads it, and `node "<plugin>/scripts/board.mjs" --check [--ticket <key>]` validates it. Run the check after each README change.
+Each Markdown file in the ticket folder starts with YAML frontmatter. The ticket overview reads it. Check it against the tables below after each README change.
 
 README (`type: ticket`), see [templates/README.md](templates/README.md):
 
@@ -459,7 +447,7 @@ Implementer sessions and later sessions read the approved plan from the ticket f
 
 Any Markdown file in the ticket folder can get a review the same way: open it with `code -r`, link it, the user adds comments, and you handle them with `listComments`. Only gate documents need an approval record.
 
-Open every document that the user must read with `code -r "<absolute path>"` (async). Examples: gate documents, `outbox/` drafts, `briefing.html` sources, and files that the user must edit by hand. Open at most 3 files at the same time.
+Open every document that the user must read with `code -r "<absolute path>"` (async). Examples: gate documents, `outbox/` drafts, `briefing.md`, and files that the user must edit by hand. Open at most 3 files at the same time.
 
 ## 🛠️ Implement
 

@@ -21,7 +21,7 @@ In track M, the context and the interview share one gate, Briefed?.
 
 ## 🧱 Every gate document has these parts, in this order
 
-0. **Frontmatter**: copy it from the template. Keep `type`, `ticket`, `gate`, and `updated` correct. The ticket board reads it.
+0. **Frontmatter**: copy it from the template. Keep `type`, `ticket`, `gate`, and `updated` correct. The ticket overview reads it.
 1. **Title**: `# <emoji> <Title> — <KEY>: <short title>`.
 2. **Key fact**: one line, `> 🔥 <the most surprising fact or the stakes>`. Use a real number when one exists.
 3. **Summary quote**: `> **TL;DR:**`, `> **What I need from you:**`, `> **Reading time:**`. Put a line with only `>` between them, so each starts on a new line.

@@ -25,7 +25,7 @@ updated: <yyyy-mm-dd>
 
 > 🔥 <one line: why this ticket matters>
 
-Status, next step, gates, and change requests live in the frontmatter above. The ticket board shows them (`board.mjs`).
+Status, next step, gates, and change requests live in the frontmatter above. The ticket overview in chat reads them.
 
 ## 🧰 Toolkit
 

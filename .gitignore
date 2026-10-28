@@ -45,5 +45,3 @@ coverage/
 *.bak
 Thumbs.db
 Desktop.ini
-# Registry-only .npmrc file (no tokens). Never add auth lines to them.
-!/apps/ticket-board/.npmrc

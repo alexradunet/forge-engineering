@@ -52,9 +52,7 @@ A public repository never gets its wiki on its own host. Setup offers a separate
 | `plugins/forge/com.github.copilot/rules/` | Always-on rules: `forge` (paths, capabilities, write rules), `style` (response style, memory, sessions) |
 | `plugins/forge/skills/` | `ticket`, `agents`, `wiki`, `daily-recap`, `forge-setup` |
 | `plugins/forge/templates/config/` | Config templates |
-| `plugins/forge/scripts/` | `forge.mjs` (setup, config, trust, packs), `cred.mjs`, `board.mjs`, `jenkins.mjs` |
-| `plugins/forge/board/` | Bundled ticket board (built file, committed) |
-| `apps/ticket-board/` | Ticket board source and tests |
+| `plugins/forge/scripts/` | `forge.mjs` (setup, config, trust, packs), `cred.mjs`, `jenkins.mjs` |
 | `docs/` | [config.md](docs/config.md) (config format) and [packs.md](docs/packs.md) (company packs) |
 
 ## 🧩 Skills
@@ -80,17 +78,10 @@ A public repository never gets its wiki on its own host. Setup offers a separate
 
 The agent never merges. It asks before every write to the tracker, the repository host, or the CI.
 
-## 🛩️ Ticket board
+## 📋 Ticket overview
 
-`node plugins/forge/scripts/board.mjs` starts a small read-only Node server on `127.0.0.1`
-(port 4517 or the next free port). It reads `<wiki>/raw/tickets` live:
-
-- `#/`: open tickets in lanes by who must act, and the newest done tickets.
-- `#/<KEY>`: the ticket page (next step, gates, change requests, log).
-- `#/<KEY>/briefing`: the visual briefing.
-
-`board.mjs --check` validates the frontmatter of the ticket documents. `--stop` stops the board.
-Or say "show the board" in a chat.
+Say "show the board" or "my tickets". The agent reads the README frontmatter of each ticket
+and groups the open tickets by who must act: you, the agent, a colleague, or nobody (blocked).
 
 ## 🏢 Company packs
 
@@ -101,8 +92,7 @@ after you approve their SHA-256 hash. See [packs.md](docs/packs.md).
 
 ## 🛠️ Develop
 
-- `npm test` runs the core tests and the board tests.
-- Board: `cd apps/ticket-board; npm test; npm run build`. Commit the rebuilt bundle.
+- `npm test` runs the tests.
 - To test a local checkout, run **Chat: Install Plugin from Source** with the `plugins/forge` folder.
 - Check the loaded rules and skills in **Chat: Open Customizations**.
 

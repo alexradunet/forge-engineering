@@ -20,7 +20,6 @@ flowchart LR
   pack["company pack"] -- pack add --> cfg
   cfg --> trust{"trust check<br/>SHA-256"}
   trust --> rule["forge rule<br/>capability to command"]
-  trust --> board["Ticket board"]
   rule --> skills["ticket, agents, daily-recap skills"]
 ```
 
@@ -140,15 +139,6 @@ forge is **CLI first**. The `forge` rule, "Tool choice: CLI first", gives the or
 - `forge.mjs config` fails closed when a file in `<wiki>/forge` is new or changed and you did not approve it (`forge.mjs trust`).
 - `forge.mjs doctor` reports the wiki, each config file and its provider, a missing CLI, trust, and the pack.
 - A missing file gives the defaults. Every capability is then `manual`.
-
-## 🗂️ Ticket board
-
-The board reads `tracker.md` and `repo.md` on each request. A change shows on the next refresh.
-
-- `tracker.itemUrl` gives the work item link when the ticket README has no `item` field.
-- `tracker.provider` gives the link name: "Jira", "Issue", or "Item". Else the name is "Work item".
-- `repo.changeName` gives the change name in the UI: "PRs" or "MRs".
-- A broken file gives the defaults and a warning in `--check`.
 
 ## 🔒 Rules
 
