@@ -40,7 +40,7 @@ The always-on rules are in `<plugin>\com.github.copilot\rules`. VS Code loads th
 
 1. Install the plugin: in VS Code, run `/plugin marketplace add alexradunet/forge-engineering`, then `/plugin install forge@forge`.
    Alternatively, search `@agentPlugins` in the Extensions view.
-2. Clone your forge fork (it holds the team config) and the wiki repository. Meeting series live in `<wiki>\raw\meetings`, which git does not track, so copy them from the old machine.
+2. Clone your forge fork (it holds the team config) and the wiki repository. Daily recaps live in `<wiki>\raw\daily-recap`, which git does not track, so copy them from the old machine.
 3. Run `& '<plugin>\scripts\Install-Forge.ps1' -Mode Marketplace -ForgeHome <clone> -WikiRoot <wiki>`.
 4. If the fork has no team config yet, run **⚙️ Configure the team** below.
 5. Run the credential scripts that the `## Toolkit` section of `config\policy.md` names.

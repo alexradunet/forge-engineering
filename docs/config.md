@@ -18,7 +18,7 @@ flowchart LR
   cfg --> rule["forge rule<br/>capability to command"]
   cfg --> loader["Get-ForgeConfig.ps1<br/>frontmatter + checks"]
   loader --> board["Ticket board"]
-  rule --> skills["ticket, agents, meeting skills"]
+  rule --> skills["ticket, agents, daily-recap skills"]
 ```
 
 ## 🧾 File format

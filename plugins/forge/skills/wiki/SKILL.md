@@ -21,12 +21,12 @@ Git ignores `raw\` and `archive\`, so they stay on this machine only.
   decisions\      decisions and their reasons
   tickets\        one summary page per closed ticket
   raw\tickets\    working folders of active tickets (the `ticket` skill)
-  raw\meetings\   meeting series, briefs, and outcomes (the `meeting` skill)
+  raw\daily-recap\ daily recaps and outcomes (the `daily-recap` skill)
   archive\tickets\ raw folders of closed tickets, kept as they were
 ```
 
 `raw\` and `archive\` are working material, not canonical pages. The `ticket`
-and `meeting` skills own them. They can hold customer environment names and aggregated metrics. The
+and `daily-recap` skills own them. They can hold customer environment names and aggregated metrics. The
 canonical pages cannot.
 
 ## 🧭 What belongs where

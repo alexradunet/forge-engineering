@@ -18,7 +18,7 @@ Tools: gh.
 
 ## 🔎 Queries
 
-Named searches for `tracker.search`, in the syntax of the tool. The `meeting` and `ticket` skills use them by name.
+Named searches for `tracker.search`, in the syntax of the tool. The `daily-recap` and `ticket` skills use them by name.
 
 | Name | Query |
 |---|---|

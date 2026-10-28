@@ -19,7 +19,7 @@ On a self-managed host, set `$env:GITLAB_HOST = '<tracker.host>'` in the same co
 
 ## 🔎 Queries
 
-Named searches for `tracker.search`, in the syntax of the tool. The `meeting` and `ticket` skills use them by name.
+Named searches for `tracker.search`, in the syntax of the tool. The `daily-recap` and `ticket` skills use them by name.
 
 | Name | Query |
 |---|---|

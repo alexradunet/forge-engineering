@@ -38,7 +38,7 @@ Edit only these places. Then upstream updates merge without conflicts.
 | `plugins/forge/com.github.copilot/rules/<company>.instructions.md` | New always-on rules |
 | `plugins/forge/scripts/<company>/` | Your scripts, for example credential scripts |
 
-Avoid edits to the core skills (`ticket`, `agents`, `wiki`, `meeting`, `forge-setup`)
+Avoid edits to the core skills (`ticket`, `agents`, `wiki`, `daily-recap`, `forge-setup`)
 and to the `forge` rule. When you need a change there, open an issue or a pull request upstream.
 
 ## 🔐 CLI first, then MCP servers and credentials

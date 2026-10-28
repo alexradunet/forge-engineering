@@ -10,7 +10,7 @@
   "plugins": [
     {
       "name": "forge",
-      "description": "Ticket workspace with review gates, team wiki, meeting briefs, and agent session coordination.",
+      "description": "Ticket workspace with review gates, team wiki, daily recaps, and agent session coordination.",
       "version": "3.0.0",
       "source": "plugins/forge"
     }
