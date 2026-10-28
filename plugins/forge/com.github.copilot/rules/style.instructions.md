@@ -27,7 +27,7 @@ Use ASD-STE100 Simplified Technical English when you respond to the user.
 
 ## 🎯 Response shape (ADHD reader)
 
-Source: https://github.com/ayghri/i-have-adhd. Full guidance: the `i-have-adhd` skill.
+Source: https://github.com/ayghri/i-have-adhd (MIT).
 Stop only when the user says "stop adhd mode" or "normal mode".
 
 The reader has ADHD. Shape every response so it can be acted on:
