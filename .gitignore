@@ -1,0 +1,49 @@
+# Separate repositories, installed tools, and local output.
+/repos/
+/tools/
+/.local/
+
+# The wiki is its own repository (user variable FORGE_WIKI_ROOT).
+/wiki/
+
+# Dependency installs and generated output.
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+coverage/
+
+# Local credentials and authentication files.
+.env
+.env.*
+!.env.example
+.npmrc
+.databrickscfg
+*.clixml
+*.pfx
+*.p12
+*.pem
+*.key
+*credentials*.json
+*credentials*.xml
+
+# Logs, dumps, traces, and transient files.
+*.log
+*.jsonl
+*.dmp
+*.dmw
+*.etl
+*.nettrace
+*.gcdump
+*.tmp
+*.bak
+Thumbs.db
+Desktop.ini
+# Registry-only .npmrc file (no tokens). Never add auth lines to them.
+!/apps/ticket-board/.npmrc

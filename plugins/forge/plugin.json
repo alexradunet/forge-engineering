@@ -1,0 +1,18 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "forge",
+  "version": "3.0.0",
+  "description": "Provider-agnostic engineering workflow for the VS Code Agents window: ticket workspace with review gates, team wiki, meeting briefs, and agent session coordination. Fork it and configure your tracker, repository host, and CI in Markdown.",
+  "author": {
+    "name": "Radu Alexandru"
+  },
+  "repository": "https://github.com/alexradunet/forge-engineering",
+  "license": "MIT",
+  "keywords": [
+    "agents",
+    "tickets",
+    "wiki",
+    "workflow",
+    "vscode"
+  ]
+}

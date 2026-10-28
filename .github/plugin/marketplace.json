@@ -1,0 +1,18 @@
+{
+  "name": "forge",
+  "owner": {
+    "name": "Radu Alexandru"
+  },
+  "metadata": {
+    "description": "forge: a provider-agnostic engineering workflow plugin for the VS Code Agents window.",
+    "version": "3.0.0"
+  },
+  "plugins": [
+    {
+      "name": "forge",
+      "description": "Ticket workspace with review gates, team wiki, meeting briefs, and agent session coordination.",
+      "version": "3.0.0",
+      "source": "plugins/forge"
+    }
+  ]
+}
