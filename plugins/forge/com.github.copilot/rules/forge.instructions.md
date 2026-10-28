@@ -21,6 +21,25 @@ When `where` fails, or the wiki or config is missing, tell the user to say "set 
 When `config` or `run` says `Not approved`, show the files and their changes. Run `forge.mjs trust approve` only after the user says yes.
 A ticket lives in the wiki of the repository where it starts. Other wikis get only a link to it.
 
+## 🪟 VS Code Agents window
+
+forge runs in the VS Code Agents window, with the Copilot harness and the Agent Host. Write every answer for that window.
+
+- Give UI steps for the Agents window: the sessions list, the Changes panel, **Chat: Open Customizations**, and Command Palette commands.
+- VS Code changes each month. Your memory of a VS Code feature can be old.
+- Before you advise on, configure, or change a VS Code feature, read its current documentation page. This applies to sessions, worktrees, automations, agent plugins, MCP servers, settings, and harnesses.
+- Once per session, before the first such step, read the latest release notes. Check for changes to the feature.
+- When the documentation and a forge file do not agree, follow the documentation. Tell the user the forge file and the difference.
+
+| Topic | Documentation |
+|---|---|
+| Release notes (latest version) | https://code.visualstudio.com/updates |
+| Agents window | https://code.visualstudio.com/docs/agents/run/agents-window |
+| Agent Host | https://code.visualstudio.com/docs/agents/concepts/agent-host |
+| Automations | https://code.visualstudio.com/docs/agents/run/automations |
+| Agent harnesses | https://code.visualstudio.com/docs/agents/run/agent-harnesses |
+| Agent plugins | https://code.visualstudio.com/docs/agent-customization/agent-plugins |
+
 ## Config and capabilities
 
 - `<file>.<key>` means the frontmatter key `<key>` of `<config>/<file>.md`, for example `repo.changeName`.

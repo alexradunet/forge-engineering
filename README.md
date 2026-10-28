@@ -31,6 +31,10 @@ flowchart LR
 Needs: Node.js 20 or later, Git, and VS Code with agent plugins enabled (`chat.plugins.enabled`).
 forge runs on Windows, macOS, and Linux.
 
+forge targets the VS Code Agents window. VS Code changes each month. So the `forge` rule tells the agent
+to read the current [VS Code documentation](https://code.visualstudio.com/docs/agents/run/agents-window) and the
+[release notes](https://code.visualstudio.com/updates) before it advises on a VS Code feature.
+
 ## 📦 Where things live
 
 | Path | Content |

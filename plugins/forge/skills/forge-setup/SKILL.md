@@ -32,8 +32,9 @@ Add `--wiki <dir>` to a command to use another wiki for one call.
 ## ✅ Check or repair
 
 1. Run `doctor`. Report each `fail` and `warn` line with its fix.
-2. When the wiki or its config is missing, run the full setup below.
-3. Never print, read, or ask for a credential value.
+2. Read the latest VS Code release notes (see "VS Code Agents window" in the `forge` rule). Report each change that affects plugins, sessions, worktrees, automations, or MCP servers.
+3. When the wiki or its config is missing, run the full setup below.
+4. Never print, read, or ask for a credential value.
 
 ## 🚀 Full setup
 
