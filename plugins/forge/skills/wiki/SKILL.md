@@ -20,6 +20,7 @@ Git ignores `raw/` and `archive/`, so they stay on this machine only.
   log.md          append-only change log
   forge/          repo.json (binding), config/ (team config), scripts/ (helper scripts)
   tooling/        VS Code, MCP, build, and environment gotchas
+  learning/       optional concept lessons, linked to artifacts and verified sources
   <area>/         architecture, flows, and code knowledge (one folder for each product or codebase)
   decisions/      decisions and their reasons
   tickets/        one summary page per closed ticket
@@ -38,6 +39,7 @@ canonical pages cannot.
 |---|---|
 | One short fact that only one tool needs | Built-in memory (`store_memory`) |
 | A topic, a gotcha with a cause, a decision, or how parts connect | This wiki |
+| An accepted concept lesson with artifact and code links | `learning/`, through the `learning-mode` skill |
 | Company engineering guidance | Nowhere. Use the company source (the `## Toolkit` section of `<config>/policy.md` can name it). |
 | Repository conventions | Nowhere. Use the repository instructions and skills. |
 
@@ -56,6 +58,15 @@ Never write these into the wiki:
 5. Tell the user which page you used.
 
 If a page is wrong, correct it in the same task (see Record).
+
+## Learning pages
+
+The `learning-mode` skill creates optional, source-linked lessons after the user accepts.
+These pages explain a concept through repository examples; they do not copy existing documentation.
+Use the same frontmatter, index, log, and data rules as other canonical pages.
+Verify sources before reusing a page. Keep durable code links when a source artifact can move.
+Mark evidence gaps as `needs-check`; do not store personal progress or private comment text.
+Learning pages add no approval gate and do not replace the ticket's `Learned?` gate.
 
 ## ✍️ Record
 

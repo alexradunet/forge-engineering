@@ -71,7 +71,7 @@ Setup also offers a separate private `<repo>-wiki` repository, or a local-only w
 |---|---|
 | `plugins/forge/plugin.json` | Plugin manifest ([Agent Plugins 1.0](https://agent-plugins.org)) |
 | `plugins/forge/com.github.copilot/rules/` | Always-on rules: `forge` (paths, capabilities, write rules), `style` (response style, memory, sessions) |
-| `plugins/forge/skills/` | `ticket`, `agents`, `wiki`, `daily-recap`, `forge-setup` |
+| `plugins/forge/skills/` | `ticket`, `agents`, `wiki`, `daily-recap`, `forge-setup`, `learning-mode` |
 | `plugins/forge/com.github.copilot/extensions/` | Read-only ticket dashboard canvas |
 | `plugins/forge/templates/config/` | Config templates |
 | `plugins/forge/scripts/` | `forge.mjs` (setup, config, trust, wiki scripts), `cred.mjs`, `jenkins.mjs` |
@@ -86,6 +86,7 @@ Setup also offers a separate private `<repo>-wiki` repository, or a local-only w
 | `wiki` | Query, record, and lint the team wiki |
 | `daily-recap` | "Prepare my daily" (done, plan, blockers), with or without a daily meeting, and "record the daily outcome" |
 | `forge-setup` | "set up forge", "check forge", "repair forge" |
+| `learning-mode` | Optional 15-minute lessons from artifact questions, saved in the repository wiki |
 
 ## 🎫 Ticket work
 
@@ -99,6 +100,25 @@ Setup also offers a separate private `<repo>-wiki` repository, or a local-only w
 5. Say "close APP-42" to distill the folder into wiki pages.
 
 The agent never merges. It asks before every write to the tracker, the repository host, or the CI.
+
+## Learning mode
+
+Learning mode helps you understand an artifact before you approve it. It is off by default.
+
+1. Say "enable learning mode". Review the proposed `learningMode: true` policy edit and approve the changed config through trust.
+2. Comment on an artifact: "What does idempotency mean here?" or "learn: why is this queue needed?"
+3. Submit the feedback, or say "review my comments". Choose whether to create the offered bite.
+4. Read the linked lesson in `<wiki>/learning/`. It explains the concept, its purpose, and the design reason.
+5. Say "disable learning mode" to turn off offers. Existing lessons stay in the wiki.
+
+Each bite includes a repository example, a small exercise, and a self-check within a 15-minute learning budget.
+You can skip or defer it without blocking approval. Lessons never approve a gate or prove understanding.
+The existing `Learned?` close gate stays unchanged.
+
+The switch is `policy.learningMode` in the wiki config, not a VS Code switch.
+Older configs default to `false` without reseeding.
+There is no background watcher: the agent handles comments when you submit feedback or request review.
+See [config.md](docs/config.md#learning-mode) for the setting and trust flow.
 
 ## 📋 Ticket overview
 

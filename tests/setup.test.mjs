@@ -83,6 +83,7 @@ test('seed copies templates, keeps existing files, and the result loads', () => 
   const where = resolve({ cwd: app, env });
   const first = seed(where, { tracker: 'github', repo: 'github', ci: 'github-actions' }, templates);
   assert.deepEqual(first.written.sort(), ['ci.md', 'policy.md', 'repo.md', 'tracker.md']);
+  assert.equal(loadConfig(first.configDir).config.policy.learningMode, false);
   writeFileSync(path.join(first.configDir, 'tracker.md'), '---\nprovider: local\n---\n');
   const second = seed(where, { tracker: 'gitlab' }, templates);
   assert.deepEqual(second.kept.sort(), ['policy.md', 'tracker.md']);
@@ -91,4 +92,19 @@ test('seed copies templates, keeps existing files, and the result loads', () => 
   assert.deepEqual(forced.written, ['tracker.md']);
   assert.equal(loadConfig(first.configDir).config.tracker.provider, 'jira');
   assert.throws(() => seed(where, { ci: 'travis' }, templates), (e) => e.code === 'bad-choice');
+});
+
+test('seed preserves an enabled learning policy, even with force', () => {
+  const wiki = path.join(root, 'learning.wiki');
+  const where = { wiki: { path: wiki } };
+  const first = seed(where, { tracker: 'local', repo: 'other', ci: 'other' }, templates);
+  const policyFile = path.join(first.configDir, 'policy.md');
+  const policy = readFileSync(policyFile, 'utf8').replace('learningMode: false', 'learningMode: true');
+  writeFileSync(policyFile, policy);
+  for (const force of [false, true]) {
+    const result = seed(where, { tracker: 'local' }, templates, { force });
+    assert.ok(result.kept.includes('policy.md'));
+    assert.equal(readFileSync(policyFile, 'utf8'), policy);
+    assert.equal(loadConfig(first.configDir).config.policy.learningMode, true);
+  }
 });

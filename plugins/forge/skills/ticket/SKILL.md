@@ -59,6 +59,7 @@ This skill does not repeat other tools. Use them:
 | Company guidance | the sources that the policy sections name |
 | Session plan inside Copilot | plan mode (`plan.md` in session state) |
 | Human review of ticket documents | VS Code comment threads (see Review gates) |
+| Optional lessons from artifact questions | the `learning-mode` skill when `policy.learningMode` is `true` |
 | Visual briefing | `briefing.md` with Mermaid diagrams, in the Markdown preview (see Visual briefing) |
 | Frontmatter check | compare each file with the tables in Frontmatter |
 
@@ -176,10 +177,12 @@ Procedure for each gate:
    - **Changes**: apply the free-text request to the document, then show the form again.
    - **Hold**: stop. Tell the user how to resume (`approve <gate>` in chat, or "review my comments").
 6. Handle the comments (`listComments`). Comments sent with VS Code's submit button (`/act-on-feedback`) arrive the same way:
+   - Before normal resolution, use the `learning-mode` skill for user questions about unfamiliar concepts when `policy.learningMode` is `true`.
+   - Accept plain questions and optional `learn:` markers. Offer a bite before creating it; Skip or Later adds no blocker.
    - Answer a question with `replyToComment`. If the answer changes the artifact, update the artifact.
    - Apply a change request to the artifact. Record design changes in `decisions.md`.
    - When a comment is not clear, ask the user. Do not guess.
-   - Resolve each comment that you handled with `resolveComments`.
+   - Resolve each handled correction with `resolveComments`. Resolve a learning thread only on explicit user direction.
    - Summarize what changed in 5 lines or less before you show the form again.
 7. Record the approval:
    1. Get the hash: `git hash-object <document>` (SHA-1 of the Git blob; it works in every shell).
@@ -208,6 +211,7 @@ Rules:
 
 - Approval comes only from the user: an `approve` answer in the approval form, or `approve <gate>` in chat in the current conversation.
 - Comments, resolved threads, and "looks good" notes do not approve a ticket gate.
+- Lessons and self-checks do not approve a gate or prove understanding. Learning adds no gate; `Learned?` stays unchanged.
 - Never answer the approval form for the user, and never approve in auto mode.
 - A required gate blocks its step. A recommended gate (Diagnosed?): offer the review; continue if the user declines, and log that.
 - A skipped gate (because of the track) blocks nothing. Do not open it.

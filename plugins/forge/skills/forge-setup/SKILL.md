@@ -59,8 +59,10 @@ State the progress at each step ("step 3 of 10 done").
    `seed` keeps existing files. Use `--force` only after the user agrees to replace a file.
 6. **Values.** Ask for missing frontmatter values in a second form: `prefix`, `project`, `host`,
    `itemUrl`, `changeName`, `branchPattern`, `baseBranch`, and the policy values.
-   Show the template value as the default. Keep values from existing wiki config.
-   Write them into `<wiki>/forge/config/*.md`.
+Show the template value as the default. Keep values from existing wiki config.
+Include `learningMode` as a boolean policy choice, default `false`: offer optional lessons from artifact questions.
+Keep an existing value unless the user asks to change it.
+Write them into `<wiki>/forge/config/*.md`.
 7. **Tables.** Fill in the **Queries** table of `tracker.md` and the **Checkouts** table of `repo.md` with the user.
    For `other`, ask how the team does each capability. Write a CLI command in the row, or keep `manual`.
 8. **Trust.** Run `trust`. Show each `new` or `changed` file with the first 12 characters of its hash.

@@ -2,6 +2,7 @@
 noMergeWeekdays: []
 evidenceOnDeployedEnv: false
 qaHandover: false
+learningMode: false
 adversarialReviewModel:
 maxImplementers: 6
 ---
@@ -18,6 +19,7 @@ maxImplementers: 6
 | `noMergeWeekdays` | Days on which the agent never proposes a merge, for example `[Thursday]` | `[]` |
 | `evidenceOnDeployedEnv` | Evidence Testing must use a deployed environment when one is possible | `false` |
 | `qaHandover` | Run the QA handover step after the merge | `false` |
+| `learningMode` | Offer optional, source-linked lessons for unfamiliar concepts in artifact comments | `false` |
 | `adversarialReviewModel` | Model of the adversarial reviewer. Empty means a model different from the author's | empty |
 | `maxImplementers` | Maximum implementer sessions at the same time | `6` |
 

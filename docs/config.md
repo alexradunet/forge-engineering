@@ -73,8 +73,47 @@ itemUrl: https://gitlab.com/group/app/-/issues/{number}
 | `policy.md` | `noMergeWeekdays` | Days on which the agent never proposes a merge | `[]` |
 | | `evidenceOnDeployedEnv` | Evidence Testing must use a deployed environment when one is possible | `false` |
 | | `qaHandover` | Run the QA handover step after the merge | `false` |
+| | `learningMode` | Offer optional lessons for unfamiliar concepts in artifact comments | `false` |
 | | `adversarialReviewModel` | Model of the adversarial reviewer; empty means a model different from the author's | empty |
 | | `maxImplementers` | Maximum implementer sessions at the same time | `6` |
+
+## Learning mode
+
+Set `learningMode: true` in `<wiki>/forge/config/policy.md` to enable learning offers.
+Set it to `false` to disable offers. The value must be a boolean, not a quoted string.
+Older configs without the key remain disabled; no reseed is needed.
+Setup includes `learningMode: false`. Seeding preserves an existing policy file.
+
+Say "enable learning mode" or "disable learning mode" to request the edit.
+The agent shows the proposed change and asks before writing it.
+After the edit, review the changed file and approve its exact hash through the existing trust flow.
+The agent re-reads `forge.mjs config --json` before using the value.
+Do not replace an existing policy file to change this one key.
+
+With the mode enabled, comment with a plain question or an optional `learn:` marker:
+
+- "What does this cache do?"
+- "I do not understand idempotency."
+- "learn: why is this queue needed?"
+
+Submit the feedback or ask "review my comments".
+The `learning-mode` skill answers briefly and offers a bite before creating it.
+Choose one concept when several appear. Skip or Later creates nothing.
+An explicit lesson request while disabled offers to enable the mode; it never silently changes policy.
+Missing comment tools use a pasted question and artifact location instead.
+
+Accepted bites live at `<wiki>/learning/<concept-slug>.md`, with index and log entries.
+They link to the artifact and verified code or documentation.
+Each explains how the concept works, what it does here, and why the change uses it.
+A 3/4/5/3-minute budget covers explanation, example, exercise, and self-check: 15 minutes total.
+The budget is a guide, not a reading-speed guarantee.
+Disabling the mode does not delete saved lessons.
+
+Learning adds no gate. Skipping or deferring a bite does not block review.
+Lessons and self-checks never approve a gate or mark the user as understanding.
+Learning threads stay unresolved until the user explicitly asks to resolve them.
+The ticket's existing `Learned?` gate stays unchanged.
+This is a repository policy and skill, not a custom UI or a background watcher.
 
 ## 📜 Capabilities
 

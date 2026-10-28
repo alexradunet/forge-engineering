@@ -35,6 +35,41 @@ test('missing files give the defaults', () => {
     assert.equal(files.length, 0);
     assert.equal(config.repo.changeName, 'PR');
     assert.equal(config.policy.maxImplementers, 6);
+    assert.equal(config.policy.learningMode, false);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('older policy files and empty learningMode values keep learning disabled', () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'forge-cfg-'));
+  try {
+    for (const policy of ['qaHandover: true', 'learningMode:', 'learningMode: null']) {
+      writeFileSync(path.join(dir, 'policy.md'), `---\n${policy}\n---\n`);
+      assert.equal(loadConfig(dir).config.policy.learningMode, false);
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('learningMode accepts explicit booleans', () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'forge-cfg-'));
+  try {
+    for (const enabled of [true, false]) {
+      writeFileSync(path.join(dir, 'policy.md'), `---\nlearningMode: ${enabled}\n---\n`);
+      assert.equal(loadConfig(dir).config.policy.learningMode, enabled);
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('learningMode rejects non-boolean values with a config error', () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'forge-cfg-'));
+  try {
+    for (const value of ['"true"', "'false'", 'yes', '1', '0', '[]', '[true]']) {
+      writeFileSync(path.join(dir, 'policy.md'), `---\nlearningMode: ${value}\n---\n`);
+      assert.throws(() => loadConfig(dir), (error) => {
+        assert.equal(error.code, 'bad-config');
+        assert.match(error.message, /policy\.md: learningMode must be true or false/);
+        return true;
+      }, value);
+    }
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -53,7 +88,8 @@ test('every template loads as its kind', () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), 'forge-tpl-'));
     try {
       copyFileSync(path.join(templates, file), path.join(dir, `${kind}.md`));
-      assert.doesNotThrow(() => loadConfig(dir), `${file} must load`);
+      const { config } = loadConfig(dir);
+      assert.equal(config.policy.learningMode, false, `${file} must load with learning disabled`);
     } finally { rmSync(dir, { recursive: true, force: true }); }
   }
 });

@@ -51,6 +51,17 @@ forge runs in the VS Code Agents window, with the Copilot harness and the Agent 
   3. Use the row of the capability in **Capabilities**. Replace each `<placeholder>` with a config value or a ticket value.
   4. When the row says `manual` or `not supported`, use the manual step.
 - Never call a tracker, repository host, or CI tool that the config does not name.
+
+## Learning from artifacts
+
+When the user submits artifact feedback or asks to review comments, read the approved config.
+If `policy.learningMode` is `true`, use the `learning-mode` skill for user questions that mark unfamiliar concepts.
+Accept plain questions and optional `learn:` markers, including outside ticket gates.
+Offer a bite first; create it only after acceptance. Keep normal corrections in the host feedback workflow.
+Do not resolve learning threads automatically or make a lesson a condition for approval.
+When the switch is `false`, handle ordinary questions normally, without lesson offers.
+Use the skill for explicit lesson requests and for enabling or disabling learning mode.
+
 ## 🛠️ Tool choice: CLI first
 
 forge strongly prefers command-line tools to MCP servers. Use this order for every external call:

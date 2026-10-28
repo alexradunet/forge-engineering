@@ -75,7 +75,7 @@ export function defaults() {
     tracker: { provider: 'other', queries: {} },
     repo: { provider: 'other', branchPattern: '{KEY}-{slug}', baseBranch: 'main', checkouts: [] },
     ci: { provider: 'other' },
-    policy: { noMergeWeekdays: [], evidenceOnDeployedEnv: false, qaHandover: false, adversarialReviewModel: null, maxImplementers: 6 },
+    policy: { noMergeWeekdays: [], evidenceOnDeployedEnv: false, qaHandover: false, learningMode: false, adversarialReviewModel: null, maxImplementers: 6 },
   };
 }
 
@@ -91,7 +91,7 @@ export function validate(config) {
     if (!DAYS.includes(d)) problems.push(`policy.md: noMergeWeekdays has "${d}", use a day name such as Thursday`);
   }
   if (!Number.isInteger(p.maxImplementers) || p.maxImplementers < 1) problems.push('policy.md: maxImplementers must be a whole number of 1 or more');
-  for (const k of ['evidenceOnDeployedEnv', 'qaHandover']) {
+  for (const k of ['evidenceOnDeployedEnv', 'qaHandover', 'learningMode']) {
     if (typeof p[k] !== 'boolean') problems.push(`policy.md: ${k} must be true or false`);
   }
   return problems;
