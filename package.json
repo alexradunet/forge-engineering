@@ -4,6 +4,6 @@
   "type": "module",
   "engines": { "node": ">=20" },
   "scripts": {
-    "test": "node --test tests/repo.test.mjs tests/config.test.mjs tests/cred.test.mjs tests/setup.test.mjs"
+    "test": "node --test tests/repo.test.mjs tests/config.test.mjs tests/cred.test.mjs tests/setup.test.mjs tests/pack.test.mjs"
   }
 }

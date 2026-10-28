@@ -1,0 +1,93 @@
+# 📦 Company packs
+
+A pack holds the config, the rules, and the scripts of one company or team.
+You install it into the repository wiki. You do not fork forge.
+
+```mermaid
+flowchart LR
+  plugin["forge plugin<br/>(marketplace)"] --> wiki["&lt;repo&gt;.wiki/forge"]
+  pack["company pack<br/>(folder or git repository)"] -- "forge.mjs pack add / update" --> wiki
+  wiki --> cfg["config/*.md"]
+  wiki --> scripts["scripts/*.mjs"]
+  trust["user data folder<br/>trust/&lt;repo&gt;.json"] -. "approves each file by SHA-256" .-> wiki
+```
+
+## 1️⃣ Layout
+
+```text
+acme-forge-pack/
+  pack.json             {"name": "acme", "version": "1.2.0"}
+  config/
+    tracker.md          capability rows for your tracker (see docs/config.md)
+    repo.md
+    ci.md
+    policy.md           policy values and the hook sections (Toolkit, Data rules, Start, ...)
+  scripts/
+    jenkins.mjs         small scripts for a credential or a guard
+  tests/                not installed
+```
+
+- `pack.json` needs `name` (lowercase letters, digits, hyphens) and `version`.
+- `include` (optional) lists the installed folders. The default is `["config", "scripts"]`.
+- Keep the pack in a private repository when it names internal hosts or rules.
+
+## 2️⃣ Install and update
+
+Say "set up forge" and name the pack. Or run the commands yourself:
+
+```sh
+node "<plugin>/scripts/forge.mjs" pack add <folder or git URL>
+node "<plugin>/scripts/forge.mjs" pack update            # the recorded source
+node "<plugin>/scripts/forge.mjs" pack status
+```
+
+- `pack add` refuses to replace a file with other content. Compare it, then use `--force`.
+- `pack update` merges each file with three-way merge (`git merge-file`). The base is the copy in `<wiki>/forge/.base`.
+  - Not changed locally: forge takes the new file.
+  - Changed locally and in the pack: forge merges. A conflict leaves `<<<<<<< local` markers. Fix them by hand.
+  - Removed from the pack: forge deletes the file when it has no local change.
+- Commit `<wiki>/forge` (with `.base` and `pack.lock.json`) in the wiki repository. Teammates get the same files.
+
+## 3️⃣ Trust
+
+forge runs nothing from the wiki that you did not approve. A `git pull` or a pack update can change the files.
+
+1. `node "<plugin>/scripts/forge.mjs" trust` lists each file under `<wiki>/forge` as `ok`, `new`, or `changed`, with its SHA-256.
+2. Read the new and changed files.
+3. `node "<plugin>/scripts/forge.mjs" trust approve config/tracker.md=<first 12 hash characters> ...`
+
+The approvals are in the user data folder (`%LOCALAPPDATA%\forge`, `~/Library/Application Support/forge`,
+or `$XDG_DATA_HOME/forge`), not in the wiki. `config` and `run` fail until each file is approved.
+
+## 4️⃣ Scripts
+
+Use a CLI row in the config when the CLI has its own login (`gh`, `glab`, `acli`, `az`).
+Write a script only for a credential or a guard, for example a REST call with a token, or a read-only SQL query.
+
+```js
+// scripts/jenkins.mjs: run with forge.mjs run jenkins <job>
+import { pathToFileURL } from 'node:url';
+const { getSecret } = await import(pathToFileURL(`${process.env.FORGE_CORE}/lib/cred.mjs`));
+const token = getSecret('jenkins');
+const res = await fetch(`https://ci.example.com/job/${process.argv[2]}/lastBuild/api/json`, {
+  headers: { Authorization: `Basic ${Buffer.from(`me:${token}`).toString('base64')}` },
+});
+console.log(JSON.stringify(await res.json()));
+```
+
+- Run a script with `node "<plugin>/scripts/forge.mjs" run <name> [args...]`. Write that command in the capability row.
+- forge sets `FORGE_CORE` (the core scripts folder), `FORGE_WIKI`, and `FORGE_REPO`.
+- The user stores a secret with `node "<plugin>/scripts/cred.mjs" set <name>`. The prompt hides the input.
+- Never print a secret. Pass it to a child process in its environment, not in its arguments.
+- Use only Node.js built-ins. forge does not run `npm install` for a pack.
+
+## 🔐 MCP servers
+
+Use an MCP server only when no CLI and no REST call can do the capability (see the `forge` rule).
+A pack cannot add an MCP server. Install it in your VS Code user settings, and name its tools in the capability row.
+
+## ✅ Check a pack
+
+1. `node "<plugin>/scripts/forge.mjs" doctor` reports no `fail` line.
+2. Run one S-track work item end to end: start, plan, implement, open the change request, close.
+3. Search the pack for secrets before every push.

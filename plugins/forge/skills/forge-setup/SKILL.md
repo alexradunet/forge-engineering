@@ -21,6 +21,8 @@ resolved path in each command. All commands run on Windows, macOS, and Linux.
 | `node "<plugin>/scripts/forge.mjs" init-wiki` | Create the local wiki (`git init`, `.gitignore`, `index.md`) and bind it | the wiki folder |
 | `node "<plugin>/scripts/forge.mjs" bind` | Write `<wiki>/forge/repo.json` | the wiki folder |
 | `node "<plugin>/scripts/forge.mjs" seed --tracker <t> --repo <r> --ci <c> [--force]` | Copy templates to `<wiki>/forge/config` | the wiki folder |
+| `node "<plugin>/scripts/forge.mjs" pack add <source> [--force]`, `pack update [<source>]`, `pack status` | Install or update a company pack (see `docs/packs.md`) | the wiki folder |
+| `node "<plugin>/scripts/forge.mjs" trust [approve <path>=<hash> ...]` | Show or approve the files under `<wiki>/forge` | the user data folder |
 | `node "<plugin>/scripts/forge.mjs" doctor` | Read-only check of the whole setup | nothing |
 | `node "<plugin>/scripts/cred.mjs" set\|has\|delete <name>` | OS credential store (the user types the secret) | the credential store |
 
@@ -48,17 +50,20 @@ State the progress at each step ("step 3 of 9 done").
 4. **Wiki.** When `wiki.exists` is false, show the path and the remote, and ask for approval.
    Then run `init-wiki`. When the wiki exists but `bound` is false, run `bind`.
    Add the remote with `git -C <wiki> remote add origin <url>` only after approval.
-5. **Seed.** Show the files that change. Run `seed` after approval.
+5. **Seed or pack.** When the team has a company pack, run `pack add <folder or git URL>` and skip `seed`.
+   Otherwise, show the files that change and run `seed` after approval.
    `seed` keeps existing files. Use `--force` only after the user agrees to replace a file.
 6. **Values.** Ask for the frontmatter values in a second form: `prefix`, `project`, `host`,
    `itemUrl`, `changeName`, `branchPattern`, `baseBranch`, and the policy values.
    Show the template value as the default. Write them into `<wiki>/forge/config/*.md`.
 7. **Tables.** Fill in the **Queries** table of `tracker.md` and the **Checkouts** table of `repo.md` with the user.
    For `other`, ask how the team does each capability. Write a CLI command in the row, or keep `manual`.
-8. **Live read.** For each read capability (for example `tracker.fetch`, `tracker.search`, `repo.history`, `ci.status`),
+8. **Trust.** Run `trust`. Show each `new` or `changed` file with the first 12 characters of its hash.
+   After the user says yes, run `trust approve <path>=<hash> ...` for exactly those files.
+9. **Live read.** For each read capability (for example `tracker.fetch`, `tracker.search`, `repo.history`, `ci.status`),
    run the row once against a real item. Report `ok` or the error with its fix.
    Never run a write capability during setup.
-9. **Finish.** Run `doctor`. Tell the user to commit the wiki: `git -C <wiki> add forge index.md .gitignore`,
+10. **Finish.** Run `doctor`. Tell the user to commit the wiki: `git -C <wiki> add forge index.md .gitignore`,
    then `git -C <wiki> commit`. Push only when the user asks.
 
 ## 📚 Wiki remote

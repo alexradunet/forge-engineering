@@ -18,6 +18,7 @@ Each repository has its own wiki. Get the paths with
 - `<config>`: `<wiki>/forge/config`, with `tracker.md`, `repo.md`, `ci.md`, and `policy.md`.
 
 When `where` fails, or the wiki or config is missing, tell the user to say "set up forge".
+When `config` or `run` says `Not approved`, show the files and their changes. Run `forge.mjs trust approve` only after the user says yes.
 A ticket lives in the wiki of the repository where it starts. Other wikis get only a link to it.
 
 ## Config and capabilities

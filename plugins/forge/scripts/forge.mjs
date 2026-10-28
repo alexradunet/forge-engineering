@@ -9,12 +9,18 @@
 //   init-wiki [--wiki <dir>] create the local wiki (git init, .gitignore, index.md) and bind it
 //   bind    [--wiki <dir>]   write <wiki>/forge/repo.json
 //   seed --tracker <t> --repo <r> --ci <c> [--force]   copy templates to <wiki>/forge/config
+//   trust [approve <path>=<sha>...]   show or approve the files under <wiki>/forge
+//   pack add <source> [--force] | pack update [<source>] | pack status
+//   run <script> [args...]   run <wiki>/forge/scripts/<script>.mjs after the trust check
+import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolve, ForgeError } from './lib/repo.mjs';
 import { loadConfig, KINDS } from './lib/config.mjs';
 import { detect, initWiki, bind, seed } from './lib/setup.mjs';
+import { approve, assertTrusted, status as trustStatus } from './lib/trust.mjs';
+import { add as packAdd, update as packUpdate, readLock } from './lib/pack.mjs';
 
 const pluginRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const CLI_FOR = { github: 'gh', 'github-actions': 'gh', gitlab: 'glab', 'gitlab-ci': 'glab', jira: 'acli', 'azure-pipelines': 'az' };
@@ -86,6 +92,11 @@ export function doctor({ cwd, wiki, env = process.env } = {}) {
   } catch (err) {
     add('config', 'fail', err.message);
   }
+  const st = trustStatus(where, { env });
+  const bad = st.files.filter((f) => f.state !== 'ok');
+  add('trust', bad.length ? 'fail' : 'ok', bad.length ? `Not approved: ${bad.map((f) => `${f.rel} (${f.state})`).join(', ')}. Run "forge.mjs trust".` : `${st.files.length} files approved`);
+  const lock = readLock(where);
+  if (lock) add('pack', 'ok', `${lock.name} ${lock.version}`);
   return results;
 }
 
@@ -94,7 +105,29 @@ function print(results) {
   for (const r of results) console.log(`${r.status.padEnd(4)}  ${r.check.padEnd(w)}  ${r.detail}`);
 }
 
+export function runScript(name, rest, { cwd = process.cwd(), env = process.env } = {}) {
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(name ?? '')) throw new ForgeError('Usage: forge.mjs run <script> [args...]. The name has lowercase letters, digits, and hyphens.', 'bad-args');
+  const where = resolve({ cwd, env });
+  const file = path.join(where.wiki.path, 'forge', 'scripts', `${name}.mjs`);
+  if (!existsSync(file)) throw new ForgeError(`No pack script: ${file}`, 'no-script');
+  assertTrusted(where, ['scripts/', 'config/'], { env });
+  const r = spawnSync(process.execPath, [file, ...rest], {
+    cwd,
+    stdio: 'inherit',
+    env: { ...env, FORGE_CORE: path.join(pluginRoot, 'scripts'), FORGE_WIKI: where.wiki.path, FORGE_REPO: where.repo.path },
+  });
+  return r.status ?? 1;
+}
+
 export function main(argv = process.argv.slice(2)) {
+  if (argv[0] === 'run') {
+    try {
+      return runScript(argv[1], argv.slice(2));
+    } catch (err) {
+      if (err instanceof ForgeError) { console.error(`forge: ${err.message}`); return 1; }
+      throw err;
+    }
+  }
   const args = parseArgs(argv);
   const [cmd] = args._;
   const opts = { cwd: args.cwd ?? process.cwd(), wiki: args.wiki };
@@ -103,6 +136,7 @@ export function main(argv = process.argv.slice(2)) {
       console.log(JSON.stringify(resolve(opts), null, 2));
     } else if (cmd === 'config') {
       const where = resolve(opts);
+      assertTrusted(where, ['config/']);
       console.log(JSON.stringify({ ...loadConfig(where.configDir), warnings: where.warnings }, null, 2));
     } else if (cmd === 'doctor') {
       const results = doctor(opts);
@@ -117,8 +151,19 @@ export function main(argv = process.argv.slice(2)) {
     } else if (cmd === 'seed') {
       const templates = path.join(pluginRoot, 'templates', 'config');
       console.log(JSON.stringify(seed(resolve(opts), { tracker: args.tracker, repo: args.repo, ci: args.ci }, templates, { force: args.force }), null, 2));
+    } else if (cmd === 'trust') {
+      const where = resolve(opts);
+      if (args._[1] === 'approve') console.log(JSON.stringify(approve(where, args._.slice(2)), null, 2));
+      else console.log(JSON.stringify(trustStatus(where), null, 2));
+    } else if (cmd === 'pack') {
+      const where = resolve(opts);
+      const sub = args._[1];
+      if (sub === 'add' && args._[2]) console.log(JSON.stringify(packAdd(where, args._[2], { force: args.force }), null, 2));
+      else if (sub === 'update') console.log(JSON.stringify(packUpdate(where, args._[2]), null, 2));
+      else if (sub === 'status') console.log(JSON.stringify(readLock(where), null, 2));
+      else throw new ForgeError('Usage: forge.mjs pack add <source> [--force] | pack update [<source>] | pack status', 'bad-args');
     } else {
-      console.error('Usage: node forge.mjs <where|config|doctor|detect|init-wiki|bind|seed> [--wiki <dir>] [--cwd <dir>] [--json]');
+      console.error('Usage: node forge.mjs <where|config|doctor|detect|init-wiki|bind|seed|trust|pack|run> [--wiki <dir>] [--cwd <dir>] [--json]');
       return 2;
     }
     return 0;
