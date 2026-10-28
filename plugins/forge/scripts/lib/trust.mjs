@@ -2,7 +2,7 @@
 // live in the user data folder, outside the wiki, so a pull or a pack update
 // cannot approve itself. forge fails closed on a new or changed file.
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { dataDir } from './cred.mjs';
 import { ForgeError } from './repo.mjs';
@@ -31,7 +31,8 @@ export function listFiles(dir, rel = '') {
     if (!rel && SKIP.has(e.name)) continue;
     const r = rel ? `${rel}/${e.name}` : e.name;
     if (e.isDirectory()) out.push(...listFiles(path.join(dir, e.name), r));
-    else if (e.isFile()) out.push(r);
+    // Symlinks and other special entries are listed too, so that status() can refuse them.
+    else out.push(r);
   }
   return out.sort();
 }
@@ -46,6 +47,7 @@ export function status(where, { env = process.env } = {}) {
   const approved = readApproved(file);
   const dir = forgeDir(where);
   const files = listFiles(dir).map((rel) => {
+    if (!lstatSync(path.join(dir, rel)).isFile()) return { rel, sha: '', state: 'not-a-file' };
     const sha = sha256(readFileSync(path.join(dir, rel)));
     return { rel, sha, state: !approved[rel] ? 'new' : approved[rel] === sha ? 'ok' : 'changed' };
   });
@@ -67,6 +69,7 @@ export function approve(where, items, { env = process.env } = {}) {
     const [rel, prefix = ''] = item.split('=');
     const f = byRel.get(rel);
     if (!f) throw new ForgeError(`Not a forge file: ${rel}`, 'bad-args');
+    if (f.state === 'not-a-file') throw new ForgeError(`${rel} is a symlink or a special file. forge approves only regular files.`, 'bad-args');
     if (prefix.length < 8 || !f.sha.startsWith(prefix.toLowerCase())) throw new ForgeError(`${rel} changed since you saw it, or the hash is shorter than 8 characters. Run "forge.mjs trust" again.`, 'hash-mismatch');
     approved[rel] = f.sha;
     done.push(rel);
@@ -78,10 +81,13 @@ export function approve(where, items, { env = process.env } = {}) {
   return { approved: done, removed: st.removed };
 }
 
-// Throws when a file under one of the prefixes (for example "config/") is new or changed.
+// Throws when a file under one of the prefixes (for example "config/") is new or
+// changed, or when any entry is a symlink. The prefix match ignores case, because
+// "Scripts/" and "scripts/" are the same folder on Windows and macOS.
 export function assertTrusted(where, prefixes, { env = process.env } = {}) {
   const st = status(where, { env });
-  const bad = st.files.filter((f) => f.state !== 'ok' && prefixes.some((p) => f.rel.startsWith(p)));
+  const under = (rel) => prefixes.some((p) => rel.toLowerCase().startsWith(p.toLowerCase()));
+  const bad = st.files.filter((f) => f.state === 'not-a-file' || (f.state !== 'ok' && under(f.rel)));
   if (bad.length) {
     const list = bad.map((f) => `${f.rel} (${f.state})`).join(', ');
     throw new ForgeError(`Not approved: ${list}. Review the files, then run "forge.mjs trust" and approve each one.`, 'untrusted');

@@ -3,7 +3,7 @@
 // version with a three-way merge against the base copy in <wiki>/forge/.base.
 // All outputs are computed first, then written; the lock file is written last.
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { dataDir } from './cred.mjs';
@@ -25,8 +25,16 @@ export function readPack(dir) {
   return { name: pack.name, version: String(pack.version ?? '0'), include };
 }
 
+// Refuses symlinks, so that a pack cannot copy files from outside its folder.
 export function packFiles(dir, include) {
-  return include.flatMap((d) => listFiles(path.join(dir, d)).map((r) => `${d}/${r}`)).filter((r) => !/(^|\/)(node_modules|\.git)\//.test(r));
+  const files = include.flatMap((d) => {
+    const top = path.join(dir, d);
+    if (existsSync(top) && !lstatSync(top).isDirectory()) throw new ForgeError(`Pack folder "${d}" is not a regular folder.`, 'not-a-pack');
+    return listFiles(top).map((r) => `${d}/${r}`);
+  }).filter((r) => !/(^|\/)(node_modules|\.git)\//.test(r));
+  const bad = files.filter((r) => !lstatSync(path.join(dir, r)).isFile());
+  if (bad.length) throw new ForgeError(`The pack has symlinks or special files: ${bad.join(', ')}.`, 'not-a-pack');
+  return files;
 }
 
 export function fetchSource(source, { env = process.env } = {}) {

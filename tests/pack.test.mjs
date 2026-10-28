@@ -1,13 +1,13 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { resolve } from '../plugins/forge/scripts/lib/repo.mjs';
 import { initWiki } from '../plugins/forge/scripts/lib/setup.mjs';
 import { approve, assertTrusted, status } from '../plugins/forge/scripts/lib/trust.mjs';
-import { add, update, readLock } from '../plugins/forge/scripts/lib/pack.mjs';
+import { add, packFiles, update, readLock } from '../plugins/forge/scripts/lib/pack.mjs';
 import { runScript } from '../plugins/forge/scripts/forge.mjs';
 
 let root, app, wiki, src, env;
@@ -64,6 +64,31 @@ test('run executes a trusted pack script with FORGE_CORE and refuses a changed o
   assert.throws(() => runScript('hello', [], { cwd: app, env }), (e) => e.code === 'untrusted');
   approveAll();
   assert.equal(runScript('hello', [], { cwd: app, env }), 0);
+});
+
+test('trust refuses symlinks and matches prefixes without case', () => {
+  write(path.join(wiki, 'forge', 'scripts', 'hello.mjs'), read(path.join(wiki, 'forge', 'scripts', 'hello.mjs')) + '// again\n');
+  assert.throws(() => assertTrusted(where(), ['SCRIPTS/'], { env }), (e) => e.code === 'untrusted');
+  approveAll();
+  const outside = path.join(root, 'outside');
+  write(path.join(outside, 'evil.mjs'), 'console.log("evil")\n');
+  const link = path.join(wiki, 'forge', 'scripts', 'lib');
+  symlinkSync(outside, link, 'junction');
+  try {
+    const f = status(where(), { env }).files.find((x) => x.rel === 'scripts/lib');
+    assert.equal(f.state, 'not-a-file');
+    assert.throws(() => assertTrusted(where(), ['config/'], { env }), (e) => e.code === 'untrusted');
+    assert.throws(() => approve(where(), ['scripts/lib=00000000'], { env }), (e) => e.code === 'bad-args');
+  } finally {
+    rmSync(link, { recursive: false, force: true });
+  }
+  assert.equal(status(where(), { env }).ok, true);
+  symlinkSync(outside, path.join(src, 'scripts', 'lib'), 'junction');
+  try {
+    assert.throws(() => packFiles(src, ['config', 'scripts']), (e) => e.code === 'not-a-pack');
+  } finally {
+    rmSync(path.join(src, 'scripts', 'lib'), { force: true });
+  }
 });
 
 test('pack update: fast-forward, clean merge, conflict, keep, and removal', () => {

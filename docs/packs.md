@@ -58,6 +58,7 @@ forge runs nothing from the wiki that you did not approve. A `git pull` or a pac
 
 The approvals are in the user data folder (`%LOCALAPPDATA%\forge`, `~/Library/Application Support/forge`,
 or `$XDG_DATA_HOME/forge`), not in the wiki. `config` and `run` fail until each file is approved.
+forge never approves a symlink (state `not-a-file`). `pack add` and `pack update` refuse a pack with symlinks.
 
 ## 4️⃣ Scripts
 
