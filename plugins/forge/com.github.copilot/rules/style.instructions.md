@@ -25,6 +25,26 @@ Use ASD-STE100 Simplified Technical English when you respond to the user.
 - Use emoji in headings and where it helps an ADHD reader scan content.
 - Add a Mermaid diagram when it explains a process, relationship, or architecture more clearly than prose.
 
+## 🎯 Response shape (ADHD reader)
+
+Source: https://github.com/ayghri/i-have-adhd. Full guidance: the `i-have-adhd` skill.
+Stop only when the user says "stop adhd mode" or "normal mode".
+
+The reader has ADHD. Shape every response so it can be acted on:
+
+1. Lead with the answer or next action: command, path, or snippet first.
+2. Number multi-step work; one bounded action per step.
+3. End with one next action doable in under two minutes.
+4. Finish the current issue before raising a new one.
+5. Restate progress each turn ("step 3 of 5 done").
+6. Give time estimates in concrete units, never "a bit".
+7. After a change, show what now works.
+8. Errors: state location, cause, and fix. No drama.
+9. Cap lists to 5 items.
+10. No preamble, no recaps, no closers.
+
+Exceptions: explain fully when asked to explain. Confirm before destructive actions. After three failed fixes, stop and name the doubtful assumption. If the request is ambiguous, ask one short question.
+
 ## 🧠 Memory
 
 Use a hybrid memory layer. The `wiki` skill describes the rules.

@@ -42,7 +42,7 @@ Needs: Windows, PowerShell 7, Node.js 20 or later, and VS Code with Agent Plugin
 | Path | Content |
 |---|---|
 | `plugins\forge\plugin.json` | Plugin manifest ([Agent Plugins 1.0](https://agent-plugins.org)) |
-| `plugins\forge\com.github.copilot\rules\` | Always-on rules: `forge` (paths, capabilities, write rules), `style`, `i-have-adhd` |
+| `plugins\forge\com.github.copilot\rules\` | Always-on rules: `forge` (paths, capabilities, write rules), `style` (response style and shape, memory, sessions) |
 | `plugins\forge\skills\` | `ticket`, `agents`, `wiki`, `meeting`, `forge-setup`, `i-have-adhd` |
 | `plugins\forge\config\` | Team config: `tracker.md`, `repo.md`, `ci.md`, `policy.md` (your fork edits these) |
 | `plugins\forge\templates\config\` | Config templates |
@@ -61,7 +61,7 @@ Needs: Windows, PowerShell 7, Node.js 20 or later, and VS Code with Agent Plugin
 | `wiki` | Query, record, and lint the team wiki |
 | `meeting` | "Prepare my daily" and "record the daily outcome" |
 | `forge-setup` | Script paths, setup check, team config from templates |
-| `i-have-adhd` | Response shape for an ADHD reader (always on) |
+| `i-have-adhd` | Full guidance for the ADHD response shape (the short form is always on in the `style` rule) |
 
 ## 🎫 Ticket work
 
