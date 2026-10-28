@@ -42,11 +42,16 @@ async function readStdin() {
   return data.replace(/\r?\n$/, '');
 }
 
+// Hidden prompt in a terminal, else standard input. Pack scripts use it for their own "set" command.
+export function readSecret(prompt) {
+  return process.stdin.isTTY ? readHidden(prompt) : readStdin();
+}
+
 export async function main(argv = process.argv.slice(2), store = createStore()) {
   const [cmd, name] = argv;
   try {
     if (cmd === 'set' && name) {
-      const secret = process.stdin.isTTY ? await readHidden(`Secret for ${name} (hidden): `) : await readStdin();
+      const secret = await readSecret(`Secret for ${name} (hidden): `);
       store.set(name, secret);
       console.log(`Stored ${name} (${store.backend}).`);
       return 0;

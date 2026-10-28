@@ -78,6 +78,8 @@ console.log(JSON.stringify(await res.json()));
 - Run a script with `node "<plugin>/scripts/forge.mjs" run <name> [args...]`. Write that command in the capability row.
 - forge sets `FORGE_CORE` (the core scripts folder), `FORGE_WIKI`, and `FORGE_REPO`.
 - The user stores a secret with `node "<plugin>/scripts/cred.mjs" set <name>`. The prompt hides the input.
+- A script with its own "set" command (for example, to parse a connection string) reads the secret with `readSecret(prompt)` from `${FORGE_CORE}/cred.mjs`, and stores it with `createStore().set(name, value)` from `${FORGE_CORE}/lib/cred.mjs`.
+- The core already has `jenkins.mjs`. Call it with `--host` and `--cred` for a second Jenkins server. You do not need a pack script for it.
 - Never print a secret. Pass it to a child process in its environment, not in its arguments.
 - Use only Node.js built-ins. forge does not run `npm install` for a pack.
 
