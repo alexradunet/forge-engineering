@@ -4,8 +4,8 @@ import { mkdtemp, mkdir, readFile, readdir, realpath, rm, symlink, writeFile } f
 import os from 'node:os';
 import path from 'node:path';
 import { request } from 'node:http';
-import { parseTicket, readTickets, validateInput } from '../plugins/forge/extensions/ticket-dashboard/tickets.mjs';
-import { dashboardOptions } from '../plugins/forge/extensions/ticket-dashboard/dashboard.mjs';
+import { parseTicket, readTickets, validateInput } from '../plugins/forge/com.github.copilot/extensions/ticket-dashboard/tickets.mjs';
+import { dashboardOptions } from '../plugins/forge/com.github.copilot/extensions/ticket-dashboard/dashboard.mjs';
 
 function ticket(fields = '') {
   return `---\ntype: ticket\nkey: APP-42\ntitle: Build dashboard\nphase: implement\nstate: active\ntrack: M\nnext: Run tests\n${fields}---\n# Ticket\n`;
@@ -217,10 +217,14 @@ test('HTTP server rejects foreign origins, rebinding, unknown routes, queries, a
   assert.equal(errors.length, 1);
 });
 
-test('plugin manifest points to the bundled extension', async () => {
+test('Agent Plugins manifest declares a namespaced canvas extension', async () => {
   const plugin = new URL('../plugins/forge/', import.meta.url);
   const manifest = JSON.parse(await readFile(new URL('plugin.json', plugin), 'utf8'));
-  assert.equal(manifest.extensions, 'extensions/');
-  const source = await readFile(new URL(`${manifest.extensions}ticket-dashboard/extension.mjs`, plugin), 'utf8');
+  assert.equal(manifest.$schema, 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json');
+  assert.equal(typeof manifest.extensions, 'object');
+  assert.ok(!Array.isArray(manifest.extensions));
+  const namespace = 'com.github.copilot';
+  assert.equal(manifest.extensions[namespace].extensions, 'extensions/');
+  const source = await readFile(new URL(`${namespace}/${manifest.extensions[namespace].extensions}ticket-dashboard/extension.mjs`, plugin), 'utf8');
   assert.match(source, /@github\/copilot-sdk\/extension/);
 });

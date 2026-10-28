@@ -8,7 +8,11 @@
   },
   "repository": "https://github.com/alexradunet/forge-engineering",
   "license": "MIT",
-  "extensions": "extensions/",
+  "extensions": {
+    "com.github.copilot": {
+      "extensions": "extensions/"
+    }
+  },
   "keywords": [
     "agents",
     "tickets",

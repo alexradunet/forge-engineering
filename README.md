@@ -72,7 +72,7 @@ Setup also offers a separate private `<repo>-wiki` repository, or a local-only w
 | `plugins/forge/plugin.json` | Plugin manifest ([Agent Plugins 1.0](https://agent-plugins.org)) |
 | `plugins/forge/com.github.copilot/rules/` | Always-on rules: `forge` (paths, capabilities, write rules), `style` (response style, memory, sessions) |
 | `plugins/forge/skills/` | `ticket`, `agents`, `wiki`, `daily-recap`, `forge-setup` |
-| `plugins/forge/extensions/` | Read-only ticket dashboard canvas |
+| `plugins/forge/com.github.copilot/extensions/` | Read-only ticket dashboard canvas |
 | `plugins/forge/templates/config/` | Config templates |
 | `plugins/forge/scripts/` | `forge.mjs` (setup, config, trust, wiki scripts), `cred.mjs`, `jenkins.mjs` |
 | `docs/` | [config.md](docs/config.md) (config format) and [wiki.md](docs/wiki.md) (sharing and scripts) |
@@ -122,8 +122,11 @@ or calls a tracker. It stores no private data and needs no credentials.
 Enable `chat.canvases.enabled`, then start a new local desktop session with the Copilot harness.
 Other harnesses, remote sessions, and browser clients do not support canvases.
 See [VS Code canvases](https://code.visualstudio.com/docs/agents/run/canvases).
-If the canvas is missing, update Forge and reload VS Code. For local development,
-install the source plugin as described below.
+Forge uses Agent Plugins 1.0. Canvas files live under `com.github.copilot/extensions/`.
+The manifest declares their path in `extensions["com.github.copilot"].extensions`.
+A top-level `"extensions": "extensions/"` belongs to the older Copilot format and does not work here.
+If the canvas is missing, check the installed source folder for these files and this manifest entry.
+For local development, install the source plugin as described below.
 
 The canvas ID is `forge-ticket-dashboard`. Its open input is `{ "wikiPath": "<absolute wiki path>" }`.
 Its `refresh` action returns current tickets and read errors. Reopening the same instance reuses
