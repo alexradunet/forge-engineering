@@ -78,7 +78,12 @@ export function detect(where, { platform = process.platform, probe = run } = {})
       ? { type: 'existing', url: wikiRemote }
       : visibility === 'private' || visibility === 'internal'
       ? { type: 'native', url: `${where.repo.remote}.wiki.git` }
-      : { type: 'ask', options: ['separate-private-repo', 'local-only'], separate: `${where.repo.remote}-wiki` };
+      : {
+        type: 'ask',
+        options: [...(wikiEnabled === false ? [] : ['native']), 'separate-private-repo', 'local-only'],
+        native: `${where.repo.remote}.wiki.git`,
+        separate: `${where.repo.remote}-wiki`,
+      };
   }
 
   return {
@@ -141,10 +146,7 @@ export function bind(where) {
  * policy.md is copied only when missing.
  */
 export function seed(where, choice, templatesDir, { force = false } = {}) {
-  return seedDir(path.join(where.wiki.path, 'forge', 'config'), choice, templatesDir, { force });
-}
-
-function seedDir(dir, choice, templatesDir, { force = false } = {}) {
+  const dir = path.join(where.wiki.path, 'forge', 'config');
   mkdirSync(dir, { recursive: true });
   const written = [];
   const kept = [];
@@ -163,34 +165,4 @@ function seedDir(dir, choice, templatesDir, { force = false } = {}) {
     written.push(dest);
   }
   return { configDir: dir, written, kept };
-}
-
-// Creates a new company pack in <dir>: pack.json, config/ from the templates,
-// scripts/, README.md, and .gitignore. Writes nothing outside <dir> and never
-// replaces a pack. The user commits it to a private or company repository.
-export function initPack(dir, name, choice, templatesDir) {
-  if (!/^[a-z0-9][a-z0-9-]*$/.test(name ?? '')) throw new ForgeError('Give the pack a --name with lowercase letters, digits, and hyphens.', 'bad-args');
-  if (existsSync(path.join(dir, 'pack.json'))) throw new ForgeError(`A pack already exists in ${dir}.`, 'pack-exists');
-  for (const kind of Object.keys(TEMPLATE_KINDS)) {
-    if (!choice[kind]) throw new ForgeError(`Name the ${kind}: --${kind} <${TEMPLATE_KINDS[kind].join('|')}>.`, 'bad-args');
-  }
-  mkdirSync(path.join(dir, 'scripts'), { recursive: true });
-  const config = seedDir(path.join(dir, 'config'), choice, templatesDir);
-  const files = {
-    'pack.json': `${JSON.stringify({ name, version: '0.1.0', include: ['config', 'scripts'] }, null, 2)}\n`,
-    '.gitignore': 'node_modules/\n*.log\n.env\n',
-    'README.md': `# 🏢 ${name} forge pack\n\nThe company config and helper scripts for [forge](https://github.com/alexradunet/forge-engineering).\n` +
-      'Keep the repository private when the files name internal hosts, projects, or rules. Never commit a secret.\n\n' +
-      '- Install: `node "<plugin>/scripts/forge.mjs" pack add <path or git URL>`.\n' +
-      '- Update: change the files, raise `version` in `pack.json`, commit, then run `pack update` in each code repository.\n' +
-      '- Scripts in `scripts/` run with `forge.mjs run <name>`. See `docs/packs.md` of forge.\n',
-  };
-  const written = [];
-  for (const [rel, text] of Object.entries(files)) {
-    const target = path.join(dir, rel);
-    if (existsSync(target)) continue;
-    writeFileSync(target, text);
-    written.push(rel);
-  }
-  return { packDir: dir, written: [...written, ...config.written.map((f) => `config/${f}`)], kept: config.kept.map((f) => `config/${f}`) };
 }

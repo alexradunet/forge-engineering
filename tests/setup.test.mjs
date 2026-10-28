@@ -6,8 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolve } from '../plugins/forge/scripts/lib/repo.mjs';
-import { detect, hostKind, initWiki, initPack, bind, seed } from '../plugins/forge/scripts/lib/setup.mjs';
-import { readPack, packFiles } from '../plugins/forge/scripts/lib/pack.mjs';
+import { detect, hostKind, initWiki, bind, seed } from '../plugins/forge/scripts/lib/setup.mjs';
 import { loadConfig } from '../plugins/forge/scripts/lib/config.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -50,7 +49,17 @@ test('detect asks for a public repo', () => {
   const probe = (cmd, args) => (cmd === 'gh' && args[0] === 'repo' ? { ok: true, stdout: '{"visibility":"PUBLIC"}' } : { ok: cmd === 'gh', stdout: '' });
   const d = detect(resolve({ cwd: app, env }), { platform: 'linux', probe });
   assert.equal(d.suggestion.wikiRemote.type, 'ask');
+  assert.deepEqual(d.suggestion.wikiRemote.options, ['native', 'separate-private-repo', 'local-only']);
+  assert.equal(d.suggestion.wikiRemote.native, 'https://github.com/owner/app.wiki.git');
   assert.equal(d.suggestion.wikiRemote.separate, 'https://github.com/owner/app-wiki');
+});
+
+test('detect does not offer a disabled public wiki', () => {
+  const probe = (cmd, args) => (cmd === 'gh' && args[0] === 'repo'
+    ? { ok: true, stdout: '{"visibility":"PUBLIC","hasWikiEnabled":false}' }
+    : { ok: cmd === 'gh', stdout: '' });
+  const d = detect(resolve({ cwd: app, env }), { probe });
+  assert.deepEqual(d.suggestion.wikiRemote.options, ['separate-private-repo', 'local-only']);
 });
 
 test('initWiki creates, ignores raw, binds, and is idempotent', () => {
@@ -82,16 +91,4 @@ test('seed copies templates, keeps existing files, and the result loads', () => 
   assert.deepEqual(forced.written, ['tracker.md']);
   assert.equal(loadConfig(first.configDir).config.tracker.provider, 'jira');
   assert.throws(() => seed(where, { ci: 'travis' }, templates), (e) => e.code === 'bad-choice');
-});
-
-test('initPack creates a valid pack from the templates and never replaces one', () => {
-  const dir = path.join(root, 'new-pack');
-  assert.throws(() => initPack(dir, 'Bad Name', { tracker: 'gitlab', repo: 'gitlab', ci: 'gitlab-ci' }, templates), (e) => e.code === 'bad-args');
-  assert.throws(() => initPack(dir, 'acme', { tracker: 'gitlab', repo: 'gitlab' }, templates), (e) => e.code === 'bad-args');
-  const r = initPack(dir, 'acme', { tracker: 'gitlab', repo: 'gitlab', ci: 'gitlab-ci' }, templates);
-  assert.deepEqual(r.written.sort(), ['.gitignore', 'README.md', 'config/ci.md', 'config/policy.md', 'config/repo.md', 'config/tracker.md', 'pack.json']);
-  assert.equal(readPack(dir).name, 'acme');
-  assert.deepEqual(packFiles(dir, readPack(dir).include), ['config/ci.md', 'config/policy.md', 'config/repo.md', 'config/tracker.md']);
-  assert.equal(loadConfig(path.join(dir, 'config')).config.tracker.provider, 'gitlab');
-  assert.throws(() => initPack(dir, 'acme', { tracker: 'gitlab', repo: 'gitlab', ci: 'gitlab-ci' }, templates), (e) => e.code === 'pack-exists');
 });

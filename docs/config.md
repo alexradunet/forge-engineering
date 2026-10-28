@@ -11,13 +11,13 @@ forge reads the team config from four Markdown files in `<wiki>/forge/config/`.
 | `policy.md` | policy values and the company hook sections | `policy` |
 
 The config travels with the wiki repository. Every clone of the wiki uses the same values.
-`forge-setup` seeds the files from [templates/config](../plugins/forge/templates/config),
-or a company pack supplies them (see [packs.md](packs.md)).
+`forge-setup` seeds missing files from [templates/config](../plugins/forge/templates/config).
+Edit them directly in the wiki. Clone or pull that wiki to share changes (see [wiki.md](wiki.md)).
 
 ```mermaid
 flowchart LR
   tpl["templates/config<br/>github, gitlab, jira, local, other"] -- seed --> cfg["&lt;wiki&gt;/forge/config/*.md"]
-  pack["company pack"] -- pack add --> cfg
+  remote["wiki Git remote"] <-->|push / pull| cfg
   cfg --> trust{"trust check<br/>SHA-256"}
   trust --> rule["forge rule<br/>capability to command"]
   rule --> skills["ticket, agents, daily-recap skills"]
@@ -129,7 +129,7 @@ forge is **CLI first**. The `forge` rule, "Tool choice: CLI first", gives the or
 1. Copy the closest template, or the `other` template of the same kind, to `config/<kind>.md`.
 2. Fill in the frontmatter, the **Auth check**, and each capability row. Keep `manual` for a gap.
 3. Write the official CLI command (`gh`, `glab`, `az`, `acli`) in each row. Use JSON output flags when they exist.
-4. When no CLI exists, write a small Node script for the REST API in a pack (`scripts/<name>.mjs`), and call it with `forge.mjs run <name>`. Read the token with `cred.mjs`.
+4. When no CLI exists, write a small Node script for the REST API in `<wiki>/forge/scripts/<name>.mjs`. Call it with `forge.mjs run <name>`. Read the token with `cred.mjs`.
 5. Use an MCP server only when steps 3 and 4 cannot do a capability. Add it in your VS Code user settings. Write the reason in the **Notes** column.
 6. Run one S-track work item end to end with it.
 
@@ -137,7 +137,7 @@ forge is **CLI first**. The `forge` rule, "Tool choice: CLI first", gives the or
 
 - `forge.mjs config --json` reads the config. It fails on a bad value: a lower-case prefix, a bad `itemUrl` or `branchPattern`, an unknown day, or a policy value of the wrong type.
 - `forge.mjs config` fails closed when a file in `<wiki>/forge` is new or changed and you did not approve it (`forge.mjs trust`).
-- `forge.mjs doctor` reports the wiki, each config file and its provider, a missing CLI, trust, and the pack.
+- `forge.mjs doctor` reports the wiki, each config file and its provider, a missing CLI, and trust.
 - A missing file gives the defaults. Every capability is then `manual`.
 
 ## 🔒 Rules

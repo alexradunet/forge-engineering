@@ -56,7 +56,7 @@ forge runs in the VS Code Agents window, with the Copilot harness and the Agent 
 forge strongly prefers command-line tools to MCP servers. Use this order for every external call:
 
 1. **The official CLI** of the tool, for example `gh`, `glab`, `az`, or `acli`. Use its JSON output.
-2. **The REST API** through the CLI (`gh api`, `glab api`) or a pack script that reads its token from the OS credential store.
+2. **The REST API** through the CLI (`gh api`, `glab api`) or a wiki script that reads its token from the OS credential store.
 3. **An MCP server**, only when no CLI or REST call can do the capability, or when the row says why the MCP tool is better.
 
 Reasons:

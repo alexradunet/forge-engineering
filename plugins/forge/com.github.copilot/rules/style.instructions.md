@@ -5,7 +5,7 @@ alwaysApply: true
 ---
 # forge style
 
-Company rules go into the hook sections of `<config>/policy.md` or into a pack.
+Company rules go into the hook sections of `<config>/policy.md`. Helper scripts go into `<wiki>/forge/scripts`.
 
 ## ✍️ Response style
 

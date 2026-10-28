@@ -377,6 +377,15 @@ When the user asks for "the board", "my tickets", or a ticket status, answer in 
 
 - A `you:` value of `waiting_on`, `state: needs-me`, or a gate `in-review` puts the ticket in "🟡 Your move".
 - Start `waiting_on` with `you:`, `colleague:`, or `outside:`.
+
+When the user asks for a visual board or a dashboard, use the bundled `forge-ticket-dashboard`
+canvas if it is available. Get this repository's wiki path with `forge.mjs where --json`, then open
+the canvas with `{ "wikiPath": "<absolute wiki path>" }`. Use a stable instance ID for that wiki.
+The `refresh` action returns current tickets and read errors. The page also refreshes every 5 seconds.
+The canvas is read-only: it does not edit tickets, approve gates, or call the tracker.
+If the host does not support canvases or the extension is not loaded, show the chat overview above
+and report the limitation. Do not require a canvas to use the ticket workflow.
+
 ### 🏷️ Frontmatter
 
 Each Markdown file in the ticket folder starts with YAML frontmatter. The ticket overview reads it. Check it against the tables below after each README change.

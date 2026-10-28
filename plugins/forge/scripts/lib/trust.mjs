@@ -1,5 +1,5 @@
 // Trust store: SHA-256 approvals of the files under <wiki>/forge. The approvals
-// live in the user data folder, outside the wiki, so a pull or a pack update
+// live in the user data folder, outside the wiki, so a pull
 // cannot approve itself. forge fails closed on a new or changed file.
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
@@ -7,6 +7,7 @@ import path from 'node:path';
 import { dataDir } from './cred.mjs';
 import { ForgeError } from './repo.mjs';
 
+// Ignore legacy installation metadata so existing wikis keep their approvals.
 const SKIP = new Set(['.base', 'repo.json', 'pack.lock.json', '.git']);
 
 export const sha256 = (buf) => createHash('sha256').update(buf).digest('hex');

@@ -14,7 +14,7 @@ Until a row has a command, forge uses the manual step (see the `forge` rule, "Ma
 
 1. Set `provider` to the name of your tool, in lower case.
 2. Set `prefix` to the upper-case key prefix, and `itemUrl` to a URL with `{KEY}` or `{number}`.
-3. Install the CLI of the tool. When it has no CLI, use its REST API (a pack script, see `docs/packs.md`). Use an MCP server only as the last choice, from your VS Code user settings.
+3. Install the CLI of the tool. When it has no CLI, use its REST API (a wiki script, see `docs/wiki.md`). Use an MCP server only as the last choice, from your VS Code user settings.
 4. Replace `manual` in each row with the CLI command (see the `forge` rule, "Tool choice: CLI first").
 
 ## 🔎 Queries

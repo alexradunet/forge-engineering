@@ -8,11 +8,13 @@
   },
   "repository": "https://github.com/alexradunet/forge-engineering",
   "license": "MIT",
+  "extensions": "extensions/",
   "keywords": [
     "agents",
     "tickets",
     "wiki",
     "workflow",
-    "vscode"
+    "vscode",
+    "canvas"
   ]
 }

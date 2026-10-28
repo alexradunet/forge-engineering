@@ -17,7 +17,7 @@ flowchart LR
   plugin["forge plugin<br/>rules, skills, scripts"] --> vscode["VS Code Agents window<br/>Copilot harness"]
   repo["your repository<br/>C:/dev/app"] --> vscode
   wiki["../app.wiki<br/>forge/config, tickets, knowledge"] --> vscode
-  pack["company pack<br/>(optional)"] -- pack add --> wiki
+  shared["wiki Git remote<br/>public data or private access"] <-->|push / pull| wiki
 ```
 
 ## 🚀 Start
@@ -48,8 +48,9 @@ git -C ~/.vscode/agent-plugins/github.com/alexradunet/forge-engineering pull --f
 
 ### 🏢 Company config
 
-The plugin holds no company config. A company or team installs its pack once in each repository wiki:
-say "set up forge", answer **Yes, I have a pack**, and give its folder or git URL. See [packs.md](docs/packs.md).
+The plugin holds no company config. Each repository wiki holds its config and helper scripts.
+Say "set up forge" to create them, or clone the team's existing wiki.
+Commit and push the wiki to share changes. See [wiki.md](docs/wiki.md).
 
 ## 📦 Where things live
 
@@ -57,12 +58,12 @@ say "set up forge", answer **Yes, I have a pack**, and give its folder or git UR
 |---|---|
 | `<repo>/../<repo>.wiki/` | The wiki: one Git repository for each code repository |
 | `<wiki>/forge/config/` | Team config: `tracker.md`, `repo.md`, `ci.md`, `policy.md` |
-| `<wiki>/forge/scripts/` | Company scripts from a pack (optional) |
+| `<wiki>/forge/scripts/` | Optional helper scripts |
 | `<wiki>/raw/tickets/<key>/` | Ticket folders |
 | OS credential store | Secrets (`cred.mjs set <name>`). Never in a file. |
 
-A public repository never gets its wiki on its own host. Setup offers a separate private
-`<repo>-wiki` repository, or a local-only wiki.
+A public repository can use its native wiki when all tracked files and Git history contain public data.
+Setup also offers a separate private `<repo>-wiki` repository, or a local-only wiki.
 
 ## 🧩 Plugin layout
 
@@ -71,9 +72,10 @@ A public repository never gets its wiki on its own host. Setup offers a separate
 | `plugins/forge/plugin.json` | Plugin manifest ([Agent Plugins 1.0](https://agent-plugins.org)) |
 | `plugins/forge/com.github.copilot/rules/` | Always-on rules: `forge` (paths, capabilities, write rules), `style` (response style, memory, sessions) |
 | `plugins/forge/skills/` | `ticket`, `agents`, `wiki`, `daily-recap`, `forge-setup` |
+| `plugins/forge/extensions/` | Read-only ticket dashboard canvas |
 | `plugins/forge/templates/config/` | Config templates |
-| `plugins/forge/scripts/` | `forge.mjs` (setup, config, trust, packs), `cred.mjs`, `jenkins.mjs` |
-| `docs/` | [config.md](docs/config.md) (config format) and [packs.md](docs/packs.md) (company packs) |
+| `plugins/forge/scripts/` | `forge.mjs` (setup, config, trust, wiki scripts), `cred.mjs`, `jenkins.mjs` |
+| `docs/` | [config.md](docs/config.md) (config format) and [wiki.md](docs/wiki.md) (sharing and scripts) |
 
 ## 🧩 Skills
 
@@ -103,17 +105,46 @@ The agent never merges. It asks before every write to the tracker, the repositor
 Say "show the board" or "my tickets". The agent reads the README frontmatter of each ticket
 and groups the open tickets by who must act: you, the agent, a colleague, or nobody (blocked).
 
-## 🏢 Company packs
+### 🖼️ Ticket dashboard
 
-A company keeps its config, policy rules, and helper scripts in a pack: a Git repository
-or a folder with `pack.json`. `forge.mjs pack add <source>` copies it into `<wiki>/forge`.
-`pack update` merges new pack versions with your local edits. forge runs pack files only
-after you approve their SHA-256 hash. See [packs.md](docs/packs.md).
+Forge also bundles a read-only canvas. Say **"open the Forge ticket dashboard"**.
+The agent supplies the repository wiki path from `forge.mjs where --json`.
+
+- See tickets by state, with their phase, track, next action, waiting reason, and gates.
+- Search tickets, filter by state, and include done tickets.
+- Expand a card for its branch, worktree, source path, gates, and change links.
+- The dashboard reads ticket files every 5 seconds. **Refresh** reads them immediately.
+- Empty ticket folders show an empty board. Invalid files show errors without hiding valid tickets.
+
+Ticket README files remain the source of truth. The dashboard never edits files, approves gates,
+or calls a tracker. It stores no private data and needs no credentials.
+
+Enable `chat.canvases.enabled`, then start a new local desktop session with the Copilot harness.
+Other harnesses, remote sessions, and browser clients do not support canvases.
+See [VS Code canvases](https://code.visualstudio.com/docs/agents/run/canvases).
+If the canvas is missing, update Forge and reload VS Code. For local development,
+install the source plugin as described below.
+
+The canvas ID is `forge-ticket-dashboard`. Its open input is `{ "wikiPath": "<absolute wiki path>" }`.
+Its `refresh` action returns current tickets and read errors. Reopening the same instance reuses
+its server and rereads the same wiki. Separate instances can show separate repositories.
+Each server binds only to `127.0.0.1` on a free port and stops when the canvas instance closes.
+The panel needs no database; ticket files preserve its data across sessions.
+
+The reader supports the [ticket template](plugins/forge/skills/ticket/templates/README.md):
+one-line scalar fields, comments, quoted strings, and flat object lists for `gates` and `changes`.
+Lists can use inline objects or indented fields. YAML anchors, tags, and multiline values
+are not supported; the dashboard reports them as read errors. Use the template's one-line fields.
+
+## 📚 Shared wiki
+
+Edit config and helper scripts directly in `<wiki>/forge`. Git handles versioning and shared updates.
+Each teammate reviews and approves the files by SHA-256 hash before forge uses them.
+Trust approvals and credentials stay outside the wiki. See [wiki.md](docs/wiki.md).
 
 ## 🛠️ Develop
 
 - `npm test` runs the tests.
-- Clone your company pack into `packs/<name>`. Git ignores that folder. See [packs.md](docs/packs.md).
 - To test a local checkout, run **Chat: Install Plugin from Source** with the `plugins/forge` folder.
   First uninstall or disable the forge plugin from the GitHub URL. With both installed, VS Code loads two plugins named `forge`, and the
   rules and skills appear two times. To go back, remove the local folder in **Chat: Open Customizations**, **Plugins**

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Forge tickets</title>
+  <link rel="stylesheet" href="/ui.css">
+  <script src="/ui.js" defer></script>
+</head>
+<body>
+  <header>
+    <div><p class="eyebrow">FORGE / READ ONLY</p><h1>Ticket dashboard</h1></div>
+    <button id="refresh" type="button">Refresh</button>
+  </header>
+  <main>
+    <p id="wiki"></p>
+    <div class="filters">
+      <label>Find a ticket <input id="search" type="search" placeholder="Key, title, or next action"></label>
+      <label>State <select id="state"><option value="">All states</option></select></label>
+      <label class="checkbox"><input id="done" type="checkbox"> Include done tickets</label>
+    </div>
+    <p id="status" role="status" aria-live="polite">Loading tickets...</p>
+    <section id="errors" role="alert" hidden><h2>Read errors</h2><ul></ul></section>
+    <p id="empty" hidden></p>
+    <div id="board" aria-label="Tickets by state"></div>
+  </main>
+</body>
+</html>

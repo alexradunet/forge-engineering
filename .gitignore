@@ -3,7 +3,7 @@
 /tools/
 /.local/
 
-# Local clones of company packs (packs/<name>), each its own repository.
+# Legacy private clones. Keep them out of this repository.
 /packs/
 
 # The wiki is its own repository (../<repo>.wiki next to the checkout).

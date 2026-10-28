@@ -10,13 +10,15 @@ The wiki is a folder of Markdown pages next to the repository: `../<repo>.wiki`.
 sessions read and update it. It is the shared memory layer between sessions.
 
 The wiki is its own Git repository. Keep it private when it holds company knowledge.
+Use a public wiki only when all tracked files and Git history contain public data.
+The wiki shares configuration and helper scripts through Git. It needs no separate distribution layer.
 Git ignores `raw/` and `archive/`, so they stay on this machine only.
 
 ```text
 <wiki>/
   index.md        catalog: one line per page, grouped by area
   log.md          append-only change log
-  forge/          repo.json (binding), config/ (team config), pack files (the `forge-setup` skill)
+  forge/          repo.json (binding), config/ (team config), scripts/ (helper scripts)
   tooling/        VS Code, MCP, build, and environment gotchas
   <area>/         architecture, flows, and code knowledge (one folder for each product or codebase)
   decisions/      decisions and their reasons
