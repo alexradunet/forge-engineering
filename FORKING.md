@@ -33,7 +33,7 @@ Edit only these places. Then upstream updates merge without conflicts.
 |---|---|
 | `plugins/forge/config/tracker.md`, `repo.md`, `ci.md` | Your tools. Say "configure forge" to seed them from `templates/config/`. See [docs/config.md](docs/config.md). |
 | `plugins/forge/config/policy.md` | Policy values and the company sections: Toolkit, Data rules, Start, Investigate, Resume, Implement, Evidence Testing, QA handover, Close |
-| `plugins/forge/mcp.json` | Your MCP servers |
+| `plugins/forge/mcp.json` | Your MCP servers, only for tools without a CLI or REST API |
 | `plugins/forge/skills/<company>-*` | New skills of your company. Use a prefix, so that names do not clash with upstream. |
 | `plugins/forge/com.github.copilot/rules/<company>.instructions.md` | New always-on rules |
 | `plugins/forge/scripts/<company>/` | Your scripts, for example credential scripts |
@@ -41,9 +41,10 @@ Edit only these places. Then upstream updates merge without conflicts.
 Avoid edits to the core skills (`ticket`, `agents`, `wiki`, `meeting`, `forge-setup`)
 and to the `forge` rule. When you need a change there, open an issue or a pull request upstream.
 
-## 🔐 MCP servers and credentials
+## 🔐 CLI first, then MCP servers and credentials
 
-- Agent Plugins forbid `${ENV}` in an MCP `url` or `headers`. Use one of these:
+- Prefer a CLI (for example `gh`, `glab`, `acli`, `az`) in the capability rows. Use the REST API with `curl.exe` when no CLI exists. Add an MCP server only as the last choice (see the `forge` rule, "Tool choice: CLI first").
+- Agent Plugins forbid `${ENV}` in an MCP `url` or `headers`. When you need an MCP server, use one of these:
   - a server with OAuth sign-in,
   - a CLI (for example `gh`, `glab`, `acli`) in the capability rows instead of an MCP server,
   - a stdio server that reads the token from a user variable or from a credential store.

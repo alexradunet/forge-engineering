@@ -14,8 +14,8 @@ Until a row has a command, forge uses the manual step (see the `forge` rule, "Ma
 
 1. Set `provider` to the name of your tool, in lower case.
 2. Set `prefix` to the upper-case key prefix, and `itemUrl` to a URL with `{KEY}` or `{number}`.
-3. Add the MCP server of the tool to `mcp.json` in your fork, or install its CLI.
-4. Replace `manual` in each row with the MCP tool or the CLI command.
+3. Install the CLI of the tool. When it has no CLI, use its REST API. Add its MCP server to `mcp.json` only as the last choice.
+4. Replace `manual` in each row with the CLI command (see the `forge` rule, "Tool choice: CLI first").
 
 ## 🔎 Queries
 

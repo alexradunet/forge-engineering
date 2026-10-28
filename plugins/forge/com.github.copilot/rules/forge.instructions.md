@@ -25,8 +25,26 @@ The team config is four Markdown files in `<config>`: `tracker.md`, `repo.md`, `
   1. Open `<config>\<kind>.md`, where `<kind>` is the first part of the name.
   2. Run its **Auth check** once per session, before the first call.
   3. Use the row of the capability in **Capabilities**. Replace each `<placeholder>` with a config value or a ticket value.
+     When a row gives a CLI command and an MCP tool, use the CLI command.
   4. When the row says `manual` or `not supported`, use the manual step.
 - Never call a tracker, repository host, or CI tool that the config does not name.
+
+## 🛠️ Tool choice: CLI first
+
+forge strongly prefers command-line tools to MCP servers. Use this order for every external call:
+
+1. **The official CLI** of the tool, for example `gh`, `glab`, `az`, or `acli`. Use its JSON output.
+2. **The REST API** with `curl.exe` or `Invoke-RestMethod`, with the CLI login or a token in a user variable.
+3. **An MCP server**, only when no CLI or REST call can do the capability, or when the row says why the MCP tool is better.
+
+Reasons:
+
+- A CLI command is visible. The user can read it, run it again, and put it in a script.
+- Sessions that `create_session` starts load no MCP servers. A CLI works in every session.
+- MCP tool lists use context in each request. A CLI uses context only when it runs.
+- A CLI keeps its login in its own store. The plugin holds no URL with a token and no auth proxy.
+
+Do not add an MCP server for a capability that a CLI already covers. Do not switch to an MCP tool because it is loaded.
 
 ## External writes
 

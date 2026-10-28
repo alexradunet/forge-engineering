@@ -15,7 +15,7 @@ Plain `git` works on every host. Until a row has a command, forge uses the manua
 
 1. Set `provider` to the name of your host, in lower case. Set `changeName` to `PR` or `MR`.
 2. Fill in the **📁 Checkouts** table.
-3. Replace `manual` in each row with the MCP tool or the CLI command.
+3. Replace `manual` in each row with the CLI command. Use the REST API when no CLI exists, and an MCP server only as the last choice (see the `forge` rule, "Tool choice: CLI first").
 
 ## 📁 Checkouts
 

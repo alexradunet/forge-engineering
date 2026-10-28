@@ -11,7 +11,7 @@ Use this template when the team has no CI, or a CI without a forge template, for
 Until a row has a command, forge uses the manual step (see the `forge` rule, "Manual step").
 
 1. Set `provider` to the name of your CI, in lower case. Add keys such as `host` when the commands need them.
-2. Replace `manual` in each row with the MCP tool or the CLI command.
+2. Replace `manual` in each row with the CLI command. Use the REST API when no CLI exists, and an MCP server only as the last choice (see the `forge` rule, "Tool choice: CLI first").
 
 ## 🔐 Auth check
 

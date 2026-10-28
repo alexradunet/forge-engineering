@@ -58,12 +58,12 @@ Templates are in `<plugin>\templates\config`. The `forge` rule explains how the 
 2. Show the files that change. Copy each template to `<config>\<kind>.md` after the user agrees. Copy `policy.md` only when it is missing.
 3. Ask for the frontmatter values in a second form: `prefix`, `project`, `host`, `itemUrl`, `changeName`, `branchPattern`, `baseBranch`, and the policy values. Show the template value as the default.
 4. Fill in the **Queries** table of `tracker.md` and the **Checkouts** table of `repo.md` with the user.
-5. For `other`, ask how the team does each capability. Write the command in the row, or keep `manual`.
+5. For `other`, ask how the team does each capability. Write the CLI command in the row (CLI first, then REST, then MCP), or keep `manual`.
 6. Run `Test-ForgeSetup.ps1`. Fix each `config:` problem.
 7. Tell the user to commit `<config>` in the fork. The config travels with the fork, not with the wiki.
 
 Rules:
 
 - Never put secrets in a config file. Credentials stay in user variables or in a CLI login (`gh auth login`, `glab auth login`).
-- MCP servers go into `<plugin>\mcp.json` of the fork. Agent Plugins forbid `${ENV}` in a URL or a header, so use OAuth, a CLI, or a stdio server.
+- Write CLI commands in the capability rows. Add an MCP server to `<plugin>\mcp.json` only when no CLI or REST call can do the capability (see the `forge` rule, "Tool choice: CLI first"). Agent Plugins forbid `${ENV}` in a URL or a header, so such a server needs OAuth or a stdio wrapper.
 - Company rules and tools go into the sections of `policy.md`, not into the core skills. Then upstream updates merge cleanly.

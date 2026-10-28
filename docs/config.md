@@ -121,11 +121,14 @@ no secrets, and the adversarial review before every change request.
 
 ## ➕ Add a tool
 
+forge is **CLI first**. The `forge` rule, "Tool choice: CLI first", gives the order: official CLI, then REST, then MCP.
+
 1. Copy the closest template, or the `other` template of the same kind, to `config/<kind>.md`.
 2. Fill in the frontmatter, the **Auth check**, and each capability row. Keep `manual` for a gap.
-3. Prefer the official CLI (`gh`, `glab`, `az`, `acli`). Use JSON output flags when they exist.
-4. Add an MCP server to `plugins/forge/mcp.json` of your fork.
-5. Run one S-track work item end to end with it.
+3. Write the official CLI command (`gh`, `glab`, `az`, `acli`) in each row. Use JSON output flags when they exist.
+4. When the CLI has no command for a capability, use the REST API with `curl.exe` or `Invoke-RestMethod`.
+5. Add an MCP server to `plugins/forge/mcp.json` only when steps 3 and 4 cannot do a capability. Write the reason in the **Notes** column.
+6. Run one S-track work item end to end with it.
 
 ## ✅ Checks
 
@@ -146,4 +149,5 @@ The board reads `tracker.md` and `repo.md` on each request. A change shows on th
 ## 🔒 Rules
 
 - Never put secrets in a config file. Credentials stay in user environment variables or in a CLI login.
-- Agent Plugins forbid `${ENV}` in an MCP URL or header. Use OAuth, a CLI, or a stdio server that reads the variable.
+- Prefer a CLI login (`gh auth login`, `glab auth login`, `acli jira auth login`) to an MCP server with a token.
+- Agent Plugins forbid `${ENV}` in an MCP URL or header. When you must add an MCP server, use OAuth or a stdio server that reads the variable.

@@ -8,6 +8,10 @@ forge does not depend on one tracker, repository host, or CI. Your team forks th
 repository and describes its tools in four Markdown files. Templates exist for
 GitHub, GitLab, Jira, Jenkins, Azure Pipelines, and local Markdown work items.
 
+**CLI first.** forge calls your tools through their official CLI (`gh`, `glab`, `acli`, `az`),
+then through their REST API. It uses an MCP server only when no CLI or API can do the job.
+CLI calls are visible, reproducible, and cost no context for tool lists.
+
 ```mermaid
 flowchart LR
   up["forge-engineering<br/>(this repository)"] -- fork --> fork["your fork<br/>config/*.md, mcp.json, policy"]
@@ -42,7 +46,7 @@ Needs: Windows, PowerShell 7, Node.js 20 or later, and VS Code with Agent Plugin
 | `plugins\forge\skills\` | `ticket`, `agents`, `wiki`, `meeting`, `forge-setup`, `i-have-adhd` |
 | `plugins\forge\config\` | Team config: `tracker.md`, `repo.md`, `ci.md`, `policy.md` (your fork edits these) |
 | `plugins\forge\templates\config\` | Config templates |
-| `plugins\forge\mcp.json` | MCP servers (none in the core; your fork adds its own) |
+| `plugins\forge\mcp.json` | MCP servers (none in the core; a fork adds one only when no CLI covers the tool) |
 | `plugins\forge\scripts\` | Installer, setup check, config reader, ticket board launcher |
 | `plugins\forge\board\` | Bundled ticket board (built file, committed) |
 | `apps\ticket-board\` | Ticket board source and tests |
