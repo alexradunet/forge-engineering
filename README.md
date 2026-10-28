@@ -93,6 +93,7 @@ after you approve their SHA-256 hash. See [packs.md](docs/packs.md).
 ## 🛠️ Develop
 
 - `npm test` runs the tests.
+- Clone your company pack into `packs/<name>`. Git ignores that folder. See [packs.md](docs/packs.md).
 - To test a local checkout, run **Chat: Install Plugin from Source** with the `plugins/forge` folder.
 - Check the loaded rules and skills in **Chat: Open Customizations**.
 

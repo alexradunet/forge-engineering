@@ -3,6 +3,9 @@
 /tools/
 /.local/
 
+# Local clones of company packs (packs/<name>), each its own repository.
+/packs/
+
 # The wiki is its own repository (../<repo>.wiki next to the checkout).
 /wiki/
 

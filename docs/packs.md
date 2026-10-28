@@ -48,6 +48,20 @@ node "<plugin>/scripts/forge.mjs" pack status
   - Removed from the pack: forge deletes the file when it has no local change.
 - Commit `<wiki>/forge` (with `.base` and `pack.lock.json`) in the wiki repository. Teammates get the same files.
 
+### 🗂️ Develop a pack next to forge
+
+Clone your pack into `packs/<name>` in your forge-engineering checkout. Git ignores `packs/`,
+so the pack stays a separate, private repository. An agent that works in forge-engineering
+then sees the core and your company installation together.
+
+```sh
+git clone <pack git URL> packs/<name>
+# In the code repository: take the pack changes from your clone.
+node "<forge-engineering>/plugins/forge/scripts/forge.mjs" pack update "<forge-engineering>/packs/<name>"
+```
+
+Change and test the pack in `packs/<name>`, then commit and push from that folder.
+
 ## 3️⃣ Trust
 
 forge runs nothing from the wiki that you did not approve. A `git pull` or a pack update can change the files.
