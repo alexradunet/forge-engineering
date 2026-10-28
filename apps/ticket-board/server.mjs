@@ -18,7 +18,7 @@ const PUBLIC = join(HERE, 'public');
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
 
 function parseArgs(argv) {
-  const a = { port: 4517, wiki: process.env.FORGE_WIKI_ROOT, config: null, check: false, key: null };
+  const a = { port: 4517, wiki: null, config: null, check: false, key: null };
   for (let i = 0; i < argv.length; i++) {
     const v = argv[i];
     if (v === '--port') a.port = Number(argv[++i]);
@@ -161,10 +161,10 @@ const isMain = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(imp
 if (isMain) {
   const args = parseArgs(process.argv.slice(2));
   if (!args.wiki || !existsSync(args.wiki)) {
-    console.error('Wiki root not found. Pass --wiki <path> or set FORGE_WIKI_ROOT.');
+    console.error('Wiki not found. Pass --wiki <path>, or start the board with forge scripts/board.mjs.');
     process.exit(2);
   }
-  const configDir = resolveConfigDir(args.config);
+  const configDir = resolveConfigDir(args.config, args.wiki);
   if (args.check) process.exit(runCheck(args.wiki, args.key, configDir));
   const server = createApp(args.wiki, configDir);
   server.on('error', (e) => {

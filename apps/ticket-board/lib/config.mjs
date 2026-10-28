@@ -1,19 +1,13 @@
 import { readFileSync, existsSync } from 'node:fs';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { splitFrontmatter } from './frontmatter.mjs';
 
 const ITEM_LABEL = { jira: 'Jira', gitlab: 'Issue', github: 'Issue', local: 'Item' };
 
-/**
- * Config folder: --config, else <FORGE_HOME>\plugins\forge\config (the live fork checkout),
- * else the config folder next to the board (the plugin copy).
- */
-export function resolveConfigDir(explicit, env = process.env) {
+/** Config folder: --config, else <wiki>/forge/config. */
+export function resolveConfigDir(explicit, wiki) {
   if (explicit) return explicit;
-  const home = env.FORGE_HOME && join(env.FORGE_HOME, 'plugins', 'forge', 'config');
-  if (home && existsSync(home)) return home;
-  return join(dirname(fileURLToPath(import.meta.url)), '..', 'config');
+  return wiki ? join(wiki, 'forge', 'config') : null;
 }
 
 function readHeader(dir, name, errors) {
@@ -25,8 +19,8 @@ function readHeader(dir, name, errors) {
 }
 
 /**
- * Board settings from the frontmatter of <config>\tracker.md and <config>\repo.md.
- * Get-ForgeConfig.ps1 validates the files. The board only reads them, and falls
+ * Board settings from the frontmatter of <config>/tracker.md and <config>/repo.md.
+ * forge.mjs config validates the files. The board only reads them, and falls
  * back to defaults when a file is missing or broken, so that it always starts.
  */
 export function loadBoardConfig(configDir) {
