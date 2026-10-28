@@ -10,6 +10,7 @@
 //   bind    [--wiki <dir>]   write <wiki>/forge/repo.json
 //   seed --tracker <t> --repo <r> --ci <c> [--force]   copy templates to <wiki>/forge/config
 //   trust [approve <path>=<sha>...]   show or approve the files under <wiki>/forge
+//   pack init <folder> --name <n> --tracker <t> --repo <r> --ci <c>   create a new company pack
 //   pack add <source> [--force] | pack update [<source>] | pack status
 //   run <script> [args...]   run <wiki>/forge/scripts/<script>.mjs after the trust check
 import { spawnSync } from 'node:child_process';
@@ -18,7 +19,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolve, ForgeError } from './lib/repo.mjs';
 import { loadConfig, KINDS } from './lib/config.mjs';
-import { detect, initWiki, bind, seed } from './lib/setup.mjs';
+import { detect, initWiki, initPack, bind, seed } from './lib/setup.mjs';
 import { approve, assertTrusted, status as trustStatus } from './lib/trust.mjs';
 import { add as packAdd, update as packUpdate, readLock } from './lib/pack.mjs';
 
@@ -33,7 +34,7 @@ export function parseArgs(argv) {
     else if (a === '--wiki') out.wiki = argv[++i];
     else if (a === '--cwd') out.cwd = argv[++i];
     else if (a === '--force') out.force = true;
-    else if (['--tracker', '--repo', '--ci'].includes(a)) out[a.slice(2)] = argv[++i];
+    else if (['--tracker', '--repo', '--ci', '--name'].includes(a)) out[a.slice(2)] = argv[++i];
     else out._.push(a);
   }
   return out;
@@ -155,13 +156,17 @@ export function main(argv = process.argv.slice(2)) {
       const where = resolve(opts);
       if (args._[1] === 'approve') console.log(JSON.stringify(approve(where, args._.slice(2)), null, 2));
       else console.log(JSON.stringify(trustStatus(where), null, 2));
+    } else if (cmd === 'pack' && args._[1] === 'init') {
+      if (!args._[2]) throw new ForgeError('Usage: forge.mjs pack init <folder> --name <name> --tracker <t> --repo <r> --ci <c>', 'bad-args');
+      const templates = path.join(pluginRoot, 'templates', 'config');
+      console.log(JSON.stringify(initPack(path.resolve(opts.cwd, args._[2]), args.name, { tracker: args.tracker, repo: args.repo, ci: args.ci }, templates), null, 2));
     } else if (cmd === 'pack') {
       const where = resolve(opts);
       const sub = args._[1];
       if (sub === 'add' && args._[2]) console.log(JSON.stringify(packAdd(where, args._[2], { force: args.force }), null, 2));
       else if (sub === 'update') console.log(JSON.stringify(packUpdate(where, args._[2]), null, 2));
       else if (sub === 'status') console.log(JSON.stringify(readLock(where), null, 2));
-      else throw new ForgeError('Usage: forge.mjs pack add <source> [--force] | pack update [<source>] | pack status', 'bad-args');
+      else throw new ForgeError('Usage: forge.mjs pack init <folder> --name <n> --tracker <t> --repo <r> --ci <c> | pack add <source> [--force] | pack update [<source>] | pack status', 'bad-args');
     } else {
       console.error('Usage: node forge.mjs <where|config|doctor|detect|init-wiki|bind|seed|trust|pack|run> [--wiki <dir>] [--cwd <dir>] [--json]');
       return 2;

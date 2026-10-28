@@ -33,9 +33,11 @@ acme-forge-pack/
 
 ## 2️⃣ Install and update
 
-Say "set up forge" and name the pack. Or run the commands yourself:
+Say "set up forge". Setup asks first whether you already have a pack, want to create one, or want no pack.
+Or run the commands yourself:
 
 ```sh
+node "<plugin>/scripts/forge.mjs" pack init <folder> --name <name> --tracker <t> --repo <r> --ci <c>   # a new pack
 node "<plugin>/scripts/forge.mjs" pack add <folder or git URL>
 node "<plugin>/scripts/forge.mjs" pack update            # the recorded source
 node "<plugin>/scripts/forge.mjs" pack status
