@@ -45,11 +45,13 @@ A PR is `#<n>`. Its URL is `https://<host>/<owner>/<name>/pull/<n>`.
 | `repo.reply` | `gh api -X POST repos/<owner>/<name>/pulls/<n>/comments/<comment id>/replies -F body=@<body file>` | `<comment id>`: the `databaseId` of the first comment of the thread. |
 | `repo.history` | `gh pr list -R <remote> -S "<text>" -s all -L 20 --json number,title,state,url,author,mergedAt` | Then read the threads of each hit with `repo.review-comments`, and `gh pr view <n> -R <remote> --json reviews,comments`. |
 
-Review threads query (PowerShell; keep the single quotes):
+Review threads query: write this text to a file in the system temp folder (`<query file>`):
 
-```powershell
-gh api graphql -F owner=<owner> -F name=<name> -F n=<n> -f query='query($owner:String!,$name:String!,$n:Int!){repository(owner:$owner,name:$name){pullRequest(number:$n){reviewThreads(first:100){nodes{id isResolved isOutdated path line comments(first:50){nodes{databaseId author{login} body createdAt}}}}}}}'
+```graphql
+query($owner:String!,$name:String!,$n:Int!){repository(owner:$owner,name:$name){pullRequest(number:$n){reviewThreads(first:100){nodes{id isResolved isOutdated path line comments(first:50){nodes{databaseId author{login} body createdAt}}}}}}}
 ```
+
+Then run `gh api graphql -F owner=<owner> -F name=<name> -F n=<n> -F query=@<query file>`. It works in every shell.
 
 ## 🩺 Failures
 

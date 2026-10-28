@@ -10,7 +10,7 @@ provider: gitlab-ci
 Tools: glab.
 
 `<remote>` is `group/app` from the checkout in `repo.checkouts` (the **Checkouts** table in `config/repo.md`).
-On a self-managed host, set `$env:GITLAB_HOST = '<repo.host>'` in the same command.
+On a self-managed host, write `-R` as `<repo.host>/<remote path>` (glab accepts `HOST/GROUP/PROJECT`).
 
 ## 🔐 Auth check
 

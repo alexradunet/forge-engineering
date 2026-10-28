@@ -69,7 +69,7 @@ function facts(t) {
 
 function overview(t) {
   const probs = t.problems.length
-    ? `<details class="warnbar"><summary>⚠️ ${t.problems.length} frontmatter problem${t.problems.length > 1 ? 's' : ''}. Run <code>Start-TicketBoard.ps1 -Check -Ticket ${esc(t.key)}</code>.</summary><ul>${t.problems.map((p) => `<li><a href="${esc(vscode(`${t.dir}/${p.file}`))}">${esc(p.file)}</a>: ${esc(p.problem)}</li>`).join('')}</ul></details>`
+    ? `<details class="warnbar"><summary>⚠️ ${t.problems.length} frontmatter problem${t.problems.length > 1 ? 's' : ''}. Run <code>board.mjs --check --ticket ${esc(t.key)}</code>.</summary><ul>${t.problems.map((p) => `<li><a href="${esc(vscode(`${t.dir}/${p.file}`))}">${esc(p.file)}</a>: ${esc(p.problem)}</li>`).join('')}</ul></details>`
     : '';
   return `${probs}${actionPanel(t)}
 <section class="card"><h2 class="label">🚦 Journey</h2>${t.gates.length ? journey(t) : `${journey(t)}<p class="faint" style="margin:8px 0 0">No gates in the README frontmatter.</p>`}</section>

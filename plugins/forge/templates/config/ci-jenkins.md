@@ -3,37 +3,38 @@ provider: jenkins
 host: https://jenkins.example.com
 ---
 
-# 🤵 Jenkins (REST with `curl.exe`)
+# 🤵 Jenkins (REST with `jenkins.mjs`)
 
 > forge reads this file as `config/ci.md`. `forge-setup` copies it from `templates/config/`. Edit the frontmatter values first.
 > Then change a command when your team uses another tool. `ci.<key>` below means the frontmatter key `<key>` of this file.
 
-Tools: curl. Fallback: the Jenkins MCP server.
+Tools: Node.js. No Jenkins CLI and no MCP server.
 
-Jenkins has no simple official CLI, so forge uses its REST API with `curl.exe` (see the `forge` rule, "Tool choice: CLI first").
-Use the Jenkins MCP server (the `mcp-server` Jenkins plugin, endpoint `<ci.host>/mcp-server/mcp`) only for the cases in the **MCP fallback** column.
-The core does not ship it, because it needs a company URL and token. A fork that needs it registers it in its `mcp.json`.
+Jenkins has no simple official CLI. forge calls its REST API with `<plugin>/scripts/jenkins.mjs` (see the `forge` rule, "Tool choice: CLI first").
+The script reads `ci.host` from this file, and the token from the OS credential store.
 
-`<job path>` is the job name. A job in a folder is `job/<folder>/job/<name>`.
-`<auth var>` is the user environment variable with `base64(user:apiToken)` that your fork names (see `config/policy.md`, **Toolkit**).
+- `<J>` below means `node "<plugin>/scripts/jenkins.mjs"`.
+- `<job path>` is the job name. A job in a folder is `<folder>/<name>`, or `job/<folder>/job/<name>`.
+- The credential `jenkins` holds `user:apiToken`. The user stores it once: `node "<plugin>/scripts/cred.mjs" set jenkins`.
+- A second Jenkins server: add `--host <url> --cred <name>` to each command.
 
 ## 🔐 Auth check
 
-`curl.exe -s -o NUL -w "%{http_code}" -H "Authorization: Basic $env:<auth var>" <ci.host>/api/json` must print `200`.
+`<J> check` must print `ok`.
 
 ## 🧰 Capabilities
 
-| Capability | REST command | MCP fallback | Notes |
-|---|---|---|---|
-| `ci.status` | `curl.exe -s -H "Authorization: Basic $env:<auth var>" "<ci.host>/<job path>/lastBuild/api/json?tree=number,result,building,url"` | `getJob`, `getBuild` | Test results: `.../<build>/testReport/api/json?tree=failCount,passCount,skipCount`. |
-| `ci.logs` | `curl.exe -s -H "Authorization: Basic $env:<auth var>" "<ci.host>/<job path>/<build>/consoleText" \| Select-String -Pattern "<text>" -Context 5` | `searchBuildLog`, then `getBuildLog` with a line range | Search the log before you read all of it. For the end of a log, use `\| Select-Object -Last 200`. |
-| `ci.trigger` | `curl.exe -s -X POST -H "Authorization: Basic $env:<auth var>" "<ci.host>/<job path>/buildWithParameters?<name>=<value>"` | `triggerBuild` | Show the job and every parameter first. One build for each approval. Never rebuild or replay without approval. |
+| Capability | Command | Notes |
+|---|---|---|
+| `ci.status` | `<J> status <job path> [--build <n>]` | Test results: `<J> tests <job path> <build>`. |
+| `ci.logs` | `<J> logs <job path> <build> --grep "<text>" [--context 5]` | Search the log before you read all of it. The end of a log: `<J> logs <job path> <build> --tail 200`. |
+| `ci.trigger` | `<J> trigger <job path> [<name>=<value> ...]` | Show the job and every parameter first. One build for each approval. Never rebuild or replay without approval. |
 
 ## 🩺 Failures
 
 | Error | Cause | Fix |
 |---|---|---|
-| HTTP 401 | The API token is wrong or expired | The user renews the token with the credential script of your fork, then restarts VS Code. |
+| `cred-absent` | No token in the credential store | The user runs `node "<plugin>/scripts/cred.mjs" set jenkins`. |
+| HTTP 401 | The API token is wrong or expired | The user creates a new API token in Jenkins and runs `cred.mjs set jenkins` again. No restart is needed. |
 | HTTP 403 | No permission, or a network block (VPN) | Check the VPN. Then ask the user to check the job permission. |
-| HTTP 403 on a POST | The server wants a CSRF crumb | Get one from `<ci.host>/crumbIssuer/api/json`, and send it as the header that the reply names. |
-| HTTP 404 | Wrong job path or build number | Open `<ci.host>/<job path>/api/json` to check the path. |
+| HTTP 404 | Wrong job path or build number | Check the path with `<J> status <job path>`. |

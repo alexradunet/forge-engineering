@@ -15,7 +15,7 @@ Tools: acli (Atlassian CLI). Fallback: the Atlassian remote MCP server.
 
 Use the Atlassian CLI `acli` for every capability (see the `forge` rule, "Tool choice: CLI first").
 Use the Atlassian remote MCP server (`https://mcp.atlassian.com/v2/mcp`) only for the cases in the **MCP fallback** column.
-A fork that needs it registers it as `jira` in its `mcp.json`.
+The Atlassian remote MCP server uses OAuth. To use it, add it in your VS Code user settings. forge does not ship it.
 
 - `<site>` is `tracker.host`, for example `example.atlassian.net`.
 - `<KEY>` is already a Jira key (`ABC-123`).
@@ -56,4 +56,4 @@ The key is the native id. Its URL is `https://<site>/browse/<KEY>` (or `tracker.
 | `acli` reports no login, or HTTP 401 | No login, or an expired token | The user runs `acli jira auth login --web`. |
 | Issue not found | Wrong key, or no permission for the project | Check the key. Ask the user to check access. |
 | Transition fails | The status is not reachable from the current status | Ask the user which status to use. |
-| HTTP 401 from the MCP fallback | The API token is wrong or expired | The user renews the token (with the credential script of your fork), then restarts VS Code fully. |
+| MCP fallback asks for sign-in | The OAuth session expired | The user signs in again in the MCP server prompt of VS Code. |

@@ -1,6 +1,7 @@
 # ⚙️ Configuration
 
-forge reads the team config from four Markdown files in `plugins/forge/config/` of your fork:
+forge reads the team config from four Markdown files in `<wiki>/forge/config/`.
+`<wiki>` is the wiki of the repository, by default `../<repo>.wiki`.
 
 | File | Holds | Default template |
 |---|---|---|
@@ -9,15 +10,17 @@ forge reads the team config from four Markdown files in `plugins/forge/config/` 
 | `ci.md` | the CI: the `ci.*` commands | `ci-other` |
 | `policy.md` | policy values and the company hook sections | `policy` |
 
-The config travels with the fork. Every machine of the team uses the same values.
-`forge-setup` seeds the files from [templates/config](../plugins/forge/templates/config) (the "Configure the team" steps).
+The config travels with the wiki repository. Every clone of the wiki uses the same values.
+`forge-setup` seeds the files from [templates/config](../plugins/forge/templates/config),
+or a company pack supplies them (see [packs.md](packs.md)).
 
 ```mermaid
 flowchart LR
-  tpl["templates/config<br/>github, gitlab, jira, local, other"] -- forge-setup --> cfg["config/*.md<br/>in your fork"]
-  cfg --> rule["forge rule<br/>capability to command"]
-  cfg --> loader["Get-ForgeConfig.ps1<br/>frontmatter + checks"]
-  loader --> board["Ticket board"]
+  tpl["templates/config<br/>github, gitlab, jira, local, other"] -- seed --> cfg["&lt;wiki&gt;/forge/config/*.md"]
+  pack["company pack"] -- pack add --> cfg
+  cfg --> trust{"trust check<br/>SHA-256"}
+  trust --> rule["forge rule<br/>capability to command"]
+  trust --> board["Ticket board"]
   rule --> skills["ticket, agents, daily-recap skills"]
 ```
 
@@ -52,7 +55,7 @@ itemUrl: https://gitlab.com/group/app/-/issues/{number}
 - In the skills, `<file>.<key>` means the frontmatter key `<key>` of `config/<file>.md`, for example `repo.changeName`.
 - `tracker.queries` is the **Queries** table. `repo.checkouts` is the **Checkouts** table.
 - A table cell cannot hold a `|` character.
-- A fork can add keys. A command can then use them as `<file>.<key>`.
+- A team can add keys. A command can then use them as `<file>.<key>`.
 
 ## 🧱 Values
 
@@ -67,6 +70,7 @@ itemUrl: https://gitlab.com/group/app/-/issues/{number}
 | | `branchPattern` | Branch template with `{KEY}` or `{key}`, plus `{number}`, `{slug}` | `{KEY}-{slug}` |
 | | `baseBranch` | Default target branch | `main` |
 | `ci.md` | `provider` | Name of the CI | `other` |
+| | `host` | CI server URL (Jenkins) | — |
 | `policy.md` | `noMergeWeekdays` | Days on which the agent never proposes a merge | `[]` |
 | | `evidenceOnDeployedEnv` | Evidence Testing must use a deployed environment when one is possible | `false` |
 | | `qaHandover` | Run the QA handover step after the merge | `false` |
@@ -76,7 +80,7 @@ itemUrl: https://gitlab.com/group/app/-/issues/{number}
 ## 📜 Capabilities
 
 Skills never name a tool. They name a **capability**. The `forge` rule finds its row in the config file.
-A **write** changes something outside the workspace. The agent drafts the text in `outbox\`, runs the Sendable? gate, and asks before every write.
+A **write** changes something outside the workspace. The agent drafts the text in `outbox/`, runs the Sendable? gate, and asks before every write.
 `manual` in a row means that the agent tells the user the exact step, and waits.
 
 | Capability | Kind | Input | Output |
@@ -107,7 +111,7 @@ Every work item has a key in the form `PREFIX-number`. Folders use the lower-cas
 | Jira | `ABC-123` | `ABC-123` (`prefix` = project key) | `abc-123` |
 | GitLab | issue `#42` in `group/app` | `APP-42` (`prefix: APP`) | `app-42` |
 | GitHub | issue `#42` in `org/app` | `APP-42` (`prefix: APP`) | `app-42` |
-| Local | `<wiki>\items\ITEM-7.md` | `ITEM-7` | `item-7` |
+| Local | `<wiki>/items/ITEM-7.md` | `ITEM-7` | `item-7` |
 
 The **Keys** section of each tracker file converts between the native id and the key.
 
@@ -126,15 +130,15 @@ forge is **CLI first**. The `forge` rule, "Tool choice: CLI first", gives the or
 1. Copy the closest template, or the `other` template of the same kind, to `config/<kind>.md`.
 2. Fill in the frontmatter, the **Auth check**, and each capability row. Keep `manual` for a gap.
 3. Write the official CLI command (`gh`, `glab`, `az`, `acli`) in each row. Use JSON output flags when they exist.
-4. When the CLI has no command for a capability, use the REST API with `curl.exe` or `Invoke-RestMethod`.
-5. Add an MCP server to `plugins/forge/mcp.json` only when steps 3 and 4 cannot do a capability. Write the reason in the **Notes** column.
+4. When no CLI exists, write a small Node script for the REST API in a pack (`scripts/<name>.mjs`), and call it with `forge.mjs run <name>`. Read the token with `cred.mjs`.
+5. Use an MCP server only when steps 3 and 4 cannot do a capability. Add it in your VS Code user settings. Write the reason in the **Notes** column.
 6. Run one S-track work item end to end with it.
 
 ## ✅ Checks
 
-- `Get-ForgeConfig.ps1` throws on a bad value: a lower-case prefix, a bad `itemUrl` or `branchPattern`, an unknown day, or a policy value of the wrong type.
-- `Test-ForgeSetup.ps1` reports each config file, its provider, and a missing CLI.
-- The config folder is `<FORGE_HOME>\plugins\forge\config` when it exists, so an edit counts at once. Else forge uses the config folder of the installed plugin copy.
+- `forge.mjs config --json` reads the config. It fails on a bad value: a lower-case prefix, a bad `itemUrl` or `branchPattern`, an unknown day, or a policy value of the wrong type.
+- `forge.mjs config` fails closed when a file in `<wiki>/forge` is new or changed and you did not approve it (`forge.mjs trust`).
+- `forge.mjs doctor` reports the wiki, each config file and its provider, a missing CLI, trust, and the pack.
 - A missing file gives the defaults. Every capability is then `manual`.
 
 ## 🗂️ Ticket board
@@ -148,6 +152,6 @@ The board reads `tracker.md` and `repo.md` on each request. A change shows on th
 
 ## 🔒 Rules
 
-- Never put secrets in a config file. Credentials stay in user environment variables or in a CLI login.
+- Never put secrets in a config file. Credentials stay in a CLI login, or in the OS credential store (`cred.mjs set <name>`).
 - Prefer a CLI login (`gh auth login`, `glab auth login`, `acli jira auth login`) to an MCP server with a token.
-- Agent Plugins forbid `${ENV}` in an MCP URL or header. When you must add an MCP server, use OAuth or a stdio server that reads the variable.
+- Agent Plugins forbid `${ENV}` in an MCP URL or header. When you must add an MCP server, use OAuth or a stdio server that reads the credential store.

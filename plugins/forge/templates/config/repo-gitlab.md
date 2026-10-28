@@ -14,7 +14,7 @@ baseBranch: main
 Tools: glab.
 
 `<remote>` is `group/app` from the checkout in `repo.checkouts`. `<enc>` is the same path URL-encoded (`group%2Fapp`).
-`<n>` is the MR number (`!<n>`). On a self-managed host, set `$env:GITLAB_HOST = '<repo.host>'` in the same command, and pass `--hostname <repo.host>` to `glab api`.
+`<n>` is the MR number (`!<n>`). On a self-managed host, write `-R` as `<repo.host>/<remote path>` (glab accepts `HOST/GROUP/PROJECT`), and pass `--hostname <repo.host>` to `glab api`.
 
 ## 📁 Checkouts
 
@@ -48,6 +48,6 @@ An MR is `!<n>`. Its URL is `https://<host>/<remote>/-/merge_requests/<n>`.
 | Error | Cause | Fix |
 |---|---|---|
 | `401 Unauthorized` | No login or an expired token | The user runs `glab auth login --hostname <host>`. |
-| `404 Not Found` | Wrong `remote`, wrong host, or no access | Check the `Remote` column of `repo.checkouts` and `GITLAB_HOST`. |
+| `404 Not Found` | Wrong `remote`, wrong host, or no access | Check the `Remote` column of `repo.checkouts` and the host in `-R`. |
 | `Another open merge request already exists for this source branch` | The MR exists | Use `repo.update-change` on that MR. |
 | `unknown command "list" for "glab mr note"` | An older `glab` | Use the `glab api` fallback, or ask the user to update `glab`. |

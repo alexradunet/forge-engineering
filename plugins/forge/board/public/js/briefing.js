@@ -1,4 +1,4 @@
-// Briefing tab, from briefing.json (ported from Open-TicketBriefing.ps1).
+// Briefing tab, from briefing.json.
 import { $, $$, esc, ext } from './util.js';
 
 const BTABS = [['overview', '🎯 Overview'], ['history', '🕰️ History'], ['concepts', '🧩 Concepts'], ['related', '🔗 Related work'], ['people', '👥 People'], ['questions', '❓ Open questions']];

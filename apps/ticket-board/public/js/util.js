@@ -114,7 +114,7 @@ export function card(t) {
 <div class="tc-meta"><span class="key">${esc(t.key)}</span><span>${esc(PHASE_LABEL[t.phase] ?? t.phase)}</span>${t.track ? `<span>· Track ${esc(t.track)}</span>` : ''}<span class="prs">${cardPrs(t.changes)}</span></div>
 <div class="tc-title">${esc(t.title || t.key)}</div>
 ${actionLine(t, lane)}
-<div class="tc-foot">${gateBar(t.gates)}<span class="spacer"></span>${t.problemCount ? `<span class="warn" title="Run Start-TicketBoard.ps1 -Check">⚠️ ${t.problemCount}</span>` : ''}${when(t.updatedMs)}</div>
+<div class="tc-foot">${gateBar(t.gates)}<span class="spacer"></span>${t.problemCount ? `<span class="warn" title="Run board.mjs --check">⚠️ ${t.problemCount}</span>` : ''}${when(t.updatedMs)}</div>
 </article>`;
 }
 

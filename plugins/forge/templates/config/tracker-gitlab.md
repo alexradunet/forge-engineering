@@ -15,7 +15,7 @@ Tools: glab.
 
 `<project>` is `tracker.project` (`group/app`). `<enc>` is the same path URL-encoded (`group%2Fapp`).
 `<n>` is the issue number: the part after the dash in the key (`APP-42` → `42`).
-On a self-managed host, set `$env:GITLAB_HOST = '<tracker.host>'` in the same command, and pass `--hostname <tracker.host>` to `glab api`.
+On a self-managed host, write `-R` as `<tracker.host>/<project>` (glab accepts `HOST/GROUP/PROJECT`), and pass `--hostname <tracker.host>` to `glab api`.
 
 ## 🔎 Queries
 
@@ -52,6 +52,6 @@ When it fails, ask the user to run `glab auth login --hostname <host>`.
 | Error | Cause | Fix |
 |---|---|---|
 | `401 Unauthorized` | No login or an expired token | The user runs `glab auth login --hostname <host>`. |
-| `404 Not Found` | Wrong `tracker.project`, wrong host, or no access | Check `tracker.project` and `GITLAB_HOST`. |
+| `404 Not Found` | Wrong `tracker.project`, wrong host, or no access | Check `tracker.project` and the host in `-R`. |
 | An error on `link_type=blocks` or `is_blocked_by` | Blocking links need a paid GitLab tier | Use `relates_to`. |
 | Label has no effect | The label does not exist in the project or group | Ask the user to create it. Do not create labels yourself. |

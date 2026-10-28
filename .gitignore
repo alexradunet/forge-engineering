@@ -3,7 +3,7 @@
 /tools/
 /.local/
 
-# The wiki is its own repository (user variable FORGE_WIKI_ROOT).
+# The wiki is its own repository (../<repo>.wiki next to the checkout).
 /wiki/
 
 # Dependency installs and generated output.
