@@ -5,7 +5,7 @@ alwaysApply: true
 ---
 # forge style
 
-A fork can edit or delete this file. Company rules go into `config\policy.md`.
+Company rules go into the hook sections of `<config>/policy.md` or into a pack.
 
 ## ✍️ Response style
 
@@ -51,7 +51,7 @@ Use a hybrid memory layer. The `wiki` skill describes the rules.
 
 - Store one short, tool-specific fact in built-in memory.
 - Record topics, gotchas with causes, decisions, and connections in `<wiki>`.
-- Before non-trivial work, read `<wiki>\index.md` and open pages that match the task.
+- Before non-trivial work, read `<wiki>/index.md` and open pages that match the task.
 - Verify a wiki claim before you rely on it.
 - After you record something in the wiki, tell the user which pages changed.
 - Never put secrets, personal data, or copies of company documentation in the wiki.

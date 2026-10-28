@@ -1,31 +1,32 @@
 ---
 name: wiki
-description: Personal engineering wiki shared by all sessions in the VS Code Agents window. Its folder is the FORGE_WIKI_ROOT user environment variable. Use it to look up past findings, gotchas, decisions, and how parts of your code connect, and to record new durable knowledge. Use when asked to "check the wiki", "remember this in the wiki", "add to wiki", "what do we know about X", "lint the wiki", or when you start non-trivial work in an area the wiki index covers.
+description: Engineering wiki of the current repository (../<repo>.wiki), shared by all sessions in the VS Code Agents window. Use it to look up past findings, gotchas, decisions, and how parts of your code connect, and to record new durable knowledge. Use when asked to "check the wiki", "remember this in the wiki", "add to wiki", "what do we know about X", "lint the wiki", or when you start non-trivial work in an area the wiki index covers.
 ---
 
-# 📚 Personal engineering wiki
+# 📚 Repository wiki
 
-The wiki is a folder of Markdown pages. Read its path from the user
-environment variable `FORGE_WIKI_ROOT` (`$env:FORGE_WIKI_ROOT`). This skill calls that folder `<wiki>`. All
+The wiki is a folder of Markdown pages next to the repository: `../<repo>.wiki`. Get its path with
+`forge.mjs where` (see the `forge` rule). This skill calls that folder `<wiki>`. All
 sessions read and update it. It is the shared memory layer between sessions.
 
 The wiki is its own Git repository. Keep it private when it holds company knowledge.
-Git ignores `raw\` and `archive\`, so they stay on this machine only.
+Git ignores `raw/` and `archive/`, so they stay on this machine only.
 
 ```text
-<wiki>\
+<wiki>/
   index.md        catalog: one line per page, grouped by area
   log.md          append-only change log
-  tooling\        VS Code, MCP, build, and environment gotchas
-  <area>\         architecture, flows, and code knowledge (one folder for each product or codebase)
-  decisions\      decisions and their reasons
-  tickets\        one summary page per closed ticket
-  raw\tickets\    working folders of active tickets (the `ticket` skill)
-  raw\daily-recap\ daily recaps and outcomes (the `daily-recap` skill)
-  archive\tickets\ raw folders of closed tickets, kept as they were
+  forge/          repo.json (binding), config/ (team config), pack files (the `forge-setup` skill)
+  tooling/        VS Code, MCP, build, and environment gotchas
+  <area>/         architecture, flows, and code knowledge (one folder for each product or codebase)
+  decisions/      decisions and their reasons
+  tickets/        one summary page per closed ticket
+  raw/tickets/    working folders of active tickets (the `ticket` skill)
+  raw/daily-recap/ daily recaps and outcomes (the `daily-recap` skill)
+  archive/tickets/ raw folders of closed tickets, kept as they were
 ```
 
-`raw\` and `archive\` are working material, not canonical pages. The `ticket`
+`raw/` and `archive/` are working material, not canonical pages. The `ticket`
 and `daily-recap` skills own them. They can hold customer environment names and aggregated metrics. The
 canonical pages cannot.
 
@@ -35,13 +36,13 @@ canonical pages cannot.
 |---|---|
 | One short fact that only one tool needs | Built-in memory (`store_memory`) |
 | A topic, a gotcha with a cause, a decision, or how parts connect | This wiki |
-| Company engineering guidance | Nowhere. Use the company source (the `## Toolkit` section of `config\policy.md` can name it). |
+| Company engineering guidance | Nowhere. Use the company source (the `## Toolkit` section of `<config>/policy.md` can name it). |
 | Repository conventions | Nowhere. Use the repository instructions and skills. |
 
 Never write these into the wiki:
 
 - Secrets, tokens, passwords, or connection strings.
-- Personal data about people, or customer data. Exception: `raw\` and `archive\` can hold customer environment names and aggregated metrics.
+- Personal data about people, or customer data. Exception: `raw/` and `archive/` can hold customer environment names and aggregated metrics.
 - Content that you copied from company guidance or from repository docs. Link to it instead.
 
 ## 🔎 Query
@@ -90,7 +91,7 @@ sources:
 ```
 
 Every canonical page starts with this frontmatter. `index.md` and `log.md` have only `title` and `type`.
-Ticket documents in `raw\tickets\` use their own frontmatter schema (the `ticket` skill, "Frontmatter").
+Ticket documents in `raw/tickets/` use their own frontmatter schema (the `ticket` skill, "Frontmatter").
 Writing rules:
 
 - Use ASD-STE100 Simplified Technical English.
@@ -109,7 +110,7 @@ Log entry format (append at the bottom):
 
 ## 🧹 Lint
 
-Run only when the user asks. Skip `raw\` and `archive\`.
+Run only when the user asks. Skip `raw/` and `archive/`.
 
 1. Find pages that are missing from `index.md`, and index lines without a page.
 2. Find `sources` paths that no longer exist.

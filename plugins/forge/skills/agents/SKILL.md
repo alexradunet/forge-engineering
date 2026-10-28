@@ -31,7 +31,7 @@ flowchart LR
 1. Check the gate first. For a ticket, Designed? must be approved against the current `plan.md` hash.
 2. Call `create_session`:
    - `title`: `<KEY> - ▶️ - <session goal>` (for example `APP-123 - ▶️ - Implement outbox retry on timeout`). The session keeps it current. See "Session title" in the `ticket` skill.
-   - `workspace`: the path of the checkout from `repo.checkouts` (read the config with `Get-ForgeConfig.ps1`, see the `forge` rule), or the repository of the task.
+   - `workspace`: the path of the checkout from `repo.checkouts` (read the config with `forge.mjs config --json`, see the `forge` rule), or the repository of the task.
    - `worktree`: `true`. Each implementer gets its own worktree.
    - `relationship`: omit it for work on the current ticket. Use `independent` only for an unrelated task.
 3. Write a self-contained `prompt`:
@@ -40,14 +40,14 @@ flowchart LR
    - the scope, and what is out of scope
    - the stop condition: "Stop after the tests pass and report. Do not push or create a change request."
    - the report: changed files and the tests run, in a form that the lead session can copy into `map.md` and `review.md`
-   - the rules: ask before CI triggers and tracker writes; never merge; plus the rules of the `## Implement` section of `config\policy.md`
+   - the rules: ask before CI triggers and tracker writes; never merge; plus the rules of the `## Implement` section of `<config>/policy.md`
    - the key always-on rules, in short form. A session that `create_session` starts loads **no** plugin rules, skills, or MCP servers. The prompt is its only guide. Include the response style, the paths `<wiki>` and the ticket folder as resolved absolute paths, and the safety rules above.
 4. Give the user the session link from the result.
 5. Record the session title and worktree path in the ticket `README.md` and `log.md`.
 
 Limits:
 
-- A VS Code worktree shares local resources (for example a database) with the main checkout. The `## Implement` section of `config\policy.md` names the limits.
+- A VS Code worktree shares local resources (for example a database) with the main checkout. The `## Implement` section of `<config>/policy.md` names the limits.
 - Worktree sessions run with **Allow all**. The instructions are the only guard for CI and tracker writes.
 - Tool-started sessions have no plugin skills. When the implementer needs a skill, tell the user to start the session from **New** in the Agents window instead, and give them the prompt to paste.
 - Run at most `policy.maxImplementers` implementer sessions at the same time (default 6).
@@ -73,7 +73,7 @@ Required before every change request, including a draft. It is a second, hostile
    - the repository path, and how to see the change (`git status`, `git diff`, untracked files)
    - the goal and the acceptance criteria
    - what was changed and why, and the decisions the user already made
-   - where the evidence is (ticket folder: `context.md`, `map.md`, `evidence\`, `plan.md`)
+   - where the evidence is (ticket folder: `context.md`, `map.md`, `evidence/`, `plan.md`)
    - specific attack questions: missed places, wrong assumptions, SDK or API behavior, tests that pass without the fix, flaky or order-dependent tests, side effects beyond the goal (EOL, BOM, accidental edits), CI and build risks
 4. Tell it: read-only, no edits, no commits, no style comments, rank findings by severity with file, line, and evidence.
 5. Run it in the background. Do not poll. Continue with independent work, or wait for the notification.
