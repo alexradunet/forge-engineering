@@ -30,6 +30,8 @@ acme-forge-pack/
 - `pack.json` needs `name` (lowercase letters, digits, hyphens) and `version`.
 - `include` (optional) lists the installed folders. The default is `["config", "scripts"]`.
 - Keep the pack in a private repository when it names internal hosts or rules.
+- Add a `.gitattributes` file with `* text=auto eol=lf` to the pack. Without it, `core.autocrlf=true` (the Git default on Windows) checks out some files with CRLF.
+  `pack add` copies the bytes as they are. The SHA-256 in `trust` then differs from the same file on another machine, and `pack update` can show every line as changed.
 
 ## 2️⃣ Install and update
 
@@ -71,6 +73,9 @@ forge runs nothing from the wiki that you did not approve. A `git pull` or a pac
 1. `node "<plugin>/scripts/forge.mjs" trust` lists each file under `<wiki>/forge` as `ok`, `new`, or `changed`, with its SHA-256.
 2. Read the new and changed files.
 3. `node "<plugin>/scripts/forge.mjs" trust approve config/tracker.md=<first 12 hash characters> ...`
+
+The hash is of the file in `<wiki>/forge`, with its line endings. When you compare it with your pack clone and the hashes differ,
+compare the text without line endings first (`git diff --no-index --ignore-cr-at-eol <clone file> <wiki file>`). See the `.gitattributes` note in Layout.
 
 The approvals are in the user data folder (`%LOCALAPPDATA%\forge`, `~/Library/Application Support/forge`,
 or `$XDG_DATA_HOME/forge`), not in the wiki. `config` and `run` fail until each file is approved.

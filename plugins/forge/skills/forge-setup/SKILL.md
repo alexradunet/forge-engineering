@@ -33,8 +33,11 @@ Add `--wiki <dir>` to a command to use another wiki for one call.
 
 1. Run `doctor`. Report each `fail` and `warn` line with its fix.
 2. Read the latest VS Code release notes (see "VS Code Agents window" in the `forge` rule). Report each change that affects plugins, sessions, worktrees, automations, or MCP servers.
-3. When the wiki or its config is missing, run the full setup below.
-4. Never print, read, or ask for a credential value.
+3. Check the plugin version. When `<plugin>/../..` is a Git clone, run `git -C <plugin>/../.. fetch -q`, then
+   `git -C <plugin>/../.. log --oneline "HEAD..@{u}"` (keep the quotes; PowerShell needs them). When it lists commits, tell the user to update (README, "Update forge").
+   An uninstall and a new install from source can reuse the old clone, so a reinstall is not an update.
+4. When the wiki or its config is missing, run the full setup below.
+5. Never print, read, or ask for a credential value.
 
 ## 🚀 Full setup
 

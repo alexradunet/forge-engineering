@@ -35,6 +35,22 @@ forge targets the VS Code Agents window. VS Code changes each month. So the `for
 to read the current [VS Code documentation](https://code.visualstudio.com/docs/agents/run/agents-window) and the
 [release notes](https://code.visualstudio.com/updates) before it advises on a VS Code feature.
 
+### 🔄 Update forge
+
+VS Code has no update action for a plugin from **Install Plugin from Source**. An uninstall and a new install can reuse the old clone
+(seen in VS Code 1.144). Update the clone, then run **Developer: Reload Window**:
+
+```sh
+git -C ~/.vscode/agent-plugins/github.com/alexradunet/forge-engineering pull --ff-only
+```
+
+"check forge" reports when the installed plugin is behind its remote.
+
+### 🏢 Company config
+
+The plugin holds no company config. A company or team installs its pack once in each repository wiki:
+say "set up forge", answer **Yes, I have a pack**, and give its folder or git URL. See [packs.md](docs/packs.md).
+
 ## 📦 Where things live
 
 | Path | Content |
@@ -99,6 +115,9 @@ after you approve their SHA-256 hash. See [packs.md](docs/packs.md).
 - `npm test` runs the tests.
 - Clone your company pack into `packs/<name>`. Git ignores that folder. See [packs.md](docs/packs.md).
 - To test a local checkout, run **Chat: Install Plugin from Source** with the `plugins/forge` folder.
+  First uninstall or disable the forge plugin from the GitHub URL. With both installed, VS Code loads two plugins named `forge`, and the
+  rules and skills appear two times. To go back, remove the local folder in **Chat: Open Customizations**, **Plugins**
+  (or its `chat.pluginLocations` entry in the user settings), and enable the URL install again.
 - Check the loaded rules and skills in **Chat: Open Customizations**.
 
 ## 📄 License
