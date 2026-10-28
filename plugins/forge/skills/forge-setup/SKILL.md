@@ -1,69 +1,94 @@
 ---
 name: forge-setup
-description: Set up, check, configure, or repair the forge plugin on this machine. Lists the full paths of the forge helper scripts (Install-Forge, Test-ForgeSetup, Get-ForgeConfig, Start-TicketBoard). Seeds the team config (config/tracker.md, repo.md, ci.md, policy.md) from templates for GitHub, GitLab, Jira, local Markdown, or another tool. Use when asked to "set up forge", "check forge", "configure forge", "switch the tracker to GitLab", "edit the forge config", when an MCP call returns 401, or when FORGE_WIKI_ROOT or FORGE_HOME is missing.
+description: Set up, check, or repair forge for the current repository. Detects the host, the CLIs, and their login, creates or binds the repository wiki (../<repo>.wiki), seeds the team config (tracker, repository host, CI, policy) for GitHub, GitLab, Jira, local Markdown, or another tool, stores credentials in the OS credential store, and checks each capability with a live read. Use when the user says "set up forge", "check forge", "repair forge", "configure forge", or "switch the tracker to GitLab".
+disable-model-invocation: true
 ---
 
 # 🔧 forge setup
 
-The forge plugin carries rules, skills, scripts, and the team config.
-Machine paths and credentials stay on the machine, outside the plugin.
+One chat sets up forge for the current repository. The plugin holds no machine
+paths and no team config. Both live in the repository wiki.
 
-## 📁 Where the scripts are
+## 📁 Commands
 
-`<plugin>` is the folder two levels above this `SKILL.md`.
-The scripts are in `<plugin>\scripts`. Always give the user the full,
-resolved path in a copyable PowerShell command.
+`<plugin>` is the folder two levels above this `SKILL.md`. Use the absolute,
+resolved path in each command. All commands run on Windows, macOS, and Linux.
 
-| Script | Use | Who runs it |
+| Command | Use | Writes |
 |---|---|---|
-| `Install-Forge.ps1` | Set `FORGE_WIKI_ROOT` and `FORGE_HOME`, and register the plugin in VS Code | the user (`-WhatIf` first) |
-| `Test-ForgeSetup.ps1` | Read-only check of the whole setup | the agent may run it |
-| `Get-ForgeConfig.ps1` | Read the config files in `<config>` with defaults and checks; the skills use `.Config` | the agent |
-| `Start-TicketBoard.ps1 [-Ticket <key>] [-Check] [-Restart] [-Stop]` | Local ticket board, ticket pages, and briefing; `-Check` validates ticket frontmatter (the `ticket` skill) | the agent |
+| `node "<plugin>/scripts/forge.mjs" where --json` | Repository, worktree, wiki, and config folder | nothing |
+| `node "<plugin>/scripts/forge.mjs" detect` | Host, visibility, CLIs and login, wiki state, suggestions | nothing |
+| `node "<plugin>/scripts/forge.mjs" init-wiki` | Create the local wiki (`git init`, `.gitignore`, `index.md`) and bind it | the wiki folder |
+| `node "<plugin>/scripts/forge.mjs" bind` | Write `<wiki>/forge/repo.json` | the wiki folder |
+| `node "<plugin>/scripts/forge.mjs" seed --tracker <t> --repo <r> --ci <c> [--force]` | Copy templates to `<wiki>/forge/config` | the wiki folder |
+| `node "<plugin>/scripts/forge.mjs" doctor` | Read-only check of the whole setup | nothing |
+| `node "<plugin>/scripts/cred.mjs" set\|has\|delete <name>` | OS credential store (the user types the secret) | the credential store |
 
-The always-on rules are in `<plugin>\com.github.copilot\rules`. VS Code loads them natively.
+Add `--wiki <dir>` to a command to use another wiki for one call.
 
-## ✅ Check
+## ✅ Check or repair
 
-1. Run `& '<plugin>\scripts\Test-ForgeSetup.ps1'`.
-2. Report each `fail` and `warn` line with its fix.
-3. Do not print or read credential values. The script shows only whether they are set.
+1. Run `doctor`. Report each `fail` and `warn` line with its fix.
+2. When the wiki or its config is missing, run the full setup below.
+3. Never print, read, or ask for a credential value.
 
-## 🔑 Credential rules
+## 🚀 Full setup
 
-- Never ask the user to paste a token or password into chat.
-- The credential scripts prompt for the secret in a hidden prompt.
-- After a credential script sets a user variable, VS Code must restart fully.
-- A 401 from an MCP server means the token needs renewal. The `## Toolkit` section of `config\policy.md` names the credential script of each server.
+State the progress at each step ("step 3 of 9 done").
 
-## 🧭 New machine
-
-1. Install the plugin: in VS Code, run `/plugin marketplace add alexradunet/forge-engineering`, then `/plugin install forge@forge`.
-   Alternatively, search `@agentPlugins` in the Extensions view.
-2. Clone your forge fork (it holds the team config) and the wiki repository. Daily recaps live in `<wiki>\raw\daily-recap`, which git does not track, so copy them from the old machine.
-3. Run `& '<plugin>\scripts\Install-Forge.ps1' -Mode Marketplace -ForgeHome <clone> -WikiRoot <wiki>`.
-4. If the fork has no team config yet, run **⚙️ Configure the team** below.
-5. Run the credential scripts that the `## Toolkit` section of `config\policy.md` names.
-6. Restart VS Code fully, then run `Test-ForgeSetup.ps1`.
-
-## ⚙️ Configure the team
-
-The team config is four Markdown files in `<config>` (`<forge-home>\plugins\forge\config`).
-Templates are in `<plugin>\templates\config`. The `forge` rule explains how the skills read them.
-
-1. Ask the user in one form which tools the team uses:
+1. **Detect.** Run `detect`. Do not ask for anything that `detect` already shows.
+2. **Confirm.** Ask in one form. Use the `suggestion` values as defaults:
    - tracker: `github`, `gitlab`, `jira`, `local` (Markdown files in the wiki), or `other`
    - repository host: `github`, `gitlab`, or `other`
    - CI: `github-actions`, `gitlab-ci`, `jenkins`, `azure-pipelines`, or `other`
-2. Show the files that change. Copy each template to `<config>\<kind>.md` after the user agrees. Copy `policy.md` only when it is missing.
-3. Ask for the frontmatter values in a second form: `prefix`, `project`, `host`, `itemUrl`, `changeName`, `branchPattern`, `baseBranch`, and the policy values. Show the template value as the default.
-4. Fill in the **Queries** table of `tracker.md` and the **Checkouts** table of `repo.md` with the user.
-5. For `other`, ask how the team does each capability. Write the CLI command in the row (CLI first, then REST, then MCP), or keep `manual`.
-6. Run `Test-ForgeSetup.ps1`. Fix each `config:` problem.
-7. Tell the user to commit `<config>` in the fork. The config travels with the fork, not with the wiki.
+   - wiki remote (see **📚 Wiki remote**)
+3. **Tools.** For each CLI that the choice needs and that is not installed or not logged in,
+   show the `install` command and the login command from `detect`. The user runs them.
+   Then run `detect` again.
+4. **Wiki.** When `wiki.exists` is false, show the path and the remote, and ask for approval.
+   Then run `init-wiki`. When the wiki exists but `bound` is false, run `bind`.
+   Add the remote with `git -C <wiki> remote add origin <url>` only after approval.
+5. **Seed.** Show the files that change. Run `seed` after approval.
+   `seed` keeps existing files. Use `--force` only after the user agrees to replace a file.
+6. **Values.** Ask for the frontmatter values in a second form: `prefix`, `project`, `host`,
+   `itemUrl`, `changeName`, `branchPattern`, `baseBranch`, and the policy values.
+   Show the template value as the default. Write them into `<wiki>/forge/config/*.md`.
+7. **Tables.** Fill in the **Queries** table of `tracker.md` and the **Checkouts** table of `repo.md` with the user.
+   For `other`, ask how the team does each capability. Write a CLI command in the row, or keep `manual`.
+8. **Live read.** For each read capability (for example `tracker.fetch`, `tracker.search`, `repo.history`, `ci.status`),
+   run the row once against a real item. Report `ok` or the error with its fix.
+   Never run a write capability during setup.
+9. **Finish.** Run `doctor`. Tell the user to commit the wiki: `git -C <wiki> add forge index.md .gitignore`,
+   then `git -C <wiki> commit`. Push only when the user asks.
 
-Rules:
+## 📚 Wiki remote
 
-- Never put secrets in a config file. Credentials stay in user variables or in a CLI login (`gh auth login`, `glab auth login`).
-- Write CLI commands in the capability rows. Add an MCP server to `<plugin>\mcp.json` only when no CLI or REST call can do the capability (see the `forge` rule, "Tool choice: CLI first"). Agent Plugins forbid `${ENV}` in a URL or a header, so such a server needs OAuth or a stdio wrapper.
-- Company rules and tools go into the sections of `policy.md`, not into the core skills. Then upstream updates merge cleanly.
+The wiki is `../<repo>.wiki`, next to `../<repo>.worktrees`. It holds the team config,
+the company pack, and the knowledge pages. `raw/` and `archive/` stay local (`.gitignore`).
+
+| `suggestion.wikiRemote.type` | Meaning | Action |
+|---|---|---|
+| `existing` | The wiki already has a remote | Keep it |
+| `native` | The repository is private or internal | Use the native wiki `<remote>.wiki.git` |
+| `ask` | The repository is public | Ask: a separate private repository (`<remote>-wiki`), or local only |
+
+- Never change the visibility of a repository.
+- A GitHub wiki exists only after its first page. Tell the user to open
+  `<remote>/wiki`, create a page, and save it. Then the clone and the push work.
+- Create a separate repository only after explicit approval, for example
+  `gh repo create <owner>/<repo>-wiki --private`.
+
+## 🔑 Credentials
+
+- Prefer the login of the CLI (`gh auth login`, `glab auth login`, `acli jira auth login`, `az login`).
+- When a pack script needs a secret, the user runs `node "<plugin>/scripts/cred.mjs" set <name>`.
+  The prompt hides the input. Never ask for a secret in chat.
+- Use `cred.mjs has <name>` to check. There is no command that prints a secret.
+
+## 📏 Rules
+
+- Never put a secret in a config file or in the wiki.
+- Write CLI commands in the capability rows. Use MCP only when no CLI or REST call can do the
+  capability (see the `forge` rule, "Tool choice: CLI first").
+- Company rules and tools go into the hook sections of `policy.md` or into a pack
+  (`docs/packs.md`), not into the core skills.

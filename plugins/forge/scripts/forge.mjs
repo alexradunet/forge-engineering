@@ -5,11 +5,16 @@
 //   where   [--wiki <dir>]   the repository, its wiki, and the config folder (JSON)
 //   config  [--wiki <dir>]   the team config (JSON)
 //   doctor  [--wiki <dir>] [--json]   read-only setup check; exit 1 on a failure
+//   detect  [--wiki <dir>]   host, CLIs and login, repo visibility, wiki state (JSON, read-only)
+//   init-wiki [--wiki <dir>] create the local wiki (git init, .gitignore, index.md) and bind it
+//   bind    [--wiki <dir>]   write <wiki>/forge/repo.json
+//   seed --tracker <t> --repo <r> --ci <c> [--force]   copy templates to <wiki>/forge/config
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolve, ForgeError } from './lib/repo.mjs';
 import { loadConfig, KINDS } from './lib/config.mjs';
+import { detect, initWiki, bind, seed } from './lib/setup.mjs';
 
 const pluginRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const CLI_FOR = { github: 'gh', 'github-actions': 'gh', gitlab: 'glab', 'gitlab-ci': 'glab', jira: 'acli', 'azure-pipelines': 'az' };
@@ -21,6 +26,8 @@ export function parseArgs(argv) {
     if (a === '--json') out.json = true;
     else if (a === '--wiki') out.wiki = argv[++i];
     else if (a === '--cwd') out.cwd = argv[++i];
+    else if (a === '--force') out.force = true;
+    else if (['--tracker', '--repo', '--ci'].includes(a)) out[a.slice(2)] = argv[++i];
     else out._.push(a);
   }
   return out;
@@ -101,8 +108,17 @@ export function main(argv = process.argv.slice(2)) {
       const results = doctor(opts);
       if (args.json) console.log(JSON.stringify(results, null, 2)); else print(results);
       return results.some((r) => r.status === 'fail') ? 1 : 0;
+    } else if (cmd === 'detect') {
+      console.log(JSON.stringify(detect(resolve(opts)), null, 2));
+    } else if (cmd === 'init-wiki') {
+      console.log(JSON.stringify(initWiki(resolve(opts)), null, 2));
+    } else if (cmd === 'bind') {
+      console.log(JSON.stringify(bind(resolve(opts)), null, 2));
+    } else if (cmd === 'seed') {
+      const templates = path.join(pluginRoot, 'templates', 'config');
+      console.log(JSON.stringify(seed(resolve(opts), { tracker: args.tracker, repo: args.repo, ci: args.ci }, templates, { force: args.force }), null, 2));
     } else {
-      console.error('Usage: node forge.mjs <where|config|doctor> [--wiki <dir>] [--cwd <dir>] [--json]');
+      console.error('Usage: node forge.mjs <where|config|doctor|detect|init-wiki|bind|seed> [--wiki <dir>] [--cwd <dir>] [--json]');
       return 2;
     }
     return 0;
