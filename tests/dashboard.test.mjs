@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, readFile, readdir, realpath, rm, symlink, writeFile } f
 import os from 'node:os';
 import path from 'node:path';
 import { request } from 'node:http';
+import { runInNewContext } from 'node:vm';
 import { parseTicket, readTickets, validateInput } from '../plugins/forge/com.github.copilot/extensions/ticket-dashboard/tickets.mjs';
 import { dashboardOptions } from '../plugins/forge/com.github.copilot/extensions/ticket-dashboard/dashboard.mjs';
 
@@ -66,6 +67,11 @@ test('the repository ticket template parses after its placeholders are filled', 
     .replaceAll('<yyyy-mm-dd>', '2026-10-28');
   const parsed = parseTicket(filled.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n'));
   assert.equal(parsed.state, 'active');
+  assert.equal(parsed.workflow, 'full-v1');
+  assert.equal(parsed.track, null);
+  assert.equal(parsed.gates.every((gate) => gate.need === 'required' && gate.status === 'todo'), true);
+  assert.deepEqual(parsed.gates.map((gate) => gate.name).sort(), ['Understood?', 'Agreed?', 'Diagnosed?', 'Designed?', 'Shippable?', 'Sendable?', 'Learned?'].sort());
+  assert.doesNotMatch(filled, /^track:/m);
   assert.equal(parsed.gates.length, 7);
   assert.deepEqual(parsed.changes, []);
 });
@@ -111,6 +117,34 @@ test('legacy tickets without a track show Unspecified instead of an inferred siz
   assert.throws(() => parseTicket(ticket().replace('track: M', 'track: XL')), /Unknown ticket track/);
 });
 
+test('new tickets show full workflow without an invented track and surface approval findings', async (t) => {
+  const wiki = await fixture(t);
+  const file = await put(wiki, 'full', ticket(`gates:
+  - { name: Diagnosed?, need: required, status: skipped }
+`).replace('track: M', 'workflow: full-v1'));
+  const result = await readTickets(wiki);
+  assert.equal(result.errors.length, 0);
+  assert.equal(result.tickets[0].workflow, 'full-v1');
+  assert.equal(result.tickets[0].track, null);
+  assert.ok(result.tickets[0].findings.some((finding) => finding.code === 'workflow-gate'));
+  assert.equal(result.tickets[0].file, await realpath(file));
+  const ui = await readFile(new URL('../plugins/forge/com.github.copilot/extensions/ticket-dashboard/ui.js', import.meta.url), 'utf8');
+  const node = () => ({ textContent: '', children: [], append(...children) { this.children.push(...children); }, addEventListener() {} });
+  const controls = new Map();
+  const renderCard = (ticket) => runInNewContext(`${ui}\ncard(ticket);`, {
+    ticket, URL, setInterval() {}, fetch: () => new Promise(() => {}),
+    document: {
+      createElement: node,
+      getElementById(id) { if (!controls.has(id)) controls.set(id, node()); return controls.get(id); },
+    },
+  });
+  const text = (element) => [element.textContent, ...element.children.map(text)].join('\n');
+  const full = text(renderCard(result.tickets[0]));
+  assert.match(full, /Full workflow/);
+  assert.match(full, /workflow-gate/);
+  assert.doesNotMatch(full, /[Tt]rack|Unspecified/);
+  assert.match(text(renderCard(parseTicket(ticket()))), /Legacy track M/);
+});
 test('invalid frontmatter reports errors rather than guessing', () => {
   for (const [source, pattern] of [
     ['# no frontmatter', /needs frontmatter/],

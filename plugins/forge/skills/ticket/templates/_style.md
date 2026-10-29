@@ -17,7 +17,9 @@ Every ticket document is easy to scan, and no information is lost. Use plain nam
 | `outbox\qa-handover.draft.md` | 🧑‍🔬 QA handover | Sendable? |
 | `close.draft.md` | ✅ Close | Learned? |
 
-In track M, the context and the interview share one gate, Briefed?.
+Every new ticket uses the full workflow with mandatory Diagnosed?. Briefed? belongs
+only to legacy M tickets, where context and interview share one approval. Preserve
+existing tickets' original gates and skips; do not copy new workflow metadata over them.
 
 ## 🧱 Every gate document has these parts, in this order
 

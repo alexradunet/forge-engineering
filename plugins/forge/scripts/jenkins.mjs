@@ -55,21 +55,32 @@ export async function main(argv = process.argv.slice(2), { env = process.env, ge
   }
   if (!/^https:\/\/|^http:\/\/(127\.0\.0\.1|localhost)[:/]/.test(host ?? '')) throw new ForgeError(`ci.host must be an https URL, not "${host}".`, 'bad-host');
   const auth = `Basic ${Buffer.from(getSecret(a.cred ?? 'jenkins')).toString('base64')}`;
-  const get = async (url, init = {}) => {
+  const get = async (url, init = {}, accepted = [200]) => {
     const r = await fetch(url, { ...init, headers: { Authorization: auth, ...(init.headers ?? {}) }, redirect: 'manual' });
-    if (r.status >= 400) throw new ForgeError(`HTTP ${r.status} from ${url.replace(/\?.*/, '')}. See Failures in ci.md.`, `http-${r.status}`);
+    if (!accepted.includes(r.status)) throw new ForgeError(`HTTP ${r.status} from ${url.replace(/\?.*/, '')}. See Failures in ci.md.`, `http-${r.status}`);
     return r;
+  };
+  const json = async (url) => {
+    const r = await get(url);
+    let data;
+    try { data = await r.json(); } catch {
+      throw new ForgeError(`Invalid JSON response from ${url.replace(/\?.*/, '')}. See Failures in ci.md.`, 'bad-response');
+    }
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      throw new ForgeError(`Expected a JSON object from ${url.replace(/\?.*/, '')}. See Failures in ci.md.`, 'bad-response');
+    }
+    return data;
   };
 
   if (cmd === 'check') {
-    await get(`${host.replace(/\/+$/, '')}/api/json?tree=mode`);
+    await json(`${host.replace(/\/+$/, '')}/api/json?tree=mode`);
     out('ok');
   } else if (cmd === 'status') {
     const b = a.build ?? 'lastBuild';
-    out(JSON.stringify(await (await get(`${jobUrl(host, job)}/${b}/api/json?tree=number,result,building,url,timestamp,duration`)).json()));
+    out(JSON.stringify(await json(`${jobUrl(host, job)}/${b}/api/json?tree=number,result,building,url,timestamp,duration`)));
   } else if (cmd === 'tests') {
     if (!build) throw new ForgeError('Name the build number.', 'bad-args');
-    out(JSON.stringify(await (await get(`${jobUrl(host, job)}/${build}/testReport/api/json?tree=failCount,passCount,skipCount`)).json()));
+    out(JSON.stringify(await json(`${jobUrl(host, job)}/${build}/testReport/api/json?tree=failCount,passCount,skipCount`)));
   } else if (cmd === 'logs') {
     if (!build) throw new ForgeError('Name the build number.', 'bad-args');
     const text = await (await get(`${jobUrl(host, job)}/${build}/consoleText`)).text();
@@ -78,13 +89,17 @@ export async function main(argv = process.argv.slice(2), { env = process.env, ge
   } else if (cmd === 'trigger') {
     const headers = {};
     try {
-      const c = await (await get(`${host.replace(/\/+$/, '')}/crumbIssuer/api/json`)).json();
+      const c = await json(`${host.replace(/\/+$/, '')}/crumbIssuer/api/json`);
+      if (typeof c.crumbRequestField !== 'string' || !/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(c.crumbRequestField)
+        || typeof c.crumb !== 'string' || !c.crumb) {
+        throw new ForgeError('Invalid Jenkins crumb response. See Failures in ci.md.', 'bad-response');
+      }
       headers[c.crumbRequestField] = c.crumb;
     } catch (err) {
       if (err.code !== 'http-404') throw err;
     }
     const qs = new URLSearchParams(a.params).toString();
-    const r = await get(`${jobUrl(host, job)}/${qs ? `buildWithParameters?${qs}` : 'build'}`, { method: 'POST', headers });
+    const r = await get(`${jobUrl(host, job)}/${qs ? `buildWithParameters?${qs}` : 'build'}`, { method: 'POST', headers }, [200, 201, 202, 204]);
     out(JSON.stringify({ status: r.status, queue: r.headers.get('location') }));
   } else {
     throw new ForgeError('Usage: jenkins.mjs <check|status|tests|logs|trigger> [<job path>] [<build>] [options]', 'bad-args');

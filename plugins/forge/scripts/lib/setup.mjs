@@ -76,7 +76,7 @@ export function detect(where, { platform = process.platform, probe = run } = {})
   if (where.repo.remote && kind !== 'other') {
     wikiRemoteSuggestion = wikiRemote
       ? { type: 'existing', url: wikiRemote }
-      : visibility === 'private' || visibility === 'internal'
+      : wikiEnabled !== false && (visibility === 'private' || visibility === 'internal')
       ? { type: 'native', url: `${where.repo.remote}.wiki.git` }
       : {
         type: 'ask',
@@ -100,7 +100,7 @@ export function detect(where, { platform = process.platform, probe = run } = {})
 }
 
 const GITIGNORE = 'raw/\narchive/\n';
-const INDEX = '# Wiki index\n\nOne line per page. The `wiki` skill keeps this list.\n';
+const INDEX = '---\ntitle: Wiki index\ntype: index\n---\n# Wiki index\n\nOne line per page. The `wiki` skill keeps this list.\n';
 
 /** Creates the wiki folder (git init, .gitignore, index.md) when it does not exist, and binds it. */
 export function initWiki(where) {

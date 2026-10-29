@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "forge",
   "version": "4.0.0",
-  "description": "Provider-agnostic engineering workflow for the VS Code Agents window: ticket workspace with review gates, team wiki, daily recaps, and agent session coordination. Install it, say 'set up forge', and keep your tracker, repository host, and CI config in the repository wiki.",
+  "description": "Provider-agnostic engineering workflow for the VS Code Agents window: full research and investigation for every new ticket, revision-aware review gates, team wiki, daily recaps, and agent session coordination. Existing tickets retain their original process. Say 'set up forge' to configure your tracker, repository host, and CI in the repository wiki.",
   "author": {
     "name": "Radu Alexandru"
   },

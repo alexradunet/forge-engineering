@@ -1,6 +1,6 @@
 ---
 name: ticket
-description: Ticket workspace for work items from any tracker (Jira, GitLab, GitHub, or none). Sizes each ticket into a track (S, M, L) with matching review gates, keeps all working artifacts (work item snapshot, context, code map, investigation, evidence, plan, troubleshooting, decisions, log) in <wiki>/raw/tickets/<key> (the wiki of the repository, ../<repo>.wiki), shared by all sessions in the VS Code Agents window, and distills them into canonical wiki pages when the ticket is done. Use when asked to "start ticket APP-123", "work on APP-123", "resume APP-123", "where are we on the ticket", "record this finding", "save the plan to the ticket", "upgrade the ticket track", "show the code map", "close the ticket", or "archive the ticket".
+description: Ticket workspace for work items from any tracker (Jira, GitLab, GitHub, or none). Every new ticket follows the full research, scope, investigation, plan, implementation, evidence, and learning workflow with explicit review gates. Existing tickets retain their original process. Keeps working artifacts in <wiki>/raw/tickets/<key>, shared by sessions in the VS Code Agents window, and distills them into canonical wiki pages at close. Use when asked to "start ticket APP-123", "work on APP-123", "resume APP-123", "where are we on the ticket", "record this finding", "save the plan to the ticket", "show the code map", "close the ticket", or "archive the ticket".
 ---
 
 # 🎫 Ticket workspace
@@ -33,7 +33,7 @@ explains the `<file>.<key>` notation and how to run a capability.
 - A policy section can add steps and make rules stricter. It can never weaken a core rule (see Data rules). If a policy rule conflicts with a core rule, follow the core rule and tell the user.
 ```mermaid
 flowchart LR
-  S[🚀 Start + track] --> I[🔎 Investigate] --> P[📝 Plan] --> M[🛠️ Implement] --> C[✅ Close]
+  S[🚀 Research + scope] --> I[🔎 Investigate] --> P[📝 Plan] --> M[🛠️ Implement + evidence] --> C[✅ Close]
   S -. creates .-> R[(raw/tickets/key)]
   I -. writes .-> R
   P -. writes .-> R
@@ -45,7 +45,7 @@ flowchart LR
 
 Two goals for every ticket:
 
-1. Deliver the change with the right amount of process for its size (see Tracks).
+1. Deliver the change with the full evidence-linked process, even for a small fix (see Workflow).
 2. At Close, the user knows the affected areas, how the feature lives in the code, and what it is used for. `map.md` and the Close debrief carry this.
 
 This skill does not repeat other tools. Use them:
@@ -69,7 +69,7 @@ The folder name is `<key>`, for example `app-123`.
 
 ```text
 <wiki>/raw/tickets/<key>/
-  README.md          frontmatter: phase, state, track, next, waiting_on, branch, change requests, gates; body: toolkit, files
+  README.md          frontmatter: workflow, phase, state, next, waiting_on, branch, change requests, gates; body: toolkit, files
   ticket.md          work item snapshot
   context.md         pre-investigation brief: problem, history, related work, open questions, people to ask
   map.md             living code map: purpose, flow, files, data, tests, changes (grows in every phase)
@@ -80,6 +80,7 @@ The folder name is `<key>`, for example `app-123`.
   plan.md            approved implementation plan
   plan.draft.md      proposed plan awaiting explicit approval
   outbox/            drafts of external writes (tracker comments, change request text), awaiting approval
+  outbox/<name>.approval.json  per-write approval and delivery sidecar; never hashed by its manifest
   review.md          code review summary before push or change request (diff, tests, risks)
   test-plan.md       manual, deploy, and regression test plan and results
   evidence-testing.md  Evidence Testing step: one check per changed behavior, with concrete evidence (required before merge)
@@ -88,6 +89,8 @@ The folder name is `<key>`, for example `app-123`.
   troubleshooting.md problems and fixes (environment, build, tests)
   decisions.md       decisions and reasons
   log.md             append-only dated work log
+  approvals/         revision manifests, outside the documents they hash
+  repair-log.jsonl   append-only log of explicit lint repairs, when any
 ```
 
 ## 🔒 Data rules
@@ -108,33 +111,42 @@ These core rules always win over a policy section: no merge, ask before every ex
 
 `ask_user` below means the question form of the harness. When it is not available, ask in chat and wait for the answer.
 
-## 📏 Tracks
+## 🧭 Workflow
 
-At Start, choose a track. Propose it with a reason, then confirm it with `ask_user`. Record it in the README `track` key.
-
-| Track | Use when | Phase order | Required gates |
-|---|---|---|---|
-| **S** small | One area, clear fix, no customer data, about 1 day or less | brief → plan → implement → evidence testing → QA handover → close | Designed?, Sendable?, Shippable?, Learned? |
-| **M** medium (default) | Some unknowns, 1 to 3 areas | brief → interview → plan → implement → evidence testing → QA handover → close | Briefed? (one gate), Designed?, Sendable?, Shippable?, Learned? |
-| **L** large | Production incident, many areas, unclear history or owner | context → briefing → interview → investigation → plan → implement → evidence testing → QA handover → close | Understood?, Agreed?, Diagnosed? (recommended), Designed?, Sendable?, Shippable?, Learned? |
+Every **new** ticket has `workflow: full-v1`, no `track` field, no sizing question,
+and no size-based phase skips. Research depth follows the evidence, not a word count or duration.
 
 ```mermaid
 flowchart LR
-  S0[Start + track] --> T{Track}
-  T -->|S| S1[brief] --> P[plan · Designed?]
-  T -->|M| M1[brief + interview · Briefed?] --> P
-  T -->|L| L1[context · Understood?] --> L2[briefing] --> L3[interview · Agreed?] --> L4[investigation · Diagnosed?] --> P
+  S[Research · Understood?] --> B[Visual briefing] --> A[Interview · Agreed?] --> D[Investigation · Diagnosed?] --> P[Plan · Designed?]
   P --> I[implement] --> R[review · Shippable?] --> E[Evidence Testing] --> M[merge by user] --> Q[QA handover comment · Sendable?] --> C[close · Learned?]
 ```
 
-- The user can change the track at any time ("upgrade to L"). Log the change in `decisions.md` and update the README `gates` list.
-- Upgrade on your own proposal when a fact breaks the track rule (for example, customer data or a second area appears in track S). Ask first.
-- In the README `gates` list, set a gate that the track skips to `status: skipped` with `note: track S`.
-- In track M, Understood? and Agreed? are one gate, `Briefed?`. Its documents are `context.md` and `interview.md`. One approval ("approve Briefed?") approves both.
-- Sendable? and Shippable? are required on every track.
-- Evidence Testing is a step, not a gate. It is required on every track and has no approval form. It blocks the merge proposal (see Evidence Testing).
-- The QA handover (a tracker comment for QA after the merge) runs on every track when `policy.qaHandover` is `true`. It uses Sendable?, not a new gate. When it is `false`, remove the step from the phase order.
-- Tickets without a `track` key use the full flow (track L) until the user picks a track on Resume.
+- Diagnosed? is mandatory before planning. Briefed? does not exist in `full-v1`.
+- Sendable? applies to **each external write**, including early colleague or tracker writes.
+- Evidence Testing is a required step, not a gate, and blocks the merge proposal.
+- QA handover runs only when `policy.qaHandover` is `true`; it uses Sendable?, not a new gate.
+
+### Legacy boundary
+
+Only the explicit `workflow: full-v1` marker selects the new process. Existing tickets
+without that marker, including trackless tickets, retain their original phases, gates,
+and skips. Never infer a workflow from missing `track`, file layout, size, or current phase.
+Do not add `full-v1` on Resume or require new gates merely because this skill changed.
+
+| Legacy metadata | Original process retained |
+|---|---|
+| `track: S` | brief → plan → implement → Evidence Testing → conditional QA → close; Understood?, Agreed?, Diagnosed? skipped; no Briefed?, interview, or required visual briefing |
+| `track: M` | brief + interview → Briefed? → plan → implement → Evidence Testing → conditional QA → close; Briefed? approves `context.md` and `interview.md` together, replacing separate Understood?/Agreed?; Diagnosed? skipped |
+| `track: L` | context → Understood? → briefing → interview → Agreed? → investigation → recommended Diagnosed? → plan → implement → Evidence Testing → conditional QA → close; no Briefed? |
+| no track or workflow | preserve the original recorded process and skips; the historical full-flow default had recommended Diagnosed?, not mandatory |
+
+Designed?, Shippable?, per-write Sendable?, and Learned? remain required in the original
+process. Recommended legacy Diagnosed? can be declined with a logged reason.
+Do not recalibrate, escalate, or downgrade existing tickets automatically.
+Missing or contradictory legacy metadata is a finding requiring user direction before
+the affected action, not permission to assign a workflow, rewrite history, or reopen
+gates solely to meet `full-v1`.
 
 ## 🚦 Review gates
 
@@ -142,15 +154,16 @@ The user reviews ticket artifacts with VS Code comment threads at these gates:
 
 | Gate | Step | Document | Need | Opens before |
 |---|---|---|---|---|
-| Understood? | Context | `context.md` + linked `evidence/` | required (L), part of Briefed? (M), skipped (S) | the scope interview |
-| Agreed? | Scope | `interview.md` | required (L), part of Briefed? (M), skipped (S) | investigation work on the agreed scope |
-| Diagnosed? | Investigation | `investigation.md` + linked `evidence/` | recommended (L), skipped (S, M) | the plan draft |
-| Designed? | Plan | `plan.draft.md` + `decisions.md` | required | implementation |
+| Understood? | Research | `context.md` + explicitly listed `evidence/` | required | visual briefing and scope interview |
+| Agreed? | Scope | `interview.md` + `briefing.md` | required | investigation work on the agreed scope |
+| Diagnosed? | Investigation | `investigation.md` + explicitly listed `evidence/` | required | the plan draft |
+| Designed? | Plan | `plan.draft.md`, byte-identical `plan.md`, `decisions.md`, `test-plan.md` | required | implementation |
 | Sendable? | External write | `outbox/` drafts | required | each tracker, document, or change request text write |
 | Shippable? | Code | `review.md` | required | push or change request creation |
 | Learned? | Close | `close.draft.md` | required | canonical wiki writes and the archive move |
 
 Open colleague questions do not block a gate. See Pre-investigation.
+The table is the `full-v1` contract. Apply the Legacy boundary to existing tickets.
 
 Each gate name is the question that the user answers by approval. The user approves with `approve <name>`, with or without the `?` and in any case (`approve designed`).
 
@@ -167,12 +180,12 @@ Every gate document uses the plain ticket style. Read [templates/_style.md](temp
 
 Procedure for each gate:
 
-1. Write or update the gate document.
-2. Set the gate to `status: in-review` in the README `gates` list, and `state: needs-me`. Set the state emoji of the session title to 🟡.
-3. Open the document next to the session: run `code -r "<absolute path>"` with the shell tool in `async` mode (the command can block for 30 seconds or more). Also give the user a Markdown link to it. Tell the user: add comments in the editor, or send them with VS Code's comment submit button.
+1. Write or update the gate documents. Prepare the exact review set and manifest (see Approval revisions). For Designed?, stage `plan.md` as a byte-identical copy before review; it is not approved until GO.
+2. Set the gate to `status: in-review` in the README `gates` list, and `state: needs-me`. Record its manifest path and pending review digest without granting approval. For Sendable?, set `doc` to this write's exact draft file, not just `outbox/`; retain prior writes' approvals in separate manifests and history. Set the state emoji of the session title to 🟡.
+3. Open the documents next to the session: run `code -r "<absolute path>"` with the shell tool in `async` mode (the command can block for 30 seconds or more). Open at most 3 at once; link every file in the exact review set. Tell the user: add comments in the editor, or send them with VS Code's comment submit button.
 4. Show the approval form (below) with `ask_user`. Do not start the blocked step.
 5. Act on the answer:
-   - **GO**: record the approval (step 7), then start the next step of the track.
+   - **GO**: record the approval (step 7), then start the next workflow step.
    - **Comments**: handle the comments (step 6), then show the form again.
    - **Changes**: apply the free-text request to the document, then show the form again.
    - **Hold**: stop. Tell the user how to resume (`approve <gate>` in chat, or "review my comments").
@@ -185,11 +198,115 @@ Procedure for each gate:
    - Resolve each handled correction with `resolveComments`. Resolve a learning thread only on explicit user direction.
    - Summarize what changed in 5 lines or less before you show the form again.
 7. Record the approval:
-   1. Get the hash: `git hash-object <document>` (SHA-1 of the Git blob; it works in every shell).
-   2. Append to `decisions.md`: the date, the gate, the document, the hash, the method (`form` or `chat`), and the user's exact answer.
-   3. In the README `gates` list, set `status: approved`, `date: <yyyy-mm-dd>`, and `hash: <first 12 hash characters>`. Update `state`, `next`, and `updated`, then the session title.
-   4. Check the README frontmatter against the tables in Frontmatter. Fix each problem.
-   5. For Designed?, copy `plan.draft.md` to `plan.md`.
+   1. Recheck all displayed document hashes and the manifest bytes. If anything changed, show the revised set and ask again.
+   2. Record `status: approved`, `date: <user approval yyyy-mm-dd>`, `manifest: <ticket-relative JSON path>`, and `hash: <full SHA-256 of raw manifest bytes>` in the README gate. Keep `doc` as the primary document link.
+   3. Append the gate, manifest path and hash, approved file/revision set, method (`form` or `chat`), and the user's exact answer to an approval record outside the hashed set, for example `approvals/history.md`. Do not append approval text to a hashed `decisions.md`.
+   4. Update `state`, `next`, and `updated`, then the session title. Check frontmatter and report conflicts; never infer or repair approval.
+   5. For Designed?, verify both plan files are still byte-identical. Implementation can use `plan.md` only after this approval is fresh.
+
+### Approval revisions
+
+New approvals use a ticket-relative JSON manifest, for example `approvals/understood-001.json`.
+Use a new manifest for each review revision and each Sendable? write. Never overwrite an
+old approval record to grant approval to a new revision. Hash raw bytes with SHA-256,
+not `git hash-object`, normalized text, or a truncated digest.
+
+```json
+{
+  "version": 1,
+  "gate": "Understood?",
+  "documents": [
+    { "path": "context.md", "sha256": "<64 lowercase hex characters>" }
+  ]
+}
+```
+
+List **every** document in the approval set exactly once, with its ticket-relative
+path and raw-byte SHA-256. Enumerate linked evidence explicitly; a directory or link
+alone does not identify a revision. The manifest must match the displayed exact set.
+No README approval metadata, approval record, or manifest may be in its own hashed set.
+Keep paths inside the ticket folder. One explicit user approval covers the entire
+displayed file + revision set; do not ask for per-file approvals.
+
+Designed? also requires `plan.draft.md` and `plan.md` in `documents`, with identical
+hashes and byte-identical contents, plus:
+
+```json
+"approvedCopies": [{ "from": "plan.draft.md", "to": "plan.md" }]
+```
+
+`approvedCopies` is allowed only for Designed?. On a revised plan, keep the old approved
+plan until the new review is ready, stage the new identical pair for review, and block
+implementation until GO. Do not copy or edit either plan after approval without reopening
+Designed?. Hash the manifest only after its complete bytes are final.
+
+Before any blocked action and on Resume, validate the manifest hash, exact document set,
+every document hash, required files, and approved-copy equality. A change to any covered
+file makes the gate stale. Missing files, malformed metadata, conflicting state, or an
+unverifiable revision is a finding: show its file, location where available, and remedy.
+Block only the affected action; unrelated read-only resume and research remain available.
+
+Legacy single-document records with `doc`, `date`, and `hash` remain readable; verify
+`hash` as SHA-256 of the raw document bytes. Do not reinterpret Git blob SHA-1 or an
+insufficient record as fresh approval. A legacy combined Briefed? record without a
+manifest cannot verify both `context.md` and `interview.md`: report it as
+freshness-unverifiable and require explicit review of the exact set before its affected
+action. Do not silently grandfather, rewrite, or approve it. A changed document must
+never pass on the strength of the other document's hash.
+
+### Per-write Sendable? records
+
+Each external write has its own frozen draft, manifest, and approval record, even
+when the README Sendable? gate displays only the latest write. Retain the exact
+draft path and `approval_manifest`, `approval_hash`, and `approval_date` for that
+write. These reference a Sendable? manifest that explicitly includes that draft.
+The Sendable? manifest also includes exact `command` and `target` strings, so its
+raw-byte hash binds the authorized operation as well as the text. Sidecar
+`command` and `target` must match those manifest values exactly.
+Keep this metadata and the outcome (`approved` or `sent`, plus exact target,
+command, and returned URL/id) in `outbox/<name>.approval.json` **outside** the hashed set, not in the
+hashed draft itself. Never put a manifest digest inside a document it hashes.
+
+Create the sidecar only after explicit GO, using
+[templates/outbox.approval.json](templates/outbox.approval.json):
+
+```json
+{
+  "version": 1,
+  "doc": "outbox/<name>.draft.md",
+  "status": "approved",
+  "approval_manifest": "approvals/<name>.json",
+  "approval_hash": "<full raw-manifest SHA-256>",
+  "approval_date": "<user approval yyyy-mm-dd>",
+  "target": "<exact target>",
+  "command": "<exact command>"
+}
+```
+
+The README Sendable? `doc` must name this exact draft, never the approval sidecar.
+Its manifest must explicitly cover the same draft and must not include the sidecar.
+For example, its additional operation fields are:
+
+```json
+"command": "<exact command>",
+"target": "<exact target>"
+```
+
+Before the write, validate
+the sidecar's approval references and the exact command and target the user
+authorized against the hashed manifest. A command or target change requires a
+new manifest and explicit approval. After the write, change only sidecar `status` to `sent` and add
+`result` with the returned id/URL. Keep the approved draft unchanged.
+
+Do not stamp status, dates, links, or approval fields into an approved draft.
+Keep its original `status: draft` as authoring metadata; the separate record
+is authoritative for approval and delivery. A second write needs a new explicit
+approval and record, even when it reuses identical text. A changed draft needs a
+new revision and review. A prior write's manifest cannot authorize another write.
+Validate sidecars when present; their absence is not evidence that an external
+write occurred, and must not be used to invent a send or approval history.
+Parse sidecar metadata only from `*.approval.json` within `outbox/`, never from
+arbitrary JSON files elsewhere in the ticket.
 
 ### ✅ Approval form
 
@@ -203,7 +320,7 @@ Show it with `ask_user` at each gate. Use one field, `decision`, with these opti
 | `later` | ⏸️ Hold — not now |
 
 - Set no default. The user must pick an option.
-- Add the document link and the hash prefix (12 characters) to the message, so the user knows which version they approve.
+- List every file link and its SHA-256 revision (a 12-character display prefix is fine), plus the manifest link and digest. The stored hashes are full length. State that GO approves the whole exact set.
 - If unhandled comments exist on the document, say so in the message.
 - If the user declines or cancels the form, treat it as `later` (Hold).
 
@@ -213,10 +330,10 @@ Rules:
 - Comments, resolved threads, and "looks good" notes do not approve a ticket gate.
 - Lessons and self-checks do not approve a gate or prove understanding. Learning adds no gate; `Learned?` stays unchanged.
 - Never answer the approval form for the user, and never approve in auto mode.
-- A required gate blocks its step. A recommended gate (Diagnosed?): offer the review; continue if the user declines, and log that.
-- A skipped gate (because of the track) blocks nothing. Do not open it.
+- A required gate blocks its step. Only a recommended legacy Diagnosed? can be declined with a logged reason.
+- A gate skipped by the original legacy process blocks nothing. Do not open it.
 - A change to an approved document reopens its gate.
-- On Resume, read the README `track` and `gates` and report open gates. Show the approval form for each gate that is `in review`.
+- On Resume, read the explicit workflow marker and original legacy metadata, validate revision evidence, and report open gates and findings. Show the approval form for each gate that is `in-review`.
 - Native plan approval in VS Code does not replace a ticket gate or update the approved ticket plan.
 
 ## 🚀 Start
@@ -226,28 +343,19 @@ Rules:
 3. Create the folder from the templates (see Templates). If it exists, run Resume instead.
 4. Write `ticket.md`: summary, type, status, priority, reporter, assignee, description, comments, the item URL, and the snapshot date.
 5. Write `README.md` from [templates/README.md](templates/README.md) (🎫 Ticket):
-   - In the frontmatter, put `phase: start`, `state: needs-me`, the proposed `track`, `next`, `item` (the work item URL), and the gates of the track.
+   - In the frontmatter, put `workflow: full-v1`, `phase: start`, `state: active`, `next`, `item` (the work item URL), and all full-workflow gates. Never add `track`.
    - Put the `branch` and the `worktree` when they exist.
    - In the body, put the toolkit table for this ticket.
    - Check the frontmatter against the tables in Frontmatter.
 6. Seed `investigation.md` from [templates/investigation.md](templates/investigation.md) with one hypothesis row for each suspected cause in the work item.
 7. Seed `map.md` from the template: the purpose, the terms, and a first guess of the areas. Mark guesses `(unverified)`.
-8. Add the ticket to the "🎫 Tickets → Active" list in `<wiki>/index.md`.
+8. Add the ticket to the "🎫 Tickets → Active" list in `<wiki>/index.md`. Mark its raw folder as local-only, unavailable to teammates without that local material.
 9. Append a `create` entry to `<wiki>/log.md`.
 10. Do not create a worktree at Start. The `agents` skill creates a worktree session at Implement.
-11. Run the pre-investigation (next section). Scale it to the likely track: about 10 minutes for a small ticket, a full survey for a large one.
-12. Choose the track (see Tracks). Show the evidence for your proposal in 3 lines or less. Confirm it with `ask_user`. Record it in `README.md` and `decisions.md`.
-13. Follow the phase order of the track. Do not skip a phase of the track, and do not run a later phase in auto mode:
-
-    ```text
-    S: brief → Designed? plan
-    M: brief + interview → Briefed? → plan → Designed?
-    L: context → Understood? → visual briefing → interview → Agreed? → investigation → Diagnosed? → plan → Designed?
-    ```
-
-14. Do not ask a scope question before the context is approved (Understood? in track L) or presented in chat (tracks S and M). In track M, ask the interview questions right after you present the context. Then open Briefed?.
-
-In tracks S and M, `context.md` is the "brief". Keep it short: TL;DR, the problem, the affected areas, open questions. Track S puts its few scope questions into the **❓ Decisions needed** list of `plan.draft.md` instead of `interview.md`.
+11. Run the full pre-investigation (next section), including history, affected code, existing tests, and regression risks. Research thoroughly without a required duration or word count. Record unavailable sources and test gaps; absence of evidence is not proof of safety.
+12. Open Understood? over the explicit context and evidence revision set.
+13. After approval, present the visual briefing and conduct the scope interview; review Agreed?.
+14. Investigate the agreed scope and obtain Diagnosed? before drafting the plan. Then review Designed? before implementation. Do not skip phases for small fixes or run a blocked phase in auto mode.
 
 ### 🧭 Pre-investigation
 
@@ -257,18 +365,18 @@ Do this automatically. It is read-only, so it needs no approval.
 1. Read the wiki: `<wiki>/index.md`, matching canonical pages, and related archived tickets.
 2. Read the sources that the work item links: documents, postmortems, linked items, sibling and follow-up items (`tracker.search` on the same reporter, labels, and dates).
 3. Trace the history in the code (read-only): `git log --all --grep <keys>` in each checkout, and related change requests (`repo.history`). Review threads show who reviewed and what they said. The `## Investigate` policy section can name older sources.
-4. Survey the code in the checkouts of `repo.checkouts`: affected areas, existing patterns, related docs, skills, and instructions.
+4. Survey the code in the checkouts of `repo.checkouts`: affected areas, existing patterns, related docs, skills, and instructions. Identify existing tests, missing coverage, unchanged behavior to preserve, and regression risks.
 5. If the work item names a customer environment or a production symptom, take a small read-only sample with the tools that the `## Investigate` policy section allows. Ask first before any tool that needs approval.
 6. If a source is not available (VPN off, tool not authenticated, capability `manual`), write the gap and continue.
 7. Write `context.md` from [templates/context.md](templates/context.md) (🧭 Context). Put tool outputs in `evidence/`. Add what you learned about the code to `map.md`.
 8. List the colleagues who know the area: reporter, authors and reviewers of related change requests, owners of sibling items and related documents. For each, write why and what to ask.
 9. Write draft messages to them in `outbox/colleague-questions.md`. The user sends them. Never contact people yourself.
-10. Present the context. Track L: open Understood?. Tracks S and M: explain it in chat, then continue with the track. Explain the context in plain words, and answer the user's questions until the user understands it.
+10. Present the context in plain words and open Understood? for `full-v1`. Follow original gates for legacy tickets. Answer questions; do not claim that a lesson or self-check proves understanding.
 
 #### 💬 Colleague questions do not block
 
 - Keep each colleague question as a row in the **❓ Open questions** table of `context.md`: question, person, status (`draft`, `asked`, `answered`, `no reply`), and impact if the answer differs.
-- The user can approve Understood? or Briefed? with open colleague questions.
+- The user can approve Understood? (or legacy Briefed?) with open colleague questions.
 - When an open question blocks the plan, the plan states an assumption and a fallback for it.
 - When an answer arrives, record it in "💬 Colleague answers" and update the row status. Name the artifacts that the answer changes. Update only those artifacts, and reopen only their gates.
 
@@ -287,7 +395,7 @@ A spike is a short read-only check that answers one fact before a scope question
 
 ### 🖼️ Visual briefing
 
-Track L: run it after Understood? is approved and before the interview. Tracks S and M: offer it in one line after the context. Run it only when the user says yes.
+For `full-v1`, run it after Understood? is approved and before the interview. Legacy L retains this step; legacy S and M retain their optional briefing offer.
 It is read-only and needs no gate. The user gets a broad view of the ticket, its history, and the concepts around it.
 
 1. Write `briefing.md` in the ticket folder from `context.md`, `ticket.md`, and `evidence/`. Use only facts already in those files. Apply the data rules.
@@ -312,7 +420,7 @@ It is read-only and needs no gate. The user gets a broad view of the ticket, its
 - Quote Mermaid labels that hold punctuation, for example `A["Outbox (v2)"]`.
 ### 🎤 Interview
 
-Track L: start after Understood? is approved and the briefing is done. Track M: start right after you present the context. Track S has no interview (see Start). Ground each question in `context.md`.
+For `full-v1`, start after Understood? is approved and the briefing is done. Ground each question in `context.md`. Legacy L retains this order; legacy M interviews after presenting context and uses Briefed?; legacy S retains its original skip.
 
 1. Before you ask, run a spike for each question that depends on a checkable fact.
 2. Write `interview.md` from [templates/interview.md](templates/interview.md) (🎯 Scope interview). For each question, write:
@@ -321,7 +429,7 @@ Track L: start after Understood? is approved and the briefing is done. Track M: 
    - the answer column, empty until the user answers
 3. Ask up to 5 questions in one `ask_user` form, grouped by topic. Put the recommended answer as the field default, and its reason in the field description. Never answer for the user or accept recommendations in auto mode.
 4. Run a second round only for answers that raise new questions. Use the same form rules.
-5. Record each answer in `interview.md` and `decisions.md`. Then open Agreed? (track L) or Briefed? (track M).
+5. Record each answer in `interview.md` and `decisions.md`. Then open Agreed? for `full-v1` or legacy L, or Briefed? for legacy M.
 
 ### 🌳 Worktrees
 
@@ -401,31 +509,33 @@ README (`type: ticket`), see [templates/README.md](templates/README.md):
 | `key`, `title` | `APP-123`, the work item summary (required) |
 | `phase` | `start`, `investigate`, `plan`, `implement`, `review`, `closed` (required) |
 | `state` | `needs-me` 🟡, `go` 🟢, `active` ▶️, `waiting` ⏳, `blocked` 🔴, `done` ✅ (required; same as the session title emoji) |
-| `track` | `S`, `M`, `L` |
+| `workflow` | `full-v1` for every new ticket; absence means legacy, never inferred or auto-migrated |
+| `track` | legacy only: `S`, `M`, `L`; absent on new tickets; trackless legacy remains valid |
 | `next`, `waiting_on` | one line each |
 | `item`, `branch`, `worktree`, `updated` | work item URL, branch name, path, `yyyy-mm-dd`. |
 | `changes` | change requests: list of `{url, label, state}`; `state`: `draft`, `open`, `merged`, `closed`, `abandoned`. |
-| `gates` | list of `{name, doc, need, status, date, hash, note}`; `status`: `todo`, `in-review`, `approved`, `skipped`, `blocked`. An approved gate needs a `date`. |
+| `gates` | list of `{name, doc, need, status, date, hash, manifest, note}`; `status`: `todo`, `in-review`, `approved`, `skipped`, `blocked`. An approved gate needs the user's approval `date` and revision evidence. `manifest` is a ticket-relative JSON file; `hash` covers its raw bytes, or raw `doc` bytes for legacy single-document records. |
 
 Other documents:
 
 - Every document has `type`, `ticket`, and `updated`. `ticket.md` has `type: item-snapshot`.
 - Gate documents also have `gate` (for example `Designed?`). The gate status lives only in the README `gates` list.
-- `outbox/` drafts have `status` (`draft`, `approved`, `sent`, `dropped`) and optional `target` (`tracker-comment`, `tracker-item`, `change`, `email`, `chat`, `other`).
+- `outbox/` drafts have authoring `status` and optional `target` (`tracker-comment`, `tracker-item`, `change`, `email`, `chat`, `other`). Freeze all bytes for review. New approval/delivery status and per-write `approval_manifest`, `approval_hash`, `approval_date` belong in a separate record outside the hashed set; never stamp them into an approved draft. Legacy `approved`, `sent`, and `dropped` metadata remains readable, not inferred fresh approval.
 - `evidence/` files have `date`.
 - Quote a value that contains `: `, or the YAML does not parse.
 
 ## 🔁 Resume
 
-1. Read `README.md` of the ticket folder. If it has no frontmatter, add it from the template. If it has no `track` key, propose a track from the current state and confirm it with `ask_user`.
+1. Read `README.md`. Select `full-v1` only by its explicit marker; otherwise preserve the original legacy contract. Missing frontmatter, unknown workflow, or contradictory metadata needs an explicit finding and user-directed repair, not template replacement or inferred state.
 2. Read the last entries of `log.md`.
 3. Read the `## Resume` policy section, for example credential checks.
-4. Open other files only when the next step needs them.
-5. Tell the user the track, the phase, the last result, the policy checks, open review gates, open colleague questions, and the next step.
+4. Validate gate revision evidence with `node "<plugin>/scripts/forge.mjs" lint --wiki "<wiki>" --json`, then open other files as the next step needs them. Default lint is read-only. Report unavailable local archives as local-only, not automatically broken.
+5. Tell the user the workflow (or legacy context, with track only when recorded), phase, last result, policy checks, open gates, approval findings, open colleague questions, and next step. Findings block the affected action, not read-only resume. Never run `--fix` implicitly.
 6. Set the session title (see Session title).
 
 ## 🔎 Investigate
 
+- For `full-v1`, start only after Agreed? is fresh. Investigate every ticket, including a small fix, and obtain mandatory Diagnosed? before Plan. Legacy tickets keep their original skips and recommended Diagnosed?.
 - Keep the hypotheses table in `investigation.md` current. Status values: `open`, `supported`, `rejected`.
 - Save each tool result that supports a finding as `evidence/<yyyy-mm-dd>-<topic>.md`. Include:
   - the tool and the parameters
@@ -440,8 +550,8 @@ Other documents:
 
 ## 📝 Plan
 
-1. Make the plan with the user. In Copilot, use plan mode.
-2. Track L: offer the Diagnosed? review of `investigation.md` if it is not approved or declined.
+1. For `full-v1`, verify fresh Diagnosed? approval before drafting a plan. Legacy L retains the recommended review: offer it if not approved or declined; preserve other original skips.
+2. Make the plan with the user. In Copilot, use plan mode.
 3. Save the proposed plan to `plan.draft.md` in the ticket folder before review. Use [templates/plan.draft.md](templates/plan.draft.md) (📝 Plan). It includes:
    1. **🗺️ Change map**: a Mermaid diagram of the components from `map.md`. Highlight the changed ones (`classDef changed`).
    2. Steps, each with the files it touches.
@@ -450,8 +560,8 @@ Other documents:
    5. Assumptions for open colleague questions, and **❓ Decisions needed**.
 4. Fill "✏️ What this ticket changes" in `map.md` with the planned changes, marked `(planned)`.
 5. Set `phase: plan` in the `README.md` frontmatter. Set `next` to the Designed? review.
-6. Run the Designed? gate (see Review gates). Implementation needs Designed? approved against the current `plan.md` hash.
-7. Keep `plan.md` unchanged until approval of a revised draft.
+6. Run Designed? over the exact plan set (see Approval revisions). Include byte-identical `plan.draft.md` and `plan.md` and the `approvedCopies` relation. Implementation needs fresh approval of this set.
+7. Keep the approved `plan.md` unchanged until staging a revised review pair. Block implementation while the revised pair awaits approval.
 8. Record design choices, reasons, and rejected options in `decisions.md`.
 
 Implementer sessions and later sessions read the approved plan from the ticket folder.
@@ -466,7 +576,7 @@ Open every document that the user must read with `code -r "<absolute path>"` (as
 
 - Read the `## Implement` policy section first.
 - Start an implementer session with the `agents` skill (see Worktrees). Do not edit code in the main checkout.
-- Check that Designed? is approved in `decisions.md` against the current `plan.md` hash before implementation.
+- Validate Designed? in README and its revision evidence before implementation. A new manifest must cover both byte-identical plan files and the approved-copy relation; verify legacy single-document approval against raw document bytes. Unverifiable evidence blocks implementation, not read-only research.
 - Follow the repository's own instructions and skills for the code change.
 - For a quick code review before Shippable?, use a reviewer subagent (the `agents` skill).
 - Before Shippable?, and so before any push or change request (draft too), run the adversarial review subagent (the `agents` skill, "Adversarial review"). Handle its findings. Record them in `review.md`.
@@ -545,7 +655,7 @@ Read the `## QA handover` policy section first. It can set the comment format, t
 3. Write for QA: no code paths unless QA needs them, no customer environment or customer names, no secrets, no credentials, and no links that only developers can open. Use the same words as the work item.
 4. Run Sendable? for the draft. After GO, send the comment with `tracker.comment`. Ask before the write, as for every tracker write.
 5. Do not transition the work item yourself. Ask the user whether to move it to QA, and show the target status first. After a yes, use `tracker.transition`. Send the comment before the transition, so that QA finds it.
-6. Record the comment id or link and the time in `log.md`. Set the draft `status` to `sent`.
+6. Record the comment id or link and time in `log.md` and the separate per-write Sendable? record. Set that record to `sent`, without changing the approved draft bytes.
 7. If QA finds a problem later, add the cause and the fix to `troubleshooting.md` and, when it changes the test guidance, send a short follow-up comment (same Sendable? rule).
 
 ## ✅ Close
@@ -574,7 +684,7 @@ Run only when the user says that the ticket is done.
    - `decisions/` for decisions that apply after the ticket
    Remove customer environment names from these pages.
    Read the `## Close` policy section. It can name more folders and knowledge owners.
-5. Create `<wiki>/tickets/<key>.md` from the summary template. Link the canonical pages and the archive folder.
+5. Create `<wiki>/tickets/<key>.md` from the summary template. Link canonical pages and shared work item/change request sources. Label the archive link local-only; the summary must remain useful without ignored raw material.
 6. Move the ticket from "Active" to "Done" in `<wiki>/index.md`. Add lines for the new canonical pages.
 7. Set the phase to `closed` in `README.md`.
 8. Move the folder:
@@ -596,6 +706,7 @@ The gate documents and the README use the plain ticket style. Copy them from the
 | `investigation.md` | [templates/investigation.md](templates/investigation.md) |
 | `plan.draft.md` | [templates/plan.draft.md](templates/plan.draft.md) |
 | `outbox/<target>.draft.md` | [templates/outbox.draft.md](templates/outbox.draft.md) |
+| `outbox/<target>.approval.json` (after GO only) | [templates/outbox.approval.json](templates/outbox.approval.json) |
 | `review.md` | [templates/review.md](templates/review.md) |
 | `evidence-testing.md` | [templates/evidence-testing.md](templates/evidence-testing.md) |
 | `outbox/qa-handover.draft.md` | [templates/qa-handover.md](templates/qa-handover.md) |
@@ -657,7 +768,6 @@ status: verified
 sources:
   - <work item URL>
   - <change request URL>
-  - archive/tickets/<key>/
 ---
 # <KEY> — <summary>
 
@@ -666,4 +776,5 @@ sources:
 - Root cause: <text>
 - Fix: <text>
 - Knowledge: <links to canonical pages>
+- Local-only working archive: <archive/tickets/<key>/; may be unavailable on another machine>
 ```

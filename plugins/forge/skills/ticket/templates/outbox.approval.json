@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "doc": "outbox/<name>.draft.md",
+  "status": "approved",
+  "approval_manifest": "approvals/<name>.json",
+  "approval_hash": "<64 lowercase hex characters: SHA-256 of raw manifest bytes>",
+  "approval_date": "<user approval yyyy-mm-dd>",
+  "target": "<exact target>",
+  "command": "<exact command>"
+}

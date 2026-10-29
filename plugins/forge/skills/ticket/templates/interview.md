@@ -1,7 +1,7 @@
 ---
 type: interview
 ticket: <KEY>
-gate: Agreed?   # track M: Briefed?
+gate: Agreed?
 updated: <yyyy-mm-dd>
 ---
 # 🎯 Scope interview — <KEY>: <short title>
@@ -10,7 +10,7 @@ updated: <yyyy-mm-dd>
 
 > **TL;DR:** <what we agreed, in max 3 lines>
 >
-> **What I need from you:** GO on Agreed? (or Briefed? in track M).
+> **What I need from you:** GO on Agreed? for the displayed interview and briefing revisions.
 >
 > **Reading time:** about <n> minutes.
 

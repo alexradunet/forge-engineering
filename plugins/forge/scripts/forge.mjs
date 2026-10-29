@@ -5,6 +5,7 @@
 //   where   [--wiki <dir>]   the repository, its wiki, and the config folder (JSON)
 //   config  [--wiki <dir>]   the team config (JSON)
 //   doctor  [--wiki <dir>] [--json]   read-only setup check; exit 1 on a failure
+//   lint    [--wiki <dir>] [--json] [--fix]   validate tickets, approvals and wiki metadata
 //   detect  [--wiki <dir>]   host, CLIs and login, repo visibility, wiki state (JSON, read-only)
 //   init-wiki [--wiki <dir>] create the local wiki (git init, .gitignore, index.md) and bind it
 //   bind    [--wiki <dir>]   write <wiki>/forge/repo.json
@@ -19,6 +20,7 @@ import { resolve, ForgeError } from './lib/repo.mjs';
 import { loadConfig, KINDS } from './lib/config.mjs';
 import { detect, initWiki, bind, seed } from './lib/setup.mjs';
 import { approve, assertTrusted, status as trustStatus } from './lib/trust.mjs';
+import { lint } from './lib/validation.mjs';
 
 const pluginRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const CLI_FOR = { github: 'gh', 'github-actions': 'gh', gitlab: 'glab', 'gitlab-ci': 'glab', jira: 'acli', 'azure-pipelines': 'az' };
@@ -28,9 +30,11 @@ export function parseArgs(argv) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--json') out.json = true;
-    else if (a === '--wiki') out.wiki = argv[++i];
-    else if (a === '--cwd') out.cwd = argv[++i];
+    else if (['--wiki', '--cwd'].includes(a)) {
+      out[a.slice(2)] = argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[++i] : '';
+    }
     else if (a === '--force') out.force = true;
+    else if (a === '--fix') out.fix = true;
     else if (['--tracker', '--repo', '--ci'].includes(a)) out[a.slice(2)] = argv[++i];
     else out._.push(a);
   }
@@ -138,6 +142,22 @@ export function main(argv = process.argv.slice(2)) {
       const results = doctor(opts);
       if (args.json) console.log(JSON.stringify(results, null, 2)); else print(results);
       return results.some((r) => r.status === 'fail') ? 1 : 0;
+    } else if (cmd === 'lint') {
+      if (args._.length !== 1 || args.force || args.tracker || args.repo || args.ci
+        || (args.wiki !== undefined && (!args.wiki || args.wiki.startsWith('--')))
+        || (args.cwd !== undefined && (!args.cwd || args.cwd.startsWith('--')))
+        || argv.some((arg, index) => ['--wiki', '--cwd'].includes(arg) && (!argv[index + 1] || argv[index + 1].startsWith('--')))) {
+        throw new ForgeError('Usage: forge.mjs lint [--wiki <dir>] [--cwd <dir>] [--json] [--fix].', 'bad-args');
+      }
+      const where = resolve(opts);
+      const report = lint({ wikiPath: where.wiki.path, repoPath: where.repo.path, fix: args.fix });
+      if (args.json) console.log(JSON.stringify(report, null, 2));
+      else {
+        for (const item of report.findings) console.log(`${item.severity} ${item.code} ${item.file}${item.line ? `:${item.line}` : ''}: ${item.message} ${item.remedy}`);
+        for (const repair of report.repairs) console.log(`repaired ${repair.code} ${repair.file}; log: ${repair.log}`);
+        console.log(`${report.summary.errors} errors, ${report.summary.warnings} warnings, ${report.summary.repaired} repairs.`);
+      }
+      return report.summary.errors ? 1 : 0;
     } else if (cmd === 'detect') {
       console.log(JSON.stringify(detect(resolve(opts)), null, 2));
     } else if (cmd === 'init-wiki') {
@@ -152,12 +172,20 @@ export function main(argv = process.argv.slice(2)) {
       if (args._[1] === 'approve') console.log(JSON.stringify(approve(where, args._.slice(2)), null, 2));
       else console.log(JSON.stringify(trustStatus(where), null, 2));
     } else {
-      console.error('Usage: node forge.mjs <where|config|doctor|detect|init-wiki|bind|seed|trust|run> [--wiki <dir>] [--cwd <dir>] [--json]');
+      console.error('Usage: node forge.mjs <where|config|doctor|lint|detect|init-wiki|bind|seed|trust|run> [--wiki <dir>] [--cwd <dir>] [--json]');
       return 2;
     }
     return 0;
   } catch (err) {
-    if (err instanceof ForgeError) { console.error(`forge: ${err.message}`); return 1; }
+    if (err instanceof ForgeError) {
+      if (cmd === 'lint' && args.json) console.log(JSON.stringify({
+        version: 1, wikiPath: args.wiki ? path.resolve(args.wiki) : null,
+        findings: [{ file: args.wiki ?? opts.cwd, line: null, code: err.code, severity: 'error', message: err.message, remedy: 'Correct the command or repository binding and run lint again.' }],
+        repairs: [], summary: { errors: 1, warnings: 0, repaired: 0 },
+      }, null, 2));
+      else console.error(`forge: ${err.message}`);
+      return 1;
+    }
     throw err;
   }
 }

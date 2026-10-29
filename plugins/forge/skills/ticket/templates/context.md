@@ -1,7 +1,7 @@
 ---
 type: context
 ticket: <KEY>
-gate: Understood?   # track M: Briefed?
+gate: Understood?
 updated: <yyyy-mm-dd>
 ---
 # 🧭 Context — <KEY>: <short title>
@@ -10,7 +10,7 @@ updated: <yyyy-mm-dd>
 
 > **TL;DR:** <max 3 lines>
 >
-> **What I need from you:** GO on Understood? (or Briefed? in track M), or tell me what I got wrong.
+> **What I need from you:** GO on Understood? for the displayed context and evidence revisions, or tell me what I got wrong.
 >
 > **Reading time:** about <n> minutes. Nothing here is a decision yet.
 
@@ -58,6 +58,18 @@ timeline
 **📂 More facts**
 
 <Long lists of facts. Code details go to [map.md](map.md).>
+
+## 🧪 Existing tests and regression risks
+
+| Test or behavior to preserve | Coverage and evidence | Gap or regression risk |
+|---|---|---|
+
+## 🚧 Unavailable sources
+
+| Source | Why unavailable | What remains unknown and how to check |
+|---|---|---|
+
+<Write "None" when there are no gaps. Missing evidence is not proof of safety.>
 
 ## ❓ Open questions
 

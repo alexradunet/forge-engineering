@@ -60,6 +60,114 @@ Git ignores `raw/` and `archive/`. This does not untrack files that Git already 
 Check the tracked files before any push.
 Never publish credentials or trust approvals.
 
+Ticket links under `raw/` and `archive/` are local-only references. Label them as such
+in a shared index or summary; they may be unavailable on another machine without
+being broken. Shared summaries must explain the problem, fix, and durable knowledge
+with shared sources and canonical links, without depending on ignored working files.
+Do not unignore or publish working material to make a reference resolve.
+
+## Local validation and source limits
+
+Run from the repository or pass an explicit wiki path:
+
+```sh
+node "<plugin>/scripts/forge.mjs" lint [--wiki "<path>"] [--json] [--fix]
+```
+
+Default lint is read-only. It checks ticket shape, workflow/gate agreement, approval
+revisions, and canonical wiki metadata. Only explicit `workflow: full-v1` selects
+the new mandatory gate set. Existing S/M/L and trackless tickets retain their
+original process, including skips and recommended Diagnosed?. Missing or conflicting
+metadata is a finding, never permission to infer a state or migrate the ticket.
+
+Canonical checks cover `title`, `status`, `updated`, and `sources`; existing
+`index.md` and `log.md` instead require `title` and `type`. An absent `log.md`
+is allowed until it is created. Age and `needs-check` findings are review warnings.
+Index membership drift, semantic contradictions, HTTP retrieval, and the truth
+of page text remain manual checks, not automated CLI results.
+
+JSON output has this stable shape:
+
+```json
+{
+  "version": 1,
+  "wikiPath": "<absolute wiki path>",
+  "findings": [
+    {
+      "file": "<file>",
+      "line": null,
+      "code": "<finding code>",
+      "severity": "error",
+      "message": "<what failed>",
+      "remedy": "<specific user action>"
+    }
+  ],
+  "repairs": [],
+  "summary": { "errors": 1, "warnings": 0, "repaired": 0 }
+}
+```
+
+`line` is a line number when known, otherwise `null`. Repair entries have
+`file`, `code`, and `log` (the repair-log path). Errors exit with status 1; warnings
+alone exit 0. Invalid input retains findings for valid files. A clean lint does not prove
+workflow compliance or claim accuracy.
+
+`--fix` is explicit and has one safe repair: append a missing final newline to an
+unapproved `*.draft.md` with explicit `status: draft` metadata; the filename alone
+is insufficient. Check both direct gate references and combined manifests,
+including legacy Briefed? references, before editing. Preserve existing content and
+line endings; never modify approved content. Report each repair and append the
+file and change to that ticket's `repair-log.jsonl`, using `started` and `applied`
+rows with before/after hashes. A repeat fix pass makes no changes.
+No repair may infer workflow/state, create approval, fix stale approvals, delete
+pages, or publish anything. Headerless existing index/log files need a reported,
+user-reviewed metadata correction, not an automatic migration.
+The shared validator's `checkAction` is a validation API, not an action executor.
+The CLI exposes `lint` only; it never implements, sends, merges, or closes a ticket.
+
+Approval manifests live outside their hashed document sets. README gates retain
+`doc`, user approval `date`, and `hash`, adding a ticket-relative `manifest` JSON path.
+`hash` is the full SHA-256 of raw manifest bytes. The manifest contains
+`version: 1`, `gate`, and `documents` entries with ticket-relative `path` and full
+lowercase raw-byte `sha256`. Designed? additionally requires both byte-identical plan
+files and `approvedCopies: [{ "from": "plan.draft.md", "to": "plan.md" }]`; this field
+is allowed only for Designed?. One user GO approves the whole displayed revision set.
+Approval README/records and the manifest never hash themselves.
+
+Each Sendable? write also retains `outbox/<name>.approval.json` outside the hashed
+set: `version: 1`, exact draft `doc`, `status: approved` or `sent`,
+`approval_manifest`, full raw-manifest `approval_hash`, user `approval_date`, exact
+`target`, exact `command`, and `result` (returned id/URL when sent). The manifest
+must cover that exact draft and include exact `command` and `target` strings,
+binding the operation in its raw-byte hash. Both sidecar values must match the
+manifest exactly; operation drift requires a new manifest and explicit approval.
+The README gate's `doc` names the draft, never the sidecar. Create the
+sidecar only after GO; update delivery status there, never in the frozen draft.
+Keep old sidecars when README Sendable? moves to a later write.
+Validate sidecars when present; absence is not evidence of an external send and
+must not produce an inferred send history.
+Sidecar metadata parsing applies only to `*.approval.json` files inside `outbox/`,
+not arbitrary JSON files elsewhere in the ticket.
+
+Legacy single-document `doc` + `hash` records verify raw document bytes.
+Legacy combined Briefed? without a manifest is freshness-unverifiable and needs
+explicit review before the affected action. Report missing evidence on Resume
+without blocking unrelated read-only work. See the [complete approval contract](../plugins/forge/skills/ticket/SKILL.md#approval-revisions).
+
+Classify wiki sources before checking them:
+
+| Source class | Check and limitation |
+|---|---|
+| URL | Retain as a remote reference; local existence checks do not verify its content or availability. |
+| Repository source | Resolve a repository-relative path only when its base repository is known from binding or configured checkout identity. Never guess from the wiki location. |
+| Local-only raw/archive | Report unavailable on this machine separately from a broken shared link; do not publish it to repair the reference. |
+| Moved path | Report the old path and verified replacement when known; do not delete the page or silently retarget its claims. |
+| Unknown format, command, or historical investigation | Report that it cannot be resolved automatically; retain it for manual evidence review. |
+
+Existence never verifies the text of a page. An old `updated` date is a review signal,
+not proof that knowledge is false. Verify claims against current code or tools;
+record unavailable sources and uncertainty instead of inventing evidence.
+
 ## Trust
 
 Forge does not use new or changed configuration or scripts until the user approves their hashes.

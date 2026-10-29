@@ -58,6 +58,9 @@ Never write these into the wiki:
 5. Tell the user which page you used.
 
 If a page is wrong, correct it in the same task (see Record).
+Classify each source before resolving it (see Lint). A path that exists does not
+verify the page text. Shared knowledge must remain useful when ignored raw or
+archive material is unavailable on this machine; never publish it as a repair.
 
 ## Learning pages
 
@@ -104,6 +107,7 @@ sources:
 ```
 
 Every canonical page starts with this frontmatter. `index.md` and `log.md` have only `title` and `type`.
+An absent `log.md` is allowed until it is created; do not invent entries just to satisfy lint.
 Ticket documents in `raw/tickets/` use their own frontmatter schema (the `ticket` skill, "Frontmatter").
 Writing rules:
 
@@ -123,11 +127,52 @@ Log entry format (append at the bottom):
 
 ## 🧹 Lint
 
-Run only when the user asks. Skip `raw/` and `archive/`.
+When asked, run `node "<plugin>/scripts/forge.mjs" lint [--wiki "<path>"] [--json]`.
+The command is read-only by default and checks tickets as well as canonical metadata.
+Ticket Resume also uses its read-only approval findings. Do not treat raw/archive
+working documents as canonical pages or require their publication.
+Canonical checks cover `title`, `status`, `updated`, and `sources`, with special
+`title`/`type` checks for existing index/log files and age/`needs-check` warnings.
+CLI lint does not automate index membership, semantic contradictions, HTTP
+retrieval, or text truth; those remain manual editorial checks.
 
-1. Find pages that are missing from `index.md`, and index lines without a page.
-2. Find `sources` paths that no longer exist.
-3. Find pages with `status: needs-check` or an `updated` date older than 90 days.
+Findings include `file`, `line` (number or `null`), `code`, `severity`, `message`,
+and a specific `remedy`. JSON has `version: 1`, `wikiPath`, `findings`, `repairs`,
+and `summary: { errors, warnings, repaired }`. Repair entries have `file`, `code`,
+and `log`. Errors exit 1; warnings alone exit 0. Invalid input does not hide valid files.
+
+Source classification:
+
+| Class | Handling |
+|---|---|
+| URL | Remote reference, not a local path. Local lint does not verify its text or reachability. |
+| Repository source | Resolve only when the base repository is known from binding/configured checkout identity; never guess. |
+| Local-only raw/archive | Mark unavailable on this machine, not automatically broken. Keep shared summaries usable without it. |
+| Moved path | Report the old path and a verified replacement when known; do not silently rewrite claims. |
+| Unknown format, command, historical investigation | Report unresolvable automatically and request manual verification. |
+
+File existence is not claim verification. After deterministic lint, review these
+editorial checks separately; do not claim that the CLI proves them:
+
+1. Find pages missing from `index.md`, and index lines without a page.
+2. Verify source claims against code/tools, and identify moved paths where evidence allows.
+3. Review `status: needs-check` and dates older than 90 days as signals, not proof of falsehood.
 4. Find contradictions between pages.
-5. Report the findings as a list. Ask before you delete or merge pages.
-6. After you fix pages, append a `lint` entry to `log.md`.
+5. Report findings. Ask before deleting or merging pages. After approved editorial fixes, append a `lint` entry to `log.md`.
+
+Only explicit `--fix` enables repair. Its sole allowlisted edit is a missing final
+newline in an unapproved `*.draft.md` with explicit `status: draft` metadata,
+preserving all other bytes and line-ending
+style. Protect direct and combined approval references, including legacy Briefed?.
+Report repairs and append `started` and `applied` rows with before/after hashes to
+the ticket's `repair-log.jsonl`; a second pass is
+unchanged. Never infer workflow/state, grant approval, edit approved content,
+auto-migrate headerless index/log metadata, delete pages, or publish.
+
+Only explicit `workflow: full-v1` selects new mandatory gates. Existing S/M/L and
+trackless tickets retain original gates and skips. Validate revision evidence,
+not retroactive compliance with a new workflow. Missing/stale evidence blocks the
+affected action, not read-only resume. See the ticket skill's Approval revisions
+and [CLI contract](../../../../docs/wiki.md#local-validation-and-source-limits).
+The shared `checkAction` API validates prerequisites; the CLI has lint only and
+never executes workflow actions.

@@ -2,7 +2,7 @@
 type: outbox
 ticket: <KEY>
 target: tracker-comment
-status: draft          # draft | approved | sent | dropped
+status: draft          # authoring metadata; freeze all bytes at review
 updated: <yyyy-mm-dd>
 ---
 # 🧑‍🔬 QA handover — <KEY>: <short title>
@@ -14,6 +14,15 @@ updated: <yyyy-mm-dd>
 > **What I need from you:** GO on Sendable?. After GO, I send exactly the text between the markers. Moving the ticket to QA is a separate question.
 >
 > **Reading time:** about <n> minutes.
+
+Use a unique Sendable? manifest for this comment. Retain the exact draft path,
+`approval_manifest`, `approval_hash`, and `approval_date` in a separate per-write
+`outbox/qa-handover.approval.json` sidecar outside the hashed set, with `version: 1`,
+`doc`, exact `target`, and exact `command`. After the write set sidecar `status: sent`
+and `result` to the returned URL/id. Never stamp those fields or change status in this approved draft.
+The hashed manifest includes exact `command` and `target`; sidecar values must
+match both exactly. README Sendable? `doc` names this draft, not the sidecar.
+The QA transition is a separate write needing its own approval and record.
 
 ## 📊 At a glance
 

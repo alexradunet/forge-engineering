@@ -51,6 +51,7 @@ itemUrl: https://gitlab.com/group/app/-/issues/{number}
 ```
 
 - The frontmatter is flat: `key: value`, with inline lists `[a, b]`. Quote a value that starts with `{`.
+- An opening `---` without a closing delimiter is malformed and fails; it is not a missing file or an absent optional setting.
 - In the skills, `<file>.<key>` means the frontmatter key `<key>` of `config/<file>.md`, for example `repo.changeName`.
 - `tracker.queries` is the **Queries** table. `repo.checkouts` is the **Checkouts** table.
 - A table cell cannot hold a `|` character.
@@ -161,6 +162,14 @@ Write the company rules, tools, and traps there. A section can add steps and mak
 It can never weaken a core rule: no merge, ask before every external write, explicit gate approval,
 no secrets, and the adversarial review before every change request.
 
+Every new ticket uses `workflow: full-v1` in its ticket README, not a policy sizing
+setting. All research, briefing, scope interview, investigation, and review phases
+apply even to small fixes. Diagnosed? must be approved before drafting the plan.
+`qaHandover: false` omits only QA handover, not Evidence Testing or a required gate.
+Sendable? applies to each external write in every phase. Existing S/M/L and trackless
+tickets retain their original gates and recorded skips; absence of `track` never
+selects the new workflow. See the [ticket skill](../plugins/forge/skills/ticket/SKILL.md).
+
 ## ➕ Add a tool
 
 forge is **CLI first**. The `forge` rule, "Tool choice: CLI first", gives the order: official CLI, then REST, then MCP.
@@ -170,7 +179,7 @@ forge is **CLI first**. The `forge` rule, "Tool choice: CLI first", gives the or
 3. Write the official CLI command (`gh`, `glab`, `az`, `acli`) in each row. Use JSON output flags when they exist.
 4. When no CLI exists, write a small Node script for the REST API in `<wiki>/forge/scripts/<name>.mjs`. Call it with `forge.mjs run <name>`. Read the token with `cred.mjs`.
 5. Use an MCP server only when steps 3 and 4 cannot do a capability. Add it in your VS Code user settings. Write the reason in the **Notes** column.
-6. Run one S-track work item end to end with it.
+6. Validate the integration with a synthetic or explicitly selected work item through the full workflow; do not invent a tracker ticket or make external writes without approval.
 
 ## ✅ Checks
 

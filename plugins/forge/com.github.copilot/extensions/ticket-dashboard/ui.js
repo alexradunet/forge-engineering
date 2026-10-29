@@ -39,7 +39,9 @@ function link(parent, text, address) {
 function card(ticket) {
   const node = element('article');
   node.append(element('span', ticket.key, 'key'), element('h3', ticket.title));
-  node.append(element('p', `${ticket.phase} / Track ${ticket.track}`, 'meta'));
+  node.append(element('p', ticket.workflow === 'full-v1'
+    ? `${ticket.phase} / Full workflow`
+    : `${ticket.phase} / Legacy track ${ticket.track}`, 'meta'));
   node.append(element('p', ticket.next, 'next'));
   if (ticket.waitingOn) node.append(element('p', `Waiting on: ${ticket.waitingOn}`));
   const pending = ticket.gates.filter((gate) => !['approved', 'skipped'].includes(gate.status));
@@ -58,6 +60,9 @@ function card(ticket) {
     gates.append(element('li', `${gate.name} - ${gate.status} (${gate.need})${gate.doc ? ` / ${gate.doc}` : ''}`));
   }
   details.append(gates);
+  for (const finding of ticket.findings ?? []) {
+    details.append(element('p', `${finding.code}: ${finding.message} ${finding.remedy}`, 'error'));
+  }
   for (const change of ticket.changes) {
     const row = element('p');
     link(row, `${change.label || 'Change request'} (${change.state})`, change.url);

@@ -28,7 +28,7 @@ flowchart LR
 
 ## 🛠️ Implementer session
 
-1. Check the gate first. For a ticket, Designed? must be approved against the current `plan.md` hash.
+1. Check the gate first. For a ticket, validate fresh Designed? revision evidence before starting implementation. For a new `workflow: full-v1` ticket, verify mandatory Diagnosed? and the Designed? manifest: its raw-byte SHA-256, every covered document, byte-identical `plan.draft.md` and `plan.md`, and `approvedCopies: [{ "from": "plan.draft.md", "to": "plan.md" }]`. Existing tickets retain their original gates and skips; do not infer `full-v1` from missing `track`. Verify legacy single-document hashes against raw document bytes. Unverifiable approval blocks implementation, not read-only resume.
 2. Call `create_session`:
    - `title`: `<KEY> - ▶️ - <session goal>` (for example `APP-123 - ▶️ - Implement outbox retry on timeout`). The session keeps it current. See "Session title" in the `ticket` skill.
    - `workspace`: the path of the checkout from `repo.checkouts` (read the config with `forge.mjs config --json`, see the `forge` rule), or the repository of the task.
@@ -36,6 +36,7 @@ flowchart LR
    - `relationship`: omit it for work on the current ticket. Use `independent` only for an unrelated task.
 3. Write a self-contained `prompt`:
    - the goal, and the paths to the approved `plan.md` and to `map.md` (the code map of the area)
+   - the ticket's explicit workflow marker or original legacy process, README, and approval manifest/record paths; revalidate the exact approved revisions before editing, and stop if stale or unverifiable
    - the branch name from `repo.branchPattern` (see "Worktrees" in the `ticket` skill)
    - the scope, and what is out of scope
    - the stop condition: "Stop after the tests pass and report. Do not push or create a change request."
@@ -85,7 +86,7 @@ Never create a change request until step 7 is done.
 
 ## 🔁 Hand-off
 
-- Plan → implement: the lead session writes and gets approval for `plan.md`, then starts the implementer (above).
+- Plan → implement: the lead session obtains one approval over the exact displayed revision set, including the identical draft/approved plan pair for new manifests, then starts the implementer (above). Native plan-mode approval alone does not approve the ticket gate.
 - More work for a running session: `send_message` with `delivery: queue`. Use `steer` only to correct the active turn.
 - Each message states the goal, the scope, and the stop condition.
 - `send_message` does not wait for a reply. Do not poll. Tell the user that the message is sent, then stop.

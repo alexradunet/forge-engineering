@@ -28,10 +28,13 @@ export function parseFile(text, file = 'config') {
   const src = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
   const data = {};
   let body = src;
-  const fm = /^---\n([\s\S]*?)\n---(\n|$)/.exec(src);
+  const fm = /^---\n(?:([\s\S]*?)\n)?---(?:\n|$)/.exec(src);
+  if (/^---(?:\n|$)/.test(src) && !fm) {
+    throw new ForgeError(`${file}: frontmatter is missing its closing "---" delimiter.`, 'bad-config');
+  }
   if (fm) {
     body = src.slice(fm[0].length);
-    for (const line of fm[1].split('\n')) {
+    for (const line of (fm[1] ?? '').split('\n')) {
       if (/^\s*(#|$)/.test(line)) continue;
       const kv = /^([A-Za-z][A-Za-z0-9_-]*):(.*)$/.exec(line);
       if (!kv) throw new ForgeError(`${file}: the frontmatter line "${line}" is not "key: value". forge config uses flat keys only.`, 'bad-config');

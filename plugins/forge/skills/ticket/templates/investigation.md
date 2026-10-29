@@ -10,7 +10,7 @@ updated: <yyyy-mm-dd>
 
 > **TL;DR:** <max 3 lines: what we found and what it means for the plan>
 >
-> **What I need from you:** GO on Diagnosed? (recommended gate), or skip it.
+> **What I need from you:** GO on Diagnosed? for the displayed investigation and evidence revisions. This gate is required before planning on every new ticket.
 >
 > **Reading time:** about <n> minutes.
 

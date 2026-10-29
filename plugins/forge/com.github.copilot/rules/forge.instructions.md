@@ -21,6 +21,12 @@ When `where` fails, or the wiki or config is missing, tell the user to say "set 
 When `config` or `run` says `Not approved`, show the files and their changes. Run `forge.mjs trust approve` only after the user says yes.
 A ticket lives in the wiki of the repository where it starts. Other wikis get only a link to it.
 
+New tickets use `workflow: full-v1`, with full research, briefing/interview, and mandatory
+Diagnosed? before planning; no sizing selection or `track` field. Existing S/M/L and
+trackless tickets keep their original phases, gates, and skips. Never infer workflow,
+state, or approval from missing metadata. The `ticket` skill defines revision evidence
+and affected-action blocking; read-only resume remains available.
+
 ## 🪟 VS Code Agents window
 
 forge runs in the VS Code Agents window, with the Copilot harness and the Agent Host. Write every answer for that window.
@@ -83,10 +89,10 @@ Do not add an MCP server for a capability that a CLI already covers. Do not swit
 
 A write capability changes something outside the workspace. Before each one:
 
-1. Draft the text in the ticket `outbox/` folder, and run the Sendable? gate (the `ticket` skill).
+1. Draft the text in the ticket `outbox/` folder, and run the Sendable? gate (the `ticket` skill). Its hashed manifest binds this exact draft plus exact `command` and `target`; sidecar values must match. README gate `doc` names the draft, never its sidecar. Any command or target change requires fresh explicit approval.
 2. Show the exact command, the target, and the text. Wait for an explicit "yes" for this one write.
 3. Pass long text through a file in the system temp folder: `forge-<key>-body.md`. Delete the file after the write.
-4. Record the URL or id in the outbox file (`status: sent`) and in `log.md`.
+4. After GO, create `outbox/<name>.approval.json` outside the hashed set with `version: 1`, exact `doc`, `status: approved`, `approval_manifest`, `approval_hash`, `approval_date`, exact `target`, and exact `command`. After sending, set sidecar `status: sent` and `result` to the returned URL/id, and record it in `log.md`. Never stamp metadata into the approved draft or reuse one approval for another write.
 
 Never, with any tool:
 

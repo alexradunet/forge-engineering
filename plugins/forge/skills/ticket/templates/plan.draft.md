@@ -14,6 +14,12 @@ updated: <yyyy-mm-dd>
 >
 > **Reading time:** about <n> minutes.
 
+Before review, stage `plan.md` as a byte-identical copy of this draft. The Designed?
+manifest lists both plan files, `decisions.md`, and `test-plan.md`, with their raw-byte
+SHA-256 hashes, and `approvedCopies: [{ "from": "plan.draft.md", "to": "plan.md" }]`.
+GO approves the whole displayed revision set. The staged plan is not permission to
+implement before approval. Keep the approval record outside these hashed documents.
+
 ## 📊 At a glance
 
 | | |

@@ -37,12 +37,16 @@ to read the current [VS Code documentation](https://code.visualstudio.com/docs/a
 
 ### 🔄 Update forge
 
-VS Code has no update action for a plugin from **Install Plugin from Source**. An uninstall and a new install can reuse the old clone
-(seen in VS Code 1.144). Update the clone, then run **Developer: Reload Window**:
+In **Chat: Open Customizations**, select **Plugins**, then **Check for and Apply Updates**
+(the refresh icon) for the installed-plugin group. Alternatively, run **Chat: Update Plugins**.
+These are the current [documented update controls](https://code.visualstudio.com/docs/agent-customization/agent-plugins#_update-plugins),
+checked against the [VS Code 1.144 release notes](https://code.visualstudio.com/updates/v1_144).
 
-```sh
-git -C ~/.vscode/agent-plugins/github.com/alexradunet/forge-engineering pull --ff-only
-```
+Manage CLI-installed plugins in the interface where you installed them; the `/plugin`
+commands and the editor have separate inventories. For a manually registered local
+source checkout, inspect that installation's actual path and update it through Git
+only after reviewing its state, then reload VS Code. Do not assume one install root
+or use uninstall/reinstall as an update workaround.
 
 "check forge" reports when the installed plugin is behind its remote.
 
@@ -74,14 +78,14 @@ Setup also offers a separate private `<repo>-wiki` repository, or a local-only w
 | `plugins/forge/skills/` | `ticket`, `agents`, `wiki`, `daily-recap`, `forge-setup`, `learning-mode` |
 | `plugins/forge/com.github.copilot/extensions/` | Read-only ticket dashboard canvas |
 | `plugins/forge/templates/config/` | Config templates |
-| `plugins/forge/scripts/` | `forge.mjs` (setup, config, trust, wiki scripts), `cred.mjs`, `jenkins.mjs` |
+| `plugins/forge/scripts/` | `forge.mjs` (setup, config, trust, lint, wiki scripts), `cred.mjs`, `jenkins.mjs` |
 | `docs/` | [config.md](docs/config.md) (config format) and [wiki.md](docs/wiki.md) (sharing and scripts) |
 
 ## 🧩 Skills
 
 | Skill | Use |
 |---|---|
-| `ticket` | One folder per work item in `<wiki>/raw/tickets/<key>`, size tracks S/M/L, review gates, code map, evidence, outbox |
+| `ticket` | One folder per work item in `<wiki>/raw/tickets/<key>`, full research and investigation, review gates, code map, evidence, outbox |
 | `agents` | Implementer sessions in worktrees, reviewer subagents, hand-off, session status |
 | `wiki` | Query, record, and lint the team wiki |
 | `daily-recap` | "Prepare my daily" (done, plan, blockers), with or without a daily meeting, and "record the daily outcome" |
@@ -91,13 +95,22 @@ Setup also offers a separate private `<repo>-wiki` repository, or a local-only w
 ## 🎫 Ticket work
 
 1. Say "start APP-42" or "resume APP-42".
-2. Confirm the proposed track:
-   - **S** small: plan, code, and close gates only.
-   - **M** medium (default): one combined context and scope gate (`Briefed?`), then plan, code, and close.
-   - **L** large: the full flow with the visual briefing.
-3. Read gate documents, and comment with VS Code comment threads. Approve a gate in the approval form.
+2. Every new ticket uses `workflow: full-v1`, with no sizing question or `track` field:
+   research → **Understood?** → visual briefing → scope interview → **Agreed?** →
+   investigation → mandatory **Diagnosed?** → plan → **Designed?**.
+3. Read and comment on the gate documents. One explicit user approval covers the
+   displayed file/revision set, recorded in a SHA-256 manifest. Small fixes follow
+   the same phases; unavailable sources and test gaps are recorded, not treated as safety evidence.
 4. At Implement, the `agents` skill starts a session with **New Worktree**.
-5. Say "close APP-42" to distill the folder into wiki pages.
+5. Complete **Shippable?**, **Sendable?** for each external write, and Evidence Testing.
+   QA handover runs only when configured. Say "close APP-42"; **Learned?** approves
+   distillation into wiki pages and archive.
+
+Existing S/M/L and trackless tickets retain their original phases, gates, and skips,
+including recommended rather than mandatory Diagnosed?. Briefed? remains legacy-only.
+Missing `track` never identifies the new workflow. Resume reports missing or stale
+approval evidence and blocks only the affected action, not unrelated read-only work.
+See the [ticket workflow contract](plugins/forge/skills/ticket/SKILL.md#-workflow).
 
 The agent never merges. It asks before every write to the tracker, the repository host, or the CI.
 
@@ -130,7 +143,7 @@ and groups the open tickets by who must act: you, the agent, a colleague, or nob
 Forge also bundles a read-only canvas. Say **"open the Forge ticket dashboard"**.
 The agent supplies the repository wiki path from `forge.mjs where --json`.
 
-- See tickets by state, with their phase, track, next action, waiting reason, and gates.
+- See tickets by state, with their phase, next action, waiting reason, and gates; recorded tracks appear only as legacy context.
 - Search tickets, filter by state, and include done tickets.
 - Expand a card for its branch, worktree, source path, gates, and change links.
 - The dashboard reads ticket files every 5 seconds. **Refresh** reads them immediately.
@@ -160,8 +173,34 @@ for `gates` and `changes`. Text blocks support strip (`-`) and keep (`+`) chompi
 Lists can use inline arrays, inline objects, or indented fields.
 YAML anchors, tags, and explicit block indentation indicators are not supported;
 the dashboard reports them as read errors. Existing tickets need no rewrite for supported YAML forms.
-Older tickets without a track remain visible as `Track Unspecified`. The reader never infers their size
-or changes their files. An unknown track value still produces a read error.
+New `full-v1` tickets have no track badge or missing-track warning. Existing trackless
+tickets remain visible without an inferred workflow or size. Recorded S/M/L labels
+are legacy context only. An unknown track value still produces a read error.
+CLI validation and the dashboard use the shared parser in
+[`scripts/lib/ticket.mjs`](plugins/forge/scripts/lib/ticket.mjs).
+
+## 🔎 Local validation
+
+```sh
+node "<plugin>/scripts/forge.mjs" lint [--wiki "<path>"] [--json] [--fix]
+```
+
+Default lint is read-only. It checks ticket metadata, workflow/gate agreement,
+approval revisions, and canonical wiki metadata without inferring workflow, state,
+or approval. Findings name the file, line when available, code, severity, and remedy.
+Invalid input fails without hiding valid files.
+Errors exit 1; warnings alone exit 0.
+Index membership, semantic contradictions, HTTP retrieval, and claim truth remain
+manual checks; lint does not prove them.
+
+Explicit `--fix` only adds a missing final newline in an **unapproved** `*.draft.md`
+whose metadata explicitly says `status: draft`,
+preserving all other bytes and line-ending style. Direct and combined approval
+references protect drafts from repair. Each repair is reported and appended to the
+ticket's `repair-log.jsonl` with `started`/`applied` rows and before/after hashes;
+a second pass changes nothing. It never repairs stale
+approvals, migrates workflows, deletes pages, or publishes content.
+See [validation and source limits](docs/wiki.md#local-validation-and-source-limits).
 
 ## 📚 Shared wiki
 
@@ -172,6 +211,10 @@ Trust approvals and credentials stay outside the wiki. See [wiki.md](docs/wiki.m
 ## 🛠️ Develop
 
 - `npm test` runs the tests.
+- [Behavioral evaluation](docs/evaluation.md) describes manual runs through the
+  supported harness, trace evidence, and execution approval. Deterministic fixtures
+  and document checks do not establish model compliance; do not claim a behavioral
+  pass without the required harness run evidence.
 - To test a local checkout, run **Chat: Install Plugin from Source** with the `plugins/forge` folder.
   First uninstall or disable the forge plugin from the GitHub URL. With both installed, VS Code loads two plugins named `forge`, and the
   rules and skills appear two times. To go back, remove the local folder in **Chat: Open Customizations**, **Plugins**
