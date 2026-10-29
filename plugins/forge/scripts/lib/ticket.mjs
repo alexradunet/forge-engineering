@@ -182,11 +182,16 @@ export function parseTicket(text) {
     }
     if (change.label != null && typeof change.label !== 'string') throw new Error('Invalid change request label.');
   }
+  const source = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
+  const fmMatch = /^---\n[\s\S]*?\n---(?:\n|$)/.exec(source);
+  const body = fmMatch ? source.slice(fmMatch[0].length) : '';
+  const heroMatch = /^>\s*(?:🔥\s*)?(.+)$/m.exec(body);
+  const summary = heroMatch ? heroMatch[1].trim() : '';
   return {
     key: data.key, title: data.title, phase: data.phase, state: data.state,
     workflow: data.workflow ?? null,
     track: data.workflow === 'full-v1' ? null : data.track ?? 'Unspecified', next: data.next, waitingOn: data.waiting_on ?? '',
     branch: data.branch ?? '', worktree: data.worktree ?? '', updated: data.updated ?? '',
-    item: data.item ?? '', gates: data.gates ?? [], changes: data.changes ?? [],
+    item: data.item ?? '', summary, gates: data.gates ?? [], changes: data.changes ?? [],
   };
 }

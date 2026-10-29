@@ -1,17 +1,18 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { readTickets } from './tickets.mjs';
+import { readTicketDoc, readTickets } from './tickets.mjs';
 
 const assets = new Map([
   ['/', ['text/html; charset=utf-8', new URL('./ui.html', import.meta.url)]],
   ['/ui.js', ['text/javascript; charset=utf-8', new URL('./ui.js', import.meta.url)]],
   ['/ui.css', ['text/css; charset=utf-8', new URL('./ui.css', import.meta.url)]],
+  ['/vendor/mermaid.min.js', ['text/javascript; charset=utf-8', new URL('./vendor/mermaid.min.js', import.meta.url)]],
 ]);
 const headers = {
   'Cache-Control': 'no-store',
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'no-referrer',
-  'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'",
+  'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'",
 };
 
 export async function startDashboard(wikiPath, reportError) {
@@ -32,6 +33,24 @@ export async function startDashboard(wikiPath, reportError) {
       if (url.origin !== origin || url.search) return send(400, 'text/plain', 'Invalid request URL.');
       if (url.pathname === '/state') {
         return send(200, 'application/json; charset=utf-8', JSON.stringify(await readTickets(wikiPath)));
+      }
+      const docMatch = /^\/tickets\/([^/]+)\/docs\/(.+)$/.exec(url.pathname);
+      if (docMatch) {
+        let folder;
+        let docPath;
+        try {
+          folder = decodeURIComponent(docMatch[1]);
+          docPath = docMatch[2].split('/').map(decodeURIComponent).join('/');
+        } catch {
+          return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid URL encoding.' }));
+        }
+        try {
+          const doc = await readTicketDoc(wikiPath, folder, docPath);
+          return send(200, 'application/json; charset=utf-8', JSON.stringify(doc));
+        } catch (error) {
+          const status = error.code === 'ENOENT' ? 404 : 400;
+          return send(status, 'application/json; charset=utf-8', JSON.stringify({ error: error.message }));
+        }
       }
       const asset = assets.get(url.pathname);
       if (!asset) return send(404, 'text/plain', 'Not found');

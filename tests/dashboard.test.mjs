@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { request } from 'node:http';
 import { runInNewContext } from 'node:vm';
-import { parseTicket, readTickets, validateInput } from '../plugins/forge/com.github.copilot/extensions/ticket-dashboard/tickets.mjs';
+import { parseDocument, parseTicket, readTicketDoc, readTickets, validateInput } from '../plugins/forge/com.github.copilot/extensions/ticket-dashboard/tickets.mjs';
 import { dashboardOptions } from '../plugins/forge/com.github.copilot/extensions/ticket-dashboard/dashboard.mjs';
 
 function ticket(fields = '') {
@@ -220,7 +220,7 @@ test('canvas opens, reads live state, reuses its server, and closes it', async (
   const page = await fetch(first.url);
   assert.equal(page.status, 200);
   assert.match(await page.text(), /Ticket dashboard/);
-  for (const asset of ['ui.js', 'ui.css']) assert.equal((await fetch(new URL(asset, first.url))).status, 200);
+  for (const asset of ['ui.js', 'ui.css', 'vendor/mermaid.min.js']) assert.equal((await fetch(new URL(asset, first.url))).status, 200);
   const action = options.actions.find((entry) => entry.name === 'refresh');
   assert.equal((await action.handler({ instanceId: ctx.instanceId })).tickets[0].state, 'active');
   await writeFile(file, ticket().replace('state: active', 'state: waiting'));
@@ -290,6 +290,58 @@ test('HTTP server rejects foreign origins, rebinding, unknown routes, queries, a
   assert.equal(failure.status, 500);
   assert.match((await failure.json()).error, /ENOENT/);
   assert.equal(errors.length, 1);
+});
+
+test('reader discovers categorized ticket documents, detects Mermaid blocks, and serves them safely over HTTP', async (t) => {
+  const wiki = await fixture(t);
+  await put(wiki, 'app-42', `${ticket().trimEnd()}\n\n> 🔥 Cut N+1 queries from 312 to 2\n`);
+  const dir = path.join(wiki, 'raw', 'tickets', 'app-42');
+  await mkdir(path.join(dir, 'evidence'), { recursive: true });
+  await mkdir(path.join(dir, 'outbox'), { recursive: true });
+  await writeFile(path.join(dir, 'map.md'), '---\ntype: map\nticket: APP-42\nupdated: 2026-10-28\n---\n# 🗺️ Code map — APP-42\n```mermaid\nflowchart LR\n  A --> B\n```\n');
+  await writeFile(path.join(dir, 'context.md'), '---\ntype: context\ngate: Understood?\nupdated: 2026-10-28\n---\n# 🧭 Context\n> 🔥 Stakes line\n');
+  await writeFile(path.join(dir, 'evidence', '2026-10-28-spike.md'), '---\ndate: 2026-10-28\n---\n# Spike result\n');
+  await writeFile(path.join(dir, 'outbox', 'pr.draft.md'), '---\ntype: outbox\nstatus: draft\ntarget: change\n---\n# PR draft\n');
+
+  const state = await readTickets(wiki);
+  assert.equal(state.tickets.length, 1);
+  const found = state.tickets[0];
+  assert.equal(found.folder, 'app-42');
+  assert.equal(found.summary, 'Cut N+1 queries from 312 to 2');
+  assert.deepEqual(
+    found.docs.map((d) => [d.path, d.category, d.hasMermaid]),
+    [
+      ['README.md', 'core', false],
+      ['map.md', 'core', true],
+      ['context.md', 'gate', false],
+      ['evidence/2026-10-28-spike.md', 'evidence', false],
+      ['outbox/pr.draft.md', 'outbox', false],
+    ],
+  );
+
+  const parsedDoc = parseDocument(await readFile(path.join(dir, 'context.md'), 'utf8'), 'context.md');
+  assert.equal(parsedDoc.gate, 'Understood?');
+  assert.equal(parsedDoc.hero, 'Stakes line');
+
+  const { options } = canvas(t);
+  const { url } = await options.open({ instanceId: 'test', input: { wikiPath: wiki } });
+  const mapRes = await fetch(new URL('tickets/app-42/docs/map.md', url));
+  assert.equal(mapRes.status, 200);
+  const mapJson = await mapRes.json();
+  assert.equal(mapJson.category, 'core');
+  assert.match(mapJson.body, /flowchart LR/);
+
+  const evRes = await fetch(new URL('tickets/app-42/docs/evidence/2026-10-28-spike.md', url));
+  assert.equal(evRes.status, 200);
+  assert.equal((await evRes.json()).category, 'evidence');
+
+  // Path traversal, non-md files, and unknown subdirectories are rejected
+  await assert.rejects(readTicketDoc(wiki, '../outside', 'README.md'), /Invalid ticket folder/);
+  await assert.rejects(readTicketDoc(wiki, 'app-42', '../README.md'), /Invalid document/);
+  await assert.rejects(readTicketDoc(wiki, 'app-42', 'secrets/token.md'), /Invalid document subdirectory/);
+  await assert.rejects(readTicketDoc(wiki, 'app-42', 'notes.txt'), /Invalid document path/);
+  assert.equal((await fetch(new URL('tickets/app-42/docs/missing.md', url))).status, 404);
+  assert.equal((await fetch(new URL('tickets/app-42/docs/other/file.md', url))).status, 400);
 });
 
 test('Agent Plugins manifest declares a namespaced canvas extension', async () => {

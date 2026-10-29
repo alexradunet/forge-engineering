@@ -143,9 +143,9 @@ and groups the open tickets by who must act: you, the agent, a colleague, or nob
 Forge also bundles a read-only canvas. Say **"open the Forge ticket dashboard"**.
 The agent supplies the repository wiki path from `forge.mjs where --json`.
 
-- See tickets by state, with their phase, next action, waiting reason, and gates; recorded tracks appear only as legacy context.
-- Search tickets, filter by state, and include done tickets.
-- Expand a card for its branch, worktree, source path, gates, and change links.
+- Start on a clean overview grid with 4 KPI cards, state filter pills, search, and segmented gate progress bars; recorded tracks appear only as legacy context.
+- Click any ticket card to open its full-screen **Ticket Cockpit**: phase stepper, hero focus, categorized document shelves, review gates, and change requests.
+- Browse ticket documents by category (**Core & Map**, **Gate Docs**, **Evidence & Spikes**, **Outbox Drafts**, **Logs & Decisions**) and read them inside the canvas with rendered **Mermaid diagrams** and collapsible `📂` detail sections.
 - The dashboard reads ticket files every 5 seconds. **Refresh** reads them immediately.
 - Empty ticket folders show an empty board. Invalid files show errors without hiding valid tickets.
 
