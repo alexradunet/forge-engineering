@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolve } from '../plugins/forge/scripts/lib/repo.mjs';
-import { detect, hostKind, initWiki, bind, seed } from '../plugins/forge/scripts/lib/setup.mjs';
+import { detect, hostKind, initWiki, bind, seed, findCiFiles, keyHints, branchPatternHint, suggestValues } from '../plugins/forge/scripts/lib/setup.mjs';
 import { loadConfig, parseFile } from '../plugins/forge/scripts/lib/config.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -167,4 +167,75 @@ test('seed preserves an enabled learning policy, even with force', () => {
     assert.equal(readFileSync(policyFile, 'utf8'), policy);
     assert.equal(loadConfig(first.configDir).config.policy.learningMode, true);
   }
+});
+
+test('findCiFiles finds the CI config of the checkout', () => {
+  const dir = path.join(root, 'ci-files');
+  mkdirSync(path.join(dir, '.github', 'workflows'), { recursive: true });
+  assert.deepEqual(findCiFiles(dir), []);
+  writeFileSync(path.join(dir, '.github', 'workflows', 'ci.yml'), 'on: push\n');
+  writeFileSync(path.join(dir, 'Jenkinsfile'), 'pipeline {}\n');
+  assert.deepEqual(findCiFiles(dir).map((f) => f.ci), ['github-actions', 'jenkins']);
+  assert.deepEqual(findCiFiles(undefined), []);
+});
+
+test('keyHints and branchPatternHint read keys and branch shapes', () => {
+  const hints = keyHints(['feature/MFD-12-fix-login', 'MFD-13 Add export', 'Use UTF-8 and SHA-256', 'MFD-14: tidy', 'OPS-2 bump']);
+  assert.deepEqual(hints.map((h) => [h.prefix, h.count]), [['MFD', 3], ['OPS', 1]]);
+  assert.equal(hints[0].example, 'MFD-12');
+  assert.equal(branchPatternHint(['feature/MFD-12-fix-login', 'origin/feature/MFD-15-new-api', 'main'], 'MFD'), 'feature/{KEY}-{slug}');
+  assert.equal(branchPatternHint(['mfd-1-a', 'mfd-2-b'], 'MFD'), '{key}-{slug}');
+  assert.equal(branchPatternHint(['MFD-1-a'], 'MFD'), null);
+  assert.equal(branchPatternHint(['x'], null), null);
+});
+
+test('suggestValues fills values for each tracker, repo, and CI choice', () => {
+  const info = { remote: 'https://github.com/owner/app', path: path.join(root, 'app'), defaultBranch: 'master', keyHints: [], branchPattern: null };
+  const gh = suggestValues(info, { tracker: 'github', repo: 'github', ci: 'github-actions' });
+  assert.deepEqual(gh.tracker, { prefix: 'APP', host: 'github.com', project: 'owner/app', itemUrl: 'https://github.com/owner/app/issues/{number}' });
+  assert.deepEqual(gh.repo, { changeName: 'PR', baseBranch: 'master', branchPattern: '{KEY}-{slug}', host: 'github.com' });
+  assert.deepEqual(gh.checkouts, [{ name: 'app', path: info.path, remote: 'owner/app', baseBranch: '' }]);
+  const gl = suggestValues({ ...info, remote: 'https://gitlab.example.com/group/app' }, { tracker: 'gitlab', repo: 'gitlab', ci: 'gitlab-ci' });
+  assert.equal(gl.tracker.itemUrl, 'https://gitlab.example.com/group/app/-/issues/{number}');
+  assert.equal(gl.repo.changeName, 'MR');
+  const jira = suggestValues({ ...info, keyHints: [{ prefix: 'MFD', count: 5 }], branchPattern: 'feature/{KEY}-{slug}' }, { tracker: 'jira', repo: 'github', ci: 'jenkins' });
+  assert.deepEqual(jira.tracker, { prefix: 'MFD', project: 'MFD', host: null, itemUrl: null });
+  assert.equal(jira.repo.branchPattern, 'feature/{KEY}-{slug}');
+  assert.deepEqual(jira.ci, { host: null });
+  assert.equal(suggestValues({ ...info, keyHints: [{ prefix: 'MFD', count: 2 }] }, { tracker: 'jira' }).tracker.prefix, null);
+  assert.equal(suggestValues(info, { tracker: 'local' }).tracker.prefix, 'ITEM');
+  const az = suggestValues({ ...info, remote: 'https://dev.azure.com/acme/web%20shop/_git/app' }, { tracker: 'other', repo: 'other', ci: 'azure-pipelines' });
+  assert.deepEqual(az.ci, { host: 'https://dev.azure.com/acme', project: 'web shop' });
+  assert.equal(az.checkouts[0].remote, 'https://dev.azure.com/acme/web%20shop/_git/app');
+  assert.equal(suggestValues({ ...info, remote: 'https://gitlab.com/g/app' }, { tracker: 'github', repo: 'github' }).tracker.project, null);
+});
+
+test('detect infers the default branch, CI files, keys, and values for a choice', () => {
+  const repoDir = path.join(root, 'infer');
+  mkdirSync(repoDir);
+  const git = (...a) => execFileSync('git', a, { cwd: repoDir, stdio: 'pipe' });
+  git('init', '-q', '-b', 'master');
+  git('config', 'user.email', 't@example.com');
+  git('config', 'user.name', 't');
+  writeFileSync(path.join(repoDir, '.gitlab-ci.yml'), 'test: {}\n');
+  git('add', '.');
+  git('commit', '-q', '-m', 'init');
+  for (const n of [1, 2, 3]) {
+    git('checkout', '-q', '-b', `feature/SHOP-${n}-step-${n}`);
+    git('commit', '-q', '--allow-empty', '-m', `SHOP-${n} step ${n}`);
+  }
+  git('checkout', '-q', 'master');
+  git('remote', 'add', 'origin', 'https://gitlab.com/acme/shop.git');
+  const where = resolve({ cwd: repoDir, env });
+  const d = detect(where, { probe: () => ({ ok: false, stdout: '' }) });
+  assert.equal(d.repo.defaultBranch, 'master');
+  assert.deepEqual(d.repo.ciFiles, [{ ci: 'gitlab-ci', file: '.gitlab-ci.yml' }]);
+  assert.equal(d.repo.keyHints[0].prefix, 'SHOP');
+  assert.equal(d.repo.branchPattern, 'feature/{KEY}-{slug}');
+  assert.equal(d.suggestion.ci, 'gitlab-ci');
+  assert.equal(d.suggestion.values.tracker.prefix, 'SHOP');
+  assert.equal(d.suggestion.values.repo.baseBranch, 'master');
+  const j = detect(where, { probe: () => ({ ok: false, stdout: '' }), choice: { tracker: 'jira', ci: 'jenkins' } });
+  assert.deepEqual(j.suggestion.valuesFor, { tracker: 'jira', repo: 'gitlab', ci: 'jenkins' });
+  assert.equal(j.suggestion.values.tracker.project, 'SHOP');
 });

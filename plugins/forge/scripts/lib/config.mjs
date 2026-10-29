@@ -100,15 +100,17 @@ export function validate(config) {
   return problems;
 }
 
-/** Loads the config folder. Missing files give the defaults. Invalid values throw. */
-export function loadConfig(configDir) {
+/**
+ * Builds and validates the config from file texts ({ tracker: text, ... }).
+ * A missing text gives the defaults of that file. Invalid values throw.
+ */
+export function buildConfig(texts, configDir = 'config') {
   const config = defaults();
-  const files = [];
   for (const kind of KINDS) {
+    const text = texts[kind];
+    if (text === undefined || text === null) continue;
     const file = path.join(configDir, `${kind}.md`);
-    if (!existsSync(file)) continue;
-    files.push(file);
-    const { data, body } = parseFile(readFileSync(file, 'utf8'), file);
+    const { data, body } = parseFile(text, file);
     for (const [k, v] of Object.entries(data)) if (v !== null) config[kind][k] = v;
     if (kind === 'tracker') {
       for (const row of parseTable(body, 'Queries')) if (row.name) config.tracker.queries[row.name] = row.query;
@@ -117,5 +119,18 @@ export function loadConfig(configDir) {
   }
   const problems = validate(config);
   if (problems.length) throw new ForgeError(`${configDir}: ${problems.join('; ')}`, 'bad-config');
-  return { configDir, config, files };
+  return config;
+}
+
+/** Loads the config folder. Missing files give the defaults. Invalid values throw. */
+export function loadConfig(configDir) {
+  const texts = {};
+  const files = [];
+  for (const kind of KINDS) {
+    const file = path.join(configDir, `${kind}.md`);
+    if (!existsSync(file)) continue;
+    files.push(file);
+    texts[kind] = readFileSync(file, 'utf8');
+  }
+  return { configDir, config: buildConfig(texts, configDir), files };
 }

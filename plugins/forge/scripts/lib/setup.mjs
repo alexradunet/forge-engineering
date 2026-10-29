@@ -40,8 +40,134 @@ export function hostKind(remote) {
   return 'other';
 }
 
+const CI_FILES = [
+  ['github-actions', '.github/workflows', (d) => readdirSync(d).some((f) => /\.ya?ml$/i.test(f))],
+  ['gitlab-ci', '.gitlab-ci.yml'],
+  ['jenkins', 'Jenkinsfile'],
+  ['azure-pipelines', 'azure-pipelines.yml'],
+  ['azure-pipelines', 'azure-pipelines.yaml'],
+];
+
+// Upper-case words that look like keys but are standards or encodings.
+const NOT_KEYS = new Set(['UTF', 'SHA', 'ISO', 'RFC', 'CVE', 'HTTP', 'TLS', 'SSL', 'PEP', 'ES', 'MD', 'AES', 'RSA', 'X', 'WIP', 'V']);
+const KEY_RE = /(?<![A-Za-z0-9])([A-Z][A-Z0-9]{1,9})-(\d+)(?![A-Za-z0-9])/g;
+
+/** CI config files in the checkout, as [{ ci, file }]. */
+export function findCiFiles(dir) {
+  const found = [];
+  for (const [ci, rel, test] of CI_FILES) {
+    const p = path.join(dir ?? '', rel);
+    try {
+      if (dir && existsSync(p) && (!test || test(p))) found.push({ ci, file: rel });
+    } catch { /* unreadable */ }
+  }
+  return found;
+}
+
+/** Work item key prefixes in branch names and commit subjects, most frequent first. */
+export function keyHints(texts) {
+  const counts = new Map();
+  for (const t of texts) {
+    for (const m of t.matchAll(KEY_RE)) {
+      if (NOT_KEYS.has(m[1])) continue;
+      const c = counts.get(m[1]) ?? { prefix: m[1], count: 0, example: `${m[1]}-${m[2]}` };
+      c.count++;
+      counts.set(m[1], c);
+    }
+  }
+  return [...counts.values()].sort((a, b) => b.count - a.count).slice(0, 3);
+}
+
+/** The most common branch shape for a key prefix, for example "feature/{KEY}-{slug}". */
+export function branchPatternHint(branches, prefix) {
+  if (!prefix) return null;
+  const counts = new Map();
+  const re = new RegExp(`(?<![A-Za-z0-9])(${prefix}|${prefix.toLowerCase()})-\\d+(-[a-z0-9][a-z0-9-]*)?$`);
+  for (const b of branches) {
+    const name = b.replace(/^origin\//, '');
+    const m = re.exec(name);
+    if (!m) continue;
+    const pattern = name.slice(0, m.index) + (m[1] === prefix ? '{KEY}' : '{key}') + (m[2] ? '-{slug}' : '');
+    counts.set(pattern, (counts.get(pattern) ?? 0) + 1);
+  }
+  const best = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+  return best && best[1] >= 2 ? best[0] : null;
+}
+
+function gitInfo(dir, git) {
+  if (!dir) return { defaultBranch: null, branches: [], subjects: [] };
+  const out = (args) => { const r = git(args, dir); return r.ok ? r.stdout : ''; };
+  let defaultBranch = out(['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']).replace(/^origin\//, '') || null;
+  if (!defaultBranch) {
+    for (const b of ['main', 'master']) {
+      if (git(['show-ref', '--verify', '--quiet', `refs/remotes/origin/${b}`], dir).ok
+        || git(['show-ref', '--verify', '--quiet', `refs/heads/${b}`], dir).ok) { defaultBranch = b; break; }
+    }
+  }
+  const lines = (s) => s.split(/\r?\n/).filter(Boolean);
+  const branches = lines(out(['for-each-ref', '--count=500', '--format=%(refname:short)', 'refs/heads', 'refs/remotes/origin']))
+    .filter((b) => b !== 'origin' && b !== 'origin/HEAD');
+  const subjects = lines(out(['log', '-n', '200', '--format=%s']));
+  return { defaultBranch, branches, subjects };
+}
+
+function slugOf(remote) {
+  try { return new URL(remote).pathname.replace(/^\//, '').replace(/\.git$/, '') || null; } catch { return null; }
+}
+
+/** A key prefix from the repository name, for example forge-engineering gives FORGE. */
+function prefixFromName(name) {
+  const word = String(name ?? '').toUpperCase().split(/[^A-Z0-9]+/).find((w) => /^[A-Z]/.test(w));
+  return word ? word.slice(0, 10) : null;
+}
+
+/**
+ * Frontmatter values and table rows for a choice of tracker, repo, and CI.
+ * A null value means "ask the user". Templates give the rest.
+ */
+export function suggestValues(info, choice) {
+  const { remote, path: repoPath, defaultBranch, keyHints: hints = [], branchPattern } = info;
+  const kind = hostKind(remote);
+  const host = remote ? new URL(remote).host : null;
+  const slug = slugOf(remote);
+  const hinted = hints[0]?.count >= 3 ? hints[0].prefix : null;
+  const prefix = hinted ?? prefixFromName(slug?.split('/').pop() ?? path.basename(repoPath ?? ''));
+  const tracker = { prefix };
+  if (choice.tracker === 'github' || choice.tracker === 'gitlab') {
+    const same = choice.tracker === kind;
+    Object.assign(tracker, {
+      host: same ? host : null,
+      project: same ? slug : null,
+      itemUrl: same ? `${remote}${choice.tracker === 'gitlab' ? '/-' : ''}/issues/{number}` : null,
+    });
+  } else if (choice.tracker === 'jira') {
+    Object.assign(tracker, { prefix: hinted, project: hinted, host: null, itemUrl: null });
+  } else if (choice.tracker === 'local') {
+    tracker.prefix = hinted ?? 'ITEM';
+  }
+  const repo = {
+    changeName: choice.repo === 'gitlab' ? 'MR' : 'PR',
+    baseBranch: defaultBranch ?? 'main',
+    branchPattern: branchPattern ?? '{KEY}-{slug}',
+  };
+  if (choice.repo === 'github' || choice.repo === 'gitlab') repo.host = choice.repo === kind ? host : null;
+  const ci = {};
+  if (choice.ci === 'jenkins') ci.host = null;
+  if (choice.ci === 'azure-pipelines') {
+    const m = host === 'dev.azure.com' ? /^([^/]+)\/([^/]+)/.exec(slug ?? '') : null;
+    Object.assign(ci, { host: m ? `https://dev.azure.com/${m[1]}` : null, project: m ? decodeURIComponent(m[2]) : null });
+  }
+  const checkouts = repoPath ? [{
+    name: path.basename(repoPath),
+    path: repoPath,
+    remote: kind === 'github' || kind === 'gitlab' ? slug : remote,
+    baseBranch: '',
+  }] : [];
+  return { tracker, repo, ci, checkouts };
+}
+
 /** Detects the host, the CLIs and their login, the repo visibility, and the wiki state. */
-export function detect(where, { platform = process.platform, probe = run } = {}) {
+export function detect(where, { platform = process.platform, probe = run, git = (args, cwd) => run('git', args, cwd), choice = {} } = {}) {
   const kind = hostKind(where.repo.remote);
   const tools = {};
   for (const [name, t] of Object.entries(TOOLS)) {
@@ -86,15 +212,26 @@ export function detect(where, { platform = process.platform, probe = run } = {})
       };
   }
 
+  const g = gitInfo(where.repo.path, git);
+  const ciFiles = findCiFiles(where.repo.path);
+  const hints = keyHints([...g.branches, ...g.subjects]);
+  const branchPattern = branchPatternHint(g.branches, hints[0]?.prefix);
+  const suggested = {
+    tracker: kind === 'github' ? 'github' : kind === 'gitlab' ? 'gitlab' : 'local',
+    repo: kind === 'github' || kind === 'gitlab' ? kind : 'other',
+    ci: ciFiles[0]?.ci ?? (kind === 'github' ? 'github-actions' : kind === 'gitlab' ? 'gitlab-ci' : 'other'),
+  };
+  const picked = { ...suggested, ...Object.fromEntries(Object.entries(choice).filter(([, v]) => v)) };
+
   return {
-    repo: { ...where.repo, host: kind, visibility, wikiEnabled },
+    repo: { ...where.repo, host: kind, visibility, wikiEnabled, defaultBranch: g.defaultBranch, ciFiles, keyHints: hints, branchPattern },
     tools,
     wiki: { path: wikiDir, exists: where.wiki.exists, git: wikiGit, remote: wikiRemote, bound: where.wiki.bound, config },
     suggestion: {
-      tracker: kind === 'github' ? 'github' : kind === 'gitlab' ? 'gitlab' : 'local',
-      repo: kind === 'github' || kind === 'gitlab' ? kind : 'other',
-      ci: kind === 'github' ? 'github-actions' : kind === 'gitlab' ? 'gitlab-ci' : 'other',
+      ...suggested,
       wikiRemote: wikiRemoteSuggestion,
+      values: suggestValues({ remote: where.repo.remote, path: where.repo.path, defaultBranch: g.defaultBranch, keyHints: hints, branchPattern }, picked),
+      valuesFor: picked,
     },
   };
 }

@@ -26,10 +26,29 @@ flowchart LR
 2. Enter `https://github.com/alexradunet/forge-engineering`.
 3. Open your repository in the Agents window.
 4. In a chat, say "set up forge".
-5. Answer the setup form. The chat creates `../<repo>.wiki`, seeds the config, and checks each tool.
+5. Answer the two setup forms. The first form picks the tools; the second form sets the values.
 
 Needs: Node.js 20 or later, Git, and VS Code with agent plugins enabled (`chat.plugins.enabled`).
 forge runs on Windows, macOS, and Linux.
+
+Setup reads the repository first, so most answers are prefilled:
+
+- the host, the default branch, and the CI files (`.github/workflows`, `.gitlab-ci.yml`, `Jenkinsfile`, `azure-pipelines.yml`),
+- the work item key prefix from branch names and commit subjects, for example `MFD-123`,
+- the project, item URL, and main checkout for GitHub and GitLab.
+
+Then it creates `../<repo>.wiki`, seeds the config, writes your values with a validated command,
+asks you to approve the files by hash, and runs one live read for each tool.
+At the end, it offers the optional extras: policy hooks, learning mode, daily recap, and the ticket dashboard.
+
+| Say | Result |
+|---|---|
+| "set up forge" | First-time setup, or resume at the first open step |
+| "check forge" | `doctor`, plugin version, and VS Code release notes |
+| "switch the tracker to Jira" | Replace one config file and carry over the other values |
+| "finish forge setup" | Resume after a stop |
+
+`forge.mjs doctor` warns while a template placeholder, a missing checkout path, or a missing credential remains.
 
 forge targets the VS Code Agents window. VS Code changes each month. So the `forge` rule tells the agent
 to read the current [VS Code documentation](https://code.visualstudio.com/docs/agents/run/agents-window) and the
@@ -84,7 +103,7 @@ Setup also offers a separate private `<repo>-wiki` repository, or a local-only w
 | `agents` | Implementer sessions in worktrees, reviewer subagents, hand-off, session status |
 | `wiki` | Query, record, and lint the team wiki |
 | `daily-recap` | "Prepare my daily" (done, plan, blockers), with or without a daily meeting, and "record the daily outcome" |
-| `forge-setup` | "set up forge", "check forge", "repair forge" |
+| `forge-setup` | "set up forge", "check forge", "repair forge", "finish forge setup", "switch the tracker to GitLab" |
 | `learning-mode` | Optional 15-minute lessons from artifact questions, saved in the repository wiki |
 
 ## 🎫 Ticket work

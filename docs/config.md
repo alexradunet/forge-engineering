@@ -11,7 +11,8 @@ forge reads the team config from four Markdown files in `<wiki>/forge/config/`.
 | `policy.md` | policy values and the company hook sections | `policy` |
 
 The config travels with the wiki repository. Every clone of the wiki uses the same values.
-`forge-setup` seeds missing files from [templates/config](../plugins/forge/templates/config).
+`forge-setup` seeds missing files from [templates/config](../plugins/forge/templates/config),
+and fills the values with `forge.mjs config set` and `config row` (see **Edit values**).
 Edit them directly in the wiki. Clone or pull that wiki to share changes (see [wiki.md](wiki.md)).
 
 ```mermaid
@@ -56,6 +57,23 @@ itemUrl: https://gitlab.com/group/app/-/issues/{number}
 - `tracker.queries` is the **Queries** table. `repo.checkouts` is the **Checkouts** table.
 - A table cell cannot hold a `|` character.
 - A team can add keys. A command can then use them as `<file>.<key>`.
+
+## ✏️ Edit values
+
+Edit a file directly, or use the validated commands. They parse and validate the result first, and write nothing on a problem.
+
+```sh
+node "<plugin>/scripts/forge.mjs" config set "tracker.prefix=MFD" "repo.branchPattern=feature/{KEY}-{slug}"
+node "<plugin>/scripts/forge.mjs" config row checkouts "app" "C:\dev\app" "acme/app" "develop"
+node "<plugin>/scripts/forge.mjs" config row queries "team" "project = MFD AND component = Payments"
+node "<plugin>/scripts/forge.mjs" config row checkouts "old" --delete
+```
+
+- `config set` replaces a key, or adds it at the end of the frontmatter. It adds quotes to a value that starts with `{`.
+- `config row` replaces the row with the same first cell, or appends a new row. Missing cells stay empty.
+- Both keep the Markdown body, the line endings, and a byte order mark.
+- Both print the changed files. Approve them with `forge.mjs trust` before forge uses them.
+- `forge.mjs detect --tracker <t> --repo <r> --ci <c>` prints suggested values for a choice (`suggestion.values`).
 
 ## 🧱 Values
 
@@ -186,6 +204,10 @@ forge is **CLI first**. The `forge` rule, "Tool choice: CLI first", gives the or
 - `forge.mjs config --json` reads the config. It fails on a bad value: a lower-case prefix, a bad `itemUrl` or `branchPattern`, an unknown day, or a policy value of the wrong type.
 - `forge.mjs config` fails closed when a file in `<wiki>/forge` is new or changed and you did not approve it (`forge.mjs trust`).
 - `forge.mjs doctor` reports the wiki, each config file and its provider, a missing CLI, and trust.
+- `doctor` also warns on setup gaps:
+  - `config:placeholder`: a template value remains, for example `example.atlassian.net`, `owner/app`, `jenkins.example.com`, the `C:\dev\app` checkout, or a template `team` query.
+  - `config:checkouts`: no Checkouts row, or the main checkout path does not exist on this machine.
+  - `cred:<name>`: a credential that the config names (`cred.mjs set <name>`, `--cred <name>`, or Jenkins) is not stored. `doctor` checks presence only and never reads the value.
 - A missing file gives the defaults. Every capability is then `manual`.
 
 ## 🔒 Rules

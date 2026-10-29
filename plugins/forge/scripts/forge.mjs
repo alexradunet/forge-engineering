@@ -4,9 +4,11 @@
 // Commands:
 //   where   [--wiki <dir>]   the repository, its wiki, and the config folder (JSON)
 //   config  [--wiki <dir>]   the team config (JSON)
+//   config set <file>.<key>=<value> ...   set frontmatter values (validated; writes nothing on a problem)
+//   config row <checkouts|queries> <name> [cells...] [--delete]   add, replace, or delete a table row
 //   doctor  [--wiki <dir>] [--json]   read-only setup check; exit 1 on a failure
 //   lint    [--wiki <dir>] [--json] [--fix]   validate tickets, approvals and wiki metadata
-//   detect  [--wiki <dir>]   host, CLIs and login, repo visibility, wiki state (JSON, read-only)
+//   detect  [--wiki <dir>] [--tracker <t>] [--repo <r>] [--ci <c>]   host, CLIs, login, inferred values (JSON, read-only)
 //   init-wiki [--wiki <dir>] create the local wiki (git init, .gitignore, index.md) and bind it
 //   bind    [--wiki <dir>]   write <wiki>/forge/repo.json
 //   seed --tracker <t> --repo <r> --ci <c> [--force]   copy templates to <wiki>/forge/config
@@ -18,12 +20,68 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolve, ForgeError } from './lib/repo.mjs';
 import { loadConfig, KINDS } from './lib/config.mjs';
-import { detect, initWiki, bind, seed } from './lib/setup.mjs';
+import { setValues, upsertRow } from './lib/config-write.mjs';
+import { createStore } from './lib/cred.mjs';
+import { detect, initWiki, bind, seed, TEMPLATE_KINDS } from './lib/setup.mjs';
 import { approve, assertTrusted, status as trustStatus } from './lib/trust.mjs';
 import { lint } from './lib/validation.mjs';
 
 const pluginRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const CLI_FOR = { github: 'gh', 'github-actions': 'gh', gitlab: 'glab', 'gitlab-ci': 'glab', jira: 'acli', 'azure-pipelines': 'az' };
+
+// Template values that a team must replace. [file, key, pattern].
+const PLACEHOLDERS = [
+  ['tracker', 'host', /(^|\.)example\.atlassian\.net$/],
+  ['tracker', 'project', /^(owner|group)\/app$/],
+  ['tracker', 'itemUrl', /example\.atlassian\.net|\/(owner|group)\/app\//],
+  ['ci', 'host', /jenkins\.example\.com|dev\.azure\.com\/example\/?$/],
+  ['ci', 'project', /^Example$/],
+];
+const PLACEHOLDER_QUERIES = /label:"team-a"|team::core|"Team A"|project = ABC\b/;
+const PLACEHOLDER_CHECKOUT = { path: 'C:\\dev\\app', remote: /^(owner|group)\/app$/ };
+
+/** Credential names that the config names: "cred.mjs set <name>" and "--cred <name>". */
+export function credNames(texts) {
+  const names = new Set();
+  for (const t of texts) {
+    for (const m of t.matchAll(/cred\.mjs"?\s+set\s+([A-Za-z0-9][\w.-]*)|--cred\s+([A-Za-z0-9][\w.-]*)/g)) names.add(m[1] ?? m[2]);
+  }
+  return [...names];
+}
+
+/** Setup completeness: template placeholders, checkout paths, and credentials. */
+export function completeness(configDir, config, { credStore } = {}) {
+  const found = [];
+  const add = (check, detail) => found.push({ status: 'warn', check, detail });
+  for (const [kind, key, re] of PLACEHOLDERS) {
+    const v = config[kind][key];
+    if (typeof v === 'string' && re.test(v)) add(`config:placeholder`, `${kind}.${key} is the template value "${v}". Set it: forge.mjs config set ${kind}.${key}=<value>.`);
+  }
+  if (config.tracker.provider === 'jira' && config.tracker.project === 'ABC') add('config:placeholder', 'tracker.project is the template value "ABC". Set your Jira project key.');
+  for (const [name, q] of Object.entries(config.tracker.queries)) {
+    if (q && PLACEHOLDER_QUERIES.test(q)) add('config:placeholder', `The "${name}" query is a template example: ${q}. Set it: forge.mjs config row queries ${name} "<query>".`);
+  }
+  for (const row of config.repo.checkouts) {
+    if (row.path === PLACEHOLDER_CHECKOUT.path || PLACEHOLDER_CHECKOUT.remote.test(row.remote ?? '')) {
+      add('config:placeholder', `The checkout "${row.name}" is the template row. Replace it: forge.mjs config row checkouts <name> <path> <remote>, then config row checkouts ${row.name} --delete.`);
+    }
+  }
+  const main = config.repo.checkouts[0];
+  if (!main) add('config:checkouts', 'repo.md has no Checkouts row. Add the main checkout: forge.mjs config row checkouts <name> <path> <remote>.');
+  else if (main.path !== PLACEHOLDER_CHECKOUT.path && !existsSync(main.path)) add('config:checkouts', `The main checkout ${main.path} does not exist on this machine. Clone it there, or change the row for this machine.`);
+
+  const texts = KINDS.map((k) => path.join(configDir, `${k}.md`)).filter(existsSync).map((f) => readFileSync(f, 'utf8'));
+  const names = credNames(texts);
+  if (config.ci.provider === 'jenkins' && !names.includes('jenkins')) names.unshift('jenkins');
+  for (const name of names) {
+    let has = null;
+    try { has = (credStore ?? createStore()).has(name); } catch (err) { add(`cred:${name}`, `Cannot check the credential store: ${err.message}`); continue; }
+    found.push(has
+      ? { status: 'ok', check: `cred:${name}`, detail: 'stored' }
+      : { status: 'warn', check: `cred:${name}`, detail: `Not stored. The user runs: node "<plugin>/scripts/cred.mjs" set ${name}` });
+  }
+  return found;
+}
 
 export function parseArgs(argv) {
   const out = { _: [] };
@@ -47,7 +105,7 @@ export function onPath(cmd, env = process.env) {
   return dirs.some((d) => exts.some((e) => existsSync(path.join(d, cmd + e.toLowerCase())) || existsSync(path.join(d, cmd + e))));
 }
 
-export function doctor({ cwd, wiki, env = process.env } = {}) {
+export function doctor({ cwd, wiki, env = process.env, credStore } = {}) {
   const results = [];
   const add = (check, status, detail = '') => results.push({ status, check, detail });
 
@@ -91,6 +149,7 @@ export function doctor({ cwd, wiki, env = process.env } = {}) {
       const tool = CLI_FOR[provider];
       if (tool && !onPath(tool, env)) add(`config:${kind}.md`, 'warn', `${tool} is not on PATH. The ${provider} commands need it.`);
     }
+    results.push(...completeness(where.configDir, config, { credStore }));
   } catch (err) {
     add('config', 'fail', err.message);
   }
@@ -119,7 +178,33 @@ export function runScript(name, rest, { cwd = process.cwd(), env = process.env }
   return r.status ?? 1;
 }
 
+export function configEdit(argv, { cwd = process.cwd() } = {}) {
+  const [sub, ...rest] = argv;
+  const opts = { cwd };
+  const pos = [];
+  let remove = false;
+  for (let i = 0; i < rest.length; i++) {
+    if (['--wiki', '--cwd'].includes(rest[i])) {
+      if (!rest[i + 1] || rest[i + 1].startsWith('--')) throw new ForgeError(`${rest[i]} needs a folder.`, 'bad-args');
+      opts[rest[i].slice(2)] = rest[++i];
+    } else if (rest[i] === '--delete' && sub === 'row') remove = true;
+    else pos.push(rest[i]);
+  }
+  const where = resolve(opts);
+  const r = sub === 'set' ? setValues(where.configDir, pos) : upsertRow(where.configDir, pos[0], pos.slice(1), { remove });
+  return { configDir: r.configDir, changed: r.changed, next: r.changed.length ? 'Review the change, then approve it: forge.mjs trust' : 'No change.' };
+}
+
 export function main(argv = process.argv.slice(2)) {
+  if (argv[0] === 'config' && ['set', 'row'].includes(argv[1])) {
+    try {
+      console.log(JSON.stringify(configEdit(argv.slice(1)), null, 2));
+      return 0;
+    } catch (err) {
+      if (err instanceof ForgeError) { console.error(`forge: ${err.message}`); return 1; }
+      throw err;
+    }
+  }
   if (argv[0] === 'run') {
     try {
       return runScript(argv[1], argv.slice(2));
@@ -159,7 +244,13 @@ export function main(argv = process.argv.slice(2)) {
       }
       return report.summary.errors ? 1 : 0;
     } else if (cmd === 'detect') {
-      console.log(JSON.stringify(detect(resolve(opts)), null, 2));
+      const choice = {};
+      for (const kind of Object.keys(TEMPLATE_KINDS)) {
+        if (args[kind] === undefined) continue;
+        if (!TEMPLATE_KINDS[kind].includes(args[kind])) throw new ForgeError(`Unknown ${kind} "${args[kind]}". Use one of: ${TEMPLATE_KINDS[kind].join(', ')}.`, 'bad-choice');
+        choice[kind] = args[kind];
+      }
+      console.log(JSON.stringify(detect(resolve(opts), { choice }), null, 2));
     } else if (cmd === 'init-wiki') {
       console.log(JSON.stringify(initWiki(resolve(opts)), null, 2));
     } else if (cmd === 'bind') {
