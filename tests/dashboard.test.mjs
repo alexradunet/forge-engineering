@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { request } from 'node:http';
 import { runInNewContext } from 'node:vm';
-import { parseDocument, parseTicket, readTicketDoc, readTickets, validateInput } from '../plugins/forge/com.github.copilot/extensions/ticket-dashboard/tickets.mjs';
+import { parseDocument, parseTicket, readTicketDoc, readTickets, readWikiDoc, validateInput } from '../plugins/forge/com.github.copilot/extensions/ticket-dashboard/tickets.mjs';
 import { dashboardOptions } from '../plugins/forge/com.github.copilot/extensions/ticket-dashboard/dashboard.mjs';
 
 function ticket(fields = '') {
@@ -342,6 +342,94 @@ test('reader discovers categorized ticket documents, detects Mermaid blocks, and
   await assert.rejects(readTicketDoc(wiki, 'app-42', 'notes.txt'), /Invalid document path/);
   assert.equal((await fetch(new URL('tickets/app-42/docs/missing.md', url))).status, 404);
   assert.equal((await fetch(new URL('tickets/app-42/docs/other/file.md', url))).status, 400);
+});
+
+test('reader discovers canonical wiki and concept pages, serves /wiki/docs/*, and resolves cross-wiki Markdown links', async (t) => {
+  const wiki = await fixture(t);
+  await put(wiki, 'app-42', ticket());
+  await mkdir(path.join(wiki, 'learning'), { recursive: true });
+  await mkdir(path.join(wiki, 'tooling'), { recursive: true });
+  await mkdir(path.join(wiki, 'midgard', 'scheduled-jobs'), { recursive: true });
+  await mkdir(path.join(wiki, 'forge', 'config'), { recursive: true });
+
+  await writeFile(
+    path.join(wiki, 'index.md'),
+    '---\ntitle: Personal engineering wiki\ntype: index\n---\n# 📚 Wiki Index\n\n- [Idempotency bite](learning/idempotency.md) — 15-minute concept lesson on idempotent retries.\n- [Agents window](tooling/vscode-agents-window.md) — setup and hooks.\n- [APP-42](raw/tickets/app-42/README.md) — active ticket.\n',
+  );
+  await writeFile(
+    path.join(wiki, 'learning', 'idempotency.md'),
+    '---\ntitle: Idempotent retries\nupdated: 2026-10-28\nstatus: verified\nsources:\n  - raw/tickets/app-42/README.md\n  - https://example.test/docs\n---\n# 🎓 Idempotent retries\n\n> Learn to make retry handlers safe.\n\nSee [Agents window](../tooling/vscode-agents-window.md).\n',
+  );
+  await writeFile(
+    path.join(wiki, 'tooling', 'vscode-agents-window.md'),
+    '---\ntitle: VS Code Agents window\nupdated: 2026-10-28\nstatus: verified\nsources:\n  - https://code.visualstudio.com/docs/agents/run/agents-window\n---\n# 🛠️ VS Code Agents window\n\n Setup notes.\n',
+  );
+  await writeFile(
+    path.join(wiki, 'midgard', 'scheduled-jobs', 'cleanup.md'),
+    '---\ntitle: Cleanup job\nupdated: 2026-10-28\nstatus: verified\nsources:\n  - repo:src/Cleanup.cs\n---\n# 🏗️ Cleanup job\n```mermaid\nflowchart LR\n  Start --> Done\n```\n',
+  );
+  await writeFile(path.join(wiki, 'forge', 'config', 'policy.md'), '---\nlearningMode: true\n---\n# Policy\n');
+
+  const state = await readTickets(wiki);
+  assert.deepEqual(
+    state.wikiPages.map((p) => [p.path, p.category, p.hasMermaid]),
+    [
+      ['index.md', 'index', false],
+      ['learning/idempotency.md', 'learning', false],
+      ['midgard/scheduled-jobs/cleanup.md', 'area', true],
+      ['tooling/vscode-agents-window.md', 'tooling', false],
+    ],
+  );
+  const learningMeta = state.wikiPages.find((p) => p.path === 'learning/idempotency.md');
+  assert.equal(learningMeta.summary, '15-minute concept lesson on idempotent retries.');
+  assert.equal(learningMeta.sourceCount, 2);
+
+  const { options } = canvas(t);
+  const { url } = await options.open({ instanceId: 'test', input: { wikiPath: wiki } });
+  const lessonRes = await fetch(new URL('wiki/docs/learning/idempotency.md', url));
+  assert.equal(lessonRes.status, 200);
+  const lessonJson = await lessonRes.json();
+  assert.equal(lessonJson.category, 'learning');
+  assert.deepEqual(lessonJson.sources, ['raw/tickets/app-42/README.md', 'https://example.test/docs']);
+
+  // Excluded directories and path traversal are rejected
+  await assert.rejects(readWikiDoc(wiki, 'raw/tickets/app-42/README.md'), /outside canonical wiki/);
+  await assert.rejects(readWikiDoc(wiki, 'forge/config/policy.md'), /outside canonical wiki/);
+  await assert.rejects(readWikiDoc(wiki, '../secret.md'), /Invalid wiki document path/);
+  assert.equal((await fetch(new URL('wiki/docs/forge/config/policy.md', url))).status, 400);
+  assert.equal((await fetch(new URL('wiki/docs/learning/missing.md', url))).status, 404);
+
+  // Verify cross-wiki link resolution in ui.js (ticket -> wiki, wiki -> wiki, wiki -> ticket)
+  const ui = await readFile(new URL('../plugins/forge/com.github.copilot/extensions/ticket-dashboard/ui.js', import.meta.url), 'utf8');
+  const node = () => ({ textContent: '', children: [], append(...children) { this.children.push(...children); }, addEventListener() {}, replaceChildren() {} });
+  const controls = new Map();
+  const resolved = runInNewContext(
+    `${ui}
+    snapshot = state;
+    ({
+      fromTicketRel: resolveCanvasLinkTarget('../../../tooling/vscode-agents-window.md', state.tickets[0], 'context.md'),
+      fromTicketAbs: resolveCanvasLinkTarget(state.wikiPath.replace(/\\\\/g, '/') + '/learning/idempotency.md', state.tickets[0], 'interview.md'),
+      fromWikiToWiki: resolveCanvasLinkTarget('../tooling/vscode-agents-window.md', null, 'learning/idempotency.md'),
+      fromWikiToTicket: resolveCanvasLinkTarget('raw/tickets/app-42/README.md', null, 'index.md'),
+    });`,
+    {
+      state, URL, setInterval() {}, fetch: () => new Promise(() => {}),
+      document: {
+        createElement: node,
+        createTextNode: (tText) => ({ textContent: tText, children: [] }),
+        getElementById(id) { if (!controls.has(id)) controls.set(id, node()); return controls.get(id); },
+      },
+    },
+  );
+  assert.equal(resolved.fromTicketRel.kind, 'wiki-doc');
+  assert.equal(resolved.fromTicketRel.docPath, 'tooling/vscode-agents-window.md');
+  assert.equal(resolved.fromTicketAbs.kind, 'wiki-doc');
+  assert.equal(resolved.fromTicketAbs.docPath, 'learning/idempotency.md');
+  assert.equal(resolved.fromWikiToWiki.kind, 'wiki-doc');
+  assert.equal(resolved.fromWikiToWiki.docPath, 'tooling/vscode-agents-window.md');
+  assert.equal(resolved.fromWikiToTicket.kind, 'ticket-doc');
+  assert.equal(resolved.fromWikiToTicket.ticket.key, 'APP-42');
+  assert.equal(resolved.fromWikiToTicket.docPath, 'README.md');
 });
 
 test('Agent Plugins manifest declares a namespaced canvas extension', async () => {

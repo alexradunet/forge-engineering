@@ -53,14 +53,54 @@ const docCategories = [
   },
 ];
 
+const wikiCategories = [
+  {
+    id: 'learning',
+    label: '🎓 Concepts & Learning',
+    desc: 'Source-linked 15-minute concept lessons and knowledge bites.',
+  },
+  {
+    id: 'area',
+    label: '🏗️ Architecture & Areas',
+    desc: 'Codebase flows, domain knowledge, runbooks, and system architecture.',
+  },
+  {
+    id: 'tooling',
+    label: '🛠️ Tooling & Gotchas',
+    desc: 'VS Code Agents window, MCP servers, builds, CI, and environment gotchas.',
+  },
+  {
+    id: 'decisions',
+    label: '🧭 Decisions',
+    desc: 'Engineering decisions, trade-offs, and rationale.',
+  },
+  {
+    id: 'tickets',
+    label: '🎫 Closed Ticket Summaries',
+    desc: 'Distilled canonical summaries of completed tickets.',
+  },
+  {
+    id: 'index',
+    label: '📚 Index & Log',
+    desc: 'The root wiki catalog (index.md) and change history (log.md).',
+  },
+];
+
 const byId = (id) => document.getElementById(id);
 let snapshot = null;
 let loading = false;
+let viewMode = 'tickets'; // 'tickets' | 'wiki'
 let selectedKey = null; // null = Overview Grid, string = Focused Ticket Cockpit
 let cockpitSection = 'summary'; // 'summary' | 'gates' | 'map' | 'docs' | 'reader'
 let activeDocCategory = 'core'; // 'core' | 'gate' | 'evidence' | 'outbox' | 'log' | 'all'
 let activeDocPath = null;
 let previousSection = 'docs';
+let wikiSection = 'overview'; // 'overview' | 'index' | 'explorer' | 'reader'
+let activeWikiCategory = 'all'; // 'all' | 'learning' | 'area' | 'tooling' | 'decisions' | 'tickets' | 'index'
+let activeWikiArea = '';
+let wikiSearchQuery = '';
+let activeWikiPath = null;
+let navHistory = [];
 let docCache = new Map();
 let docRequestSeq = 0;
 let mermaidCounter = 0;
@@ -119,8 +159,9 @@ function stripInlineMarkdown(text) {
 function showStatus() {
   if (!snapshot) return;
   const count = byId('board').querySelectorAll('article.ticket-card').length;
+  const wikiCount = (snapshot.wikiPages || []).length;
   const errors = snapshot.errors.length;
-  byId('status').textContent = `${count} shown / ${snapshot.tickets.length} tickets · ${errors} read ${errors === 1 ? 'error' : 'errors'} · ${new Date(snapshot.scannedAt).toLocaleTimeString()}`;
+  byId('status').textContent = `${count}/${snapshot.tickets.length} tickets · ${wikiCount} wiki pages · ${errors} read ${errors === 1 ? 'error' : 'errors'} · ${new Date(snapshot.scannedAt).toLocaleTimeString()}`;
 }
 
 function updateKpis() {
@@ -188,19 +229,69 @@ function gateProgressBar(gates) {
   return bar;
 }
 
-function openTicketCockpit(ticketKey, section = 'summary', docPath = null) {
+function pushNavState() {
+  navHistory.push({
+    viewMode,
+    selectedKey,
+    cockpitSection,
+    activeDocCategory,
+    activeDocPath,
+    previousSection,
+    wikiSection,
+    activeWikiCategory,
+    activeWikiArea,
+    activeWikiPath,
+  });
+  if (navHistory.length > 40) navHistory.shift();
+}
+
+function popNavState() {
+  const prev = navHistory.pop();
+  if (!prev) return false;
+  viewMode = prev.viewMode;
+  selectedKey = prev.selectedKey;
+  cockpitSection = prev.cockpitSection;
+  activeDocCategory = prev.activeDocCategory;
+  activeDocPath = prev.activeDocPath;
+  previousSection = prev.previousSection;
+  wikiSection = prev.wikiSection;
+  activeWikiCategory = prev.activeWikiCategory;
+  activeWikiArea = prev.activeWikiArea;
+  activeWikiPath = prev.activeWikiPath;
+  render();
+  return true;
+}
+
+function openTicketCockpit(ticketKey, section = 'summary', docPath = null, recordHistory = false) {
+  if (recordHistory) pushNavState();
+  viewMode = 'tickets';
   selectedKey = ticketKey;
   cockpitSection = section;
   activeDocPath = docPath;
   render();
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  if (globalThis.scrollTo) globalThis.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function closeTicketCockpit() {
+  viewMode = 'tickets';
   selectedKey = null;
   cockpitSection = 'summary';
   activeDocPath = null;
   render();
+}
+
+function openWikiHub(section = 'overview', docPath = null, category = null, recordHistory = false) {
+  if (recordHistory) pushNavState();
+  viewMode = 'wiki';
+  if (category) activeWikiCategory = category;
+  wikiSection = section;
+  if (docPath) activeWikiPath = docPath;
+  render();
+  if (globalThis.scrollTo) globalThis.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function openWikiReader(docPath, recordHistory = true) {
+  openWikiHub('reader', docPath, null, recordHistory);
 }
 
 function workflowLabel(ticket) {
@@ -636,6 +727,102 @@ function resolveRelativeDocPath(currentDocPath, href) {
   return resolved.join('/');
 }
 
+function normalizePosixSegments(segments) {
+  const out = [];
+  for (const seg of segments) {
+    if (!seg || seg === '.') continue;
+    if (seg === '..') {
+      if (!out.length) return null;
+      out.pop();
+    } else {
+      out.push(seg);
+    }
+  }
+  return out.join('/');
+}
+
+function resolveCanvasLinkTarget(rawHref, ticket, currentDocPath) {
+  const clean = (rawHref || '').split('#')[0].split('?')[0].trim().replace(/^<|>$/g, '').replace(/\\/g, '/');
+  if (!clean) return null;
+
+  const tickets = snapshot?.tickets || [];
+  const wikiPages = snapshot?.wikiPages || [];
+  const wikiRoot = (snapshot?.wikiPath || '').replace(/\\/g, '/').replace(/\/+$/, '');
+
+  // 0. Explicit wiki: prefix (used in frontmatter sources)
+  let candidate = clean.startsWith('wiki:') ? clean.slice(5).replace(/^\/+/, '') : clean;
+
+  // 1. Absolute path inside <wiki>/...
+  if (wikiRoot && candidate.toLowerCase().startsWith(`${wikiRoot.toLowerCase()}/`)) {
+    candidate = candidate.slice(wikiRoot.length + 1);
+  }
+
+  // 2. Relative resolution from current context
+  let wikiRel = null;
+  if (ticket) {
+    // Check if it resolves inside the current ticket folder first
+    if (candidate.endsWith('/')) {
+      const folderSub = candidate.replace(/^\.\//, '');
+      const firstSubDoc = (ticket.docs || []).find((d) => d.path.startsWith(folderSub));
+      if (firstSubDoc) {
+        return { kind: 'ticket-doc', ticket, docPath: firstSubDoc.path };
+      }
+    }
+    const relTicketDoc = resolveRelativeDocPath(currentDocPath || 'README.md', candidate);
+    if (relTicketDoc && (ticket.docs || []).some((d) => d.path.toLowerCase() === relTicketDoc.toLowerCase())) {
+      const exactDoc = ticket.docs.find((d) => d.path.toLowerCase() === relTicketDoc.toLowerCase());
+      return { kind: 'ticket-doc', ticket, docPath: exactDoc.path };
+    }
+    // Otherwise resolve relative to raw/tickets/<ticket.folder>/<currentDocDir> in the wiki
+    const docDir = currentDocPath && currentDocPath.includes('/')
+      ? currentDocPath.slice(0, currentDocPath.lastIndexOf('/'))
+      : '';
+    const baseParts = ['raw', 'tickets', ticket.folder, ...(docDir ? docDir.split('/') : [])];
+    wikiRel = normalizePosixSegments([...baseParts, ...candidate.split('/')]);
+  } else {
+    const docDir = currentDocPath && currentDocPath.includes('/')
+      ? currentDocPath.slice(0, currentDocPath.lastIndexOf('/'))
+      : '';
+    const baseParts = docDir ? docDir.split('/') : [];
+    wikiRel = normalizePosixSegments([...baseParts, ...candidate.split('/')]);
+  }
+
+  // Also test direct wiki-root candidate (e.g. `tooling/vscode-agents-window.md` or `raw/tickets/mfd-77355/README.md`)
+  const directWikiRel = normalizePosixSegments(candidate.split('/'));
+
+  for (const testPath of [wikiRel, directWikiRel]) {
+    if (!testPath) continue;
+    const lower = testPath.toLowerCase();
+
+    // Match raw/tickets/<folder>/<doc>
+    const rawTicketMatch = /^raw\/tickets\/([^/]+)(?:\/(.*))?$/i.exec(testPath);
+    if (rawTicketMatch) {
+      const folderName = rawTicketMatch[1].toLowerCase();
+      const subPath = (rawTicketMatch[2] || 'README.md').replace(/\/+$/, '') || 'README.md';
+      const targetTicket = tickets.find(
+        (t) => (t.folder || '').toLowerCase() === folderName || (t.key || '').toLowerCase() === folderName,
+      );
+      if (targetTicket) {
+        const matchedDoc = (targetTicket.docs || []).find((d) => d.path.toLowerCase() === subPath.toLowerCase());
+        if (matchedDoc) {
+          return { kind: 'ticket-doc', ticket: targetTicket, docPath: matchedDoc.path };
+        }
+        if (!rawTicketMatch[2] || subPath.toLowerCase() === 'readme.md') {
+          return { kind: 'ticket-cockpit', ticket: targetTicket };
+        }
+      }
+    }
+
+    // Match canonical wiki page
+    const matchedWiki = wikiPages.find((p) => p.path.toLowerCase() === lower);
+    if (matchedWiki) {
+      return { kind: 'wiki-doc', docPath: matchedWiki.path, page: matchedWiki };
+    }
+  }
+
+  return null;
+}
+
 function appendInlineMarkdown(parent, text, ticket, currentDocPath) {
   if (!text) return;
   const pattern = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/g;
@@ -657,16 +844,41 @@ function appendInlineMarkdown(parent, text, ticket, currentDocPath) {
       if (linkMatch) {
         const [, labelText, rawTarget] = linkMatch;
         const target = rawTarget.trim().replace(/^<|>$/g, '');
-        const resolvedDoc = resolveRelativeDocPath(currentDocPath, target);
-        if (resolvedDoc && (ticket.docs || []).some((d) => d.path === resolvedDoc)) {
+        const resolvedTarget = resolveCanvasLinkTarget(target, ticket, currentDocPath);
+        if (resolvedTarget && resolvedTarget.kind === 'ticket-doc') {
+          const sameTicket = ticket && resolvedTarget.ticket.key === ticket.key;
           const docLink = element('a', labelText, 'internal-doc-link');
-          docLink.href = `#${resolvedDoc}`;
-          docLink.title = `Open ${resolvedDoc}`;
+          docLink.href = `#ticket:${resolvedTarget.ticket.key}:${resolvedTarget.docPath}`;
+          docLink.title = sameTicket
+            ? `Open ${resolvedTarget.docPath}`
+            : `Open ${resolvedTarget.ticket.key} / ${resolvedTarget.docPath}`;
           docLink.addEventListener('click', (e) => {
             e.preventDefault();
-            openDocumentReader(ticket, resolvedDoc);
+            if (sameTicket) {
+              openDocumentReader(resolvedTarget.ticket, resolvedTarget.docPath);
+            } else {
+              openTicketCockpit(resolvedTarget.ticket.key, 'reader', resolvedTarget.docPath, true);
+            }
           });
           parent.append(docLink);
+        } else if (resolvedTarget && resolvedTarget.kind === 'ticket-cockpit') {
+          const docLink = element('a', labelText, 'internal-doc-link');
+          docLink.href = `#ticket:${resolvedTarget.ticket.key}`;
+          docLink.title = `Open ticket ${resolvedTarget.ticket.key}`;
+          docLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            openTicketCockpit(resolvedTarget.ticket.key, 'summary', null, true);
+          });
+          parent.append(docLink);
+        } else if (resolvedTarget && resolvedTarget.kind === 'wiki-doc') {
+          const wikiLink = element('a', `📚 ${labelText}`, 'wiki-doc-link');
+          wikiLink.href = `#wiki:${resolvedTarget.docPath}`;
+          wikiLink.title = `Open wiki page ${resolvedTarget.docPath}`;
+          wikiLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            openWikiReader(resolvedTarget.docPath, true);
+          });
+          parent.append(wikiLink);
         } else if (isSafeHttpUrl(target)) {
           link(parent, labelText, target);
         } else {
@@ -1002,13 +1214,21 @@ async function renderDocumentView(ticket, docPath, showBackToDocs = true) {
   toolbar.append(metaGroup);
 
   if (showBackToDocs) {
+    const actionsGroup = element('div', undefined, 'ticket-badges');
+    if (navHistory.length) {
+      const historyBtn = element('button', '↩ Previous view', 'btn-secondary');
+      historyBtn.type = 'button';
+      historyBtn.addEventListener('click', () => popNavState());
+      actionsGroup.append(historyBtn);
+    }
     const backBtn = element('button', '← Back to files', 'btn-secondary');
     backBtn.type = 'button';
     backBtn.addEventListener('click', () => {
       cockpitSection = previousSection || 'docs';
       renderCockpit(ticket);
     });
-    toolbar.append(backBtn);
+    actionsGroup.append(backBtn);
+    toolbar.append(actionsGroup);
   }
   reader.append(toolbar);
 
@@ -1017,6 +1237,414 @@ async function renderDocumentView(ticket, docPath, showBackToDocs = true) {
   body.replaceChildren(reader);
 
   await renderMermaidDiagrams(renderedBody);
+}
+
+function renderWikiHeader() {
+  const header = byId('wiki-header');
+  if (!header) return;
+  header.replaceChildren();
+
+  const wikiPages = snapshot?.wikiPages || [];
+  const topRow = element('div', undefined, 'cockpit-topbar');
+
+  const leftBtns = element('div', undefined, 'ticket-badges');
+  const ticketsBtn = element('button', '← Tickets board', 'btn-secondary');
+  ticketsBtn.type = 'button';
+  ticketsBtn.addEventListener('click', () => {
+    viewMode = 'tickets';
+    render();
+  });
+  leftBtns.append(ticketsBtn);
+
+  if (navHistory.length) {
+    const prevBtn = element('button', '↩ Previous view', 'btn-secondary');
+    prevBtn.type = 'button';
+    prevBtn.addEventListener('click', () => popNavState());
+    leftBtns.append(prevBtn);
+  }
+
+  const switcher = element('div', undefined, 'cockpit-switcher');
+  switcher.append(element('span', 'Jump to page:', 'field-label'));
+  const pageSelect = element('select');
+  const defaultOpt = element('option', 'Select a wiki or concept page...');
+  defaultOpt.value = '';
+  pageSelect.append(defaultOpt);
+  for (const p of wikiPages) {
+    const opt = element('option', `${p.path} — ${p.title}`);
+    opt.value = p.path;
+    opt.selected = wikiSection === 'reader' && activeWikiPath === p.path;
+    pageSelect.append(opt);
+  }
+  pageSelect.addEventListener('change', () => {
+    if (pageSelect.value) {
+      openWikiReader(pageSelect.value, true);
+    }
+  });
+  switcher.append(pageSelect);
+  topRow.append(leftBtns, switcher);
+
+  const titleRow = element('div', undefined, 'cockpit-title-row');
+  const main = element('div', undefined, 'cockpit-title-main');
+
+  const badges = element('div', undefined, 'ticket-badges');
+  badges.append(element('span', '📚 WIKI & CONCEPTS', 'key'));
+
+  const verifiedCount = wikiPages.filter((p) => p.status === 'verified' || p.status === 'decided').length;
+  const learningCount = wikiPages.filter((p) => p.category === 'learning').length;
+  const areaCount = wikiPages.filter((p) => p.category === 'area').length;
+
+  const totalChip = element('span', `${wikiPages.length} canonical pages`, 'chip');
+  totalChip.dataset.tone = 'info';
+  badges.append(totalChip);
+
+  if (learningCount) {
+    const learnChip = element('span', `🎓 ${learningCount} concept ${learningCount === 1 ? 'lesson' : 'lessons'}`, 'chip');
+    learnChip.dataset.tone = 'ok';
+    badges.append(learnChip);
+  }
+  if (areaCount) {
+    badges.append(element('span', `🏗️ ${areaCount} architecture & area pages`, 'chip'));
+  }
+  if (verifiedCount) {
+    const verChip = element('span', `✓ ${verifiedCount} verified/decided`, 'chip');
+    verChip.dataset.tone = 'approved';
+    badges.append(verChip);
+  }
+
+  main.append(badges, element('h2', 'Engineering Wiki & Concept Knowledge Hub'));
+  titleRow.append(main);
+  header.append(topRow, titleRow);
+}
+
+function renderWikiNav() {
+  const nav = byId('wiki-nav');
+  if (!nav) return;
+  nav.replaceChildren();
+
+  const wikiPages = snapshot?.wikiPages || [];
+  const hasIndex = wikiPages.some((p) => p.path === 'index.md');
+
+  const sections = [
+    { id: 'overview', label: '🧭 Knowledge Shelves' },
+    ...(hasIndex ? [{ id: 'index', label: '📚 Index (index.md)' }] : []),
+    { id: 'explorer', label: '🗂️ Browse & Search Pages', count: String(wikiPages.length) },
+  ];
+
+  if (wikiSection === 'reader' && activeWikiPath) {
+    const pageMeta = wikiPages.find((p) => p.path === activeWikiPath);
+    sections.push({
+      id: 'reader',
+      label: `📖 ${pageMeta ? pageMeta.label : activeWikiPath}`,
+    });
+  }
+
+  for (const sec of sections) {
+    const btn = element('button', undefined, `nav-section-btn${wikiSection === sec.id ? ' active' : ''}`);
+    btn.type = 'button';
+    btn.append(element('span', sec.label));
+    if (sec.count !== undefined) {
+      btn.append(element('span', sec.count, 'nav-count'));
+    }
+    btn.addEventListener('click', () => {
+      wikiSection = sec.id;
+      renderWikiHub();
+    });
+    nav.append(btn);
+  }
+}
+
+function renderWikiOverviewSection() {
+  const body = byId('wiki-body');
+  if (!body) return;
+  body.replaceChildren();
+
+  const wikiPages = snapshot?.wikiPages || [];
+  const stack = element('div', undefined, 'summary-stack');
+
+  const hero = element('div', undefined, 'hero-card');
+  hero.append(element('p', '🔥 Shared Engineering Memory & Concept Library', 'hero-stakes'));
+  hero.append(
+    element(
+      'p',
+      'Explore architecture pages, concept lessons, tooling gotchas, engineering decisions, and distilled ticket summaries. Every Markdown link between tickets and wiki pages opens directly in this workbench.',
+      'hero-next',
+    ),
+  );
+  stack.append(hero);
+
+  if (!wikiPages.length) {
+    stack.append(element('p', 'No canonical wiki pages found in this repository wiki yet.', 'empty-banner'));
+    body.append(stack);
+    return;
+  }
+
+  const shelves = element('div', undefined, 'category-shelves');
+  for (const cat of wikiCategories) {
+    const group = wikiPages.filter((p) => p.category === cat.id);
+    if (!group.length) continue;
+
+    const cardEl = element('button', undefined, 'shelf-card');
+    cardEl.type = 'button';
+
+    const top = element('div', undefined, 'shelf-top');
+    top.append(element('span', cat.label), element('span', `${group.length}`, 'badge-mono'));
+
+    const desc = element('p', cat.desc, 'shelf-desc');
+
+    const pills = element('div', undefined, 'shelf-pills');
+    for (const page of group.slice(0, 3)) {
+      pills.append(element('span', page.title || page.path, 'chip'));
+    }
+    if (group.length > 3) {
+      pills.append(element('span', `+${group.length - 3} more`, 'chip'));
+    }
+
+    cardEl.append(top, desc, pills);
+    cardEl.addEventListener('click', () => {
+      activeWikiCategory = cat.id;
+      activeWikiArea = '';
+      wikiSection = 'explorer';
+      renderWikiHub();
+    });
+    shelves.append(cardEl);
+  }
+  stack.append(shelves);
+  body.append(stack);
+}
+
+function renderWikiExplorerSection() {
+  const body = byId('wiki-body');
+  if (!body) return;
+  body.replaceChildren();
+
+  const wikiPages = snapshot?.wikiPages || [];
+  if (!wikiPages.length) {
+    body.append(element('p', 'No canonical wiki pages found in this repository wiki.', 'empty-banner'));
+    return;
+  }
+
+  const availableCats = wikiCategories.filter((cat) => wikiPages.some((p) => p.category === cat.id));
+  if (activeWikiCategory !== 'all' && !availableCats.some((c) => c.id === activeWikiCategory)) {
+    activeWikiCategory = 'all';
+  }
+
+  const filterBar = element('div', undefined, 'filters');
+  const searchLabel = element('label', undefined, 'search-field');
+  searchLabel.append(element('span', 'Find topic or concept', 'field-label'));
+  const searchInput = element('input');
+  searchInput.type = 'search';
+  searchInput.placeholder = 'Filter by title, path, area, or summary...';
+  searchInput.value = wikiSearchQuery;
+  searchLabel.append(searchInput);
+  filterBar.append(searchLabel);
+
+  const areas = [...new Set(wikiPages.map((p) => p.area).filter((a) => a && a !== 'root'))].sort();
+  if (areas.length > 1) {
+    const areaLabel = element('label', undefined, 'state-select-label');
+    areaLabel.append(element('span', 'Folder', 'field-label'));
+    const areaSelect = element('select');
+    const allOpt = element('option', 'All folders');
+    allOpt.value = '';
+    areaSelect.append(allOpt);
+    for (const areaName of areas) {
+      const opt = element('option', areaName);
+      opt.value = areaName;
+      opt.selected = activeWikiArea === areaName;
+      areaSelect.append(opt);
+    }
+    areaSelect.addEventListener('change', () => {
+      activeWikiArea = areaSelect.value;
+      renderWikiExplorerSection();
+    });
+    areaLabel.append(areaSelect);
+    filterBar.append(areaLabel);
+  }
+  body.append(filterBar);
+
+  const catBar = element('div', undefined, 'category-bar');
+  const pills = element('div', undefined, 'category-pills');
+
+  const allBtn = element('button', `All (${wikiPages.length})`, `pill-btn${activeWikiCategory === 'all' ? ' active' : ''}`);
+  allBtn.type = 'button';
+  allBtn.addEventListener('click', () => {
+    activeWikiCategory = 'all';
+    renderWikiExplorerSection();
+  });
+  pills.append(allBtn);
+
+  for (const cat of availableCats) {
+    const count = wikiPages.filter((p) => p.category === cat.id).length;
+    const btn = element('button', `${cat.label} (${count})`, `pill-btn${activeWikiCategory === cat.id ? ' active' : ''}`);
+    btn.type = 'button';
+    btn.addEventListener('click', () => {
+      activeWikiCategory = cat.id;
+      renderWikiExplorerSection();
+    });
+    pills.append(btn);
+  }
+  catBar.append(pills);
+  body.append(catBar);
+
+  const gridContainer = element('div');
+  body.append(gridContainer);
+
+  const updateCatalogGrid = () => {
+    const q = wikiSearchQuery.trim().toLowerCase();
+    const filtered = wikiPages.filter((p) =>
+      (activeWikiCategory === 'all' || p.category === activeWikiCategory)
+      && (!activeWikiArea || p.area === activeWikiArea)
+      && (!q || [p.title, p.path, p.summary || '', p.area || '', p.status || ''].some((v) => v.toLowerCase().includes(q))),
+    );
+
+    if (!filtered.length) {
+      gridContainer.replaceChildren(element('p', 'No wiki pages match these filters.', 'empty-banner'));
+      return;
+    }
+
+    const grid = element('div', undefined, 'doc-catalog-grid');
+    for (const page of filtered) {
+      const cardBtn = element('button', undefined, 'doc-catalog-card');
+      cardBtn.type = 'button';
+
+      const top = element('div', undefined, 'doc-catalog-top');
+      top.append(element('span', page.label));
+      if (page.hasMermaid) {
+        top.append(element('span', '📊 Mermaid', 'tab-mermaid-tag'));
+      } else if (page.status) {
+        const st = element('span', page.status, 'chip');
+        st.dataset.tone = page.status === 'verified' || page.status === 'decided' ? 'approved' : 'warn';
+        top.append(st);
+      }
+
+      cardBtn.append(top);
+      cardBtn.append(element('span', page.path, 'doc-catalog-path'));
+      if (page.summary) {
+        cardBtn.append(element('p', stripInlineMarkdown(page.summary), 'doc-catalog-summary'));
+      }
+      if (page.updated) {
+        cardBtn.append(element('span', `Updated ${page.updated}`, 'gate-meta-line'));
+      }
+
+      cardBtn.addEventListener('click', () => openWikiReader(page.path, true));
+      grid.append(cardBtn);
+    }
+    gridContainer.replaceChildren(grid);
+  };
+
+  searchInput.addEventListener('input', () => {
+    wikiSearchQuery = searchInput.value;
+    updateCatalogGrid();
+  });
+
+  updateCatalogGrid();
+}
+
+async function renderWikiDocumentView(docPath, showBackToExplorer = true) {
+  const body = byId('wiki-body');
+  if (!body) return;
+  const cacheKey = `wiki:${docPath}`;
+  const reqId = ++docRequestSeq;
+
+  if (!docCache.has(cacheKey)) {
+    body.replaceChildren(element('p', `Loading ${docPath}...`, 'gate-meta-line'));
+  }
+
+  try {
+    const encodedPath = docPath.split('/').map(encodeURIComponent).join('/');
+    const response = await fetch(`/wiki/docs/${encodedPath}`, { cache: 'no-store' });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    docCache.set(cacheKey, data);
+  } catch (error) {
+    if (reqId !== docRequestSeq) return;
+    const cached = docCache.get(cacheKey);
+    if (!cached) {
+      body.replaceChildren(element('p', `Could not load ${docPath}: ${error.message}`, 'empty-banner'));
+      return;
+    }
+  }
+
+  if (reqId !== docRequestSeq) return;
+  const doc = docCache.get(cacheKey);
+  if (!doc) return;
+
+  const reader = element('div', undefined, 'doc-reader');
+  const toolbar = element('div', undefined, 'doc-toolbar');
+  const metaGroup = element('div', undefined, 'doc-toolbar-meta');
+  metaGroup.append(element('span', doc.label || doc.title, 'key'));
+  metaGroup.append(element('code', doc.path, 'badge-mono'));
+  if (doc.area && doc.area !== 'root') {
+    metaGroup.append(element('span', `📂 ${doc.area}`, 'chip'));
+  }
+  if (doc.status) {
+    const stChip = element('span', `status: ${doc.status}`, 'chip');
+    stChip.dataset.tone = doc.status === 'verified' || doc.status === 'decided' ? 'approved' : 'warn';
+    metaGroup.append(stChip);
+  }
+  if (doc.updated) metaGroup.append(element('span', `Updated ${doc.updated}`, 'chip'));
+  toolbar.append(metaGroup);
+
+  const actionsGroup = element('div', undefined, 'ticket-badges');
+  if (navHistory.length) {
+    const historyBtn = element('button', '↩ Previous view', 'btn-secondary');
+    historyBtn.type = 'button';
+    historyBtn.addEventListener('click', () => popNavState());
+    actionsGroup.append(historyBtn);
+  }
+  if (showBackToExplorer) {
+    const backBtn = element('button', '← All wiki pages', 'btn-secondary');
+    backBtn.type = 'button';
+    backBtn.addEventListener('click', () => {
+      wikiSection = 'explorer';
+      renderWikiHub();
+    });
+    actionsGroup.append(backBtn);
+  }
+  toolbar.append(actionsGroup);
+  reader.append(toolbar);
+
+  const renderedBody = renderMarkdownBody(doc.body || '', null, doc.path);
+  reader.append(renderedBody);
+
+  if (Array.isArray(doc.sources) && doc.sources.length) {
+    const sourcesBox = element('div', undefined, 'wiki-sources-box');
+    sourcesBox.append(element('h4', '🔗 Verified Sources & Linked Artifacts'));
+    const ul = element('ul', undefined, 'wiki-sources-list');
+    for (const src of doc.sources) {
+      const li = element('li');
+      const resolved = resolveCanvasLinkTarget(src, null, doc.path);
+      if (resolved) {
+        appendInlineMarkdown(li, `[${src}](${src})`, null, doc.path);
+      } else if (isSafeHttpUrl(src)) {
+        link(li, src, src);
+      } else {
+        li.append(element('code', src));
+      }
+      ul.append(li);
+    }
+    sourcesBox.append(ul);
+    reader.append(sourcesBox);
+  }
+
+  body.replaceChildren(reader);
+  await renderMermaidDiagrams(renderedBody);
+}
+
+function renderWikiHub() {
+  renderWikiHeader();
+  renderWikiNav();
+
+  if (wikiSection === 'overview') {
+    renderWikiOverviewSection();
+  } else if (wikiSection === 'index') {
+    renderWikiDocumentView('index.md', false);
+  } else if (wikiSection === 'explorer') {
+    renderWikiExplorerSection();
+  } else if (wikiSection === 'reader' && activeWikiPath) {
+    renderWikiDocumentView(activeWikiPath, true);
+  } else {
+    renderWikiOverviewSection();
+  }
 }
 
 function renderCockpit(ticket) {
@@ -1090,16 +1718,34 @@ function render() {
 
   const overviewScreen = byId('overview-screen');
   const cockpitScreen = byId('cockpit');
+  const wikiScreen = byId('wiki-screen');
   const pageTitle = byId('page-title');
 
-  if (activeTicket) {
+  const modeTicketsBtn = byId('mode-tickets');
+  const modeWikiBtn = byId('mode-wiki');
+  const modeTicketsCount = byId('mode-tickets-count');
+  const modeWikiCount = byId('mode-wiki-count');
+  if (modeTicketsCount) modeTicketsCount.textContent = String(snapshot.tickets.length);
+  if (modeWikiCount) modeWikiCount.textContent = String((snapshot.wikiPages || []).length);
+  if (modeTicketsBtn) modeTicketsBtn.className = `mode-btn${viewMode === 'tickets' ? ' active' : ''}`;
+  if (modeWikiBtn) modeWikiBtn.className = `mode-btn${viewMode === 'wiki' ? ' active' : ''}`;
+
+  if (viewMode === 'wiki') {
+    overviewScreen.hidden = true;
+    cockpitScreen.hidden = true;
+    if (wikiScreen) wikiScreen.hidden = false;
+    pageTitle.textContent = 'Wiki & Concepts Hub';
+    renderWikiHub();
+  } else if (activeTicket) {
     overviewScreen.hidden = true;
     cockpitScreen.hidden = false;
+    if (wikiScreen) wikiScreen.hidden = true;
     pageTitle.textContent = `${activeTicket.key} Cockpit`;
     renderCockpit(activeTicket);
   } else {
     overviewScreen.hidden = false;
     cockpitScreen.hidden = true;
+    if (wikiScreen) wikiScreen.hidden = true;
     pageTitle.textContent = 'Ticket dashboard';
   }
 
@@ -1115,7 +1761,9 @@ async function refresh() {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
     if (!Array.isArray(data.tickets) || !Array.isArray(data.errors)) throw new Error('Invalid dashboard response.');
-    const changed = !snapshot || JSON.stringify([data.tickets, data.errors]) !== JSON.stringify([snapshot.tickets, snapshot.errors]);
+    const changed = !snapshot
+      || JSON.stringify([data.tickets, data.wikiPages || [], data.errors])
+      !== JSON.stringify([snapshot.tickets, snapshot.wikiPages || [], snapshot.errors]);
     snapshot = data;
     if (changed) {
       docCache.clear();
@@ -1139,5 +1787,12 @@ for (const [value, label] of Object.entries(labels)) {
 for (const id of ['search', 'state', 'done']) byId(id).addEventListener('input', render);
 byId('refresh').addEventListener('click', refresh);
 byId('home-btn').addEventListener('click', closeTicketCockpit);
+byId('mode-tickets')?.addEventListener('click', () => {
+  viewMode = 'tickets';
+  render();
+});
+byId('mode-wiki')?.addEventListener('click', () => {
+  openWikiHub(wikiSection || 'overview', activeWikiPath, null, false);
+});
 refresh();
 setInterval(refresh, 5000);

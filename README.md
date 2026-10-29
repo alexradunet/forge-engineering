@@ -139,9 +139,11 @@ Forge also bundles a read-only canvas. Say **"open the Forge ticket dashboard"**
 The agent supplies the repository wiki path from `forge.mjs where --json`.
 
 - Start on a clean overview grid with 4 KPI cards, state filter pills, search, and segmented gate progress bars; recorded tracks appear only as legacy context.
+- Switch between **🎫 Tickets** and **📚 Wiki & Concepts** in the top bar to browse canonical wiki knowledge shelves (**🎓 Concepts & Learning**, **🏗️ Architecture & Areas**, **🛠️ Tooling & Gotchas**, **🧭 Decisions**, **🎫 Closed Ticket Summaries**, and **📚 Index & Log**).
 - Click any ticket card to open its full-screen **Ticket Cockpit**: phase stepper, hero focus, categorized document shelves, review gates, and change requests.
-- Browse ticket documents by category (**Core & Map**, **Gate Docs**, **Evidence & Spikes**, **Outbox Drafts**, **Logs & Decisions**) and read them inside the canvas with rendered **Mermaid diagrams** and collapsible `📂` detail sections.
-- The dashboard reads ticket files every 5 seconds. **Refresh** reads them immediately.
+- Browse ticket documents by category (**Core & Map**, **Gate Docs**, **Evidence & Spikes**, **Outbox Drafts**, **Logs & Decisions**) and read both ticket and wiki pages inside the canvas with rendered **Mermaid diagrams**, collapsible `📂` detail sections, and verified source lists.
+- Follow Markdown links seamlessly across ticket files, canonical wiki pages, and concept lessons with a built-in `↩ Previous view` history stack.
+- The dashboard reads ticket and wiki files every 5 seconds. **Refresh** reads them immediately.
 - Empty ticket folders show an empty board. Invalid files show errors without hiding valid tickets.
 
 Ticket README files remain the source of truth. The dashboard never edits files, approves gates,

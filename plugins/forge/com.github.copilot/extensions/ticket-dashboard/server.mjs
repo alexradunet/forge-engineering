@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { readTicketDoc, readTickets } from './tickets.mjs';
+import { readTicketDoc, readTickets, readWikiDoc } from './tickets.mjs';
 
 const assets = new Map([
   ['/', ['text/html; charset=utf-8', new URL('./ui.html', import.meta.url)]],
@@ -46,6 +46,22 @@ export async function startDashboard(wikiPath, reportError) {
         }
         try {
           const doc = await readTicketDoc(wikiPath, folder, docPath);
+          return send(200, 'application/json; charset=utf-8', JSON.stringify(doc));
+        } catch (error) {
+          const status = error.code === 'ENOENT' ? 404 : 400;
+          return send(status, 'application/json; charset=utf-8', JSON.stringify({ error: error.message }));
+        }
+      }
+      const wikiMatch = /^\/wiki\/docs\/(.+)$/.exec(url.pathname);
+      if (wikiMatch) {
+        let docPath;
+        try {
+          docPath = wikiMatch[1].split('/').map(decodeURIComponent).join('/');
+        } catch {
+          return send(400, 'application/json; charset=utf-8', JSON.stringify({ error: 'Invalid URL encoding.' }));
+        }
+        try {
+          const doc = await readWikiDoc(wikiPath, docPath);
           return send(200, 'application/json; charset=utf-8', JSON.stringify(doc));
         } catch (error) {
           const status = error.code === 'ENOENT' ? 404 : 400;

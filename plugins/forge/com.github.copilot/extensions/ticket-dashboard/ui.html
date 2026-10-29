@@ -18,6 +18,16 @@
           <h1 id="page-title">Ticket dashboard</h1>
         </div>
       </div>
+      <nav class="mode-switcher" aria-label="Workbench mode">
+        <button id="mode-tickets" class="mode-btn active" type="button">
+          <span>🎫 Tickets</span>
+          <span id="mode-tickets-count" class="nav-count">0</span>
+        </button>
+        <button id="mode-wiki" class="mode-btn" type="button">
+          <span>📚 Wiki &amp; Concepts</span>
+          <span id="mode-wiki-count" class="nav-count">0</span>
+        </button>
+      </nav>
     </div>
     <div class="topbar-meta">
       <div class="wiki-pill" title="Repository wiki path">
@@ -85,6 +95,13 @@
       <div id="cockpit-header" class="cockpit-header"></div>
       <nav id="cockpit-nav" class="cockpit-nav" aria-label="Ticket sections"></nav>
       <div id="cockpit-body" class="cockpit-body"></div>
+    </section>
+
+    <!-- VIEW 3: Wiki & Concepts Hub (Explorer + Reader) -->
+    <section id="wiki-screen" class="cockpit-screen" aria-label="Wiki and concepts hub" hidden>
+      <div id="wiki-header" class="cockpit-header"></div>
+      <nav id="wiki-nav" class="cockpit-nav" aria-label="Wiki sections"></nav>
+      <div id="wiki-body" class="cockpit-body"></div>
     </section>
   </main>
 </body>

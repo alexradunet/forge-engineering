@@ -7,6 +7,8 @@ export { STATES, parseTicket } from '../../../scripts/lib/ticket.mjs';
 
 const MAX_DOC_BYTES = 1024 * 1024;
 const DOC_SUBDIRS = ['evidence', 'outbox'];
+const MAX_WIKI_DEPTH = 3;
+const WIKI_EXCLUDED_ROOT_DIRS = new Set(['raw', 'archive', 'forge', 'items']);
 const DOC_ORDER = [
   'README.md',
   'map.md',
@@ -123,13 +125,27 @@ export function parseDocument(text, fallbackPath = '') {
   const source = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
   const match = /^---\n([\s\S]*?)\n---(?:\n|$)/.exec(source);
   const frontmatter = Object.create(null);
+  const sources = [];
+  let inSources = false;
   let body = source;
   if (match) {
     body = source.slice(match[0].length);
     const lines = match[1].split('\n');
     for (let index = 0; index < lines.length; index++) {
       let line = lines[index];
-      if (/^\s*(#|-|$)/.test(line)) continue;
+      if (/^\s*(#|$)/.test(line)) continue;
+      if (inSources && /^\s+-\s+(.+)$/.test(line)) {
+        const entry = /^\s+-\s+(.+)$/.exec(line)[1];
+        try {
+          const parsedItem = scalar(entry);
+          if (typeof parsedItem === 'string' && parsedItem.trim()) sources.push(parsedItem.trim());
+        } catch {
+          if (entry.trim()) sources.push(entry.trim());
+        }
+        continue;
+      }
+      if (/^\s*-/.test(line)) continue;
+      inSources = false;
       const block = /^([a-zA-Z][\w-]*:\s*)([>|][+-]?)(?:\s+#.*)?\s*$/.exec(line);
       if (block) {
         try {
@@ -142,6 +158,10 @@ export function parseDocument(text, fallbackPath = '') {
       }
       const field = /^([a-zA-Z][\w-]*):(?:\s+(.*)|$)/.exec(line);
       if (!field) continue;
+      if (field[1] === 'sources' && !(field[2] ?? '').trim()) {
+        inSources = true;
+        continue;
+      }
       try {
         const val = scalar(field[2] ?? '');
         if (val == null || typeof val === 'string') frontmatter[field[1]] = val ?? '';
@@ -164,6 +184,7 @@ export function parseDocument(text, fallbackPath = '') {
     status: frontmatter.status || '',
     target: frontmatter.target || '',
     hero: heroMatch ? heroMatch[1].trim() : '',
+    sources,
     frontmatter,
     body,
   };
@@ -281,6 +302,186 @@ function validSegment(segment) {
     && !/[/\\:\0]/.test(segment);
 }
 
+function wikiPageCategory(relPath) {
+  if (relPath === 'index.md' || relPath === 'log.md') return 'index';
+  const top = relPath.split('/')[0];
+  if (top === 'learning') return 'learning';
+  if (top === 'tooling') return 'tooling';
+  if (top === 'decisions') return 'decisions';
+  if (top === 'tickets') return 'tickets';
+  return 'area';
+}
+
+function wikiPageArea(relPath) {
+  if (!relPath.includes('/')) return 'root';
+  return relPath.split('/')[0];
+}
+
+function wikiPageLabel(relPath, parsedTitle) {
+  if (relPath === 'index.md') return '📚 Wiki Index';
+  if (relPath === 'log.md') return '🧾 Wiki Log';
+  if (parsedTitle) return parsedTitle;
+  return path.posix.basename(relPath, '.md');
+}
+
+function parseIndexSummaries(indexText) {
+  const summaries = new Map();
+  const lines = indexText.replace(/\r\n/g, '\n').split('\n');
+  for (const line of lines) {
+    const match = /^\s*-\s+\[[^\]]+\]\(([^)]+\.md)\)\s*(?:[—–-]\s*(.+))?$/.exec(line.trim());
+    if (!match) continue;
+    const relPath = match[1].trim().replace(/^\.\//, '').replace(/\\/g, '/');
+    const summary = (match[2] ?? '').trim();
+    if (relPath && summary) summaries.set(relPath, summary);
+  }
+  return summaries;
+}
+
+function extractFirstParagraph(body) {
+  const lines = body.replace(/\r\n/g, '\n').split('\n');
+  const para = [];
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) {
+      if (para.length) break;
+      continue;
+    }
+    if (line.startsWith('#') || line.startsWith('```') || line.startsWith('|') || line.startsWith('---')) {
+      if (para.length) break;
+      continue;
+    }
+    if (line.startsWith('>')) {
+      const cleaned = line.replace(/^>\s*/, '').trim();
+      if (cleaned) return cleaned;
+      continue;
+    }
+    if (/^[-*]\s+/.test(line)) {
+      if (para.length) break;
+      return line.replace(/^[-*]\s+/, '').trim();
+    }
+    para.push(line);
+  }
+  return para.join(' ');
+}
+
+function sortWikiPages(a, b) {
+  const catOrder = { index: 0, learning: 1, area: 2, tooling: 3, decisions: 4, tickets: 5 };
+  const ca = catOrder[a.category] ?? 3;
+  const cb = catOrder[b.category] ?? 3;
+  if (ca !== cb) return ca - cb;
+  if (a.path === 'index.md') return -1;
+  if (b.path === 'index.md') return 1;
+  return a.path.localeCompare(b.path);
+}
+
+async function discoverWikiPages(wikiDir) {
+  let indexSummaries = new Map();
+  try {
+    const indexPath = path.join(wikiDir, 'index.md');
+    const info = await lstat(indexPath);
+    if (info.isFile() && !info.isSymbolicLink() && info.size <= MAX_DOC_BYTES) {
+      indexSummaries = parseIndexSummaries(await readFile(indexPath, 'utf8'));
+    }
+  } catch {
+    // Ignore missing or unreadable index.md
+  }
+
+  const pages = [];
+  const walk = async (currentDir, relPrefix, depth) => {
+    if (depth > MAX_WIKI_DEPTH) return;
+    let entries;
+    try {
+      entries = await readdir(currentDir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      if (!validSegment(entry.name)) continue;
+      if (depth === 0 && WIKI_EXCLUDED_ROOT_DIRS.has(entry.name)) continue;
+      const relPath = relPrefix ? `${relPrefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory() && !entry.isSymbolicLink()) {
+        try {
+          const childDir = await containedDirectory(currentDir, entry.name);
+          await walk(childDir, relPath, depth + 1);
+        } catch {
+          // Skip invalid or symlinked directories
+        }
+      } else if (entry.isFile() && !entry.isSymbolicLink() && entry.name.endsWith('.md')) {
+        try {
+          const fullPath = path.join(currentDir, entry.name);
+          const info = await lstat(fullPath);
+          if (!info.isFile() || info.isSymbolicLink() || info.size > MAX_DOC_BYTES) continue;
+          const content = await readFile(fullPath, 'utf8');
+          const parsed = parseDocument(content, relPath);
+          const category = wikiPageCategory(relPath);
+          const summary = indexSummaries.get(relPath) || parsed.hero || extractFirstParagraph(parsed.body);
+          pages.push({
+            path: relPath,
+            label: wikiPageLabel(relPath, parsed.title),
+            title: parsed.title,
+            category,
+            area: wikiPageArea(relPath),
+            type: parsed.type,
+            status: parsed.status,
+            updated: parsed.updated,
+            summary,
+            sourceCount: parsed.sources.length,
+            hasMermaid: /```mermaid\b/.test(parsed.body),
+          });
+        } catch {
+          // Ignore unreadable secondary wiki markdown files
+        }
+      }
+    }
+  };
+
+  await walk(wikiDir, '', 0);
+  return pages.sort(sortWikiPages);
+}
+
+export async function readWikiDoc(wikiPath, docRelPath) {
+  if (typeof docRelPath !== 'string' || !docRelPath.endsWith('.md') || docRelPath.includes('\0') || docRelPath.includes('\\')) {
+    throw new Error('Invalid wiki document path.');
+  }
+  const parts = docRelPath.split('/');
+  if (parts.length < 1 || parts.some((part) => !validSegment(part))) {
+    throw new Error('Invalid wiki document path.');
+  }
+  if (WIKI_EXCLUDED_ROOT_DIRS.has(parts[0])) {
+    throw new Error('Wiki document path is outside canonical wiki sections.');
+  }
+  if (parts.length > MAX_WIKI_DEPTH) {
+    throw new Error('Invalid wiki document path.');
+  }
+  const wiki = await realpath(wikiPath);
+  if (!(await lstat(wiki)).isDirectory()) throw new Error(`${wikiPath} is not a wiki directory.`);
+  let parentDir = wiki;
+  for (let i = 0; i < parts.length - 1; i++) {
+    parentDir = await containedDirectory(parentDir, parts[i]);
+  }
+  const targetFile = path.join(parentDir, parts[parts.length - 1]);
+  const info = await lstat(targetFile);
+  if (!info.isFile() || info.isSymbolicLink()) throw new Error('Wiki document must be a regular file, not a link.');
+  if (info.size > MAX_DOC_BYTES) throw new Error('Wiki document exceeds 1 MiB.');
+  const rawText = await readFile(targetFile, 'utf8');
+  const parsed = parseDocument(rawText, docRelPath);
+  return {
+    path: docRelPath,
+    file: targetFile,
+    label: wikiPageLabel(docRelPath, parsed.title),
+    category: wikiPageCategory(docRelPath),
+    area: wikiPageArea(docRelPath),
+    title: parsed.title,
+    type: parsed.type,
+    status: parsed.status,
+    updated: parsed.updated,
+    hero: parsed.hero,
+    sources: parsed.sources,
+    frontmatter: parsed.frontmatter,
+    body: parsed.body,
+  };
+}
+
 export async function readTicketDoc(wikiPath, folder, docRelPath) {
   if (!validSegment(folder)) throw new Error('Invalid ticket folder.');
   if (typeof docRelPath !== 'string' || !docRelPath.endsWith('.md') || docRelPath.includes('\0') || docRelPath.includes('\\')) {
@@ -334,7 +535,8 @@ export async function readTicketDoc(wikiPath, folder, docRelPath) {
 export async function readTickets(wikiPath) {
   const wiki = await realpath(wikiPath);
   if (!(await lstat(wiki)).isDirectory()) throw new Error(`${wikiPath} is not a wiki directory.`);
-  const result = { wikiPath: wiki, tickets: [], errors: [], scannedAt: new Date().toISOString() };
+  const wikiPages = await discoverWikiPages(wiki);
+  const result = { wikiPath: wiki, tickets: [], wikiPages, errors: [], scannedAt: new Date().toISOString() };
   let root;
   try {
     const raw = await containedDirectory(wiki, 'raw');
