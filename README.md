@@ -37,16 +37,11 @@ to read the current [VS Code documentation](https://code.visualstudio.com/docs/a
 
 ### 🔄 Update forge
 
-In **Chat: Open Customizations**, select **Plugins**, then **Check for and Apply Updates**
-(the refresh icon) for the installed-plugin group. Alternatively, run **Chat: Update Plugins**.
-These are the current [documented update controls](https://code.visualstudio.com/docs/agent-customization/agent-plugins#_update-plugins),
-checked against the [VS Code 1.144 release notes](https://code.visualstudio.com/updates/v1_144).
+VS Code has no update action for a plugin installed from a URL or local folder.
+To update `forge`:
 
-Manage CLI-installed plugins in the interface where you installed them; the `/plugin`
-commands and the editor have separate inventories. For a manually registered local
-source checkout, inspect that installation's actual path and update it through Git
-only after reviewing its state, then reload VS Code. Do not assume one install root
-or use uninstall/reinstall as an update workaround.
+1. If you installed from a Git clone (`~/.vscode/agent-plugins/github.com/alexradunet/forge-engineering` or `~/.copilot/installed-plugins/_direct/forge`), pull the latest `main` in that folder, or uninstall and reinstall the plugin.
+2. Reload extensions in the session (`extensions_reload`) or run **Developer: Reload Window** so `%APPDATA%/Code/agentPlugins` picks up the new snapshot.
 
 "check forge" reports when the installed plugin is behind its remote.
 
