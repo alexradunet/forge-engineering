@@ -324,7 +324,7 @@ h1 {
 /* Compact KPI Strip */
 .kpi-strip {
   display: grid;
-  grid-template-columns: repeat(4, minmax(130px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 12px;
 }
 
@@ -350,6 +350,20 @@ h1 {
 .kpi-card[data-tone="warn"] { border-left-color: var(--warn); }
 .kpi-card[data-tone="info"] { border-left-color: var(--info); }
 .kpi-card[data-tone="ok"] { border-left-color: var(--ok); }
+.kpi-card[data-tone="wait"] { border-left-color: var(--wait); }
+
+button.kpi-link {
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+button.kpi-link:hover,
+button.kpi-link:focus-visible {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+}
 
 .kpi-label {
   font-size: 0.78rem;
@@ -1045,6 +1059,67 @@ details.meta-drawer summary {
   color: var(--text-muted);
   margin-top: 2px;
 }
+
+/* People (ticket tab and global mode) */
+.person-row[data-status="waiting"] .gate-dot { background: var(--wait); box-shadow: 0 0 0 3px var(--wait-soft); }
+.person-row[data-status="done"] { opacity: 0.72; }
+
+.person-name {
+  font-weight: 700;
+}
+
+.person-ask {
+  font-size: 0.82rem;
+  margin-top: 3px;
+}
+
+button.person-ticket-btn {
+  font: inherit;
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+
+button.person-ticket-btn:hover,
+button.person-ticket-btn:focus-visible {
+  border-color: var(--ember);
+}
+
+.people-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 12px;
+}
+
+.person-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--done);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: var(--shadow-sm);
+}
+
+.person-card .person-row {
+  grid-template-columns: 14px minmax(0, 1fr);
+  align-items: start;
+}
+
+.person-card .person-row > .gate-dot { margin-top: 6px; }
+
+.person-card .person-row > .ticket-badges {
+  grid-column: 2;
+  justify-content: flex-start;
+}
+
+.person-card[data-status="reply-in"],
+.person-card[data-status="follow-up"],
+.person-card[data-status="to-contact"],
+.person-card[data-status="drafted"] { border-left-color: var(--warn); }
+.person-card[data-status="waiting"] { border-left-color: var(--wait); }
+.person-card[data-status="done"] { border-left-color: var(--ok); }
 
 /* Categorized Document Explorer (Progressive disclosure) */
 .category-bar {

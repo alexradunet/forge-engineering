@@ -86,12 +86,31 @@ const wikiCategories = [
   },
 ];
 
+const peopleStatuses = {
+  'reply-in': { icon: '📥', label: 'Reply to read', tone: 'needs-me', dot: 'in-review', action: true },
+  'follow-up': { icon: '🔔', label: 'Follow up', tone: 'warn', dot: 'in-review', action: true },
+  'to-contact': { icon: '✉️', label: 'Send message', tone: 'warn', dot: 'in-review', action: true },
+  drafted: { icon: '📝', label: 'Draft to send', tone: 'warn', dot: 'in-review', action: true },
+  waiting: { icon: '⏳', label: 'Waiting for answer', tone: 'waiting', dot: 'todo', action: false },
+  done: { icon: '✅', label: 'Done', tone: 'done', dot: 'approved', action: false },
+};
+const peopleOrder = Object.keys(peopleStatuses);
+const peopleFilters = [
+  { id: 'open', label: '👥 Open', match: (p) => p.status !== 'done' },
+  { id: 'action', label: '🟡 Your move', match: (p) => isPersonAction(p) },
+  { id: 'waiting', label: '⏳ Waiting', match: (p) => p.status === 'waiting' },
+  { id: 'done', label: '✅ Done', match: (p) => p.status === 'done' },
+  { id: 'all', label: 'All', match: () => true },
+];
+const FOLLOW_UP_WORKING_DAYS = 3;
+
 const byId = (id) => document.getElementById(id);
 let snapshot = null;
 let loading = false;
-let viewMode = 'tickets'; // 'tickets' | 'wiki'
+let viewMode = 'tickets'; // 'tickets' | 'wiki' | 'people'
 let selectedKey = null; // null = Overview Grid, string = Focused Ticket Cockpit
-let cockpitSection = 'summary'; // 'summary' | 'gates' | 'map' | 'docs' | 'reader'
+let cockpitSection = 'summary'; // 'summary' | 'gates' | 'people' | 'map' | 'docs' | 'reader'
+let peopleFilter = 'open'; // id from peopleFilters
 let activeDocCategory = 'core'; // 'core' | 'gate' | 'evidence' | 'outbox' | 'log' | 'all'
 let activeDocPath = null;
 let previousSection = 'docs';
@@ -148,6 +167,68 @@ function ticketPriority(ticket) {
   return order[ticket.state] ?? 4;
 }
 
+function isOpenTicket(ticket) {
+  return ticket.state !== 'done' && ticket.phase !== 'closed';
+}
+
+function isPersonAction(person) {
+  return peopleStatuses[person.status]?.action === true;
+}
+
+function workingDaysSince(since) {
+  if (!since || !/^\d{4}-\d{2}-\d{2}$/.test(since)) return null;
+  const start = new Date(`${since}T00:00:00`);
+  if (!Number.isFinite(start.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  let days = 0;
+  for (const day = new Date(start); day < today && days < 400; day.setDate(day.getDate() + 1)) {
+    const weekday = day.getDay();
+    if (weekday !== 0 && weekday !== 6) days++;
+  }
+  return days;
+}
+
+function personAgeText(person) {
+  const days = workingDaysSince(person.since);
+  if (days === null) return '';
+  if (days === 0) return `since ${person.since} (today)`;
+  return `since ${person.since} (${days} working ${days === 1 ? 'day' : 'days'})`;
+}
+
+function needsFollowUp(person) {
+  return person.status === 'waiting' && (workingDaysSince(person.since) ?? 0) > FOLLOW_UP_WORKING_DAYS;
+}
+
+function comparePeople(a, b) {
+  return peopleOrder.indexOf(a.status) - peopleOrder.indexOf(b.status)
+    || (a.since || '9999').localeCompare(b.since || '9999')
+    || a.name.localeCompare(b.name);
+}
+
+function peopleCounts(people) {
+  const list = people || [];
+  return {
+    action: list.filter(isPersonAction).length,
+    waiting: list.filter((p) => p.status === 'waiting').length,
+  };
+}
+
+function personStatusChip(person) {
+  const meta = peopleStatuses[person.status] || { icon: '', label: person.status, tone: '' };
+  const chip = element('span', `${meta.icon} ${meta.label}`.trim(), 'chip');
+  chip.dataset.tone = meta.tone;
+  return chip;
+}
+
+function openPeopleHub(filter = null, recordHistory = false) {
+  if (recordHistory) pushNavState();
+  viewMode = 'people';
+  if (filter) peopleFilter = filter;
+  render();
+  if (globalThis.scrollTo) globalThis.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
 function stripInlineMarkdown(text) {
   if (!text) return '';
   return text
@@ -170,6 +251,13 @@ function updateKpis() {
   const needsMeCount = openTickets.filter(isNeedsMe).length;
   let inReviewGates = 0;
   let approvedGates = 0;
+  let peopleAction = 0;
+  let peopleWaiting = 0;
+  for (const ticket of openTickets) {
+    const counts = peopleCounts(ticket.people);
+    peopleAction += counts.action;
+    peopleWaiting += counts.waiting;
+  }
   for (const ticket of snapshot.tickets) {
     for (const gate of ticket.gates || []) {
       if (gate.status === 'skipped') continue;
@@ -181,6 +269,10 @@ function updateKpis() {
   byId('kpi-needs-me').textContent = String(needsMeCount);
   byId('kpi-in-review').textContent = String(inReviewGates);
   byId('kpi-approved').textContent = String(approvedGates);
+  const actionKpi = byId('kpi-people-action');
+  if (actionKpi) actionKpi.textContent = String(peopleAction);
+  const waitingKpi = byId('kpi-people-waiting');
+  if (waitingKpi) waitingKpi.textContent = String(peopleWaiting);
 }
 
 function renderStatePills(currentState) {
@@ -311,6 +403,19 @@ function card(ticket) {
   stateChip.dataset.tone = ticket.state;
   badges.append(stateChip);
   badges.append(element('span', `${ticket.phase} / ${workflowLabel(ticket)}`, 'chip'));
+  const people = peopleCounts(ticket.people);
+  if (people.action) {
+    const actionChip = element('span', `✉️ ${people.action}`, 'chip');
+    actionChip.dataset.tone = 'warn';
+    actionChip.title = `${people.action} ${people.action === 1 ? 'person needs' : 'people need'} a message or a reply from you`;
+    badges.append(actionChip);
+  }
+  if (people.waiting) {
+    const waitingChip = element('span', `⏳ ${people.waiting}`, 'chip');
+    waitingChip.dataset.tone = 'waiting';
+    waitingChip.title = `Waiting for an answer from ${people.waiting} ${people.waiting === 1 ? 'person' : 'people'}`;
+    badges.append(waitingChip);
+  }
   top.append(badges);
   node.append(top);
 
@@ -434,7 +539,15 @@ function renderCockpitHeader(ticket) {
     openTicketCockpit(ticketSelect.value, 'summary');
   });
   switcher.append(switcherLabel, ticketSelect);
-  topRow.append(backBtn, switcher);
+  const leftBtns = element('div', undefined, 'ticket-badges');
+  leftBtns.append(backBtn);
+  if (navHistory.length && navHistory.at(-1).viewMode === 'people') {
+    const peopleBtn = element('button', '↩ Back to people', 'btn-secondary');
+    peopleBtn.type = 'button';
+    peopleBtn.addEventListener('click', () => popNavState());
+    leftBtns.append(peopleBtn);
+  }
+  topRow.append(leftBtns, switcher);
 
   const titleRow = element('div', undefined, 'cockpit-title-row');
   const main = element('div', undefined, 'cockpit-title-main');
@@ -478,6 +591,7 @@ function renderCockpitNav(ticket) {
   const sections = [
     { id: 'summary', label: '🎯 Summary' },
     { id: 'gates', label: '🚦 Gates & PRs', count: `${approvedGates}/${activeGates}` },
+    { id: 'people', label: '👥 People', count: String((ticket.people || []).length) },
     ...(hasMap ? [{ id: 'map', label: '🗺️ Code Map' }] : []),
     { id: 'docs', label: '🗂️ Documents & Evidence', count: String(docs.length) },
   ];
@@ -522,6 +636,19 @@ function renderSummarySection(ticket) {
   hero.append(nextP);
   if (ticket.waitingOn) {
     hero.append(element('p', `⏳ Waiting on: ${ticket.waitingOn}`, 'hero-waiting'));
+  }
+  const people = peopleCounts(ticket.people);
+  if (people.action || people.waiting) {
+    const parts = [];
+    if (people.action) parts.push(`✉️ ${people.action} to message or read`);
+    if (people.waiting) parts.push(`⏳ ${people.waiting} waiting for an answer`);
+    const peopleBtn = element('button', `👥 ${parts.join(' · ')} →`, 'btn-secondary');
+    peopleBtn.type = 'button';
+    peopleBtn.addEventListener('click', () => {
+      cockpitSection = 'people';
+      renderCockpit(ticket);
+    });
+    hero.append(peopleBtn);
   }
   stack.append(hero);
 
@@ -639,6 +766,223 @@ function renderGatesSection(ticket) {
   }
 
   body.append(stack);
+}
+
+function personRow(person, { ticket = null, showTicket = false } = {}) {
+  const meta = peopleStatuses[person.status] || {};
+  const row = element('div', undefined, 'gate-row person-row');
+  row.dataset.status = person.status;
+  const dot = element('span', undefined, 'gate-dot');
+  dot.dataset.status = meta.dot || 'todo';
+
+  const info = element('div', undefined, 'gate-info');
+  const titleLine = element('div', undefined, 'gate-title-line');
+  if (showTicket && ticket) {
+    const keyBtn = element('button', ticket.key, 'key person-ticket-btn');
+    keyBtn.type = 'button';
+    keyBtn.title = `Open ${ticket.key}: ${ticket.title}`;
+    keyBtn.addEventListener('click', () => openTicketCockpit(ticket.key, 'people', null, true));
+    titleLine.append(keyBtn);
+  } else {
+    titleLine.append(element('span', person.name, 'person-name'));
+  }
+  if (person.role) titleLine.append(element('span', person.role, 'chip'));
+  if (person.via) titleLine.append(element('span', `via ${person.via}`, 'chip'));
+  info.append(titleLine);
+  if (showTicket && ticket) info.append(element('div', ticket.title, 'gate-meta-line'));
+  if (person.ask) info.append(element('div', `❓ ${person.ask}`, 'person-ask'));
+
+  const metaParts = [];
+  const age = personAgeText(person);
+  if (age) metaParts.push(age);
+  if (person.note) metaParts.push(person.note);
+  if (metaParts.length) info.append(element('div', metaParts.join(' · '), 'gate-meta-line'));
+
+  const actions = element('div', undefined, 'ticket-badges');
+  if (needsFollowUp(person)) {
+    const nudge = element('span', '🔔 Follow up?', 'chip');
+    nudge.dataset.tone = 'warn';
+    nudge.title = `No answer for more than ${FOLLOW_UP_WORKING_DAYS} working days`;
+    actions.append(nudge);
+  }
+  if (person.draft && ticket && (ticket.docs || []).some((d) => d.path === person.draft)) {
+    const draftBtn = element('button', '📝 Draft', 'btn-secondary');
+    draftBtn.type = 'button';
+    draftBtn.title = `Read ${person.draft}`;
+    draftBtn.addEventListener('click', () => {
+      if (showTicket) {
+        openTicketCockpit(ticket.key, 'people', null, true);
+      }
+      openDocumentReader(ticket, person.draft, 'people');
+    });
+    actions.append(draftBtn);
+  } else if (person.draft) {
+    actions.append(element('code', person.draft, 'badge-mono'));
+  }
+  actions.append(personStatusChip(person));
+
+  row.append(dot, info, actions);
+  return row;
+}
+
+function peopleStatusSummary(people) {
+  const summary = element('div', undefined, 'ticket-badges');
+  for (const status of peopleOrder) {
+    const count = people.filter((p) => p.status === status).length;
+    if (!count) continue;
+    const meta = peopleStatuses[status];
+    const chip = element('span', `${meta.icon} ${meta.label}: ${count}`, 'chip');
+    chip.dataset.tone = meta.tone;
+    summary.append(chip);
+  }
+  return summary;
+}
+
+function renderPeopleSection(ticket) {
+  const body = byId('cockpit-body');
+  body.replaceChildren();
+
+  const people = [...(ticket.people || [])].sort(comparePeople);
+  if (!people.length) {
+    body.append(element(
+      'p',
+      'No people recorded yet. The ticket skill adds each person you work with to the README people list, with a contact status.',
+      'empty-banner',
+    ));
+    return;
+  }
+
+  const stack = element('div', undefined, 'summary-stack');
+  stack.append(peopleStatusSummary(people));
+  const list = element('div', undefined, 'gate-list');
+  for (const person of people) list.append(personRow(person, { ticket }));
+  stack.append(list);
+
+  const allBtn = element('button', '👥 All people across tickets →', 'btn-secondary');
+  allBtn.type = 'button';
+  allBtn.addEventListener('click', () => openPeopleHub('open', true));
+  stack.append(allBtn);
+  body.append(stack);
+}
+
+function collectPeople() {
+  const groups = new Map();
+  for (const ticket of (snapshot?.tickets || []).filter(isOpenTicket)) {
+    for (const person of ticket.people || []) {
+      const id = person.name.trim().toLowerCase();
+      if (!groups.has(id)) groups.set(id, { name: person.name, entries: [] });
+      groups.get(id).entries.push({ person, ticket });
+    }
+  }
+  for (const group of groups.values()) {
+    group.entries.sort((a, b) => comparePeople(a.person, b.person) || a.ticket.key.localeCompare(b.ticket.key));
+  }
+  return [...groups.values()];
+}
+
+function renderPeopleHub() {
+  const header = byId('people-header');
+  const body = byId('people-body');
+  if (!header || !body) return;
+  header.replaceChildren();
+  body.replaceChildren();
+
+  const groups = collectPeople();
+  const allEntries = groups.flatMap((g) => g.entries.map((e) => e.person));
+
+  const topRow = element('div', undefined, 'cockpit-topbar');
+  const leftBtns = element('div', undefined, 'ticket-badges');
+  const ticketsBtn = element('button', '← Tickets board', 'btn-secondary');
+  ticketsBtn.type = 'button';
+  ticketsBtn.addEventListener('click', () => {
+    viewMode = 'tickets';
+    selectedKey = null;
+    render();
+  });
+  leftBtns.append(ticketsBtn);
+  if (navHistory.length) {
+    const prevBtn = element('button', '↩ Previous view', 'btn-secondary');
+    prevBtn.type = 'button';
+    prevBtn.addEventListener('click', () => popNavState());
+    leftBtns.append(prevBtn);
+  }
+  topRow.append(leftBtns);
+
+  const titleRow = element('div', undefined, 'cockpit-title-row');
+  const main = element('div', undefined, 'cockpit-title-main');
+  const badges = element('div', undefined, 'ticket-badges');
+  badges.append(element('span', '👥 PEOPLE', 'key'));
+  const counts = peopleCounts(allEntries);
+  const totalChip = element('span', `${groups.length} ${groups.length === 1 ? 'person' : 'people'} on open tickets`, 'chip');
+  totalChip.dataset.tone = 'info';
+  badges.append(totalChip);
+  if (counts.action) {
+    const chip = element('span', `✉️ ${counts.action} to message or read`, 'chip');
+    chip.dataset.tone = 'warn';
+    badges.append(chip);
+  }
+  if (counts.waiting) {
+    const chip = element('span', `⏳ ${counts.waiting} waiting for an answer`, 'chip');
+    chip.dataset.tone = 'waiting';
+    badges.append(chip);
+  }
+  main.append(badges, element('h2', 'People you work with'));
+  titleRow.append(main);
+  header.append(topRow, titleRow);
+
+  if (!groups.length) {
+    body.append(element(
+      'p',
+      'No people on open tickets yet. The ticket skill adds each person you work with to the README people list of the ticket.',
+      'empty-banner',
+    ));
+    return;
+  }
+
+  const activeFilter = peopleFilters.find((f) => f.id === peopleFilter) || peopleFilters[0];
+  const bar = element('div', undefined, 'category-bar');
+  const pills = element('div', undefined, 'category-pills');
+  for (const filter of peopleFilters) {
+    const count = allEntries.filter(filter.match).length;
+    const btn = element('button', `${filter.label} (${count})`, `pill-btn${filter.id === activeFilter.id ? ' active' : ''}`);
+    btn.type = 'button';
+    btn.addEventListener('click', () => {
+      peopleFilter = filter.id;
+      renderPeopleHub();
+    });
+    pills.append(btn);
+  }
+  bar.append(pills);
+  body.append(bar);
+
+  const visible = groups
+    .map((group) => ({ ...group, entries: group.entries.filter((e) => activeFilter.match(e.person)) }))
+    .filter((group) => group.entries.length)
+    .sort((a, b) => comparePeople(a.entries[0].person, b.entries[0].person) || a.name.localeCompare(b.name));
+
+  if (!visible.length) {
+    body.append(element('p', 'No people match this filter.', 'empty-banner'));
+    return;
+  }
+
+  const grid = element('div', undefined, 'people-grid');
+  for (const group of visible) {
+    const cardEl = element('article', undefined, 'person-card');
+    cardEl.dataset.status = group.entries[0].person.status;
+    const top = element('div', undefined, 'shelf-top');
+    top.append(element('span', `👤 ${group.name}`, 'person-name'));
+    const roles = [...new Set(group.entries.map((e) => e.person.role).filter(Boolean))];
+    const tags = element('div', undefined, 'ticket-badges');
+    for (const role of roles) tags.append(element('span', role, 'chip'));
+    tags.append(element('span', `${group.entries.length} ${group.entries.length === 1 ? 'ticket' : 'tickets'}`, 'badge-mono'));
+    top.append(tags);
+    cardEl.append(top);
+    const list = element('div', undefined, 'gate-list');
+    for (const entry of group.entries) list.append(personRow(entry.person, { ticket: entry.ticket, showTicket: true }));
+    cardEl.append(list);
+    grid.append(cardEl);
+  }
+  body.append(grid);
 }
 
 function renderDocsExplorerSection(ticket) {
@@ -1221,7 +1565,7 @@ async function renderDocumentView(ticket, docPath, showBackToDocs = true) {
       historyBtn.addEventListener('click', () => popNavState());
       actionsGroup.append(historyBtn);
     }
-    const backBtn = element('button', '← Back to files', 'btn-secondary');
+    const backBtn = element('button', previousSection === 'people' ? '← Back to people' : '← Back to files', 'btn-secondary');
     backBtn.type = 'button';
     backBtn.addEventListener('click', () => {
       cockpitSection = previousSection || 'docs';
@@ -1655,6 +1999,8 @@ function renderCockpit(ticket) {
     renderSummarySection(ticket);
   } else if (cockpitSection === 'gates') {
     renderGatesSection(ticket);
+  } else if (cockpitSection === 'people') {
+    renderPeopleSection(ticket);
   } else if (cockpitSection === 'map') {
     renderDocumentView(ticket, 'map.md', false);
   } else if (cockpitSection === 'docs') {
@@ -1719,18 +2065,32 @@ function render() {
   const overviewScreen = byId('overview-screen');
   const cockpitScreen = byId('cockpit');
   const wikiScreen = byId('wiki-screen');
+  const peopleScreen = byId('people-screen');
   const pageTitle = byId('page-title');
 
   const modeTicketsBtn = byId('mode-tickets');
   const modeWikiBtn = byId('mode-wiki');
+  const modePeopleBtn = byId('mode-people');
   const modeTicketsCount = byId('mode-tickets-count');
   const modeWikiCount = byId('mode-wiki-count');
+  const modePeopleCount = byId('mode-people-count');
   if (modeTicketsCount) modeTicketsCount.textContent = String(snapshot.tickets.length);
   if (modeWikiCount) modeWikiCount.textContent = String((snapshot.wikiPages || []).length);
+  if (modePeopleCount) {
+    modePeopleCount.textContent = String(collectPeople().filter((g) => g.entries.some((e) => e.person.status !== 'done')).length);
+  }
   if (modeTicketsBtn) modeTicketsBtn.className = `mode-btn${viewMode === 'tickets' ? ' active' : ''}`;
   if (modeWikiBtn) modeWikiBtn.className = `mode-btn${viewMode === 'wiki' ? ' active' : ''}`;
+  if (modePeopleBtn) modePeopleBtn.className = `mode-btn${viewMode === 'people' ? ' active' : ''}`;
+  if (peopleScreen) peopleScreen.hidden = viewMode !== 'people';
 
-  if (viewMode === 'wiki') {
+  if (viewMode === 'people') {
+    overviewScreen.hidden = true;
+    cockpitScreen.hidden = true;
+    if (wikiScreen) wikiScreen.hidden = true;
+    pageTitle.textContent = 'People';
+    renderPeopleHub();
+  } else if (viewMode === 'wiki') {
     overviewScreen.hidden = true;
     cockpitScreen.hidden = true;
     if (wikiScreen) wikiScreen.hidden = false;
@@ -1794,5 +2154,8 @@ byId('mode-tickets')?.addEventListener('click', () => {
 byId('mode-wiki')?.addEventListener('click', () => {
   openWikiHub(wikiSection || 'overview', activeWikiPath, null, false);
 });
+byId('mode-people')?.addEventListener('click', () => openPeopleHub(null, false));
+byId('kpi-people-action-card')?.addEventListener('click', () => openPeopleHub('action', true));
+byId('kpi-people-waiting-card')?.addEventListener('click', () => openPeopleHub('waiting', true));
 refresh();
 setInterval(refresh, 5000);

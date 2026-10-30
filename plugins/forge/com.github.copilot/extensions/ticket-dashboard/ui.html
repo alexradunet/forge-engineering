@@ -27,6 +27,10 @@
           <span>📚 Wiki &amp; Concepts</span>
           <span id="mode-wiki-count" class="nav-count">0</span>
         </button>
+        <button id="mode-people" class="mode-btn" type="button">
+          <span>👥 People</span>
+          <span id="mode-people-count" class="nav-count">0</span>
+        </button>
       </nav>
     </div>
     <div class="topbar-meta">
@@ -67,6 +71,14 @@
           <span class="kpi-label">🟢 Approved gates</span>
           <strong id="kpi-approved" class="kpi-value">0</strong>
         </div>
+        <button id="kpi-people-action-card" class="kpi-card kpi-link" data-tone="warn" type="button" title="People who need a message or a reply from you">
+          <span class="kpi-label">✉️ People to message</span>
+          <strong id="kpi-people-action" class="kpi-value">0</strong>
+        </button>
+        <button id="kpi-people-waiting-card" class="kpi-card kpi-link" data-tone="wait" type="button" title="People you wait for">
+          <span class="kpi-label">⏳ Waiting on people</span>
+          <strong id="kpi-people-waiting" class="kpi-value">0</strong>
+        </button>
       </section>
 
       <div class="filters" role="search" aria-label="Filter tickets">
@@ -102,6 +114,12 @@
       <div id="wiki-header" class="cockpit-header"></div>
       <nav id="wiki-nav" class="cockpit-nav" aria-label="Wiki sections"></nav>
       <div id="wiki-body" class="cockpit-body"></div>
+    </section>
+
+    <!-- VIEW 4: People across open tickets -->
+    <section id="people-screen" class="cockpit-screen" aria-label="People across tickets" hidden>
+      <div id="people-header" class="cockpit-header"></div>
+      <div id="people-body" class="cockpit-body"></div>
     </section>
   </main>
 </body>

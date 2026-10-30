@@ -128,6 +128,16 @@ See the [ticket workflow contract](plugins/forge/skills/ticket/SKILL.md#-workflo
 
 The agent never merges. It asks before every write to the tracker, the repository host, or the CI.
 
+### 👥 People on a ticket
+
+The ticket README keeps a `people:` list of everyone you work with on the ticket.
+Each entry has a name or handle, a role, the ask, and one status:
+`to-contact` → `drafted` → `waiting` → `reply-in` → `done`, plus `follow-up`.
+The agent updates the list when you add a colleague question, draft a message, send it, or get a reply.
+After more than 3 working days in `waiting`, it suggests a follow-up but changes the status only when you agree.
+The list is outside approval manifests, so a status change never reopens a gate.
+See [People](plugins/forge/skills/ticket/SKILL.md#-people).
+
 ## Learning mode
 
 Learning mode helps you understand an artifact before you approve it. It is off by default.
@@ -157,9 +167,10 @@ and groups the open tickets by who must act: you, the agent, a colleague, or nob
 Forge also bundles a read-only canvas. Say **"open the Forge ticket dashboard"**.
 The agent supplies the repository wiki path from `forge.mjs where --json`.
 
-- Start on a clean overview grid with 4 KPI cards, state filter pills, search, and segmented gate progress bars; recorded tracks appear only as legacy context.
+- Start on a clean overview grid with 6 KPI cards, state filter pills, search, and segmented gate progress bars; recorded tracks appear only as legacy context.
 - Switch between **🎫 Tickets** and **📚 Wiki & Concepts** in the top bar to browse canonical wiki knowledge shelves (**🎓 Concepts & Learning**, **🏗️ Architecture & Areas**, **🛠️ Tooling & Gotchas**, **🧭 Decisions**, **🎫 Closed Ticket Summaries**, and **📚 Index & Log**).
-- Click any ticket card to open its full-screen **Ticket Cockpit**: phase stepper, hero focus, categorized document shelves, review gates, and change requests.
+- Click any ticket card to open its full-screen **Ticket Cockpit**: phase stepper, hero focus, categorized document shelves, review gates, change requests, and a **👥 People** tab.
+- Switch to **👥 People** in the top bar to see everyone on open tickets, grouped by person, with filters for **Your move**, **Waiting**, and **Done**. The **People to message** and **Waiting on people** KPI cards open the same view. Ticket cards show ✉️ and ⏳ counts.
 - Browse ticket documents by category (**Core & Map**, **Gate Docs**, **Evidence & Spikes**, **Outbox Drafts**, **Logs & Decisions**) and read both ticket and wiki pages inside the canvas with rendered **Mermaid diagrams**, collapsible `📂` detail sections, and verified source lists.
 - Follow Markdown links seamlessly across ticket files, canonical wiki pages, and concept lessons with a built-in `↩ Previous view` history stack.
 - The dashboard reads ticket and wiki files every 5 seconds. **Refresh** reads them immediately.
@@ -185,7 +196,7 @@ The panel needs no database; ticket files preserve its data across sessions.
 
 The reader supports the [ticket template](plugins/forge/skills/ticket/templates/README.md):
 scalar fields, comments, quoted strings, folded text (`>`), literal text (`|`), and flat object lists
-for `gates` and `changes`. Text blocks support strip (`-`) and keep (`+`) chomping.
+for `gates`, `changes`, and `people`. Text blocks support strip (`-`) and keep (`+`) chomping.
 Lists can use inline arrays, inline objects, or indented fields.
 YAML anchors, tags, and explicit block indentation indicators are not supported;
 the dashboard reports them as read errors. Existing tickets need no rewrite for supported YAML forms.

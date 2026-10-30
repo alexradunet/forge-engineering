@@ -74,6 +74,7 @@ test('the repository ticket template parses after its placeholders are filled', 
   assert.doesNotMatch(filled, /^track:/m);
   assert.equal(parsed.gates.length, 7);
   assert.deepEqual(parsed.changes, []);
+  assert.deepEqual(parsed.people, []);
 });
 
 test('folded ticket fields preserve paragraphs, indentation, and chomping', () => {
@@ -109,6 +110,31 @@ gates: [{ name: "Designed?", need: required, status: todo }]
   assert.equal(parsed.gates[0].name, 'Designed?');
   assert.throws(() => parseTicket(ticket('changes: [null]\n')), /Invalid change/);
   assert.throws(() => parseTicket(ticket('gates: [null]\n')), /Invalid gate/);
+});
+
+test('people list parses inline and block entries with empty optional fields', () => {
+  const parsed = parseTicket(ticket(`people:
+  - { name: "Ana P.", role: reviewer, status: waiting, since: 2026-10-28, ask: "Is retry safe? yes: no", via: tracker, draft: outbox/colleague-questions.md }
+  - name: Bo
+    status: to-contact
+`));
+  assert.deepEqual(parsed.people, [
+    { name: 'Ana P.', status: 'waiting', role: 'reviewer', ask: 'Is retry safe? yes: no', via: 'tracker', note: '', since: '2026-10-28', draft: 'outbox/colleague-questions.md' },
+    { name: 'Bo', status: 'to-contact', role: '', ask: '', via: '', note: '', since: '', draft: '' },
+  ]);
+  assert.deepEqual(parseTicket(ticket()).people, []);
+  assert.deepEqual(parseTicket(ticket('people: []\n')).people, []);
+  for (const [entry, pattern] of [
+    ['[null]', /name is required/],
+    ['[{ status: waiting }]', /name is required/],
+    ['[{ name: Ana, status: asked }]', /Invalid person status/],
+    ['[{ name: Ana, status: waiting, since: 2026-02-30 }]', /since date/],
+    ['[{ name: Ana, status: drafted, draft: ../secret.md }]', /Invalid person draft/],
+    ['[{ name: Ana, status: drafted, draft: outbox/a/b.md }]', /Invalid person draft/],
+    ['[{ name: Ana, status: drafted, draft: context.md }]', /Invalid person draft/],
+    ['[{ name: Ana, status: done, role: [a] }]', /Invalid person role/],
+  ]) assert.throws(() => parseTicket(ticket(`people: ${entry}\n`)), pattern);
+  assert.throws(() => parseTicket(ticket('people: nope\n')), /must be a list/);
 });
 
 test('legacy tickets without a track show Unspecified instead of an inferred size', () => {
@@ -430,6 +456,81 @@ test('reader discovers canonical wiki and concept pages, serves /wiki/docs/*, an
   assert.equal(resolved.fromWikiToTicket.kind, 'ticket-doc');
   assert.equal(resolved.fromWikiToTicket.ticket.key, 'APP-42');
   assert.equal(resolved.fromWikiToTicket.docPath, 'README.md');
+});
+
+test('dashboard shows people per ticket, in KPIs, on cards, and grouped across open tickets', async (t) => {
+  const wiki = await fixture(t);
+  await put(wiki, 'app-42', ticket(`people:
+  - { name: Ana, role: reviewer, status: waiting, since: 2026-01-05, ask: Retry safe? }
+  - { name: Bo, role: QA, status: to-contact }
+  - { name: Cy, status: done }
+`));
+  await put(wiki, 'app-43', ticket(`people:
+  - { name: ana, role: PO, status: reply-in, draft: outbox/q.md }
+`).replace('APP-42', 'APP-43'));
+  await put(wiki, 'app-44', ticket(`people:
+  - { name: Dee, status: follow-up }
+`).replace('APP-42', 'APP-44').replace('state: active', 'state: done'));
+  const state = await readTickets(wiki);
+  assert.equal(state.errors.length, 0);
+  assert.equal(state.tickets[0].people.length, 3);
+
+  const ui = await readFile(new URL('../plugins/forge/com.github.copilot/extensions/ticket-dashboard/ui.js', import.meta.url), 'utf8');
+  const node = () => ({
+    textContent: '', children: [],
+    append(...children) { this.children.push(...children); },
+    replaceChildren(...children) { this.children = children; },
+    addEventListener() {},
+  });
+  const controls = new Map();
+  const view = runInNewContext(`${ui}
+    snapshot = state;
+    updateKpis();
+    const cardNode = card(state.tickets[0]);
+    viewMode = 'people';
+    renderPeopleHub();
+    const hubOpen = { header: { textContent: '', children: [...byId('people-header').children] }, body: { textContent: '', children: [...byId('people-body').children] } };
+    const openGroups = collectPeople();
+    peopleFilter = 'action';
+    renderPeopleHub();
+    const hubAction = byId('people-body');
+    renderPeopleSection(state.tickets[0]);
+    ({ cardNode, hubOpen, openGroups, hubAction, section: byId('cockpit-body'),
+      action: byId('kpi-people-action').textContent, waiting: byId('kpi-people-waiting').textContent,
+      followUp: needsFollowUp(state.tickets[0].people[0]) });`, {
+    state, URL, setInterval() {}, fetch: () => new Promise(() => {}),
+    document: {
+      createElement: node,
+      getElementById(id) { if (!controls.has(id)) controls.set(id, node()); return controls.get(id); },
+    },
+  });
+  const text = (element) => [element.textContent, ...element.children.map(text)].join('\n');
+  assert.equal(view.action, '2');
+  assert.equal(view.waiting, '1');
+  assert.equal(view.followUp, true);
+  const cardText = text(view.cardNode);
+  assert.match(cardText, /✉️ 1/);
+  assert.match(cardText, /⏳ 1/);
+
+  assert.deepEqual(JSON.parse(JSON.stringify(view.openGroups.map((g) => [g.name, g.entries.map((e) => `${e.ticket.key}:${e.person.status}`)]))).sort(), [
+    ['Ana', ['APP-43:reply-in', 'APP-42:waiting']],
+    ['Bo', ['APP-42:to-contact']],
+    ['Cy', ['APP-42:done']],
+  ]);
+  const hubText = `${text(view.hubOpen.header)}\n${text(view.hubOpen.body)}`;
+  assert.match(hubText, /3 people on open tickets/);
+  assert.match(hubText, /👤 Ana/);
+  assert.match(hubText, /📥 Reply to read/);
+  assert.match(hubText, /🔔 Follow up\?/);
+  assert.doesNotMatch(hubText, /Dee|👤 Cy/);
+  const actionText = text(view.hubAction);
+  assert.match(actionText, /👤 Bo/);
+  assert.match(actionText, /APP-43/);
+  assert.doesNotMatch(actionText, /Waiting for answer/);
+  const sectionText = text(view.section);
+  assert.match(sectionText, /Ana[\s\S]*Retry safe\?/);
+  assert.match(sectionText, /✉️ Send message: 1/);
+  assert.match(sectionText, /✅ Done/);
 });
 
 test('Agent Plugins manifest declares a namespaced canvas extension', async () => {

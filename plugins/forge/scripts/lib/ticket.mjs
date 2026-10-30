@@ -1,6 +1,8 @@
 export const STATES = ['needs-me', 'go', 'active', 'waiting', 'blocked', 'done'];
 const PHASES = ['start', 'investigate', 'plan', 'implement', 'review', 'closed'];
 const GATE_STATUSES = ['todo', 'in-review', 'approved', 'skipped', 'blocked'];
+export const PEOPLE_STATUSES = ['to-contact', 'drafted', 'waiting', 'follow-up', 'reply-in', 'done'];
+const PERSON_TEXT_FIELDS = ['role', 'ask', 'via', 'note'];
 
 export function validDate(value) {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
@@ -151,7 +153,7 @@ export function parseFrontmatter(text, lists = ['gates', 'changes']) {
 }
 
 export function parseTicket(text) {
-  const data = parseFrontmatter(text);
+  const data = parseFrontmatter(text, ['gates', 'changes', 'people']);
   for (const key of ['key', 'title', 'phase', 'state', 'next']) {
     if (typeof data[key] !== 'string' || !data[key].trim()) throw new Error(`Missing or invalid ${key}.`);
   }
@@ -182,6 +184,7 @@ export function parseTicket(text) {
     }
     if (change.label != null && typeof change.label !== 'string') throw new Error('Invalid change request label.');
   }
+  const people = (data.people ?? []).map(parsePerson);
   const source = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
   const fmMatch = /^---\n[\s\S]*?\n---(?:\n|$)/.exec(source);
   const body = fmMatch ? source.slice(fmMatch[0].length) : '';
@@ -192,6 +195,30 @@ export function parseTicket(text) {
     workflow: data.workflow ?? null,
     track: data.workflow === 'full-v1' ? null : data.track ?? 'Unspecified', next: data.next, waitingOn: data.waiting_on ?? '',
     branch: data.branch ?? '', worktree: data.worktree ?? '', updated: data.updated ?? '',
-    item: data.item ?? '', summary, gates: data.gates ?? [], changes: data.changes ?? [],
+    item: data.item ?? '', summary, gates: data.gates ?? [], changes: data.changes ?? [], people,
   };
+}
+
+function parsePerson(person) {
+  if (!person || typeof person !== 'object' || Array.isArray(person)
+    || typeof person.name !== 'string' || !person.name.trim()) throw new Error('Invalid person: name is required.');
+  const name = person.name.trim();
+  if (!PEOPLE_STATUSES.includes(person.status)) {
+    throw new Error(`Invalid person status: ${name}. Use ${PEOPLE_STATUSES.join(', ')}.`);
+  }
+  for (const key of [...PERSON_TEXT_FIELDS, 'since', 'draft']) {
+    if (person[key] != null && (typeof person[key] !== 'string' || /[\r\n]/.test(person[key]))) {
+      throw new Error(`Invalid person ${key}: ${name}`);
+    }
+  }
+  if (person.since != null && person.since !== '' && !validDate(person.since)) {
+    throw new Error(`Invalid person since date: ${name}`);
+  }
+  if (person.draft != null && person.draft !== ''
+    && !/^outbox\/[^/\\:\0]+\.md$/.test(person.draft)) {
+    throw new Error(`Invalid person draft: ${name}. Use outbox/<name>.md.`);
+  }
+  const result = { name, status: person.status };
+  for (const key of [...PERSON_TEXT_FIELDS, 'since', 'draft']) result[key] = person[key] ?? '';
+  return result;
 }

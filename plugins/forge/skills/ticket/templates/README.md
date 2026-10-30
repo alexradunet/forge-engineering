@@ -11,6 +11,8 @@ waiting_on: ""      # "you: <gate>" | "colleague: <name> — <what>" | "outside:
 branch: <from repo.branchPattern>
 worktree: ""        # <VS Code session name> — <worktree path>
 changes: []         # - { url: <change request URL>, label: "#<n>", state: draft }
+people: []          # - { name: <name or handle>, role: reviewer, status: to-contact, since: <yyyy-mm-dd>, ask: "<what>", via: tracker, draft: outbox/<name>.md }
+                    #   status: to-contact ✉️ | drafted 📝 | waiting ⏳ | follow-up 🔔 | reply-in 📥 | done ✅
 gates:              # approved needs date, manifest, and full raw-manifest SHA-256 hash
   - { name: Understood?, doc: context.md, need: required, status: todo }
   - { name: Agreed?, doc: interview.md, need: required, status: todo }

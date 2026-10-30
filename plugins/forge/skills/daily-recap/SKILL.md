@@ -77,10 +77,15 @@ Never invent calendar entries, attendance, cancellations, or transcripts.
 3. Read the matching local ticket folders: `README.md` first, then the latest `log.md` entries.
 4. Read the previous reviewed `recap.md` and its `outcome.md`, if they exist.
 5. Write `days/<yyyy-mm-dd>/recap.md` with the configured sections. Mark it as a draft, and ask the user to review it.
+6. Add the 👥 people actions from the README `people` list of each open ticket (see the `ticket` skill, People):
+   - Under "Plan for today": each `to-contact`, `drafted`, `follow-up`, and `reply-in` entry, as a suggested action.
+   - Under "Open actions": each `waiting` entry older than 3 working days (from `since`), as a follow-up candidate.
+   - In `recap.md`, write the role, the ticket key, and the ask, for example "Send question to the reviewer (APP-12)". Do not write the person name.
+   - In the chat reply, you can name the person, because the `people` list is the source.
 
 Tracker access is read-only. Never create, edit, transition, comment on, or log work on an item.
 Do not query CI servers or production systems for the recap.
-Do not change code, ticket artifacts, or canonical wiki pages.
+Do not change code, ticket artifacts, or canonical wiki pages. Do not change a `people` status; suggest the change instead.
 
 Evidence rules:
 

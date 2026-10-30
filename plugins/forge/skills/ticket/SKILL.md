@@ -69,7 +69,7 @@ The folder name is `<key>`, for example `app-123`.
 
 ```text
 <wiki>/raw/tickets/<key>/
-  README.md          frontmatter: workflow, phase, state, next, waiting_on, branch, change requests, gates; body: toolkit, files
+  README.md          frontmatter: workflow, phase, state, next, waiting_on, branch, change requests, people, gates; body: toolkit, files
   ticket.md          work item snapshot
   context.md         pre-investigation brief: problem, history, related work, open questions, people to ask
   map.md             living code map: purpose, flow, files, data, tests, changes (grows in every phase)
@@ -369,8 +369,8 @@ Do this automatically. It is read-only, so it needs no approval.
 5. If the work item names a customer environment or a production symptom, take a small read-only sample with the tools that the `## Investigate` policy section allows. Ask first before any tool that needs approval.
 6. If a source is not available (VPN off, tool not authenticated, capability `manual`), write the gap and continue.
 7. Write `context.md` from [templates/context.md](templates/context.md) (🧭 Context). Put tool outputs in `evidence/`. Add what you learned about the code to `map.md`.
-8. List the colleagues who know the area: reporter, authors and reviewers of related change requests, owners of sibling items and related documents. For each, write why and what to ask.
-9. Write draft messages to them in `outbox/colleague-questions.md`. The user sends them. Never contact people yourself.
+8. List the colleagues who know the area: reporter, authors and reviewers of related change requests, owners of sibling items and related documents. For each, write why and what to ask. Add each one to the README `people` list with `status: to-contact` (see People).
+9. Write draft messages to them in `outbox/colleague-questions.md`. The user sends them. Never contact people yourself. Set each drafted person to `status: drafted` with `draft: outbox/colleague-questions.md`.
 10. Present the context in plain words and open Understood? for `full-v1`. Follow original gates for legacy tickets. Answer questions; do not claim that a lesson or self-check proves understanding.
 
 #### 💬 Colleague questions do not block
@@ -379,6 +379,52 @@ Do this automatically. It is read-only, so it needs no approval.
 - The user can approve Understood? (or legacy Briefed?) with open colleague questions.
 - When an open question blocks the plan, the plan states an assumption and a fallback for it.
 - When an answer arrives, record it in "💬 Colleague answers" and update the row status. Name the artifacts that the answer changes. Update only those artifacts, and reopen only their gates.
+- Keep the README `people` entry of the same person in step with the row status (see People).
+
+### 👥 People
+
+The README `people` list holds every person you work with on the ticket, in every phase.
+It is the source for the 👥 People views of the dashboard canvas and for the daily recap.
+
+- Add people when they appear: reporter and experts at Start, the PO or domain owner at the interview, reviewers at the change request, QA at the QA handover.
+- Write a name or tracker handle only. Never store email addresses, phone numbers, or other personal data.
+- Keep one entry per person. Put all open asks for that person in one `ask` line.
+- Set `since` to today on each status change. The canvas and the recap show waits from this date.
+- The README is outside approval manifests. A people change never reopens a gate.
+
+| Status | Meaning | Who acts |
+|---|---|---|
+| `to-contact` ✉️ | The user must send a message; no draft yet | user |
+| `drafted` 📝 | An `outbox/` draft is ready; the user must review and send it | user |
+| `waiting` ⏳ | The message is sent; waiting for the answer | them |
+| `follow-up` 🔔 | No answer in time; the user must send a reminder | user |
+| `reply-in` 📥 | The answer arrived; the user or agent must record and act on it | user |
+| `done` ✅ | Nothing open with this person | nobody |
+
+```mermaid
+flowchart LR
+  TC["to-contact ✉️"] --> D["drafted 📝"]
+  D -->|user sends| W["waiting ⏳"]
+  W -->|no answer| F["follow-up 🔔"]
+  F -->|reminder sent| W
+  W -->|answer arrives| R["reply-in 📥"]
+  R -->|answer recorded| X["done ✅"]
+  TC -->|talked live| X
+```
+
+Map the **❓ Open questions** status of `context.md` to the person status:
+
+| Question status | Person status |
+|---|---|
+| `draft` | `to-contact`, or `drafted` when an outbox draft exists |
+| `asked` | `waiting` |
+| `no reply` | `follow-up` |
+| `answered` | `reply-in` until the answer is recorded, then `done` when no other ask is open |
+
+- When the user confirms a sent message (or a Sendable? write to a person is `sent`), set `waiting`.
+- Suggest `follow-up` when a person is `waiting` for more than 3 working days. Change the status only after the user agrees.
+- When a person blocks the next step, set `waiting_on: "colleague: <name> — <what>"`.
+- Ask the user before you add a person that no ticket source names.
 
 `investigation.md` is for the investigation phase: how to achieve the agreed scope.
 
@@ -489,11 +535,13 @@ When the user asks for "the board", "my tickets", or a ticket status, answer in 
 
 - A `you:` value of `waiting_on`, `state: needs-me`, or a gate `in-review` puts the ticket in "🟡 Your move".
 - Start `waiting_on` with `you:`, `colleague:`, or `outside:`.
+- Add one 👥 line under the tables: people to message (`to-contact`, `drafted`, `follow-up`), replies to read (`reply-in`), and people you wait for (`waiting`), each with its ticket key.
 
 When the user asks for a visual board or a dashboard, use the bundled `forge-ticket-dashboard`
 canvas if it is available. Get this repository's wiki path with `forge.mjs where --json`, then open
 the canvas with `{ "wikiPath": "<absolute wiki path>" }`. Use a stable instance ID for that wiki.
 The `refresh` action returns current tickets and read errors. The page also refreshes every 5 seconds.
+The canvas shows the `people` list in a 👥 People tab per ticket, a global 👥 People mode, and KPI cards.
 The canvas is read-only: it does not edit tickets, approve gates, or call the tracker.
 If the host does not support canvases or the extension is not loaded, show the chat overview above
 and report the limitation. Do not require a canvas to use the ticket workflow.
@@ -514,6 +562,7 @@ README (`type: ticket`), see [templates/README.md](templates/README.md):
 | `next`, `waiting_on` | one line each |
 | `item`, `branch`, `worktree`, `updated` | work item URL, branch name, path, `yyyy-mm-dd`. |
 | `changes` | change requests: list of `{url, label, state}`; `state`: `draft`, `open`, `merged`, `closed`, `abandoned`. |
+| `people` | people on the ticket: list of `{name, status, role, since, ask, via, draft, note}`; `name` and `status` required; `status`: `to-contact`, `drafted`, `waiting`, `follow-up`, `reply-in`, `done`; `since` is `yyyy-mm-dd`; `draft` is `outbox/<name>.md`. See People. |
 | `gates` | list of `{name, doc, need, status, date, hash, manifest, note}`; `status`: `todo`, `in-review`, `approved`, `skipped`, `blocked`. An approved gate needs the user's approval `date` and revision evidence. `manifest` is a ticket-relative JSON file; `hash` covers its raw bytes, or raw `doc` bytes for legacy single-document records. |
 
 Other documents:
@@ -530,7 +579,7 @@ Other documents:
 2. Read the last entries of `log.md`.
 3. Read the `## Resume` policy section, for example credential checks.
 4. Validate gate revision evidence with `node "<plugin>/scripts/forge.mjs" lint --wiki "<wiki>" --json`, then open other files as the next step needs them. Default lint is read-only. Report unavailable local archives as local-only, not automatically broken.
-5. Tell the user the workflow (or legacy context, with track only when recorded), phase, last result, policy checks, open gates, approval findings, open colleague questions, and next step. Findings block the affected action, not read-only resume. Never run `--fix` implicitly.
+5. Tell the user the workflow (or legacy context, with track only when recorded), phase, last result, policy checks, open gates, approval findings, open colleague questions, people who need a message or a reply (`to-contact`, `drafted`, `follow-up`, `reply-in`), people you wait for, and next step. Findings block the affected action, not read-only resume. Never run `--fix` implicitly.
 6. Set the session title (see Session title).
 
 ## 🔎 Investigate
