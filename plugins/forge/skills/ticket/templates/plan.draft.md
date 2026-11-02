@@ -4,7 +4,7 @@ ticket: <KEY>
 gate: Designed?
 updated: <yyyy-mm-dd>
 ---
-# 📝 Plan — <KEY>: <short title>
+# 📝 Plan (<KEY>): <short title>
 
 > 🔥 <the payoff in one line, for example "312 queries → 2 queries per call">
 
@@ -27,7 +27,7 @@ implement before approval. Keep the approval record outside these hashed documen
 | 🧩 Steps | <n> |
 | 📄 Files | <n> |
 | 🧪 Tests | <unit n> · <integration n> · <end-to-end scope> |
-| ⚠️ Risk | 🟢 low \| 🟡 medium \| 🔴 high — <one line> |
+| ⚠️ Risk | 🟢 low \| 🟡 medium \| 🔴 high: <one line> |
 | ⏱️ Estimate | <hours or days> |
 
 ## 🗺️ Change map
@@ -79,4 +79,4 @@ flowchart LR
 
 ## ❓ Decisions needed
 
-1. <max 5 items, or "None — GO only">
+1. <max 5 items, or "None (GO only)">

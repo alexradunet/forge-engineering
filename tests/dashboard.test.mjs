@@ -380,7 +380,7 @@ test('reader discovers canonical wiki and concept pages, serves /wiki/docs/*, an
 
   await writeFile(
     path.join(wiki, 'index.md'),
-    '---\ntitle: Personal engineering wiki\ntype: index\n---\n# 📚 Wiki Index\n\n- [Idempotency bite](learning/idempotency.md) — 15-minute concept lesson on idempotent retries.\n- [Agents window](tooling/vscode-agents-window.md) — setup and hooks.\n- [APP-42](raw/tickets/app-42/README.md) — active ticket.\n',
+    '---\ntitle: Personal engineering wiki\ntype: index\n---\n# 📚 Wiki Index\n\n- [Idempotency bite](learning/idempotency.md) — 15-minute concept lesson on idempotent retries.\n- [Agents window](tooling/vscode-agents-window.md): setup and hooks.\n- [APP-42](raw/tickets/app-42/README.md) — active ticket.\n',
   );
   await writeFile(
     path.join(wiki, 'learning', 'idempotency.md'),
@@ -409,6 +409,8 @@ test('reader discovers canonical wiki and concept pages, serves /wiki/docs/*, an
   const learningMeta = state.wikiPages.find((p) => p.path === 'learning/idempotency.md');
   assert.equal(learningMeta.summary, '15-minute concept lesson on idempotent retries.');
   assert.equal(learningMeta.sourceCount, 2);
+  const toolingMeta = state.wikiPages.find((p) => p.path === 'tooling/vscode-agents-window.md');
+  assert.equal(toolingMeta.summary, 'setup and hooks.');
 
   const { options } = canvas(t);
   const { url } = await options.open({ instanceId: 'test', input: { wikiPath: wiki } });

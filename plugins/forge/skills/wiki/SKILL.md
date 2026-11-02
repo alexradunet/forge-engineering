@@ -84,7 +84,7 @@ Steps:
 1. Search `index.md` for a page on the same topic.
 2. Update that page, or create one page per topic in the correct folder.
 3. Use a short kebab-case file name, for example `tooling/npm-feed-auth.md`.
-4. Add or update the page line in `index.md`.
+4. Add or update the page line in `index.md`: `- [<Title>](<folder>/<page>.md): <one-line summary>`.
 5. Append an entry to `log.md`.
 6. Commit the canonical pages in the wiki repository: `git -C <wiki> add -A; git -C <wiki> commit -m "<summary>"`. Push only when the user asks.
 7. Tell the user what you recorded, in one line per page.
@@ -111,7 +111,7 @@ An absent `log.md` is allowed until it is created; do not invent entries just to
 Ticket documents in `raw/tickets/` use their own frontmatter schema (the `ticket` skill, "Frontmatter").
 Writing rules:
 
-- Use ASD-STE100 Simplified Technical English.
+- Follow the wiki page mode of the [`writing` skill](../writing/SKILL.md): STE, a full pass for AI patterns, no emoji, and no bold labels.
 - Keep a page short. Split it when it covers two topics.
 - Link to related pages with relative links.
 - Give facts, not a narrative of the investigation.
@@ -120,7 +120,7 @@ Writing rules:
 Log entry format (append at the bottom):
 
 ```markdown
-## YYYY-MM-DD <create|update|delete|lint|close> — <summary>
+## YYYY-MM-DD <create|update|delete|lint|close>: <summary>
 
 - <folder/page.md>
 ```

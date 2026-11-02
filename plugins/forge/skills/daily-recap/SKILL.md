@@ -99,6 +99,7 @@ When a source fails, use the other sources, and label the gap. Never present a p
 When no previous recap exists, say that the baseline is missing.
 
 Keep the first screen readable in about two minutes. Link to details. Do not copy long documents.
+Write the recap in the forge document mode of the `writing` skill.
 Exclude secrets, personal data, customer data, and customer environment names.
 Use item keys and task facts, not person names or copied comments.
 

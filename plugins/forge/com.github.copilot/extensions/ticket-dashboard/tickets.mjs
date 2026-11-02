@@ -328,7 +328,7 @@ function parseIndexSummaries(indexText) {
   const summaries = new Map();
   const lines = indexText.replace(/\r\n/g, '\n').split('\n');
   for (const line of lines) {
-    const match = /^\s*-\s+\[[^\]]+\]\(([^)]+\.md)\)\s*(?:[—–-]\s*(.+))?$/.exec(line.trim());
+    const match = /^\s*-\s+\[[^\]]+\]\(([^)]+\.md)\)\s*(?:[—–:-]\s*(.+))?$/.exec(line.trim());
     if (!match) continue;
     const relPath = match[1].trim().replace(/^\.\//, '').replace(/\\/g, '/');
     const summary = (match[2] ?? '').trim();

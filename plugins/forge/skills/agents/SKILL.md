@@ -24,7 +24,7 @@ flowchart LR
 | Implement an approved plan, a long or parallel task | `create_session` with a worktree | a new session |
 | Quick review, research, or a check | a subagent (`task` tool) | nothing; the result comes back here |
 | Give more work or a correction to a running session | `send_message` | a message in that session |
-| Status of my sessions | `list_sessions`, then `get_session_context` | — |
+| Status of my sessions | `list_sessions`, then `get_session_context` | nothing; the result comes back here |
 
 ## 🛠️ Implementer session
 
@@ -42,7 +42,7 @@ flowchart LR
    - the stop condition: "Stop after the tests pass and report. Do not push or create a change request."
    - the report: changed files and the tests run, in a form that the lead session can copy into `map.md` and `review.md`
    - the rules: ask before CI triggers and tracker writes; never merge; plus the rules of the `## Implement` section of `<config>/policy.md`
-   - the key always-on rules, in short form. A session that `create_session` starts loads **no** plugin rules, skills, or MCP servers. The prompt is its only guide. Include the response style, the paths `<wiki>` and the ticket folder as resolved absolute paths, and the safety rules above.
+   - the main always-on rules, in short form. A session that `create_session` starts loads **no** plugin rules, skills, or MCP servers. The prompt is its only guide. Include the response style with the "No AI tells" list of the `style` rule, the paths `<wiki>` and the ticket folder as resolved absolute paths, and the safety rules above.
 4. Give the user the session link from the result.
 5. Record the session title and worktree path in the ticket `README.md` and `log.md`.
 

@@ -5,7 +5,7 @@ target: tracker-comment   # tracker-comment | tracker-item | change | email | ch
 status: draft          # authoring metadata; freeze all bytes at review
 updated: <yyyy-mm-dd>
 ---
-# 📤 Outbox draft — <KEY>: <target, for example "tracker comment on APP-123">
+# 📤 Outbox draft (<KEY>): <target, for example "tracker comment on APP-123">
 
 > 🔥 <why this message goes out now>
 
@@ -39,7 +39,7 @@ Validate sidecars when present; a missing sidecar does not prove a send occurred
 ## 📝 Message
 
 <!-- send: start -->
-<the exact text to send, in the target format>
+<the exact text to send, in the target format, after a full pass of the `writing` skill (outbound mode)>
 <!-- send: end -->
 
 > ⚠️ **Warning:** Check before GO: no customer environment names, no customer data, no secrets, no internal-only links for an external audience.
@@ -48,6 +48,8 @@ Validate sidecars when present; a missing sidecar does not prove a send occurred
 
 <sources, facts, and choices behind the text>
 
+Writing check: full pass, <remaining patterns, or "none">.
+
 ## ❓ Decisions needed
 
-1. <max 5 items, or "None — GO only">
+1. <max 5 items, or "None (GO only)">

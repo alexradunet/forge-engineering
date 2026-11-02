@@ -80,15 +80,15 @@ node "<plugin>/scripts/forge.mjs" config row checkouts "old" --delete
 | File | Key | Meaning | Default |
 |---|---|---|---|
 | `tracker.md` | `provider` | Name of the tool, for example `jira`, `gitlab`, `github`, `local` | `other` |
-| | `prefix` | Upper-case key prefix (see Keys) | — |
-| | `itemUrl` | URL template with `{KEY}` or `{number}` | — |
-| | `host`, `project` | Site and project of the tracker | — |
+| | `prefix` | Upper-case key prefix (see Keys) | none |
+| | `itemUrl` | URL template with `{KEY}` or `{number}` | none |
+| | `host`, `project` | Site and project of the tracker | none |
 | `repo.md` | `provider` | Name of the host, for example `github`, `gitlab` | `other` |
 | | `changeName` | `PR` or `MR` | `MR` for gitlab, else `PR` |
 | | `branchPattern` | Branch template with `{KEY}` or `{key}`, plus `{number}`, `{slug}` | `{KEY}-{slug}` |
 | | `baseBranch` | Default target branch | `main` |
 | `ci.md` | `provider` | Name of the CI | `other` |
-| | `host` | CI server URL (Jenkins) | — |
+| | `host` | CI server URL (Jenkins) | none |
 | `policy.md` | `noMergeWeekdays` | Days on which the agent never proposes a merge | `[]` |
 | | `evidenceOnDeployedEnv` | Evidence Testing must use a deployed environment when one is possible | `false` |
 | | `qaHandover` | Run the QA handover step after the merge | `false` |
@@ -146,12 +146,12 @@ A **write** changes something outside the workspace. The agent drafts the text i
 | `tracker.search` | read | a named query or a native query | list of key, summary, status, updated |
 | `tracker.comment` | **write** | key, Markdown text | comment URL or id |
 | `tracker.transition` | **write** | key, target status | new status |
-| `tracker.link` | **write** | key, other key or URL, relation | — |
+| `tracker.link` | **write** | key, other key or URL, relation | nothing |
 | `repo.open-change` | **write** | repo, branch, base, title, body, draft flag | change URL and number |
-| `repo.update-change` | **write** | change, new title or body | — |
+| `repo.update-change` | **write** | change, new title or body | nothing |
 | `repo.change-status` | read | change | state, approvals, mergeability, checks summary |
 | `repo.review-comments` | read | change | open threads with file, line, author role, text |
-| `repo.reply` | **write** | change, thread, text | — |
+| `repo.reply` | **write** | change, thread, text | nothing |
 | `repo.history` | read | search text (keys, file paths) | old changes with reviewers and threads |
 | `ci.status` | read | change or branch | pipelines or jobs with result and URL |
 | `ci.logs` | read | job | log excerpt |

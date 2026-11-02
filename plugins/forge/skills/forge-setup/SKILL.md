@@ -105,7 +105,7 @@ Then run `detect` again.
 | `jira` | `acli` | `acli jira auth login --web` |
 | `azure-pipelines` | `az` | `az login`, then `az extension add --name azure-devops` |
 | `jenkins` | none (`jenkins.mjs`) | step 9 stores the API token |
-| `local`, `other` | none | — |
+| `local`, `other` | none | no login |
 
 A missing CLI never blocks setup. Continue, and tell the user that those capabilities stay `manual` until the CLI works.
 

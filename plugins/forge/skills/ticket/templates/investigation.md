@@ -4,7 +4,7 @@ ticket: <KEY>
 gate: Diagnosed?
 updated: <yyyy-mm-dd>
 ---
-# 🔎 Investigation — <KEY>: <short title>
+# 🔎 Investigation (<KEY>): <short title>
 
 > 🔥 <the key finding in one line, for example "H2 holds: 1 call makes 312 queries">
 
@@ -28,7 +28,7 @@ updated: <yyyy-mm-dd>
 
 | # | Hypothesis | Status | Evidence |
 |---|---|---|---|
-| H1 | <text> | 🟡 open | — |
+| H1 | <text> | 🟡 open | None |
 
 Status values: `🟡 open`, `🟢 supported`, `🔴 rejected`.
 
@@ -44,7 +44,7 @@ flowchart TD
 
 ### <yyyy-mm-dd> <finding title>
 
-<fact in 1 to 3 sentences> — see [evidence](evidence/<file>.md)
+<fact in 1 to 3 sentences> (see [evidence](evidence/<file>.md))
 
 **📂 Details and excerpt**
 
@@ -59,10 +59,10 @@ flowchart TD
 
 ## 🧪 Spikes
 
-- <yyyy-mm-dd> <question> → <answer> — [evidence](evidence/<file>.md)
+- <yyyy-mm-dd> <question> → <answer> ([evidence](evidence/<file>.md))
 
 > ⚠️ **Warning:** <a risk or data rule that the plan must respect, when one exists>
 
 ## ❓ Decisions needed
 
-1. <max 5 items, or "None — GO only">
+1. <max 5 items, or "None (GO only)">

@@ -5,7 +5,7 @@ description: 'Offer optional, source-linked knowledge bites for unfamiliar conce
 
 # Learning mode
 
-Help the developer understand a change, not just approve it.
+Help the developer understand a change before they approve it.
 Use one focused lesson for each accepted concept.
 This skill adds no gate and does not replace normal feedback handling.
 
@@ -75,6 +75,7 @@ For distinct concepts with the same short name, use a more specific kebab-case s
 Use [the bite template](templates/knowledge-bite.md).
 Save the page as `<wiki>/learning/<concept-slug>.md`.
 Follow wiki frontmatter, index, log, and data rules.
+Write the lesson in the wiki page mode of the `writing` skill.
 The page describes the concept, not a person's learning history.
 Use an original, sanitized explanation. Do not copy private comments or company guidance.
 Link to guidance instead. Never store personal data, customer data, or secrets.

@@ -4,7 +4,7 @@ ticket: <KEY>
 gate: Agreed?
 updated: <yyyy-mm-dd>
 ---
-# 🎯 Scope interview — <KEY>: <short title>
+# 🎯 Scope interview (<KEY>): <short title>
 
 > 🔥 <the one scope choice that changes the plan most>
 
@@ -36,13 +36,13 @@ flowchart LR
 
 One block for each question. Round 2 questions go below round 1.
 
-### Q1 — <question>
+### Q1: <question>
 
 | | |
 |---|---|
-| 💡 Why it matters | <reason> — [context](context.md#<anchor>) or [evidence](evidence/<file>.md) |
+| 💡 Why it matters | <reason> ([context](context.md#<anchor>) or [evidence](evidence/<file>.md)) |
 | 🔀 Options | A: <option> · B: <option> · C: <option> |
-| ⭐ Recommended | <option> — <reason> |
+| ⭐ Recommended | <option>: <reason> |
 | ✅ Your answer | <empty until the user answers> |
 
 **📂 Spike result behind this question**
@@ -51,4 +51,4 @@ One block for each question. Round 2 questions go below round 1.
 
 ## ❓ Decisions needed
 
-1. <max 5 items, or "None — GO only">
+1. <max 5 items, or "None (GO only)">

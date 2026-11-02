@@ -175,8 +175,9 @@ Every gate document uses the plain ticket style. Read [templates/_style.md](temp
 - Long details go under a bold `**📂 <label>**` line. Do not drop information to make a document shorter.
 - Do not use HTML (`<details>`) or GitHub alerts (`[!NOTE]`). The Agents window preview does not render them.
 - Link each fact to its evidence file or to code (`[File.cs](<checkout>/path/File.cs:42)` with the absolute checkout path, which opens in VS Code).
-- End with **❓ Decisions needed** (max 5 items). Write "None — GO only" when it is empty.
+- End with **❓ Decisions needed** (max 5 items). Write "None (GO only)" when it is empty.
 - Explain each term that the user may not know, in plain words, or link to its row in `map.md`.
+- Before review, check the text against the forge document mode of the `writing` skill: no strong AI tells (§1 to §5, §8, §22 to §25).
 
 Procedure for each gate:
 
@@ -310,14 +311,14 @@ arbitrary JSON files elsewhere in the ticket.
 
 ### ✅ Approval form
 
-Show it with `ask_user` at each gate. Use one field, `decision`, with these options. Put the gate question in the message, for example "Designed? — is the plan for APP-123 correct?".
+Show it with `ask_user` at each gate. Use one field, `decision`, with these options. Put the gate question in the message, for example "Designed? Is the plan for APP-123 correct?".
 
 | Value | Title |
 |---|---|
-| `approve` | 🟢 GO — approve and start the next step |
-| `comments` | 💬 Comments — I added comments in the editor |
-| `changes` | ✏️ Changes — I typed them in the free-text answer |
-| `later` | ⏸️ Hold — not now |
+| `approve` | 🟢 GO: approve and start the next step |
+| `comments` | 💬 Comments: I added comments in the editor |
+| `changes` | ✏️ Changes: I typed them in the free-text answer |
+| `later` | ⏸️ Hold: not now |
 
 - Set no default. The user must pick an option.
 - List every file link and its SHA-256 revision (a 12-character display prefix is fine), plus the manifest link and digest. The stored hashes are full length. State that GO approves the whole exact set.
@@ -423,7 +424,7 @@ Map the **❓ Open questions** status of `context.md` to the person status:
 
 - When the user confirms a sent message (or a Sendable? write to a person is `sent`), set `waiting`.
 - Suggest `follow-up` when a person is `waiting` for more than 3 working days. Change the status only after the user agrees.
-- When a person blocks the next step, set `waiting_on: "colleague: <name> — <what>"`.
+- When a person blocks the next step, set `waiting_on: "colleague: <name> (<what>)"`.
 - Ask the user before you add a person that no ticket source names.
 
 `investigation.md` is for the investigation phase: how to achieve the agreed scope.
@@ -641,7 +642,7 @@ Open every document that the user must read with `code -r "<absolute path>"` (as
 - When such tests exist, run the relevant ones (and the whole suite when the risk is wide) on a deployed branch before you mark the change request ready. The `## Implement` policy section can make this stricter.
 - Ask the user before each deploy or CI trigger (`ci.trigger`). Show the job and its parameters first.
 - Record regression results (job, run number, pass or fail, link) in `log.md` and `review.md`. If no regression test covers the change, write that in `review.md`.
-- Draft every external text (tracker comment, change request description, shared document) in `outbox/<target>.draft.md` from [templates/outbox.draft.md](templates/outbox.draft.md). Send only the text between the `send` markers. Run Sendable? before the write.
+- Draft every external text (tracker comment, change request title and description, shared document) in `outbox/<target>.draft.md` from [templates/outbox.draft.md](templates/outbox.draft.md). Run a full pass of the `writing` skill (outbound mode) on the text between the `send` markers. Send only that text. Run Sendable? before the write.
 - Open the change request with `repo.open-change` after Shippable? and Sendable?. Add it to the README `changes` list.
 - Set the phase to `implement` and then to `review` in `README.md`.
 - After Shippable? and the change request, run the **Evidence Testing** step (next section). Do not report a change request as ready to merge before that step is done.
@@ -768,9 +769,9 @@ The gate documents and the README use the plain ticket style. Copy them from the
 `map.md`:
 
 ```markdown
-# 🗺️ Code map — <KEY>
+# 🗺️ Code map (<KEY>)
 
-> **TL;DR** — what the feature is and where it lives, in 2 lines.
+> **TL;DR:** what the feature is and where it lives, in 2 lines.
 > Rows marked `(unverified)` are guesses. Rows marked `(planned)` are not done yet.
 
 ## 🎯 What the feature is for
@@ -805,20 +806,20 @@ Mermaid flowchart or sequence: entry point → services → data → output.
 |---|---|
 ```
 
-`log.md`, `troubleshooting.md`, `decisions.md`: a `# <Title> — <KEY>` heading, then dated `## yyyy-mm-dd <title>` entries.
+`log.md`, `troubleshooting.md`, `decisions.md`: a `# <Title> (<KEY>)` heading, then dated `## yyyy-mm-dd <title>` entries.
 
 `<wiki>/tickets/<key>.md`:
 
 ```markdown
 ---
-title: <KEY> — <summary>
+title: <KEY>: <summary>
 updated: <YYYY-MM-DD>
 status: verified
 sources:
   - <work item URL>
   - <change request URL>
 ---
-# <KEY> — <summary>
+# <KEY>: <summary>
 
 <Problem in one paragraph.>
 

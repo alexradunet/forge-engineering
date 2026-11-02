@@ -6,14 +6,14 @@ Every ticket document is easy to scan, and no information is lost. Use plain nam
 
 | Document | Title | Gate |
 |---|---|---|
-| `README.md` | 🎫 Ticket | — |
+| `README.md` | 🎫 Ticket | None |
 | `context.md` | 🧭 Context | Understood? |
 | `interview.md` | 🎯 Scope interview | Agreed? |
 | `investigation.md` | 🔎 Investigation | Diagnosed? |
 | `plan.draft.md` | 📝 Plan | Designed? |
 | `outbox\*.draft.md` | 📤 Outbox draft | Sendable? |
 | `review.md` | 🧪 Code review | Shippable? |
-| `evidence-testing.md` | 🔬 Evidence Testing | — (step, required before merge) |
+| `evidence-testing.md` | 🔬 Evidence Testing | None (step, required before merge) |
 | `outbox\qa-handover.draft.md` | 🧑‍🔬 QA handover | Sendable? |
 | `close.draft.md` | ✅ Close | Learned? |
 
@@ -24,13 +24,13 @@ existing tickets' original gates and skips; do not copy new workflow metadata ov
 ## 🧱 Every gate document has these parts, in this order
 
 0. **Frontmatter**: copy it from the template. Keep `type`, `ticket`, `gate`, and `updated` correct. The ticket overview reads it.
-1. **Title**: `# <emoji> <Title> — <KEY>: <short title>`.
+1. **Title**: `# <emoji> <Title> (<KEY>): <short title>`.
 2. **Key fact**: one line, `> 🔥 <the most surprising fact or the stakes>`. Use a real number when one exists.
 3. **Summary quote**: `> **TL;DR:**`, `> **What I need from you:**`, `> **Reading time:**`. Put a line with only `>` between them, so each starts on a new line.
-4. **At a glance**: a table of 3 to 5 key numbers or facts.
+4. **At a glance**: a table of 3 to 5 main numbers or facts.
 5. **Diagram**: one Mermaid diagram (flow, timeline, or structure).
 6. **Sections**: short prose and tables first.
-7. **❓ Decisions needed**: max 5 items, or "None — GO only".
+7. **❓ Decisions needed**: max 5 items, or "None (GO only)".
 
 The gate status lives only in the `gates` list of the README frontmatter. Do not write a status footer in the document.
 
@@ -59,8 +59,10 @@ Use max 3 labeled quotes in one document.
 
 ## ✍️ Voice
 
-- Write warm and direct. Keep STE rules: short sentences, active voice, one topic per paragraph.
-- Address the user as "you". Write "we" for the user and the agent together.
+- Follow the forge document mode of the [`writing` skill](../../writing/SKILL.md): STE, and no strong AI tells (§1 to §5, §8, §22 to §25).
+- Write direct and plain. Address the user as "you". Write "we" for the user and the agent together.
+- Use only the fixed bold labels of this file and the templates. Add no other bold labels.
+- Text between the `send` markers of an outbox draft is outbound text. It gets a full pass, with no emoji and no bold labels.
 
 ## 🔀 Before and after
 
@@ -70,7 +72,7 @@ When a document describes a change in behavior, add a before/after table (`🔴 
 
 | Value | Title |
 |---|---|
-| `approve` | 🟢 GO — approve and start the next step |
-| `comments` | 💬 Comments — I added comments in the editor |
-| `changes` | ✏️ Changes — I type them in the free-text answer |
-| `later` | ⏸️ Hold — not now |
+| `approve` | 🟢 GO: approve and start the next step |
+| `comments` | 💬 Comments: I added comments in the editor |
+| `changes` | ✏️ Changes: I type them in the free-text answer |
+| `later` | ⏸️ Hold: not now |

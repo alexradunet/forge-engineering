@@ -4,7 +4,7 @@ ticket: <KEY>
 gate: Shippable?
 updated: <yyyy-mm-dd>
 ---
-# 🧪 Code review — <KEY>: <short title>
+# 🧪 Code review (<KEY>): <short title>
 
 > 🔥 <the result in one line, for example "All 48 tests green; 312 → 2 queries confirmed">
 
@@ -60,4 +60,4 @@ flowchart LR
 
 ## ❓ Decisions needed
 
-1. <max 5 items, or "None — GO only">
+1. <max 5 items, or "None (GO only)">

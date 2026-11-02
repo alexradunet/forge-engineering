@@ -5,7 +5,7 @@ target: tracker-comment
 status: draft          # authoring metadata; freeze all bytes at review
 updated: <yyyy-mm-dd>
 ---
-# 🧑‍🔬 QA handover — <KEY>: <short title>
+# 🧑‍🔬 QA handover (<KEY>): <short title>
 
 > 🔥 <one line: what QA can now test and the one thing to watch>
 
@@ -36,20 +36,21 @@ The QA transition is a separate write needing its own approval and record.
 ## 📝 Message
 
 <!-- send: start -->
-**Self-testing and QA guidance — <KEY>**
+### Self-testing and QA guidance (<KEY>)
 
-**What changed**
+#### What changed
+
 <2 to 4 lines in plain words. Toggle: <name>, default <value>, set in <place>.>
 
-**How we self-tested**
+#### How we self-tested
 
 | Level | What | Result |
 |---|---|---|
-| Unit tests | <fixtures, count> | 🟢 <n> passed |
-| Automated QA test | <project, test name> in <CI job #build> | 🟢 \| 🟡 \| ➖ none |
-| Regression | <jobs and builds> | 🟢 \| 🟡 <old failures only, first failing build> |
+| Unit tests | <fixtures, count> | <n> passed |
+| Automated QA test | <project, test name> in <CI job #build> | passed \| failed \| none |
+| Regression | <jobs and builds> | passed \| old failures only, first failing build <link> |
 
-**Self-QA on a deployed environment**
+#### Self-QA on a deployed environment
 
 | Check | Action | Expected | Observed |
 |---|---|---|---|
@@ -57,7 +58,7 @@ The QA transition is a separate write needing its own approval and record.
 
 Not covered, and why: <gaps accepted by the owner, or "none">.
 
-**How to test it (for QA)**
+#### How to test it (for QA)
 
 Preconditions: <environment, toggle value, observability tools, test data>.
 
@@ -66,12 +67,14 @@ Preconditions: <environment, toggle value, observability tools, test data>.
 3. <step>
 
 Expected: <result of each step, and where to see it: screen, query, or log line>.
-Control case: <what should NOT happen>.
+Control case: <what must not happen>.
 Clean-up: <what to reset>.
 Shortcut: <for example an automated test that creates the hard-to-reach condition>.
 
-**Regression areas to watch**: <list>.
-**Known limits**: <list>.
+#### Regression areas and known limits
+
+Regression areas to watch: <list>.
+Known limits: <list>.
 <!-- send: end -->
 
 > ⚠️ **Warning:** Check before GO: no customer or customer environment names, no secrets or credentials, no links that only developers can open.
@@ -80,7 +83,9 @@ Shortcut: <for example an automated test that creates the hard-to-reach conditio
 
 <sources: evidence-testing.md checks, test-plan.md, review.md, CI build links, evidence files>
 
+Writing check: full pass, <remaining patterns, or "none">.
+
 ## ❓ Decisions needed
 
 1. Move <KEY> to <target status> after the comment is sent? (separate tracker write, ask first)
-2. <max 4 more items, or "None — GO only">
+2. <max 4 more items, or "None (GO only)">

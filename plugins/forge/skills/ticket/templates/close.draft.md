@@ -4,7 +4,7 @@ ticket: <KEY>
 gate: Learned?
 updated: <yyyy-mm-dd>
 ---
-# ✅ Close — <KEY>: <short title>
+# ✅ Close (<KEY>): <short title>
 
 > 🔥 <the result in one line>
 
@@ -60,4 +60,4 @@ flowchart LR
 
 ## ❓ Decisions needed
 
-1. <max 5 items, or "None — GO only">
+1. <max 5 items, or "None (GO only)">

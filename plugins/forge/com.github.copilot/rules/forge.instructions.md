@@ -89,7 +89,7 @@ Do not add an MCP server for a capability that a CLI already covers. Do not swit
 
 A write capability changes something outside the workspace. Before each one:
 
-1. Draft the text in the ticket `outbox/` folder, and run the Sendable? gate (the `ticket` skill). Its hashed manifest binds this exact draft plus exact `command` and `target`; sidecar values must match. README gate `doc` names the draft, never its sidecar. Any command or target change requires fresh explicit approval.
+1. Draft the text in the ticket `outbox/` folder. Run a full pass of the `writing` skill (outbound mode) on it. Then run the Sendable? gate (the `ticket` skill). Its hashed manifest binds this exact draft plus exact `command` and `target`; sidecar values must match. README gate `doc` names the draft, never its sidecar. Any command or target change requires fresh explicit approval.
 2. Show the exact command, the target, and the text. Wait for an explicit "yes" for this one write.
 3. Pass long text through a file in the system temp folder: `forge-<key>-body.md`. Delete the file after the write.
 4. After GO, create `outbox/<name>.approval.json` outside the hashed set with `version: 1`, exact `doc`, `status: approved`, `approval_manifest`, `approval_hash`, `approval_date`, exact `target`, and exact `command`. After sending, set sidecar `status: sent` and `result` to the returned URL/id, and record it in `log.md`. Never stamp metadata into the approved draft or reuse one approval for another write.

@@ -4,7 +4,7 @@ ticket: <KEY>
 gate: Understood?
 updated: <yyyy-mm-dd>
 ---
-# 🧭 Context — <KEY>: <short title>
+# 🧭 Context (<KEY>): <short title>
 
 > 🔥 <the most surprising fact or the stakes, with a number when one exists>
 
@@ -91,4 +91,4 @@ Drafts: [outbox/colleague-questions.md](outbox/colleague-questions.md). You send
 
 ## ❓ Decisions needed
 
-1. <max 5 items, or "None — GO only">
+1. <max 5 items, or "None (GO only)">

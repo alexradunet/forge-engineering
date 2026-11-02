@@ -129,7 +129,7 @@ Approval manifests live outside their hashed document sets. README gates retain
 `doc`, user approval `date`, and `hash`, adding a ticket-relative `manifest` JSON path.
 `hash` is the full SHA-256 of raw manifest bytes. The manifest contains
 `version: 1`, `gate`, and `documents` entries with ticket-relative `path` and full
-lowercase raw-byte `sha256`. Designed? additionally requires both byte-identical plan
+lowercase raw-byte `sha256`. Designed? also requires both byte-identical plan
 files and `approvedCopies: [{ "from": "plan.draft.md", "to": "plan.md" }]`; this field
 is allowed only for Designed?. One user GO approves the whole displayed revision set.
 Approval README/records and the manifest never hash themselves.

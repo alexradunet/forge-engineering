@@ -88,8 +88,8 @@ Setup also offers a separate private `<repo>-wiki` repository, or a local-only w
 | Path | Content |
 |---|---|
 | `plugins/forge/plugin.json` | Plugin manifest ([Agent Plugins 1.0](https://agent-plugins.org)) |
-| `plugins/forge/com.github.copilot/rules/` | Always-on rules: `forge` (paths, capabilities, write rules), `style` (response style, memory, sessions) |
-| `plugins/forge/skills/` | `ticket`, `agents`, `wiki`, `daily-recap`, `forge-setup`, `learning-mode` |
+| `plugins/forge/com.github.copilot/rules/` | Always-on rules: `forge` (paths, capabilities, write rules), `style` (response style, "No AI tells", memory, sessions) |
+| `plugins/forge/skills/` | `ticket`, `agents`, `wiki`, `daily-recap`, `forge-setup`, `learning-mode`, `writing` |
 | `plugins/forge/com.github.copilot/extensions/` | Read-only ticket dashboard canvas |
 | `plugins/forge/templates/config/` | Config templates |
 | `plugins/forge/scripts/` | `forge.mjs` (setup, config, trust, lint, wiki scripts), `cred.mjs`, `jenkins.mjs` |
@@ -105,6 +105,26 @@ Setup also offers a separate private `<repo>-wiki` repository, or a local-only w
 | `daily-recap` | "Prepare my daily" (done, plan, blockers), with or without a daily meeting, and "record the daily outcome" |
 | `forge-setup` | "set up forge", "check forge", "repair forge", "finish forge setup", "switch the tracker to GitLab" |
 | `learning-mode` | Optional 15-minute lessons from artifact questions, saved in the repository wiki |
+| `writing` | One source for the writing rules: modes, precedence, and the AI writing pattern catalog. Say "humanize this" or "check the writing". |
+
+## ✍️ Writing rules
+
+forge combines three rule sets:
+
+- ASD-STE100 Simplified Technical English for all text.
+- An ADHD response shape for chat ([i-have-adhd](https://github.com/ayghri/i-have-adhd), MIT).
+- 26 AI writing patterns ([humanizer](https://github.com/blader/humanizer) 3.1.0, MIT), for example "not X but Y", one-line closers, and em dashes.
+
+The [`writing` skill](plugins/forge/skills/writing/SKILL.md) decides which rules apply to each kind of text:
+
+| Text | AI pattern check | Formatting |
+|---|---|---|
+| Chat replies | Short list in the `style` rule | Emoji headings |
+| Gate documents, recaps, config | Strong tells | Ticket style with emoji and fixed labels |
+| Wiki pages and lessons | Full pass | Plain: no emoji, no bold labels |
+| Outbox drafts, change request text, tracker comments | Full pass, required before Sendable? | Target format, plain |
+
+No mode allows em dashes or en dashes in prose. License texts are in [NOTICE.md](plugins/forge/skills/writing/NOTICE.md).
 
 ## 🎫 Ticket work
 
@@ -167,12 +187,12 @@ and groups the open tickets by who must act: you, the agent, a colleague, or nob
 Forge also bundles a read-only canvas. Say **"open the Forge ticket dashboard"**.
 The agent supplies the repository wiki path from `forge.mjs where --json`.
 
-- Start on a clean overview grid with 6 KPI cards, state filter pills, search, and segmented gate progress bars; recorded tracks appear only as legacy context.
+- The overview has 6 KPI cards, state filter pills, search, and segmented gate progress bars. Recorded tracks appear only as legacy context.
 - Switch between **🎫 Tickets** and **📚 Wiki & Concepts** in the top bar to browse canonical wiki knowledge shelves (**🎓 Concepts & Learning**, **🏗️ Architecture & Areas**, **🛠️ Tooling & Gotchas**, **🧭 Decisions**, **🎫 Closed Ticket Summaries**, and **📚 Index & Log**).
 - Click any ticket card to open its full-screen **Ticket Cockpit**: phase stepper, hero focus, categorized document shelves, review gates, change requests, and a **👥 People** tab.
 - Switch to **👥 People** in the top bar to see everyone on open tickets, grouped by person, with filters for **Your move**, **Waiting**, and **Done**. The **People to message** and **Waiting on people** KPI cards open the same view. Ticket cards show ✉️ and ⏳ counts.
-- Browse ticket documents by category (**Core & Map**, **Gate Docs**, **Evidence & Spikes**, **Outbox Drafts**, **Logs & Decisions**) and read both ticket and wiki pages inside the canvas with rendered **Mermaid diagrams**, collapsible `📂` detail sections, and verified source lists.
-- Follow Markdown links seamlessly across ticket files, canonical wiki pages, and concept lessons with a built-in `↩ Previous view` history stack.
+- Browse ticket documents by category (**Core & Map**, **Gate Docs**, **Evidence & Spikes**, **Outbox Drafts**, **Logs & Decisions**). Read ticket and wiki pages inside the canvas, with rendered Mermaid diagrams, collapsible `📂` detail sections, and verified source lists.
+- Follow Markdown links across ticket files, canonical wiki pages, and concept lessons. The `↩ Previous view` history stack goes back.
 - The dashboard reads ticket and wiki files every 5 seconds. **Refresh** reads them immediately.
 - Empty ticket folders show an empty board. Invalid files show errors without hiding valid tickets.
 

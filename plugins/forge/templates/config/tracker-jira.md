@@ -43,8 +43,8 @@ The key is the native id. Its URL is `https://<site>/browse/<KEY>` (or `tracker.
 
 | Capability | `acli` command | MCP fallback | Notes |
 |---|---|---|---|
-| `tracker.fetch` | `acli jira workitem view <KEY> --fields "*all" --json`, then `acli jira workitem comment list --key <KEY> --json` | — | Ask only for the fields that you need when the item is large. |
-| `tracker.search` | `acli jira workitem search --jql "<query>" --fields "key,summary,status,updated" --json --limit 50` | — | `<query>`: a named JQL query from `tracker.queries`. Ask for few fields. |
+| `tracker.fetch` | `acli jira workitem view <KEY> --fields "*all" --json`, then `acli jira workitem comment list --key <KEY> --json` | none | Ask only for the fields that you need when the item is large. |
+| `tracker.search` | `acli jira workitem search --jql "<query>" --fields "key,summary,status,updated" --json --limit 50` | none | `<query>`: a named JQL query from `tracker.queries`. Ask for few fields. |
 | `tracker.comment` | `acli jira workitem comment create --key <KEY> --body-file <body file>` | `addOrEditJiraIssueComment` (Markdown body) | `acli` takes plain text or ADF, not Markdown. Use the MCP tool only when the comment needs formatting (headings, lists, links). |
 | `tracker.transition` | `acli jira workitem transition --key <KEY> --status "<status>"` | `listJiraIssueTransitions`, then `transitionJiraIssue` | `acli` cannot list transitions. When the status name is not known, ask the user, or use the MCP tool to list them. |
 | `tracker.link` | `acli jira workitem link create --out <KEY> --in <other> --type "<link type>"` | `createJiraIssueRemoteIssueLink` for a URL | Link types: `acli jira workitem link type`. `acli` cannot add URL links. |

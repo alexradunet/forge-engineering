@@ -3,13 +3,13 @@ type: evidence-testing
 ticket: <KEY>
 updated: <yyyy-mm-dd>
 ---
-# 🔬 Evidence Testing — <KEY>: <short title>
+# 🔬 Evidence Testing (<KEY>): <short title>
 
 > 🔥 <the result in one line, for example "Waiting-too-long event seen in the telemetry of the deployed branch">
 
 > **TL;DR:** <max 3 lines: which behaviors we proved, with which evidence, and what is left>
 >
-> **What I need from you:** <approve a deploy, a database write, or a CI job \| nothing — all checks verified>
+> **What I need from you:** <approve a deploy, a database write, or a CI job \| nothing: all checks verified>
 >
 > **Reading time:** about <n> minutes.
 
@@ -56,4 +56,4 @@ flowchart LR
 
 ## ❓ Decisions needed
 
-1. <max 5 items, for example "Accept check 3 as ⚪ not possible because …", or "None — GO only">
+1. <max 5 items, for example "Accept check 3 as ⚪ not possible because …", or "None (GO only)">
