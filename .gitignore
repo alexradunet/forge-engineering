@@ -2,6 +2,7 @@
 /repos/
 /tools/
 /.local/
+/Python/
 
 # Legacy private clones. Keep them out of this repository.
 /packs/
