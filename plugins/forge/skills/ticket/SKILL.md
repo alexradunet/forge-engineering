@@ -352,7 +352,7 @@ Rules:
 7. Seed `map.md` from the template: the purpose, the terms, and a first guess of the areas. Mark guesses `(unverified)`.
 8. Add the ticket to the "🎫 Tickets → Active" list in `<wiki>/index.md`. Mark its raw folder as local-only, unavailable to teammates without that local material.
 9. Append a `create` entry to `<wiki>/log.md`.
-10. Do not create a worktree at Start. The `agents` skill creates a worktree session at Implement.
+10. Do not create another worktree at Start. Preserve an existing session worktree. At Implement, the `agents` skill checks reuse before creation.
 11. Run the full pre-investigation (next section), including history, affected code, existing tests, and regression risks. Research thoroughly without a required duration or word count. Record unavailable sources and test gaps; absence of evidence is not proof of safety.
 12. Open Understood? over the explicit context and evidence revision set.
 13. After approval, present the visual briefing and conduct the scope interview; review Agreed?.
@@ -480,8 +480,11 @@ For `full-v1`, start after Understood? is approved and the briefing is done. Gro
 
 ### 🌳 Worktrees
 
-- At Implement, start an implementer session with the `agents` skill: **New Worktree** in the checkout of the change, base branch `baseBranch` of that checkout (else `repo.baseBranch`), and the branch name from `repo.branchPattern`. Replace `{KEY}` with `<KEY>`, `{key}` with `<key>`, and `{slug}` with 2 to 5 lower-case words of the goal, joined by `-`.
-- Record the session name and the worktree path in `README.md`.
+- At Implement, use the `agents` skill to verify the current repository, worktree, branch, HEAD, and local changes. Reuse a suitable current worktree. Do not create another session only because the phase changed.
+- Select an explicit required commit first, then the recorded ticket branch for existing work. Use the checkout `baseBranch` (else `repo.baseBranch`) only for a new task without a ticket branch. Resolve the baseline to a full SHA before execution. Never silently replace a pinned baseline with the default branch.
+- An exact-commit proof requires HEAD equality, not just ancestry. For resumed implementation, inspect and preserve known task changes above the recorded baseline. Follow the selection checks and manual step in the `agents` skill when the current worktree is unsuitable.
+- For a new branch, use `repo.branchPattern`. Replace `{KEY}` with `<KEY>`, `{key}` with `<key>`, and `{slug}` with 2 to 5 lower-case words of the goal, joined by `-`. Do not rename an existing suitable branch merely to match the pattern.
+- Record the session name, worktree path, branch, resolved baseline SHA, and selection reason in `README.md` and `log.md`. Do not alter hashed approval documents.
 - Read the `## Implement` policy section. It names limits of worktrees, for example a shared local database.
 - Code changes, unit tests, builds, and reviews normally work in a worktree. Tell the user when a step needs a resource that the worktree does not have, and stop that step.
 
@@ -582,6 +585,7 @@ Other documents:
 4. Validate gate revision evidence with `node "<plugin>/scripts/forge.mjs" lint --wiki "<wiki>" --json`, then open other files as the next step needs them. Default lint is read-only. Report unavailable local archives as local-only, not automatically broken.
 5. Tell the user the workflow (or legacy context, with track only when recorded), phase, last result, policy checks, open gates, approval findings, open colleague questions, people who need a message or a reply (`to-contact`, `drafted`, `follow-up`, `reply-in`), people you wait for, and next step. Findings block the affected action, not read-only resume. Never run `--fix` implicitly.
 6. Set the session title (see Session title).
+7. Before implementation or a proof run, apply the Worktrees checks. A resumed session does not need another worktree when the current one is suitable. Preserve valid approval evidence when reporting a baseline mismatch.
 
 ## 🔎 Investigate
 
@@ -625,7 +629,7 @@ Open every document that the user must read with `code -r "<absolute path>"` (as
 ## 🛠️ Implement
 
 - Read the `## Implement` policy section first.
-- Start an implementer session with the `agents` skill (see Worktrees). Do not edit code in the main checkout.
+- Use the `agents` skill to select the execution worktree (see Worktrees). Continue in a suitable current worktree; start another session only when needed. Do not edit code in the main checkout.
 - Validate Designed? in README and its revision evidence before implementation. A new manifest must cover both byte-identical plan files and the approved-copy relation; verify legacy single-document approval against raw document bytes. Unverifiable evidence blocks implementation, not read-only research.
 - Follow the repository's own instructions and skills for the code change.
 - For a quick code review before Shippable?, use a reviewer subagent (the `agents` skill).

@@ -135,7 +135,7 @@ No mode allows em dashes or en dashes in prose. License texts are in [NOTICE.md]
 3. Read and comment on the gate documents. One explicit user approval covers the
    displayed file/revision set, recorded in a SHA-256 manifest. Small fixes follow
    the same phases; unavailable sources and test gaps are recorded, not treated as safety evidence.
-4. At Implement, the `agents` skill starts a session with **New Worktree**.
+4. At Implement, the `agents` skill reuses a suitable current worktree. It starts another session only when needed.
 5. Complete **Shippable?**, **Sendable?** for each external write, and Evidence Testing.
    QA handover runs only when configured. Say "close APP-42"; **Learned?** approves
    distillation into wiki pages and archive.
@@ -145,6 +145,12 @@ including recommended rather than mandatory Diagnosed?. Briefed? remains legacy-
 Missing `track` never identifies the new workflow. Resume reports missing or stale
 approval evidence and blocks only the affected action, not unrelated read-only work.
 See the [ticket workflow contract](plugins/forge/skills/ticket/SKILL.md#-workflow).
+
+Before edits, builds, or fixtures, Forge checks the actual worktree and resolves its baseline.
+An explicit required commit takes priority over the ticket branch and the configured base branch.
+Exact-commit proofs require HEAD equality. Resumed implementation can retain verified task changes above its baseline.
+Forge never resets a branch or changes approved documents to repair a mismatch.
+See the [worktree selection checks](plugins/forge/skills/agents/SKILL.md#select-the-execution-worktree).
 
 The agent never merges. It asks before every write to the tracker, the repository host, or the CI.
 

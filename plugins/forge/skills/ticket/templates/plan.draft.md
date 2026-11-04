@@ -10,7 +10,7 @@ updated: <yyyy-mm-dd>
 
 > **TL;DR:** <max 3 lines: what we change and why>
 >
-> **What I need from you:** GO on Designed?. After GO, the build starts in a new worktree.
+> **What I need from you:** GO on Designed?. After GO, implementation uses a verified worktree. Reuse the current one when suitable.
 >
 > **Reading time:** about <n> minutes.
 
