@@ -87,6 +87,7 @@ Limits:
 - Worktree sessions run with **Allow all**. The instructions are the only guard for CI and tracker writes.
 - Tool-started sessions have no plugin skills. When the implementer needs a skill, tell the user to start the session from **New** in the Agents window instead, and give them the prompt to paste.
 - Run at most `policy.maxImplementers` implementer sessions at the same time (default 6).
+- Worktree end of life: **Mark as Done** (archive) removes a clean worktree that VS Code created and keeps the branch. A restore creates the worktree again. It keeps a worktree with uncommitted or outgoing changes. **Delete** never removes the worktree ([vscode#332442](https://github.com/microsoft/vscode/issues/332442)). VS Code does not remove repository resources, for example a database per worktree. **Chat: Open Worktree Cleanup** lists inactive worktrees. See the `ticket` skill Close step.
 
 ## 🔎 Reviewer subagent
 

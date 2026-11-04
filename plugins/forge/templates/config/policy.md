@@ -66,4 +66,4 @@ Hint: where the comment goes, the QA status, and the QA tools.
 
 ## Close
 
-Hint: more wiki folders and knowledge owners.
+Hint: more wiki folders and knowledge owners. The cleanup command for a worktree and its local resources (for example a database per worktree).

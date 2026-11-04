@@ -746,7 +746,12 @@ Run only when the user says that the ticket is done.
    node -e "const fs=require('fs'),[,a,b]=process.argv;fs.mkdirSync(require('path').dirname(b),{recursive:true});fs.renameSync(a,b)" "<wiki>/raw/tickets/<key>" "<wiki>/archive/tickets/<key>"
    ```
 9. Append a `close` entry to `<wiki>/log.md` that lists each changed page. Commit the canonical pages in the wiki repository.
-10. Tell the user what you recorded, in one line per page.
+10. Clean up the ticket worktree. Ask the user first:
+    - Run `git status --short` and check for outgoing commits in the worktree. Uncommitted or unpushed work blocks the cleanup. Report it.
+    - Run the repository cleanup that the `## Close` policy section names (for example a database per worktree).
+    - Tell the user to use **Mark as Done** on the session in the Agents window, not **Delete**. Mark as Done removes a clean worktree that VS Code created, and keeps its branch. Delete leaves the worktree on disk ([vscode#332442](https://github.com/microsoft/vscode/issues/332442)). A worktree that another tool created needs that tool's remove command.
+    - A session that runs in the worktree locks the folder. Report the path that is left.
+11. Tell the user what you recorded, in one line per page.
 
 ## 🧩 Templates
 
