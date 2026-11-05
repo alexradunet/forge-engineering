@@ -317,10 +317,12 @@ The forge plugin has two automation templates. VS Code shows them under **Templa
 
 1. Read the [Automations](https://code.visualstudio.com/docs/agents/run/automations) page first.
 2. Tell the user to select **Automations** in the Agents window sidebar, expand **Templates from Plugins**, and select a forge template.
-3. In the **New Automation** dialog: **Run in the Cloud** off, the main checkout as the workspace, not **New Worktree**. Review the prompt, the schedule, and the permissions.
+3. In the **New Automation** dialog: **Run in the Cloud** off, the main checkout as the workspace, not **New Worktree**, and the default **Agent**. In VS Code 1.145, a run with a plugin agent such as **Forge Master** has no workspace and does not get the agent instructions. In **Advanced** > **Customizations**, keep **forge** selected. Review the prompt, the schedule, and the permissions. With **Interactive**, each run stops at its first command until you approve it. For runs without you, select **Allow all**.
 4. Select **Run now** one time, and review the run in **History**. Then select **Enabled**, and save.
 5. A run writes only in `<wiki>/raw/` and changes only session titles and groups. It reads the tracker, the repository host, and CI.
-6. Never create, change, or enable an automation without explicit approval. When the user asks you to create one, save it disabled.
+6. Never create, change, or enable an automation without explicit approval. When the user asks you to create one, use `configureAutomation`:
+   the template prompt, the template schedule as `cron`, and a `workspace` target with the main checkout as `folderUri` and `isolation: folder`.
+   Save it disabled, and ask the user for the permission level. Use `listAutomations` for the ID, and `runAutomation` for a test run.
 
 ### VS Code check
 

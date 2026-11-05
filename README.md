@@ -237,6 +237,7 @@ Each entry has a name or handle, a role, the ask, and one status:
 `to-contact` → `drafted` → `waiting` → `reply-in` → `done`, plus `follow-up`.
 The agent updates the list when you add a colleague question, draft a message, send it, or get a reply.
 After more than 3 working days in `waiting`, it suggests a follow-up but changes the status only when you agree.
+The board (`raw/board.md` and `board --json`) lists these long waits.
 The list is outside approval manifests, so a status change never reopens a gate.
 See [People](plugins/forge/skills/ticket/SKILL.md#-people).
 
@@ -316,7 +317,9 @@ VS Code shows them under **Templates from Plugins**. A template does nothing unt
 
 1. Select **Automations** in the Agents window sidebar, expand **Templates from Plugins**, and select a template.
 2. Set the main checkout as the workspace, with **Run in the Cloud** off and not **New Worktree**.
-   Review the prompt, the schedule, and the permissions.
+   Keep the default **Agent**. In VS Code 1.145, a run with a plugin agent such as **Forge Master** has no workspace
+   and does not get the agent instructions. In **Advanced** > **Customizations**, keep **forge** selected.
+   Review the prompt, the schedule, and the permissions. With **Interactive**, each run stops at its first command until you approve it. For runs without you, select **Allow all**.
 3. Select **Run now** one time, and check the run in **History**. Then select **Enabled**, and save.
 
 A run writes only in `<wiki>/raw/`, and changes only session titles and groups. It only reads the tracker,

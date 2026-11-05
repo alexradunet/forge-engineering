@@ -37,7 +37,8 @@ These ticket session rules of the `forge` rule do not apply to you:
 Use the sources in this order. Stop when you can answer.
 
 1. `<F> board --json`. For each ticket: state, phase, open gate, next step, waiting on, days since the
-   update, `sessionTitle`, `worktree`, `branch`, change requests, and the sync note.
+   update, `sessionTitle`, `worktree`, `branch`, change requests, the sync note, and the people `waits`
+   (`waiting` people after more than 3 working days).
    It also writes `<wiki>/raw/board.md`.
 2. The 📍 Now card at the top of `<wiki>/raw/tickets/<folder>/README.md`, then the latest `log.md` entries.
 3. The ⚡ 1 min section of the open gate doc, when the user asks what to approve.

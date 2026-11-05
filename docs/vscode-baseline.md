@@ -6,15 +6,15 @@ Update this page with each Forge change (see [AGENTS.md](../AGENTS.md)).
 | Item | Value |
 |---|---|
 | Docs and release notes read | 1.145 (released 2026-11-04) |
-| Installed and used for the click-checks | 1.144.0 |
-| Checked on | 2026-11-04 |
+| Installed and used for the click-checks | 1.144.0, and 1.145.0 for click-check 5 |
+| Checked on | 2026-11-05 |
 | Forge version | 5.0.0 |
 
 ## 🗓️ Release notes read
 
 | Version | Forge impact |
 |---|---|
-| 1.145 | Local automations accept cron schedules (the Forge templates use them) and custom agents from the workspace (click-check 5). The chat **View Mode** has a **Conversation** mode (`chat.persistentProgressVerbosity`, Experimental) that keeps long chats short to read. Forge does not use canvases, nested sessions with mixed harnesses, or the Local harness tools that 1.145 removes (`#installExtension`, `#runCommand`, `#newWorkspace`). |
+| 1.145 | Local automations accept cron schedules (the Forge templates use them) and custom agents from the workspace. The agent list also shows the plugin agent **Forge Master**, but a run with it fails (click-check 5). The chat **View Mode** has a **Conversation** mode (`chat.persistentProgressVerbosity`, Experimental) that keeps long chats short to read. Forge does not use canvases, nested sessions with mixed harnesses, or the Local harness tools that 1.145 removes (`#installExtension`, `#runCommand`, `#newWorkspace`). |
 | 1.144 | The plan for Forge 5.0 used these docs: agent plugin reference, session tools, move a chat, artifacts, hooks, custom agents, and automations. |
 
 ## 🧩 Native features that Forge uses
@@ -55,6 +55,7 @@ Update this page with each Forge change (see [AGENTS.md](../AGENTS.md)).
 |---|---|---|
 | [microsoft/vscode#321685](https://github.com/microsoft/vscode/issues/321685) | No setting for the worktree branch prefix. | `forge.mjs worktree` and `git branch -m`. |
 | [microsoft/vscode#338122](https://github.com/microsoft/vscode/issues/338122) | An automatic `rename_chat` can replace a title that was set. | Rename again at the end of the first turn. The Forge Master and the maintenance automation fix stale titles. |
+| No issue found | A local automation with a plugin agent (**Forge Master**) runs in `~/.copilot/chats/<id>`, not in the workspace, and without the agent instructions (click-check 5, 1.145.0). | Create Forge automations with the default **Agent**. The template prompt has all the steps. |
 | No issue found | Plugin rule files (`*.instructions.md`) do not load in each session (click-check 11). | The `sessionStart` hook gives the rules. Each skill tells the agent to read `context/forge.md` and `context/style.md` when the rules are missing. |
 
 ## 🧪 Click-checks
@@ -68,7 +69,7 @@ When a check fails, use the fallback.
 | 2 | `isolate_session` ("Continue in a new Git worktree"): which folder and branch names does it make? Can Forge rename the branch? | ❌ Fail. The tool has no parameters, so Forge cannot set the folder or the branch. | Keep `forge.mjs worktree --create`. |
 | 3 | `git branch -m` in a VS Code worktree, then **Mark as Done**: does VS Code still remove the worktree? | ❌ Fail. The session is archived, but the clean worktree and its branch stay. The docs say that Mark as Done does not guarantee removal. No control test without the rename was done. | Close removes the worktree with `git worktree remove` after a "yes". |
 | 4 | Does a session from `create_session` load the plugin rules and skills? | ⚠️ Partial. It lists the 6 forge skills. It cannot answer facts that only the `forge` rule, the `style` rule, or `AGENTS.md` give, also after a file read. Its prompt must carry the rules (the `agents` skill). | The prompt is self-contained (the `agents` skill). |
-| 5 | Does an automation run have the session tools? Can a local automation select the plugin agent **Forge Master** (1.145 "custom agents from the workspace")? | ⏳ Blocked. VS Code 1.144.0 shows only **Built-in Templates** (3), with no **Templates from Plugins**. The 1.144 notes do not name plugin templates or cron; 1.145 adds cron. Check again on 1.145. | The run lists stale titles. The Forge Master fixes them. |
+| 5 | Does an automation run have the session tools? Can a local automation select the plugin agent **Forge Master** (1.145 "custom agents from the workspace")? | ⚠️ Partial (2026-11-05, 1.145.0). **Templates from Plugins** shows both Forge templates. For Midgard, the agent list shows **Agent** and **Forge Master**. With **Forge Master**, the maintenance run worked in `~/.copilot/chats/<id>` and stopped at step 1 (no Git repository), and a probe run said that it was the default agent. That probe run had `list_sessions`, `get_session_context`, `rename_chat`, and `create_session`, but not `organizeSessionsList`. With **Agent**, the run worked in the Midgard folder and did all 8 steps, but `organizeSessionsList` was also not available. The run read only part of the lint output and searched the READMEs for `waiting`. | Select **Agent**. Without `organizeSessionsList`, the run lists the stale titles and groups in its report. `board --json` now gives the people `waits`, and the template tells the run to report the lint `summary` counts. An agent can create the automation with `configureAutomation` (workspace target, `isolation: folder`). With the default permission level, the run stopped at its first terminal command, and `runAutomation` returns `already_running` until that run ends. Select **Allow all** (`autoApprove`) for runs without the user. `list_sessions` hides archived sessions unless `includeArchived: true`, and `rename_chat` fails on an archived session ("Cannot persist list-visible state for unknown session"), also outside an automation. The run reports these sessions. |
 | 6 | Does the plugin `sessionStart` hook run in the Agents window? Which input does it get (cwd, session id)? | ✅ Pass. The context arrives at session start. Two installed copies of the plugin run the hook two times: keep one enabled. A ticket with `branch: main` matched every Folder session on `main`. The hook now ignores base branches and the main checkout for the match. In a session the hook took 2 to 21 s, and one run stopped at the old 10 s limit. The limit is now `timeoutSec: 30` (the documented default). | The `forge` rule and the `ticket` skill give the same steps. |
 | 7 | Does `rename_chat` on a new chat update the session row and keep the title after the first turn? | ✅ Pass. During the first turn the row can show the prompt text. After the turn it shows the title, also after a `set_workspace` move. | Rename again at the end of the first turn. |
 | 8 | Does the artifacts panel open a `file:///` wiki file outside the workspace? | open | Give the file link in the chat. |
