@@ -5,13 +5,13 @@
   },
   "metadata": {
     "description": "forge: a provider-agnostic engineering workflow plugin for the VS Code Agents window.",
-    "version": "4.0.0"
+    "version": "5.0.0"
   },
   "plugins": [
     {
       "name": "forge",
-      "description": "Ticket workspace with review gates, team wiki, daily recaps, and agent session coordination.",
-      "version": "4.0.0",
+      "description": "Ticket workspace with review gates and layered reading, ticket worktrees and session titles, a Forge Master overview agent, automations, a repository wiki, and daily recaps.",
+      "version": "5.0.0",
       "source": "plugins/forge"
     }
   ]

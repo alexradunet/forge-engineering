@@ -1,5 +1,5 @@
 // Setup helpers for the forge-setup skill: detect tools, create or bind the
-// wiki, and seed the team config from templates. Read-only except initWiki,
+// wiki, and seed the forge config from templates. Read-only except initWiki,
 // bind, and seed, which write only inside the wiki folder.
 import { spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -280,7 +280,7 @@ export function bind(where) {
 
 /**
  * Copies templates to <wiki>/forge/config. Existing files stay unless force.
- * policy.md is copied only when missing.
+ * policy.md is copied only when missing. The rule pages go to <wiki>/rules only when that folder is missing.
  */
 export function seed(where, choice, templatesDir, { force = false } = {}) {
   const dir = path.join(where.wiki.path, 'forge', 'config');
@@ -301,5 +301,16 @@ export function seed(where, choice, templatesDir, { force = false } = {}) {
     copyFileSync(path.join(templatesDir, src), target);
     written.push(dest);
   }
-  return { configDir: dir, written, kept };
+  const rulesDir = path.join(where.wiki.path, 'rules');
+  const rulesWritten = [];
+  if (!existsSync(rulesDir)) {
+    const source = path.join(templatesDir, '..', 'rules');
+    const today = new Date().toISOString().slice(0, 10);
+    mkdirSync(rulesDir, { recursive: true });
+    for (const name of readdirSync(source).filter((n) => n.endsWith('.md')).sort()) {
+      writeFileSync(path.join(rulesDir, name), readFileSync(path.join(source, name), 'utf8').replace(/^updated: .*$/m, `updated: ${today}`));
+      rulesWritten.push(name);
+    }
+  }
+  return { configDir: dir, written, kept, rules: { dir: rulesDir, written: rulesWritten } };
 }

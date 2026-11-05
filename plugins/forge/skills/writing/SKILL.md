@@ -5,6 +5,9 @@ description: 'Single source of the forge writing rules: where ASD-STE100, the AD
 
 # ✍️ Writing
 
+> When your context has no `# forge plugin` section, read [forge.md](../../context/forge.md) and
+> [style.md](../../context/style.md) first. They are the `forge` and `style` rules.
+
 forge text must read as if a careful engineer wrote it for one reader. Three rule sets apply:
 
 | Rule set | Source | Location |
@@ -29,14 +32,14 @@ Find the mode of the text. Then apply its row.
 | User text | Text that the user asks you to check or rewrite | Match the voice of the text | Full pass | Keep the format of the text |
 
 The fixed labels are the labels that the ticket templates define: `**📂 <label>**`, `**TL;DR:**`, `**What I need from you:**`, `**Reading time:**`, `**Target:**`, and the four labeled quotes of [_style.md](../ticket/templates/_style.md).
-The ticket dashboard parses `**📂 <label>**`. Do not change it.
+Forge lint and the layered reading levels find sections by these labels. Do not change them.
 
 ## ⚖️ Precedence
 
 When two rules conflict, the higher rule wins:
 
 1. Facts. Never add a fact, name, number, date, quote, citation, ranking, or result. Never lose one.
-2. Safety and data rules: the `forge` rule and the `## Data rules` section of `<config>/policy.md`.
+2. Safety and data rules: the `forge` rule and the company rules in `<wiki>/rules/`.
 3. An explicit request or a writing sample from the user. A sample does not override the dash ban (§8).
 4. The target format: tracker markup, the commit style of the repository, and the policy hook sections.
 5. The formatting of the mode.

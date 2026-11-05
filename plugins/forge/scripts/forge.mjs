@@ -3,7 +3,7 @@
 //   node "<plugin>/scripts/forge.mjs" where
 // Commands:
 //   where   [--wiki <dir>]   the repository, its wiki, and the config folder (JSON)
-//   config  [--wiki <dir>]   the team config (JSON)
+//   config  [--wiki <dir>]   the forge config (JSON)
 //   config set <file>.<key>=<value> ...   set frontmatter values (validated; writes nothing on a problem)
 //   config row <checkouts|queries> <name> [cells...] [--delete]   add, replace, or delete a table row
 //   doctor  [--wiki <dir>] [--json]   read-only setup check; exit 1 on a failure
@@ -12,6 +12,12 @@
 //   init-wiki [--wiki <dir>] create the local wiki (git init, .gitignore, index.md) and bind it
 //   bind    [--wiki <dir>]   write <wiki>/forge/repo.json
 //   seed --tracker <t> --repo <r> --ci <c> [--force]   copy templates to <wiki>/forge/config
+//   migrate <key> [--dry-run] [--json]   move a full-v1 ticket to full-v2 (carries only valid paired approvals)
+//   board   [--json] [--dry-run] [--today <date>]   write <wiki>/raw/board.md, the tickets grouped by state
+//   worktree <KEY> --summary "<goal>" [--base <ref>] [--create] [--json]   plan or create the ticket worktree and branch
+//   snapshot <key> <gate> [--json]   save the gate doc as approvals/snapshots/<gate>-<n>.md at a review
+//   diff    <key> <gate> [--json]   the ⚡ card on a first review, else the sections changed since the last snapshot
+//   hook session-start   read the hook event on stdin; print {"additionalContext"} for a ticket session, else {}
 //   trust [approve <path>=<sha>...]   show or approve the files under <wiki>/forge
 //   run <script> [args...]   run <wiki>/forge/scripts/<script>.mjs after the trust check
 import { spawnSync } from 'node:child_process';
@@ -25,6 +31,12 @@ import { createStore } from './lib/cred.mjs';
 import { detect, initWiki, bind, seed, TEMPLATE_KINDS } from './lib/setup.mjs';
 import { approve, assertTrusted, status as trustStatus } from './lib/trust.mjs';
 import { lint } from './lib/validation.mjs';
+import { findTicket } from './lib/tickets.mjs';
+import { migrateTicket } from './lib/migrate.mjs';
+import { writeBoard } from './lib/board.mjs';
+import { createWorktree, planWorktree } from './lib/worktree.mjs';
+import { readEvent, sessionStart } from './lib/hook.mjs';
+import { diffGate, gateName, renderDiff, saveSnapshot } from './lib/reading.mjs';
 
 const pluginRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const CLI_FOR = { github: 'gh', 'github-actions': 'gh', gitlab: 'glab', 'gitlab-ci': 'glab', jira: 'acli', 'azure-pipelines': 'az' };
@@ -93,6 +105,12 @@ export function parseArgs(argv) {
     }
     else if (a === '--force') out.force = true;
     else if (a === '--fix') out.fix = true;
+    else if (a === '--dry-run') out.dryRun = true;
+    else if (a === '--create') out.create = true;
+    else if (['--summary', '--base', '--today'].includes(a)) {
+      if (argv[i + 1] === undefined || argv[i + 1].startsWith('--')) throw new ForgeError(`${a} needs a value.`, 'bad-args');
+      out[a.slice(2)] = argv[++i];
+    }
     else if (['--tracker', '--repo', '--ci'].includes(a)) out[a.slice(2)] = argv[++i];
     else out._.push(a);
   }
@@ -196,6 +214,23 @@ export function configEdit(argv, { cwd = process.cwd() } = {}) {
 }
 
 export function main(argv = process.argv.slice(2)) {
+  if (argv[0] === 'hook') {
+    // A hook never blocks the session: it prints JSON and exits 0, also on errors.
+    let result = {};
+    try {
+      if (argv[1] !== 'session-start' || argv.length !== 2) console.error('forge: Usage: forge.mjs hook session-start (reads the hook event JSON on stdin).');
+      else {
+        let raw = '';
+        try { if (!process.stdin.isTTY) raw = readFileSync(0, 'utf8'); } catch { /* no input */ }
+        result = sessionStart(readEvent(raw), { cli: fileURLToPath(import.meta.url) });
+      }
+    } catch (err) {
+      console.error(`forge: hook ${argv[1]}: ${err.message}`);
+      result = {};
+    }
+    console.log(JSON.stringify(result));
+    return 0;
+  }
   if (argv[0] === 'config' && ['set', 'row'].includes(argv[1])) {
     try {
       console.log(JSON.stringify(configEdit(argv.slice(1)), null, 2));
@@ -213,7 +248,12 @@ export function main(argv = process.argv.slice(2)) {
       throw err;
     }
   }
-  const args = parseArgs(argv);
+  let args;
+  try { args = parseArgs(argv); }
+  catch (err) {
+    if (err instanceof ForgeError) { console.error(`forge: ${err.message}`); return 2; }
+    throw err;
+  }
   const [cmd] = args._;
   const opts = { cwd: args.cwd ?? process.cwd(), wiki: args.wiki };
   try {
@@ -258,12 +298,75 @@ export function main(argv = process.argv.slice(2)) {
     } else if (cmd === 'seed') {
       const templates = path.join(pluginRoot, 'templates', 'config');
       console.log(JSON.stringify(seed(resolve(opts), { tracker: args.tracker, repo: args.repo, ci: args.ci }, templates, { force: args.force }), null, 2));
+    } else if (cmd === 'migrate') {
+      if (args._.length !== 2) throw new ForgeError('Usage: forge.mjs migrate <key> [--dry-run] [--json].', 'bad-args');
+      const where = resolve(opts);
+      let result;
+      try { result = migrateTicket(findTicket(where.wiki.path, args._[1]).dir, { dryRun: args.dryRun }); }
+      catch (err) { throw new ForgeError(err.message, 'migrate'); }
+      if (args.json) console.log(JSON.stringify(result, null, 2));
+      else {
+        console.log(`${result.key}: ${result.status}.`);
+        for (const item of result.decisions) {
+          console.log(item.result === 'carried'
+            ? `  ${item.gate} carried from ${item.sources.join(' + ')} (${item.manifest})`
+            : `  ${item.gate} reopened: ${item.reasons.join('; ')}`);
+        }
+        if (result.phase) console.log(`  phase ${result.phase.from} → ${result.phase.to}, state ${result.state.from} → ${result.state.to}`);
+        for (const note of result.notes) console.log(`  note: ${note}`);
+        if (result.writes.length) console.log(`  ${args.dryRun ? 'would write' : 'wrote'}: ${result.writes.join(', ')}`);
+      }
+    } else if (cmd === 'board') {
+      if (args._.length !== 1) throw new ForgeError('Usage: forge.mjs board [--json] [--dry-run] [--today <YYYY-MM-DD>].', 'bad-args');
+      const where = resolve(opts);
+      if (!where.wiki.exists) throw new ForgeError(`No wiki at ${where.wiki.path}. Run the forge-setup skill.`, 'no-wiki');
+      let board;
+      try { board = writeBoard(where.wiki.path, { today: args.today, dryRun: args.dryRun }); }
+      catch (err) { throw new ForgeError(err.message, 'board'); }
+      if (args.json) console.log(JSON.stringify(board, null, 2));
+      else {
+        console.log(board.groups.map((group) => `${group.emoji} ${group.label} ${group.tickets.length}`).join(' · '));
+        for (const error of board.errors) console.log(`  read error ${error.folder}: ${error.message}`);
+        console.log(`${board.written ? 'wrote' : !board.changed ? 'unchanged' : 'would write'}: ${board.file}`);
+      }
+    } else if (cmd === 'worktree') {
+      if (args._.length !== 2 || !args.summary) throw new ForgeError('Usage: forge.mjs worktree <KEY> --summary "<goal>" [--base <ref>] [--create] [--json].', 'bad-args');
+      const where = resolve(opts);
+      assertTrusted(where, ['config/']);
+      const { config } = loadConfig(where.configDir);
+      let result;
+      try {
+        result = planWorktree({ repoPath: where.repo.path, cwd: opts.cwd, config, key: args._[1], summary: args.summary, base: args.base });
+        if (args.create) result = createWorktree(result, where.repo.path);
+      } catch (err) { throw new ForgeError(err.message, 'worktree'); }
+      if (args.json) console.log(JSON.stringify(result, null, 2));
+      else {
+        console.log(`${result.key}: ${result.status ?? result.action}`);
+        console.log(`  branch ${result.branch}`);
+        console.log(`  folder ${result.existing?.path ?? result.folder}`);
+        console.log(`  base   ${result.base.ref} ${result.base.sha ?? '(not found)'}`);
+        if (result.current) console.log(`  here   ${result.current.path} [${result.current.branch || 'detached'}]`);
+        for (const item of result.related) console.log(`  other  ${item.path} [${item.branch || 'detached'}]`);
+        for (const command of result.status ? [] : result.commands) console.log(`  run    ${command}`);
+      }
+    } else if (cmd === 'snapshot' || cmd === 'diff') {
+      if (args._.length !== 3) throw new ForgeError(`Usage: forge.mjs ${cmd} <key> <gate> [--json].`, 'bad-args');
+      const where = resolve(opts);
+      let result;
+      try {
+        const { dir, ticket } = findTicket(where.wiki.path, args._[1]);
+        const gate = gateName(args._[2]);
+        result = cmd === 'snapshot' ? saveSnapshot(dir, ticket, gate) : diffGate(dir, ticket, gate);
+      } catch (err) { throw new ForgeError(err.message, cmd); }
+      if (args.json) console.log(JSON.stringify(result, null, 2));
+      else if (cmd === 'diff') console.log(renderDiff(result));
+      else console.log(`${result.gate} ${result.written ? 'saved' : 'unchanged'}: ${result.snapshot}`);
     } else if (cmd === 'trust') {
       const where = resolve(opts);
       if (args._[1] === 'approve') console.log(JSON.stringify(approve(where, args._.slice(2)), null, 2));
       else console.log(JSON.stringify(trustStatus(where), null, 2));
     } else {
-      console.error('Usage: node forge.mjs <where|config|doctor|lint|detect|init-wiki|bind|seed|trust|run> [--wiki <dir>] [--cwd <dir>] [--json]');
+      console.error('Usage: node forge.mjs <where|config|doctor|lint|detect|init-wiki|bind|seed|migrate|board|worktree|snapshot|diff|hook|trust|run> [--wiki <dir>] [--cwd <dir>] [--json]');
       return 2;
     }
     return 0;

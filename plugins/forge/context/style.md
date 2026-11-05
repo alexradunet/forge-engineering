@@ -1,11 +1,7 @@
----
-description: Response style, memory, and session rules of the forge plugin (always on).
-applyTo: '**'
-alwaysApply: true
----
 # forge style
 
-Company rules go into the hook sections of `<config>/policy.md`. Helper scripts go into `<wiki>/forge/scripts`.
+Company rules for each session (tools, credentials, data rules) go into the `<wiki>/rules/` pages. The hook gives the approved pages to each session.
+Step rules for tickets go into the hook sections of `<config>/policy.md`. Helper scripts go into `<wiki>/forge/scripts`.
 
 ## ✍️ Response style
 

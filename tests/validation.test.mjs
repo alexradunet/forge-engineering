@@ -6,7 +6,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { parseTicket } from '../plugins/forge/scripts/lib/ticket.mjs';
-import { checkAction, checkGate, classifySource, FULL_GATES, lint, sha256, validateTicket } from '../plugins/forge/scripts/lib/validation.mjs';
+import { checkAction, checkGate, classifySource, FULL_GATES, FULL_V2_GATES, lint, sha256, validateTicket } from '../plugins/forge/scripts/lib/validation.mjs';
 
 const cli = fileURLToPath(new URL('../plugins/forge/scripts/forge.mjs', import.meta.url));
 const cwd = fileURLToPath(new URL('..', import.meta.url));
@@ -39,6 +39,7 @@ function record(f, name, documents, extra = {}) {
   return { name, need: 'required', status: 'approved', date: '2026-10-29', manifest, hash: sha256(bytes) };
 }
 const codes = (findings) => findings.map((item) => item.code);
+const v2Gates = () => FULL_V2_GATES.map((name) => ({ name, need: 'required', status: 'todo' }));
 
 test('full-v1 is explicit and never inferred from an absent track', () => {
   assert.equal(parseTicket(yamlTicket()).workflow, 'full-v1');
@@ -48,8 +49,48 @@ test('full-v1 is explicit and never inferred from an absent track', () => {
     assert.equal(parsed.workflow, null);
     assert.equal(parsed.track, track ?? 'Unspecified');
   }
-  assert.throws(() => parseTicket(yamlTicket({ workflow: 'full-v2' })), /Unknown ticket workflow/);
+  assert.throws(() => parseTicket(yamlTicket({ workflow: 'full-v3' })), /Unknown ticket workflow/);
   assert.throws(() => parseTicket(yamlTicket({ track: 'S' })), /must not select a track/);
+  assert.throws(() => parseTicket(yamlTicket({ workflow: 'full-v2', track: 'M', gates: v2Gates() })), /must not select a track/);
+});
+
+test('full-v2 has four review gates plus Sendable? and blocks phases until their merged approvals', (t) => {
+  const f = fixture(t);
+  const ticket = parseTicket(yamlTicket({ workflow: 'full-v2', phase: 'implement', gates: v2Gates() }));
+  assert.equal(ticket.workflow, 'full-v2');
+  assert.equal(ticket.track, null);
+  const findings = validateTicket(ticket, f.file);
+  assert.deepEqual(findings.filter((item) => item.code === 'phase-before-approval').map((item) => item.message),
+    ['implement precedes Scoped? approval.', 'implement precedes Planned? approval.']);
+  assert.ok(!codes(findings).includes('workflow-gate'));
+  assert.equal(checkAction(ticket, f.file, 'investigate').allowed, false);
+  assert.deepEqual(checkAction(ticket, f.file, 'implement').findings.map((item) => item.message), ['Scoped? is not approved.', 'Planned? is not approved.']);
+
+  const legacy = parseTicket(yamlTicket({ workflow: 'full-v2', gates: [...v2Gates(), { name: 'Diagnosed?', need: 'required', status: 'todo' }] }));
+  assert.ok(validateTicket(legacy, f.file).some((item) => item.code === 'workflow-gate' && item.message === 'Diagnosed? does not belong to full-v2.'));
+  const skipped = parseTicket(yamlTicket({ workflow: 'full-v2', gates: v2Gates().map((gate) => gate.name === 'Planned?' ? { ...gate, status: 'skipped' } : gate) }));
+  assert.ok(validateTicket(skipped, f.file).some((item) => item.code === 'workflow-gate' && item.message === 'Planned? is mandatory for full-v2.'));
+});
+
+test('full-v2 Scoped? and Planned? manifests list the merged document sets and the plan copy', (t) => {
+  const f = fixture(t);
+  for (const name of ['scope.md', 'context.md', 'interview.md', 'investigation.md']) f.put(name, `${name}\n`);
+  f.put('plan.draft.md', 'Plan\n');
+  f.put('plan.md', 'Plan\n');
+  const scoped = record(f, 'Scoped?', ['scope.md', 'context.md', 'interview.md']);
+  const planned = record(f, 'Planned?', ['investigation.md', 'plan.draft.md', 'plan.md'], { approvedCopies: [{ from: 'plan.draft.md', to: 'plan.md' }] });
+  const gates = v2Gates().map((gate) => gate.name === 'Scoped?' ? scoped : gate.name === 'Planned?' ? planned : gate);
+  const ticket = parseTicket(yamlTicket({ workflow: 'full-v2', phase: 'implement', gates }));
+  assert.deepEqual(validateTicket(ticket, f.file), []);
+  assert.equal(checkAction(ticket, f.file, 'implement').allowed, true);
+  f.put('plan.md', 'Changed plan\n');
+  assert.ok(codes(checkGate(ticket, f.file, 'Planned?').findings).includes('stale-approved-copy'));
+  f.put('plan.md', 'Plan\n');
+
+  const partial = record(f, 'Scoped?', ['scope.md']);
+  assert.match(checkGate(parseTicket(yamlTicket({ workflow: 'full-v2', gates: [partial] })), f.file, 'Scoped?').findings[0].message, /omits context\.md/);
+  const noCopy = record(f, 'Planned?', ['investigation.md', 'plan.draft.md']);
+  assert.match(checkGate(parseTicket(yamlTicket({ workflow: 'full-v2', gates: [noCopy] })), f.file, 'Planned?').findings[0].message, /must bind plan\.draft\.md/);
 });
 
 test('full workflow rejects skipped diagnosis and blocks planning until explicit approval', (t) => {

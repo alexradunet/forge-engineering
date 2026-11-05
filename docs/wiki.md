@@ -26,6 +26,7 @@ flowchart LR
       ci.md
       policy.md
     scripts/            optional helper scripts
+  rules/                company rules for each session (toolkit.md, data.md, ...)
   raw/                  local working material
   archive/              local archives
 ```
@@ -33,7 +34,22 @@ flowchart LR
 Say "set up forge" to create the wiki and seed missing config files.
 Setup keeps existing configuration. See [config.md](config.md) for the file format.
 
+## Company rules
+
+The `<wiki>/rules/` pages hold the rules for AI agents: tools, credentials, and data rules.
+Each page is a normal wiki page with frontmatter. When the folder is missing, setup writes
+`toolkit.md` and `data.md` from templates.
+The Forge `sessionStart` hook gives the pages to each session of the bound repository, after the
+`# forge plugin` and `# forge style` rules, in file name order. It removes the frontmatter and
+HTML comments, leaves out a page with only headings, and cuts the text after 8000 characters.
+The hook gives a page only when the user approved its exact revision (see [Trust](#trust)):
+`trust approve ../rules/data.md=<hash>`. The path is relative to `<wiki>/forge`.
+For a new or changed page, the hook tells the agent not to follow it.
+Put step rules for tickets in the hook sections of `policy.md`, not in a rule page.
+
 ## Share through Git
+
+The wiki can stay personal. To share it with a team, do these steps:
 
 1. Edit configuration and scripts directly in the wiki.
 2. Review and commit only files that belong in the shared wiki.
@@ -75,10 +91,13 @@ node "<plugin>/scripts/forge.mjs" lint [--wiki "<path>"] [--json] [--fix]
 ```
 
 Default lint is read-only. It checks ticket shape, workflow/gate agreement, approval
-revisions, and canonical wiki metadata. Only explicit `workflow: full-v1` selects
-the new mandatory gate set. Existing S/M/L and trackless tickets retain their
-original process, including skips and recommended Diagnosed?. Missing or conflicting
-metadata is a finding, never permission to infer a state or migrate the ticket.
+revisions, and canonical wiki metadata. Only an explicit `workflow: full-v2` or
+`workflow: full-v1` marker selects a mandatory gate set. Existing S/M/L and trackless
+tickets retain their original process, including skips and recommended Diagnosed?.
+Missing or conflicting metadata is a finding, never permission to infer a state or
+migrate the ticket. For `full-v2` tickets, lint also warns when a gate document level
+is over its word budget, the ⚡ 1 min card is missing, the levels are in the wrong
+order, or the 📍 Now card does not agree with the README frontmatter.
 
 Canonical checks cover `title`, `status`, `updated`, and `sources`; existing
 `index.md` and `log.md` instead require `title` and `type`. An absent `log.md`
@@ -129,10 +148,12 @@ Approval manifests live outside their hashed document sets. README gates retain
 `doc`, user approval `date`, and `hash`, adding a ticket-relative `manifest` JSON path.
 `hash` is the full SHA-256 of raw manifest bytes. The manifest contains
 `version: 1`, `gate`, and `documents` entries with ticket-relative `path` and full
-lowercase raw-byte `sha256`. Designed? also requires both byte-identical plan
-files and `approvedCopies: [{ "from": "plan.draft.md", "to": "plan.md" }]`; this field
-is allowed only for Designed?. One user GO approves the whole displayed revision set.
-Approval README/records and the manifest never hash themselves.
+lowercase raw-byte `sha256`. Planned? (and `full-v1` Designed?) also requires both
+byte-identical plan files and `approvedCopies: [{ "from": "plan.draft.md", "to": "plan.md" }]`;
+this field is allowed only for Planned? and Designed?. One user GO approves the whole
+displayed revision set. Approval README/records and the manifest never hash themselves.
+`forge.mjs migrate` carries a Scoped? or Planned? approval only from two fresh `full-v1`
+approvals. Its manifest names both source manifests, and lint verifies them.
 
 Each Sendable? write also retains `outbox/<name>.approval.json` outside the hashed
 set: `version: 1`, exact draft `doc`, `status: approved` or `sent`,
@@ -170,7 +191,7 @@ record unavailable sources and uncertainty instead of inventing evidence.
 
 ## Trust
 
-Forge does not use new or changed configuration or scripts until the user approves their hashes.
+Forge does not use new or changed configuration, scripts, or rule pages (`rules/`) until the user approves their hashes.
 A Git pull cannot approve its own changes.
 
 1. Run `node "<plugin>/scripts/forge.mjs" trust`.

@@ -1,8 +1,8 @@
 # 🧭 forge-engineering
 
 `forge` is an agent plugin for the [VS Code Agents window](https://code.visualstudio.com/docs/agents/run/agents-window).
-It gives every Copilot session a ticket workflow with review gates, a team wiki,
-daily recaps, and coordinated agent sessions.
+It gives every Copilot session a ticket workflow with review gates, a repository wiki,
+daily recaps, and coordinated agent sessions, with one Forge Master overview session for each repository.
 
 forge does not depend on one tracker, repository host, or CI. Each repository describes
 its tools in four Markdown files in its wiki. Templates exist for GitHub, GitLab, Jira,
@@ -39,7 +39,7 @@ Setup reads the repository first, so most answers are prefilled:
 
 Then it creates `../<repo>.wiki`, seeds the config, writes your values with a validated command,
 asks you to approve the files by hash, and runs one live read for each tool.
-At the end, it offers the optional extras: policy hooks, learning mode, daily recap, and the ticket dashboard.
+At the end, it offers the optional extras: policy hooks, learning mode, daily recap, Forge Master, and automations.
 
 | Say | Result |
 |---|---|
@@ -67,15 +67,16 @@ To update `forge`:
 ### 🏢 Company config
 
 The plugin holds no company config. Each repository wiki holds its config and helper scripts.
-Say "set up forge" to create them, or clone the team's existing wiki.
-Commit and push the wiki to share changes. See [wiki.md](docs/wiki.md).
+Say "set up forge" to create them, or clone an existing wiki.
+The wiki can stay personal. To share it, commit and push it. See [wiki.md](docs/wiki.md).
 
 ## 📦 Where things live
 
 | Path | Content |
 |---|---|
 | `<repo>/../<repo>.wiki/` | The wiki: one Git repository for each code repository |
-| `<wiki>/forge/config/` | Team config: `tracker.md`, `repo.md`, `ci.md`, `policy.md` |
+| `<wiki>/rules/` | Company rules for each session: tools, credentials, data rules (approve with `forge.mjs trust`) |
+| `<wiki>/forge/config/` | Config: `tracker.md`, `repo.md`, `ci.md`, `policy.md` |
 | `<wiki>/forge/scripts/` | Optional helper scripts |
 | `<wiki>/raw/tickets/<key>/` | Ticket folders |
 | OS credential store | Secrets (`cred.mjs set <name>`). Never in a file. |
@@ -88,12 +89,15 @@ Setup also offers a separate private `<repo>-wiki` repository, or a local-only w
 | Path | Content |
 |---|---|
 | `plugins/forge/plugin.json` | Plugin manifest ([Agent Plugins 1.0](https://agent-plugins.org)) |
-| `plugins/forge/com.github.copilot/rules/` | Always-on rules: `forge` (paths, capabilities, write rules), `style` (response style, "No AI tells", memory, sessions) |
+| `plugins/forge/context/` | The session rules: `forge` (paths, capabilities, write rules), `style` (response style, "No AI tells", memory, sessions). The `sessionStart` hook gives them to each session. |
+| `plugins/forge/com.github.copilot/agents/` | `forge-master.agent.md`: the Forge Master custom agent |
+| `plugins/forge/com.github.copilot/hooks/` | `hooks.json`: the `sessionStart` hook. It gives each session the paths, the ticket context, the `forge` and `style` rules, and the approved company rules of `<wiki>/rules/` |
+| `plugins/forge/automations/` | Automation templates: Forge maintenance and Prepare my daily |
 | `plugins/forge/skills/` | `ticket`, `agents`, `wiki`, `daily-recap`, `forge-setup`, `learning-mode`, `writing` |
-| `plugins/forge/com.github.copilot/extensions/` | Read-only ticket dashboard canvas |
-| `plugins/forge/templates/config/` | Config templates |
-| `plugins/forge/scripts/` | `forge.mjs` (setup, config, trust, lint, wiki scripts), `cred.mjs`, `jenkins.mjs` |
-| `docs/` | [config.md](docs/config.md) (config format) and [wiki.md](docs/wiki.md) (sharing and scripts) |
+| `plugins/forge/templates/` | Config templates (`config/`) and rule page templates (`rules/`) |
+| `plugins/forge/scripts/` | `forge.mjs` (setup, config, trust, lint, board, worktree, snapshot, diff, migrate, hook, wiki scripts), `cred.mjs`, `jenkins.mjs` |
+| `docs/` | [config.md](docs/config.md) (config format), [wiki.md](docs/wiki.md) (sharing and scripts), [evaluation.md](docs/evaluation.md) (behavioral runs), and [vscode-baseline.md](docs/vscode-baseline.md) (the VS Code features that forge uses) |
+| `AGENTS.md` | [Rules for agents that develop forge](AGENTS.md): docs-first checks, tests, and file format |
 
 ## 🧩 Skills
 
@@ -101,7 +105,7 @@ Setup also offers a separate private `<repo>-wiki` repository, or a local-only w
 |---|---|
 | `ticket` | One folder per work item in `<wiki>/raw/tickets/<key>`, full research and investigation, review gates, code map, evidence, outbox |
 | `agents` | Implementer sessions in worktrees, reviewer subagents, hand-off, session status |
-| `wiki` | Query, record, and lint the team wiki |
+| `wiki` | Query, record, and lint the repository wiki |
 | `daily-recap` | "Prepare my daily" (done, plan, blockers), with or without a daily meeting, and "record the daily outcome" |
 | `forge-setup` | "set up forge", "check forge", "repair forge", "finish forge setup", "switch the tracker to GitLab" |
 | `learning-mode` | Optional 15-minute lessons from artifact questions, saved in the repository wiki |
@@ -128,18 +132,41 @@ No mode allows em dashes or en dashes in prose. License texts are in [NOTICE.md]
 
 ## 🎫 Ticket work
 
-1. Say "start APP-42" or "resume APP-42".
-2. Every new ticket uses `workflow: full-v1`, with no sizing question or `track` field:
-   research → **Understood?** → visual briefing → scope interview → **Agreed?** →
-   investigation → mandatory **Diagnosed?** → plan → **Designed?**.
-3. Read and comment on the gate documents. One explicit user approval covers the
+1. Open a new session and paste the work item key or URL, for example "start APP-42" or "resume APP-42".
+   The agent renames the session first (see Session titles below).
+2. Forge names the worktree and the branch. `forge.mjs worktree APP-42 --summary "<goal>"` gives the branch
+   from `repo.branchPattern` and the folder `<repo>.worktrees/<key>-<slug>`:
+   - **New Worktree** session: the agent renames the `agents/...` branch with `git branch -m` before the first commit. VS Code keeps its folder name.
+   - **Folder** session on the main checkout: after one "yes", the agent creates the worktree and moves the session there with `set_workspace`.
+   - When a worktree of the ticket exists, the agent continues there.
+3. Every new ticket uses `workflow: full-v2`, with no sizing question or `track` field:
+   research → visual briefing → scope interview → **Scoped?** →
+   investigation (🛑 diagnosis stop) → plan → **Planned?** → implement → **Shippable?** → Evidence Testing.
+4. Read and comment on the gate documents. One explicit user approval covers the
    displayed file/revision set, recorded in a SHA-256 manifest. Small fixes follow
    the same phases; unavailable sources and test gaps are recorded, not treated as safety evidence.
-4. At Implement, the `agents` skill reuses a suitable current worktree. It starts another session only when needed.
-5. Complete **Shippable?**, **Sendable?** for each external write, and Evidence Testing.
-   QA handover runs only when configured. Say "close APP-42"; **Learned?** approves
-   distillation into wiki pages and archive.
+5. At Implement, the `agents` skill reuses a suitable current worktree. It starts another session only when needed.
+6. Approve **Sendable?** for each external write. QA handover runs only when configured.
+   Say "close APP-42"; **Learned?** approves distillation into wiki pages and archive.
 
+```mermaid
+flowchart LR
+  R[Research, briefing, interview] --> S{{Scoped?}} --> I[Investigation] --> P{{Planned?}}
+  P --> C[Implement] --> SH{{Shippable?}} --> E[Evidence Testing] --> L{{Learned?}}
+  I -. the scope is wrong .-> S
+```
+
+| Gate | You approve | Evidence in the same approval |
+|---|---|---|
+| **Scoped?** | `scope.md` | `context.md`, `briefing.md`, `interview.md` |
+| **Planned?** | `plan.draft.md` and its byte-identical copy `plan.md` | `investigation.md`, `decisions.md`, `test-plan.md` |
+| **Shippable?** | `review.md` | the listed `evidence/` files |
+| **Sendable?** | each `outbox/` draft, before it is sent | none |
+| **Learned?** | `close.draft.md` | none |
+
+Open `full-v1` tickets move to `full-v2` on resume with `forge.mjs migrate <key>`.
+Approved and current Understood? and Agreed? approvals become Scoped?, and Diagnosed? and Designed? become Planned?.
+When one of a pair is missing or stale, the merged gate opens again. Migration never creates an approval.
 Existing S/M/L and trackless tickets retain their original phases, gates, and skips,
 including recommended rather than mandatory Diagnosed?. Briefed? remains legacy-only.
 Missing `track` never identifies the new workflow. Resume reports missing or stale
@@ -153,6 +180,55 @@ Forge never resets a branch or changes approved documents to repair a mismatch.
 See the [worktree selection checks](plugins/forge/skills/agents/SKILL.md#select-the-execution-worktree).
 
 The agent never merges. It asks before every write to the tracker, the repository host, or the CI.
+
+### 📖 Read in layers
+
+Each primary gate document (`scope.md`, `plan.draft.md`, `review.md`, `close.draft.md`) has cumulative
+reading levels. Read from the top, and stop when you know enough:
+
+| Level | Words from the top | What you get |
+|---|---|---|
+| ⚡ 1 min | 150 | The key fact, the TL;DR, what the agent needs from you, and at most 3 ❓ decisions with a recommended answer |
+| ☕ 5 min | 1,150 | The problem, the proposal, and the main risks |
+| 📖 10 min | 2,300 | Your interview answers, the options, and the reasons |
+| 🔬 15 min | 3,450 | The history and the deep detail |
+| 📂 Appendix | no limit | Links to the evidence. Nothing is dropped to make a document shorter. |
+
+- The approval form shows only the ⚡ card. At a later review, it shows only "🔀 Changed since your last review"
+  (`forge.mjs diff <key> <gate>`). `forge.mjs snapshot <key> <gate>` saves the version that you saw.
+- `forge.mjs lint` warns when a level is over its budget, the ⚡ card is missing, or the levels are in the wrong order.
+  Code, Mermaid, and link targets do not count as words.
+
+### 📍 Where a ticket is
+
+- The 📍 Now card at the top of each ticket README shows the state, the phase, the open gate, the next step,
+  who the ticket waits on, what is done, the open questions, and the date. `forge.mjs lint` warns when the card
+  does not agree with the frontmatter.
+- The artifacts panel next to the chat input shows `<KEY> · 📍 Now` and the document of the open gate
+  (`chat.artifacts.enabled`).
+- VS Code 1.145 and later: in the Chat view, open **More Actions**, select **View Mode**, then **Conversation**
+  (`chat.persistentProgressVerbosity`, experimental). The tool calls collapse, so a long session is easier to read.
+
+### 🏷️ Session titles
+
+Each ticket session has the title `<KEY> - <state> - <goal>`, for example `APP-4211 - 🟡 - Review invoice export fix`.
+The title has less than 60 characters. Keys of one project have the same width, so the goals line up in the sessions list.
+
+| State | Meaning |
+|---|---|
+| 🟡 | A gate or a question waits for you |
+| 🔴 | A failure stops the work, for example CI or an expired credential |
+| 🟢 | The last gate is approved, and no gate is open |
+| ▶️ | The agent works |
+| ⏳ | The work waits for an outside event, for example a review or a build |
+| ✅ | The ticket is closed |
+
+The plugin has a `sessionStart` [hook](plugins/forge/com.github.copilot/hooks/hooks.json).
+When a session starts, `forge.mjs hook session-start` finds the ticket from the session folder, the branch,
+or the key in the first prompt. It gives the agent the title, the 📍 Now card, and the worktree step.
+The agent renames the session before any other step, and again at the end of the first turn,
+because VS Code can replace the title after the first prompt
+(see "Known gaps" in [vscode-baseline.md](docs/vscode-baseline.md)).
 
 ### 👥 People on a ticket
 
@@ -186,51 +262,65 @@ See [config.md](docs/config.md#learning-mode) for the setting and trust flow.
 ## 📋 Ticket overview
 
 Say "show the board" or "my tickets". The agent reads the README frontmatter of each ticket
-and groups the open tickets by who must act: you, the agent, a colleague, or nobody (blocked).
-
-### 🖼️ Ticket dashboard
-
-Forge also bundles a read-only canvas. Say **"open the Forge ticket dashboard"**.
-The agent supplies the repository wiki path from `forge.mjs where --json`.
-
-- The overview has 6 KPI cards, state filter pills, search, and segmented gate progress bars. Recorded tracks appear only as legacy context.
-- Switch between **🎫 Tickets** and **📚 Wiki & Concepts** in the top bar to browse canonical wiki knowledge shelves (**🎓 Concepts & Learning**, **🏗️ Architecture & Areas**, **🛠️ Tooling & Gotchas**, **🧭 Decisions**, **🎫 Closed Ticket Summaries**, and **📚 Index & Log**).
-- Click any ticket card to open its full-screen **Ticket Cockpit**: phase stepper, hero focus, categorized document shelves, review gates, change requests, and a **👥 People** tab.
-- Switch to **👥 People** in the top bar to see everyone on open tickets, grouped by person, with filters for **Your move**, **Waiting**, and **Done**. The **People to message** and **Waiting on people** KPI cards open the same view. Ticket cards show ✉️ and ⏳ counts.
-- Browse ticket documents by category (**Core & Map**, **Gate Docs**, **Evidence & Spikes**, **Outbox Drafts**, **Logs & Decisions**). Read ticket and wiki pages inside the canvas, with rendered Mermaid diagrams, collapsible `📂` detail sections, and verified source lists.
-- Follow Markdown links across ticket files, canonical wiki pages, and concept lessons. The `↩ Previous view` history stack goes back.
-- The dashboard reads ticket and wiki files every 5 seconds. **Refresh** reads them immediately.
-- Empty ticket folders show an empty board. Invalid files show errors without hiding valid tickets.
-
-Ticket README files remain the source of truth. The dashboard never edits files, approves gates,
-or calls a tracker. It stores no private data and needs no credentials.
-
-Enable `chat.canvases.enabled`, then start a new local desktop session with the Copilot harness.
-Other harnesses, remote sessions, and browser clients do not support canvases.
-See [VS Code canvases](https://code.visualstudio.com/docs/agents/run/canvases).
-Forge uses Agent Plugins 1.0. Canvas files live under `com.github.copilot/extensions/`.
-The manifest declares their path in `extensions["com.github.copilot"].extensions`.
-A top-level `"extensions": "extensions/"` belongs to the older Copilot format and does not work here.
-If the canvas is missing, check the installed source folder for these files and this manifest entry.
-For local development, install the source plugin as described below.
-
-The canvas ID is `forge-ticket-dashboard`. Its open input is `{ "wikiPath": "<absolute wiki path>" }`.
-Its `refresh` action returns current tickets and read errors. Reopening the same instance reuses
-its server and rereads the same wiki. Separate instances can show separate repositories.
-Each server binds only to `127.0.0.1` on a free port and stops when the canvas instance closes.
-The panel needs no database; ticket files preserve its data across sessions.
+and groups the tickets by state: 🟡 Needs me, 🔴 Blocked, 🟢 Go, ▶️ Active, ⏳ Waiting, ✅ Done.
+`forge.mjs board` writes the same view to `<wiki>/raw/board.md`, so you can keep it open in the editor.
+Each row shows the session title, the open gate, the next step, who the ticket waits on, and the days since the update.
+When `<wiki>/raw/sync/<KEY>.md` exists, the row also shows the change request, CI, and tracker status.
+`forge.mjs board --json` gives the same data to agents. Ticket README files remain the source of truth.
 
 The reader supports the [ticket template](plugins/forge/skills/ticket/templates/README.md):
 scalar fields, comments, quoted strings, folded text (`>`), literal text (`|`), and flat object lists
 for `gates`, `changes`, and `people`. Text blocks support strip (`-`) and keep (`+`) chomping.
 Lists can use inline arrays, inline objects, or indented fields.
 YAML anchors, tags, and explicit block indentation indicators are not supported;
-the dashboard reports them as read errors. Existing tickets need no rewrite for supported YAML forms.
-New `full-v1` tickets have no track badge or missing-track warning. Existing trackless
-tickets remain visible without an inferred workflow or size. Recorded S/M/L labels
+lint reports them as read errors. Existing tickets need no rewrite for supported YAML forms.
+Existing trackless tickets remain visible without an inferred workflow or size. Recorded S/M/L labels
 are legacy context only. An unknown track value still produces a read error.
-CLI validation and the dashboard use the shared parser in
+CLI validation and the board use the shared parser in
 [`scripts/lib/ticket.mjs`](plugins/forge/scripts/lib/ticket.mjs).
+
+## 🧭 Forge Master
+
+The Forge Master is a custom agent for one overview session in each repository.
+Ask it about your tickets and the other sessions, so you do not have to open each session.
+
+1. Start a new session in the main checkout, with the Copilot harness and **Folder** (not **New Worktree**).
+2. In the agent picker, select **Forge Master**, and send "Show the board".
+3. It renames the session `Forge Master - <repo>`. Pin the session at the top of the sessions list.
+
+| Say | Result |
+|---|---|
+| "Show the board" | The count for each state, then the tickets that need you |
+| "What did we do on APP-42?" | The 📍 Now card, the latest log entries, and the session link |
+| "What must I approve on APP-42?" | The ⚡ 1 min card of the open gate |
+| "Refresh" | Reads the tracker, the change requests, and CI (read-only), writes `raw/sync/`, then fixes titles and state groups |
+| "Tell APP-42: use the v2 endpoint" | Sends your exact words to that session. VS Code asks you to confirm. |
+| "Start APP-43" | Shows the branch and the folder, creates the worktree after one "yes", and opens a ticket session |
+| "Show my daily" | The first screen of the latest daily recap |
+
+The Forge Master does not edit code, ticket files, or wiki pages. It writes only `raw/board.md` and `raw/sync/`.
+It never relays a gate approval and never answers a question of a session for you,
+because an approval covers the exact revision that the ticket session shows.
+It never merges, pushes, or writes to the tracker.
+See [forge-master.agent.md](plugins/forge/com.github.copilot/agents/forge-master.agent.md).
+
+## ⏰ Automations
+
+The plugin has two [automation](https://code.visualstudio.com/docs/agents/run/automations) templates.
+VS Code shows them under **Templates from Plugins**. A template does nothing until you create and enable an automation from it.
+
+| Template | Schedule | What it does |
+|---|---|---|
+| **Forge maintenance** | 09:00, 11:00, 13:00, 15:00, 17:00, Monday to Friday | Board, sync notes, lint report, people waits, titles, and state groups |
+| **Prepare my daily** | 10:20, Monday to Friday | The draft daily recap of the `daily-recap` skill |
+
+1. Select **Automations** in the Agents window sidebar, expand **Templates from Plugins**, and select a template.
+2. Set the main checkout as the workspace, with **Run in the Cloud** off and not **New Worktree**.
+   Review the prompt, the schedule, and the permissions.
+3. Select **Run now** one time, and check the run in **History**. Then select **Enabled**, and save.
+
+A run writes only in `<wiki>/raw/`, and changes only session titles and groups. It only reads the tracker,
+the repository host, and CI. When **Automations** is not visible, turn on `chat.automations.enabled`.
 
 ## 🔎 Local validation
 
@@ -263,6 +353,8 @@ Trust approvals and credentials stay outside the wiki. See [wiki.md](docs/wiki.m
 
 ## 🛠️ Develop
 
+- Read [AGENTS.md](AGENTS.md) first. Before you change how forge uses a VS Code feature, read the release notes
+  since the [VS Code baseline](docs/vscode-baseline.md) and the feature page. Use a native feature when one exists.
 - `npm test` runs the tests.
 - [Behavioral evaluation](docs/evaluation.md) describes manual runs through the
   supported harness, trace evidence, and execution approval. Deterministic fixtures

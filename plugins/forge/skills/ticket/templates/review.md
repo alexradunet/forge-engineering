@@ -6,15 +6,21 @@ updated: <yyyy-mm-dd>
 ---
 # 🧪 Code review (<KEY>): <short title>
 
+## ⚡ 1 min
+
 > 🔥 <the result in one line, for example "All 48 tests green; 312 → 2 queries confirmed">
 
 > **TL;DR:** <max 3 lines: what changed, how we tested it, what is left>
 >
 > **What I need from you:** GO on Shippable?. After GO, I push and create or update the change request. You merge in the web UI of the repository host.
->
-> **Reading time:** about <n> minutes.
 
-## 📊 Checklist
+**❓ Decisions needed**
+
+1. <max 3 one-line items with the recommended answer, or "None (GO only)">
+
+## ☕ 5 min
+
+### 📊 Checklist
 
 | Check | Result |
 |---|---|
@@ -26,12 +32,14 @@ updated: <yyyy-mm-dd>
 | 🥊 Adversarial review | 🟢 <model>: <n> findings, <n> fixed, <n> rejected with evidence \| 🔴 not run (blocks the change request) |
 | 📏 Diff | <files> files, +<n> / −<n> |
 
-## 🧭 Affected areas
+### 🧭 Affected areas
 
 | Area | Files | User impact | Tests | Risk |
 |---|---|---|---|---|
 
-## 🔀 Before and after
+## 📖 10 min
+
+### 🔀 Before and after
 
 ```mermaid
 flowchart LR
@@ -43,21 +51,29 @@ flowchart LR
   end
 ```
 
-## 💡 Why each change
+### 💡 Why each change
 
 | Change | Why |
 |---|---|
 
-**📂 Test runs and logs**
-
-<commands, test names, end-to-end job links, CI links>
-
-> 🛑 **Caution:** <anything that can affect production, when it exists. Remove the box otherwise.>
-
-## ❓ Open questions
+### ❓ Open questions
 
 <items, or "None">
 
-## ❓ Decisions needed
+> 🛑 **Caution:** <anything that can affect production, when it exists. Remove the box otherwise.>
 
-1. <max 5 items, or "None (GO only)">
+## 🔬 15 min
+
+### 🥊 Review findings
+
+| # | Finding | Source | Result |
+|---|---|---|---|
+| 1 | <finding> | adversarial \| subagent | fixed \| rejected: <evidence> |
+
+## 📂 Appendix
+
+<Commands, test names, end-to-end job links, CI links, and log excerpts.>
+
+- Plan: [plan.md](plan.md)
+- Test plan: [test-plan.md](test-plan.md)
+- Code map: [map.md](map.md)

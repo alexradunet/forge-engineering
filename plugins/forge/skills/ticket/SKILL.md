@@ -1,9 +1,12 @@
 ---
 name: ticket
-description: Ticket workspace for work items from any tracker (Jira, GitLab, GitHub, or none). Every new ticket follows the full research, scope, investigation, plan, implementation, evidence, and learning workflow with explicit review gates. Existing tickets retain their original process. Keeps working artifacts in <wiki>/raw/tickets/<key>, shared by sessions in the VS Code Agents window, and distills them into canonical wiki pages at close. Use when asked to "start ticket APP-123", "work on APP-123", "resume APP-123", "where are we on the ticket", "record this finding", "save the plan to the ticket", "show the code map", "close the ticket", or "archive the ticket".
+description: Ticket workspace for work items from any tracker (Jira, GitLab, GitHub, or none). Every new ticket follows the full-v2 workflow (research, scope, investigation, plan, implementation, evidence, and learning) with four review gates and short layered gate docs. Existing tickets retain their original process; full-v1 tickets migrate on resume. Keeps working artifacts in <wiki>/raw/tickets/<key>, shared by sessions in the VS Code Agents window, and distills them into canonical wiki pages at close. Use when the user pastes a work item key or URL, or asks to "start ticket APP-123", "work on APP-123", "resume APP-123", "where are we on the ticket", "record this finding", "save the plan to the ticket", "show the code map", "close the ticket", or "archive the ticket".
 ---
 
 # 🎫 Ticket workspace
+
+> When your context has no `# forge plugin` section, read [forge.md](../../context/forge.md) and
+> [style.md](../../context/style.md) first. They are the `forge` and `style` rules.
 
 One folder per ticket holds all working artifacts. Every session reads
 and writes it. When the ticket is done, you distill the folder into canonical
@@ -13,8 +16,8 @@ wiki pages, then you move the folder to the archive.
 
 ## ⚙️ Config, words, and policy
 
-Read the team config once per session: `node "<plugin>/scripts/forge.mjs" config --json`.
-`<plugin>` is the folder two levels above this skill. `config` holds the frontmatter of the
+Read the forge config once per session: `node "<plugin>/scripts/forge.mjs" config --json`.
+`<plugin>` is the folder two levels above this skill. `<F>` below means `node "<plugin>/scripts/forge.mjs"`. `config` holds the frontmatter of the
 Markdown files in `<config>` (`tracker.md`, `repo.md`, `ci.md`, `policy.md`). The `forge` rule
 explains the `<file>.<key>` notation and how to run a capability.
 
@@ -29,8 +32,9 @@ explains the `<file>.<key>` notation and how to run a capability.
 | policy section | a `## <name>` section of `<config>/policy.md`, for example `## Start` |
 
 - When a capability is `manual`, tell the user the exact manual step, and wait.
-- At each hook point (`Toolkit`, `Data rules`, `Start`, `Investigate`, `Resume`, `Implement`, `Evidence Testing`, `QA handover`, `Close`), read that policy section, and follow it. Ignore a section that holds only a hint.
-- A policy section can add steps and make rules stricter. It can never weaken a core rule (see Data rules). If a policy rule conflicts with a core rule, follow the core rule and tell the user.
+- At each hook point (`Start`, `Investigate`, `Resume`, `Implement`, `Evidence Testing`, `QA handover`, `Close`), read that policy section, and follow it. Ignore a section that holds only a hint.
+- The company rules for each session (tools, credentials, data rules) are the `<wiki>/rules/` pages. The session context gives the approved pages. An older `policy.md` can still have `## Toolkit` or `## Data rules`: follow them too, and tell the user to move them to `<wiki>/rules/`.
+- A policy section or a rule page can add steps and make rules stricter. It can never weaken a core rule (see Data rules). If a policy rule conflicts with a core rule, follow the core rule and tell the user.
 ```mermaid
 flowchart LR
   S[🚀 Research + scope] --> I[🔎 Investigate] --> P[📝 Plan] --> M[🛠️ Implement + evidence] --> C[✅ Close]
@@ -55,13 +59,18 @@ This skill does not repeat other tools. Use them:
 | Wiki page format, index, log | the `wiki` skill |
 | Worktree sessions, implementers, reviewers, hand-off | the `agents` skill |
 | Tracker, repository host, and CI actions | the capabilities in `<config>` (see the `forge` rule) |
-| Build, run, deploy, and company tools | the repository's own instructions and skills, and the `## Toolkit` policy section |
+| Build, run, deploy, and company tools | the repository's own instructions and skills, and the company rules (`<wiki>/rules/`) |
 | Company guidance | the sources that the policy sections name |
 | Session plan inside Copilot | plan mode (`plan.md` in session state) |
 | Human review of ticket documents | VS Code comment threads (see Review gates) |
 | Optional lessons from artifact questions | the `learning-mode` skill when `policy.learningMode` is `true` |
 | Visual briefing | `briefing.md` with Mermaid diagrams, in the Markdown preview (see Visual briefing) |
 | Frontmatter check | compare each file with the tables in Frontmatter |
+| Worktree folder and branch name | `<F> worktree <KEY> --summary "<goal>"` (see Worktrees) |
+| Approval form text (⚡ card or changes) | `<F> diff <key> <gate>`, then `<F> snapshot <key> <gate>` (see Approval form) |
+| `full-v1` ticket on resume | `<F> migrate <key>` (see Resume) |
+| A file view of all tickets | `<F> board` (see Ticket overview) |
+| Tickets of other sessions, relays, and titles | the **Forge Master** agent session in the main checkout (see the README of the plugin) |
 
 ## 🗂️ Folder layout
 
@@ -69,16 +78,17 @@ The folder name is `<key>`, for example `app-123`.
 
 ```text
 <wiki>/raw/tickets/<key>/
-  README.md          frontmatter: workflow, phase, state, next, waiting_on, branch, change requests, people, gates; body: toolkit, files
+  README.md          frontmatter: workflow, phase, state, short, next, waiting_on, branch, worktree, change requests, people, gates; body: 📍 Now card, toolkit, files
   ticket.md          work item snapshot
   context.md         pre-investigation brief: problem, history, related work, open questions, people to ask
   map.md             living code map: purpose, flow, files, data, tests, changes (grows in every phase)
   briefing.md        visual briefing: timeline, concept graph, people (Mermaid)
   interview.md       scope questions and user answers
+  scope.md           agreed scope with reading levels (Scoped? primary doc)
   investigation.md   hypotheses table and findings
   evidence/          sanitized tool outputs, one file per item
   plan.md            approved implementation plan
-  plan.draft.md      proposed plan awaiting explicit approval
+  plan.draft.md      proposed plan with reading levels, awaiting explicit approval (Planned? primary doc)
   outbox/            drafts of external writes (tracker comments, change request text), awaiting approval
   outbox/<name>.approval.json  per-write approval and delivery sidecar; never hashed by its manifest
   review.md          code review summary before push or change request (diff, tests, risks)
@@ -90,6 +100,7 @@ The folder name is `<key>`, for example `app-123`.
   decisions.md       decisions and reasons
   log.md             append-only dated work log
   approvals/         revision manifests, outside the documents they hash
+  approvals/snapshots/  the gate doc as the user saw it at each review (<gate>-<n>.md), for the next diff
   repair-log.jsonl   append-only log of explicit lint repairs, when any
 ```
 
@@ -105,34 +116,45 @@ The folder name is `<key>`, for example `app-123`.
 - Close a change request only after explicit user approval in the current conversation.
 - Never offer a merge on a weekday in `policy.noMergeWeekdays` (local time). Propose the next allowed day.
 - When the user must edit a file by hand (for example a connection string or a secret), open every such file in VS Code yourself with `code <path> [<path>...]`, and list the exact edits in chat. Never write the secret yourself.
-- Read the `## Data rules` policy section. It adds rules to this list.
+- The company rules (`<wiki>/rules/`, in the session context) add rules to this list.
 
-These core rules always win over a policy section: no merge, ask before every external write, explicit gate approval, no secrets, and the adversarial review before every change request.
+These core rules always win over a policy section or a rule page: no merge, ask before every external write, explicit gate approval, no secrets, and the adversarial review before every change request.
 
 `ask_user` below means the question form of the harness. When it is not available, ask in chat and wait for the answer.
 
 ## 🧭 Workflow
 
-Every **new** ticket has `workflow: full-v1`, no `track` field, no sizing question,
+Every **new** ticket has `workflow: full-v2`, no `track` field, no sizing question,
 and no size-based phase skips. Research depth follows the evidence, not a word count or duration.
 
 ```mermaid
 flowchart LR
-  S[Research · Understood?] --> B[Visual briefing] --> A[Interview · Agreed?] --> D[Investigation · Diagnosed?] --> P[Plan · Designed?]
+  S[Research] --> B[Visual briefing] --> A[Interview] --> SC[scope.md · Scoped?] --> D[Investigation] --> P[plan.draft.md · Planned?]
   P --> I[implement] --> R[review · Shippable?] --> E[Evidence Testing] --> M[merge by user] --> Q[QA handover comment · Sendable?] --> C[close · Learned?]
+  D -. diagnosis contradicts scope .-> SC
 ```
 
-- Diagnosed? is mandatory before planning. Briefed? does not exist in `full-v1`.
-- Sendable? applies to **each external write**, including early colleague or tracker writes.
+- Four review gates in order: Scoped?, Planned?, Shippable?, Learned?. Sendable? applies to **each external write**, including early colleague or tracker writes.
+- Scoped? approves `scope.md` with its evidence: `context.md`, `briefing.md`, and `interview.md`. Nothing before it needs a gate.
+- Planned? approves `plan.draft.md`, its byte-identical copy `plan.md`, and the evidence: `investigation.md`, `decisions.md`, and `test-plan.md`. The investigation is mandatory before the plan draft.
+- **Diagnosis stop**: when the investigation shows that the approved scope is wrong or too small (see Investigate), stop before the plan and ask. When the user agrees to change the scope, reopen Scoped?.
 - Evidence Testing is a required step, not a gate, and blocks the merge proposal.
 - QA handover runs only when `policy.qaHandover` is `true`; it uses Sendable?, not a new gate.
+- Each primary gate doc (`scope.md`, `plan.draft.md`, `review.md`, `close.draft.md`) has reading levels: ⚡ 1 min, ☕ 5 min, 📖 10 min, 🔬 15 min, 📂 Appendix (see Gate document shape).
 
 ### Legacy boundary
 
-Only the explicit `workflow: full-v1` marker selects the new process. Existing tickets
-without that marker, including trackless tickets, retain their original phases, gates,
+Only an explicit `workflow` marker selects a new process:
+
+| Marker | Process |
+|---|---|
+| `workflow: full-v2` | the process above |
+| `workflow: full-v1` | the earlier 7-gate process (Understood?, Agreed?, Diagnosed?, Designed?, then Shippable?, Sendable?, Learned?). Resume runs `<F> migrate <key>` on each open `full-v1` ticket (see Resume). Until it moves, its gates stay valid. |
+| none | legacy: the original phases, gates, and skips (below) |
+
+Existing tickets without a marker, including trackless tickets, retain their original phases, gates,
 and skips. Never infer a workflow from missing `track`, file layout, size, or current phase.
-Do not add `full-v1` on Resume or require new gates merely because this skill changed.
+Do not add a `workflow` marker to a legacy ticket or require new gates merely because this skill changed.
 
 | Legacy metadata | Original process retained |
 |---|---|
@@ -146,51 +168,51 @@ process. Recommended legacy Diagnosed? can be declined with a logged reason.
 Do not recalibrate, escalate, or downgrade existing tickets automatically.
 Missing or contradictory legacy metadata is a finding requiring user direction before
 the affected action, not permission to assign a workflow, rewrite history, or reopen
-gates solely to meet `full-v1`.
+gates solely to meet `full-v2`.
 
 ## 🚦 Review gates
 
 The user reviews ticket artifacts with VS Code comment threads at these gates:
 
-| Gate | Step | Document | Need | Opens before |
-|---|---|---|---|---|
-| Understood? | Research | `context.md` + explicitly listed `evidence/` | required | visual briefing and scope interview |
-| Agreed? | Scope | `interview.md` + `briefing.md` | required | investigation work on the agreed scope |
-| Diagnosed? | Investigation | `investigation.md` + explicitly listed `evidence/` | required | the plan draft |
-| Designed? | Plan | `plan.draft.md`, byte-identical `plan.md`, `decisions.md`, `test-plan.md` | required | implementation |
-| Sendable? | External write | `outbox/` drafts | required | each tracker, document, or change request text write |
-| Shippable? | Code | `review.md` | required | push or change request creation |
-| Learned? | Close | `close.draft.md` | required | canonical wiki writes and the archive move |
+| Gate | Step | Primary doc | Evidence in the same manifest | Need | Opens before |
+|---|---|---|---|---|---|
+| Scoped? | Research, briefing, interview | `scope.md` | `context.md`, `interview.md`, `briefing.md`, explicitly listed `evidence/` | required | investigation work on the agreed scope |
+| Planned? | Investigation and plan | `plan.draft.md` + byte-identical `plan.md` | `investigation.md`, `decisions.md`, `test-plan.md`, explicitly listed `evidence/` | required | implementation |
+| Sendable? | External write | the exact `outbox/` draft | none | required | each tracker, document, or change request text write |
+| Shippable? | Code | `review.md` | explicitly listed `evidence/` | required | push or change request creation |
+| Learned? | Close | `close.draft.md` | none | required | canonical wiki writes and the archive move |
 
 Open colleague questions do not block a gate. See Pre-investigation.
-The table is the `full-v1` contract. Apply the Legacy boundary to existing tickets.
-
-Each gate name is the question that the user answers by approval. The user approves with `approve <name>`, with or without the `?` and in any case (`approve designed`).
+The table is the `full-v2` contract. A `full-v1` ticket keeps its 7 gates until it moves. Apply the Legacy boundary to legacy tickets.
+Each gate name is the question that the user answers by approval. The user approves with `approve <name>`, with or without the `?` and in any case (`approve planned`).
 
 ### 🧾 Gate document shape
 
 Every gate document uses the plain ticket style. Read [templates/_style.md](templates/_style.md) and copy the template for the document (see Templates).
 
-- The short version comes first: key fact, TL;DR quote, glance table, diagram.
-- Long details go under a bold `**📂 <label>**` line. Do not drop information to make a document shorter.
+- A primary gate doc has cumulative reading levels: `## ⚡ 1 min`, `## ☕ 5 min`, `## 📖 10 min`, `## 🔬 15 min`, `## 📂 Appendix`. The user reads from the top and stops at any level.
+- Word budgets from the top of the doc: ⚡ at most 150 words, ☕ at most 1,150, 📖 at most 2,300, 🔬 at most 3,450. Code, Mermaid, and link targets do not count. `<F> lint` warns when a level is over its budget, the ⚡ card is missing, or the order is wrong.
+- The ⚡ card stands alone, because the approval form shows only it: the key fact, the TL;DR, what you need from the user, and **❓ Decisions needed** (max 3 one-line items with the recommended answer, or "None (GO only)").
+- Move detail down a level or to the Appendix. Do not drop information to make a document shorter. Evidence docs keep details under a bold `**📂 <label>**` line.
 - Do not use HTML (`<details>`) or GitHub alerts (`[!NOTE]`). The Agents window preview does not render them.
 - Link each fact to its evidence file or to code (`[File.cs](<checkout>/path/File.cs:42)` with the absolute checkout path, which opens in VS Code).
-- End with **❓ Decisions needed** (max 5 items). Write "None (GO only)" when it is empty.
 - Explain each term that the user may not know, in plain words, or link to its row in `map.md`.
 - Before review, check the text against the forge document mode of the `writing` skill: no strong AI tells (§1 to §5, §8, §22 to §25).
 
 Procedure for each gate:
 
-1. Write or update the gate documents. Prepare the exact review set and manifest (see Approval revisions). For Designed?, stage `plan.md` as a byte-identical copy before review; it is not approved until GO.
-2. Set the gate to `status: in-review` in the README `gates` list, and `state: needs-me`. Record its manifest path and pending review digest without granting approval. For Sendable?, set `doc` to this write's exact draft file, not just `outbox/`; retain prior writes' approvals in separate manifests and history. Set the state emoji of the session title to 🟡.
-3. Open the documents next to the session: run `code -r "<absolute path>"` with the shell tool in `async` mode (the command can block for 30 seconds or more). Open at most 3 at once; link every file in the exact review set. Tell the user: add comments in the editor, or send them with VS Code's comment submit button.
-4. Show the approval form (below) with `ask_user`. Do not start the blocked step.
-5. Act on the answer:
-   - **GO**: record the approval (step 7), then start the next workflow step.
-   - **Comments**: handle the comments (step 6), then show the form again.
-   - **Changes**: apply the free-text request to the document, then show the form again.
+1. Write or update the gate documents. Prepare the exact review set and manifest (see Approval revisions). For Planned? (and `full-v1` Designed?), stage `plan.md` as a byte-identical copy before review; it is not approved until GO.
+2. Set the gate to `status: in-review` in the README `gates` list, and `state: needs-me`. Record its manifest path and pending review digest without granting approval. For Sendable?, set `doc` to this write's exact draft file, not just `outbox/`; retain prior writes' approvals in separate manifests and history. Update the 📍 Now card in the same edit.
+3. Call `rename_chat` with the 🟡 title (see Session title) **before** the form.
+4. Open the documents next to the session: run `code -r "<absolute path>"` with the shell tool in `async` mode (the command can block for 30 seconds or more). Open at most 3 at once; link every file in the exact review set. Tell the user: add comments in the editor, or send them with VS Code's comment submit button.
+5. Get the form text: run `<F> diff <key> <gate>` first, then `<F> snapshot <key> <gate>`. `diff` compares the primary doc with the snapshot of the last review. `snapshot` saves the doc as the user sees it now. For Sendable?, show the exact send text instead.
+6. Show the approval form (below) with `ask_user`. Do not start the blocked step.
+7. Act on the answer:
+   - **GO**: record the approval (step 9), then start the next workflow step.
+   - **Comments**: handle the comments (step 8), then show the form again (from step 5).
+   - **Changes**: apply the free-text request to the document, then show the form again (from step 5).
    - **Hold**: stop. Tell the user how to resume (`approve <gate>` in chat, or "review my comments").
-6. Handle the comments (`listComments`). Comments sent with VS Code's submit button (`/act-on-feedback`) arrive the same way:
+8. Handle the comments (`listComments`). Comments sent with VS Code's submit button (`/act-on-feedback`) arrive the same way:
    - Before normal resolution, use the `learning-mode` skill for user questions about unfamiliar concepts when `policy.learningMode` is `true`.
    - Accept plain questions and optional `learn:` markers. Offer a bite before creating it; Skip or Later adds no blocker.
    - Answer a question with `replyToComment`. If the answer changes the artifact, update the artifact.
@@ -198,16 +220,16 @@ Procedure for each gate:
    - When a comment is not clear, ask the user. Do not guess.
    - Resolve each handled correction with `resolveComments`. Resolve a learning thread only on explicit user direction.
    - Summarize what changed in 5 lines or less before you show the form again.
-7. Record the approval:
+9. Record the approval:
    1. Recheck all displayed document hashes and the manifest bytes. If anything changed, show the revised set and ask again.
    2. Record `status: approved`, `date: <user approval yyyy-mm-dd>`, `manifest: <ticket-relative JSON path>`, and `hash: <full SHA-256 of raw manifest bytes>` in the README gate. Keep `doc` as the primary document link.
    3. Append the gate, manifest path and hash, approved file/revision set, method (`form` or `chat`), and the user's exact answer to an approval record outside the hashed set, for example `approvals/history.md`. Do not append approval text to a hashed `decisions.md`.
-   4. Update `state`, `next`, and `updated`, then the session title. Check frontmatter and report conflicts; never infer or repair approval.
-   5. For Designed?, verify both plan files are still byte-identical. Implementation can use `plan.md` only after this approval is fresh.
+   4. Update `state`, `next`, `updated`, and the 📍 Now card, then call `rename_chat` with the new state emoji. Check frontmatter and report conflicts; never infer or repair approval.
+   5. For Planned? (and `full-v1` Designed?), verify both plan files are still byte-identical. Implementation can use `plan.md` only after this approval is fresh.
 
 ### Approval revisions
 
-New approvals use a ticket-relative JSON manifest, for example `approvals/understood-001.json`.
+New approvals use a ticket-relative JSON manifest, for example `approvals/scoped-001.json`.
 Use a new manifest for each review revision and each Sendable? write. Never overwrite an
 old approval record to grant approval to a new revision. Hash raw bytes with SHA-256,
 not `git hash-object`, normalized text, or a truncated digest.
@@ -215,9 +237,11 @@ not `git hash-object`, normalized text, or a truncated digest.
 ```json
 {
   "version": 1,
-  "gate": "Understood?",
+  "gate": "Scoped?",
   "documents": [
-    { "path": "context.md", "sha256": "<64 lowercase hex characters>" }
+    { "path": "scope.md", "sha256": "<64 lowercase hex characters>" },
+    { "path": "context.md", "sha256": "<64 lowercase hex characters>" },
+    { "path": "interview.md", "sha256": "<64 lowercase hex characters>" }
   ]
 }
 ```
@@ -229,17 +253,20 @@ No README approval metadata, approval record, or manifest may be in its own hash
 Keep paths inside the ticket folder. One explicit user approval covers the entire
 displayed file + revision set; do not ask for per-file approvals.
 
-Designed? also requires `plan.draft.md` and `plan.md` in `documents`, with identical
+Planned? (and `full-v1` Designed?) also requires `plan.draft.md` and `plan.md` in `documents`, with identical
 hashes and byte-identical contents, plus:
 
 ```json
 "approvedCopies": [{ "from": "plan.draft.md", "to": "plan.md" }]
 ```
 
-`approvedCopies` is allowed only for Designed?. On a revised plan, keep the old approved
+`approvedCopies` is allowed only for Planned? and Designed?. On a revised plan, keep the old approved
 plan until the new review is ready, stage the new identical pair for review, and block
 implementation until GO. Do not copy or edit either plan after approval without reopening
-Designed?. Hash the manifest only after its complete bytes are final.
+the plan gate. Hash the manifest only after its complete bytes are final.
+
+A migrated approval (`<F> migrate`) has `migratedFrom` with both source manifests and their
+hashes. It stays fresh only while both source manifests and every covered document are unchanged.
 
 Before any blocked action and on Resume, validate the manifest hash, exact document set,
 every document hash, required files, and approved-copy equality. A change to any covered
@@ -311,7 +338,7 @@ arbitrary JSON files elsewhere in the ticket.
 
 ### ✅ Approval form
 
-Show it with `ask_user` at each gate. Use one field, `decision`, with these options. Put the gate question in the message, for example "Designed? Is the plan for APP-123 correct?".
+Show it with `ask_user` at each gate. Use one field, `decision`, with these options. Put the gate question first in the message, for example "Planned? Is the plan for APP-123 correct?".
 
 | Value | Title |
 |---|---|
@@ -320,8 +347,15 @@ Show it with `ask_user` at each gate. Use one field, `decision`, with these opti
 | `changes` | ✏️ Changes: I typed them in the free-text answer |
 | `later` | ⏸️ Hold: not now |
 
+The message body is short. Put in it, in this order:
+
+1. The gate question and a link to the primary doc.
+2. The output of `<F> diff <key> <gate>` (Procedure step 5):
+   - First review: the ⚡ 1 min card of the primary doc. Nothing more from the doc.
+   - Later review: only "🔀 Changed since your last review", with the changed sections and lines. Do not repeat the ⚡ card. When nothing changed, say so in one line.
+3. One line per file in the exact set: link and SHA-256 revision (a 12-character display prefix is fine), plus the manifest link and digest. The stored hashes are full length. State that GO approves the whole exact set.
+
 - Set no default. The user must pick an option.
-- List every file link and its SHA-256 revision (a 12-character display prefix is fine), plus the manifest link and digest. The stored hashes are full length. State that GO approves the whole exact set.
 - If unhandled comments exist on the document, say so in the message.
 - If the user declines or cancels the form, treat it as `later` (Hold).
 
@@ -330,7 +364,7 @@ Rules:
 - Approval comes only from the user: an `approve` answer in the approval form, or `approve <gate>` in chat in the current conversation.
 - Comments, resolved threads, and "looks good" notes do not approve a ticket gate.
 - Lessons and self-checks do not approve a gate or prove understanding. Learning adds no gate; `Learned?` stays unchanged.
-- Never answer the approval form for the user, and never approve in auto mode.
+- Never answer the approval form for the user, and never approve in auto mode. The Forge Master session never relays an approval.
 - A required gate blocks its step. Only a recommended legacy Diagnosed? can be declined with a logged reason.
 - A gate skipped by the original legacy process blocks nothing. Do not open it.
 - A change to an approved document reopens its gate.
@@ -339,24 +373,27 @@ Rules:
 
 ## 🚀 Start
 
-1. Fetch the work item with `tracker.fetch`, with its comments. Normalize the key to `<KEY>`.
-2. Read the `## Start` policy section.
-3. Create the folder from the templates (see Templates). If it exists, run Resume instead.
-4. Write `ticket.md`: summary, type, status, priority, reporter, assignee, description, comments, the item URL, and the snapshot date.
-5. Write `README.md` from [templates/README.md](templates/README.md) (🎫 Ticket):
-   - In the frontmatter, put `workflow: full-v1`, `phase: start`, `state: active`, `next`, `item` (the work item URL), and all full-workflow gates. Never add `track`.
-   - Put the `branch` and the `worktree` when they exist.
+1. Call `rename_chat` first, before any other tool call or question: `<KEY> - ▶️ - <summary>`. When the prompt has only the key, use `<KEY> - ▶️ - Start ticket`, and rename again after step 2 (see Session title).
+2. Fetch the work item with `tracker.fetch`, with its comments. Normalize the key to `<KEY>`. Choose `short`: 3 to 6 words from the work item summary.
+3. Read the `## Start` policy section.
+4. Create the folder from the templates (see Templates). If it exists, run Resume instead.
+5. Write `ticket.md`: summary, type, status, priority, reporter, assignee, description, comments, the item URL, and the snapshot date.
+6. Write `README.md` from [templates/README.md](templates/README.md) (🎫 Ticket):
+   - In the frontmatter, put `workflow: full-v2`, `phase: start`, `state: active`, `short`, `next`, `item` (the work item URL), and all `full-v2` gates. Never add `track`.
+   - Fill the 📍 Now card from the frontmatter.
    - In the body, put the toolkit table for this ticket.
    - Check the frontmatter against the tables in Frontmatter.
-6. Seed `investigation.md` from [templates/investigation.md](templates/investigation.md) with one hypothesis row for each suspected cause in the work item.
-7. Seed `map.md` from the template: the purpose, the terms, and a first guess of the areas. Mark guesses `(unverified)`.
-8. Add the ticket to the "🎫 Tickets → Active" list in `<wiki>/index.md`. Mark its raw folder as local-only, unavailable to teammates without that local material.
-9. Append a `create` entry to `<wiki>/log.md`.
-10. Do not create another worktree at Start. Preserve an existing session worktree. At Implement, the `agents` skill checks reuse before creation.
-11. Run the full pre-investigation (next section), including history, affected code, existing tests, and regression risks. Research thoroughly without a required duration or word count. Record unavailable sources and test gaps; absence of evidence is not proof of safety.
-12. Open Understood? over the explicit context and evidence revision set.
-13. After approval, present the visual briefing and conduct the scope interview; review Agreed?.
-14. Investigate the agreed scope and obtain Diagnosed? before drafting the plan. Then review Designed? before implementation. Do not skip phases for small fixes or run a blocked phase in auto mode.
+7. Place the session (see Worktrees). Preserve an existing session worktree. Run `<F> worktree <KEY> --summary "<short>"` and follow its `action`:
+   - In a **New Worktree** session (branch `agents/...`): rename the branch with the `git branch -m` command that it prints, before the first commit.
+   - In a **Folder** session on the main checkout: create the ticket worktree with `--create`. Ask one `ask_user` question that confirms the folder and `isolation: false`. Then call `set_workspace` with `workspaceFolder` set to the new folder and `isolation: false`, as the last tool call of the turn.
+   - Record `branch` and `worktree` (the absolute path) in the README.
+8. Seed `investigation.md` from [templates/investigation.md](templates/investigation.md) with one hypothesis row for each suspected cause in the work item.
+9. Seed `map.md` from the template: the purpose, the terms, and a first guess of the areas. Mark guesses `(unverified)`.
+10. Add the ticket to the "🎫 Tickets → Active" list in `<wiki>/index.md`. Mark its raw folder as local-only, unavailable to teammates without that local material.
+11. Append a `create` entry to `<wiki>/log.md`.
+12. Run the full pre-investigation (next section), including history, affected code, existing tests, and regression risks. Research thoroughly without a required duration or word count. Record unavailable sources and test gaps; absence of evidence is not proof of safety.
+13. Present the visual briefing, conduct the scope interview, and write `scope.md`. Then open Scoped? over `scope.md` and its evidence.
+14. Investigate the agreed scope, then draft the plan, and review Planned? before implementation. Do not skip phases for small fixes or run a blocked phase in auto mode.
 
 ### 🧭 Pre-investigation
 
@@ -372,12 +409,12 @@ Do this automatically. It is read-only, so it needs no approval.
 7. Write `context.md` from [templates/context.md](templates/context.md) (🧭 Context). Put tool outputs in `evidence/`. Add what you learned about the code to `map.md`.
 8. List the colleagues who know the area: reporter, authors and reviewers of related change requests, owners of sibling items and related documents. For each, write why and what to ask. Add each one to the README `people` list with `status: to-contact` (see People).
 9. Write draft messages to them in `outbox/colleague-questions.md`. The user sends them. Never contact people yourself. Set each drafted person to `status: drafted` with `draft: outbox/colleague-questions.md`.
-10. Present the context in plain words and open Understood? for `full-v1`. Follow original gates for legacy tickets. Answer questions; do not claim that a lesson or self-check proves understanding.
+10. Present the context in plain words. Answer questions; do not claim that a lesson or self-check proves understanding. For `full-v2`, continue to the visual briefing; the context is approved later with the scope (Scoped?). A `full-v1` ticket that has not moved yet opens Understood?. Follow original gates for legacy tickets.
 
 #### 💬 Colleague questions do not block
 
 - Keep each colleague question as a row in the **❓ Open questions** table of `context.md`: question, person, status (`draft`, `asked`, `answered`, `no reply`), and impact if the answer differs.
-- The user can approve Understood? (or legacy Briefed?) with open colleague questions.
+- The user can approve Scoped? (or `full-v1` Understood?, or legacy Briefed?) with open colleague questions. `scope.md` lists them.
 - When an open question blocks the plan, the plan states an assumption and a fallback for it.
 - When an answer arrives, record it in "💬 Colleague answers" and update the row status. Name the artifacts that the answer changes. Update only those artifacts, and reopen only their gates.
 - Keep the README `people` entry of the same person in step with the row status (see People).
@@ -385,12 +422,12 @@ Do this automatically. It is read-only, so it needs no approval.
 ### 👥 People
 
 The README `people` list holds every person you work with on the ticket, in every phase.
-It is the source for the 👥 People views of the dashboard canvas and for the daily recap.
+It is the source for the 👥 lines of the ticket overview, `raw/board.md`, and the daily recap.
 
 - Add people when they appear: reporter and experts at Start, the PO or domain owner at the interview, reviewers at the change request, QA at the QA handover.
 - Write a name or tracker handle only. Never store email addresses, phone numbers, or other personal data.
 - Keep one entry per person. Put all open asks for that person in one `ask` line.
-- Set `since` to today on each status change. The canvas and the recap show waits from this date.
+- Set `since` to today on each status change. The board and the recap show waits from this date.
 - The README is outside approval manifests. A people change never reopens a gate.
 
 | Status | Meaning | Who acts |
@@ -442,7 +479,7 @@ A spike is a short read-only check that answers one fact before a scope question
 
 ### 🖼️ Visual briefing
 
-For `full-v1`, run it after Understood? is approved and before the interview. Legacy L retains this step; legacy S and M retain their optional briefing offer.
+For `full-v2`, run it after the context and before the interview. For `full-v1`, run it after Understood? is approved. Legacy L retains this step; legacy S and M retain their optional briefing offer.
 It is read-only and needs no gate. The user gets a broad view of the ticket, its history, and the concepts around it.
 
 1. Write `briefing.md` in the ticket folder from `context.md`, `ticket.md`, and `evidence/`. Use only facts already in those files. Apply the data rules.
@@ -467,7 +504,7 @@ It is read-only and needs no gate. The user gets a broad view of the ticket, its
 - Quote Mermaid labels that hold punctuation, for example `A["Outbox (v2)"]`.
 ### 🎤 Interview
 
-For `full-v1`, start after Understood? is approved and the briefing is done. Ground each question in `context.md`. Legacy L retains this order; legacy M interviews after presenting context and uses Briefed?; legacy S retains its original skip.
+For `full-v2`, start after the briefing. For `full-v1`, start after Understood? is approved and the briefing is done. Ground each question in `context.md`. Legacy L retains this order; legacy M interviews after presenting context and uses Briefed?; legacy S retains its original skip.
 
 1. Before you ask, run a spike for each question that depends on a checkable fact.
 2. Write `interview.md` from [templates/interview.md](templates/interview.md) (🎯 Scope interview). For each question, write:
@@ -476,43 +513,71 @@ For `full-v1`, start after Understood? is approved and the briefing is done. Gro
    - the answer column, empty until the user answers
 3. Ask up to 5 questions in one `ask_user` form, grouped by topic. Put the recommended answer as the field default, and its reason in the field description. Never answer for the user or accept recommendations in auto mode.
 4. Run a second round only for answers that raise new questions. Use the same form rules.
-5. Record each answer in `interview.md` and `decisions.md`. Then open Agreed? for `full-v1` or legacy L, or Briefed? for legacy M.
+5. Record each answer in `interview.md` and `decisions.md`. For `full-v2`, continue with Scope. Open Agreed? for `full-v1` or legacy L, or Briefed? for legacy M.
+
+### 🎯 Scope (`full-v2`)
+
+`scope.md` is the primary doc of Scoped?. It is the short version of the context, the briefing, and the interview. The user reads it, not the evidence docs.
+
+1. Write `scope.md` from [templates/scope.md](templates/scope.md). Use only facts from `context.md`, `briefing.md`, `interview.md`, and `evidence/`. Link to them; do not copy them.
+2. Keep the reading levels in their budgets (see Gate document shape). Put the scope choice that changes the plan most in the 🔥 line.
+3. Run `<F> lint`, then open Scoped? (see the gate Procedure). The exact set is `scope.md`, `context.md`, and `interview.md`, plus `briefing.md` when it exists.
+4. After GO, set `phase: investigate` and start Investigate.
 
 ### 🌳 Worktrees
 
+Each ticket has one worktree folder and one branch. Forge names both:
+
+- Branch: `repo.branchPattern`, with `{KEY}`, `{key}`, `{number}`, and `{slug}` (2 to 5 lower-case words of the goal, joined by `-`).
+- Folder: `<repo>.worktrees/<key>-<slug>`, next to the main checkout.
+
+Run `<F> worktree <KEY> --summary "<short>"` at Start and before the first commit. It is read-only and prints JSON: `branch`, `folder`, `base` (ref and full SHA), `current` (this session folder), `existing` (a worktree that already has the branch or the folder), `related` (other worktrees of the key), `action`, and `commands`. Follow the `action`:
+
+| `action` | When | Do |
+|---|---|---|
+| `reuse` | This session folder is a linked worktree on the ticket branch | Continue here. |
+| `rename-current` | A **New Worktree** session: a linked worktree on an `agents/...` branch, and the ticket branch does not exist | Run the printed `git branch -m <branch>` before the first commit. The folder name stays; VS Code owns it. |
+| `resume` | Another worktree already has the ticket branch or folder | Tell the user the path. In a Folder session, confirm the folder and `isolation: false`, then call `set_workspace` with that folder and `isolation: false`. |
+| `create` | No ticket worktree exists | In a Folder session on the main checkout: run the command again with `--create`. Ask one `ask_user` question that confirms `folder` and `isolation: false`. Then call `set_workspace` with `folder` and `isolation: false`, as the last tool call of the turn. |
+
+- Preserve an existing session worktree. When `current` is a linked worktree in `related` (a ticket worktree with an older name), continue there; do not create another one. Do not rename an existing suitable branch merely to match the pattern.
+- `set_workspace` moves the chat to the folder and keeps its history, title, and group. `isolation: false` uses the Forge worktree as it is; `isolation: true` makes a second worktree that VS Code manages. It is the last tool call of the turn. The host then sends "Continue in the requested workspace.", and the chat continues with the next step in the new folder.
+- When `ask_user` says that the user is not available, call `set_workspace` only if a message from the user asks for the move. Otherwise give the folder path and tell the user to say "move this chat to <folder>".
 - At Implement, use the `agents` skill to verify the current repository, worktree, branch, HEAD, and local changes. Reuse a suitable current worktree. Do not create another session only because the phase changed.
 - Select an explicit required commit first, then the recorded ticket branch for existing work. Use the checkout `baseBranch` (else `repo.baseBranch`) only for a new task without a ticket branch. Resolve the baseline to a full SHA before execution. Never silently replace a pinned baseline with the default branch.
 - An exact-commit proof requires HEAD equality, not just ancestry. For resumed implementation, inspect and preserve known task changes above the recorded baseline. Follow the selection checks and manual step in the `agents` skill when the current worktree is unsuitable.
-- For a new branch, use `repo.branchPattern`. Replace `{KEY}` with `<KEY>`, `{key}` with `<key>`, and `{slug}` with 2 to 5 lower-case words of the goal, joined by `-`. Do not rename an existing suitable branch merely to match the pattern.
-- Record the session name, worktree path, branch, resolved baseline SHA, and selection reason in `README.md` and `log.md`. Do not alter hashed approval documents.
+- Record `branch` and `worktree` (the absolute folder path only) in `README.md`. Record the session name, the resolved baseline SHA, and the selection reason in `log.md`. Do not alter hashed approval documents.
 - Read the `## Implement` policy section. It names limits of worktrees, for example a shared local database.
 - Code changes, unit tests, builds, and reviews normally work in a worktree. Tell the user when a step needs a resource that the worktree does not have, and stop that step.
+- Close removes a worktree that Forge created only after the user says yes (see Close).
 
 ### 🏷️ Session title (info bar)
+
+The user asked for these titles. The ticket skill owns the title of a ticket session. This rule overrides the general tool advice not to rename a fresh chat.
 
 The session title in the Agents window shows the ticket, the state, and the goal of the session. Format:
 
 ```text
-<KEY> - <state emoji> - <session goal>
+<KEY> - <state emoji> - <short>
 ```
 
 Keys of one project have the same width, and the emoji has a fixed width, so the goal column lines up in the sessions list.
 
 | State emoji | When |
 |---|---|
-| 🟡 | a gate waits for the user |
+| 🟡 | a gate or a question waits for the user |
 | 🟢 | the last gate is approved, and no gate is open |
 | ▶️ | no gate is open and nothing blocks; the work continues |
 | ⏳ | the work waits for an outside event, for example a change request review or a build |
 | 🔴 | a failure stops the work, for example CI or an expired credential |
 | ✅ | the ticket is closed |
 
-`<session goal>` tells what this session tries to achieve:
+`<short>` tells what this ticket or session tries to achieve:
 
-- Write a short verb phrase in sentence case, for example `Fix outbox retry on timeout`.
-- Use the work item summary as the source. Make it specific to this session's goal, for example the investigation or the implementer goal.
+- Use README `short`; if it is empty, use a short form of `title`. `<F> board` and the hook use the same rule.
+- Write a short phrase in sentence case, for example `Fix outbox retry on timeout`.
 - Do not repeat the key, the phase, or the gate name. The README shows them.
-- Keep the goal stable. Change it only when the session goal changes.
+- Keep it stable. Change it only when the goal changes, and then update `short` too.
 
 Examples:
 
@@ -523,32 +588,38 @@ Examples:
 
 Use only these emoji in the title. Do not end the title with `?`, because `rename_chat` removes a final `?`. The user scans the color of the state emoji first: 🟡 and 🔴 need action, ▶️ and ⏳ do not.
 
-- Call `rename_chat` (without `automatic`) when the session starts or resumes a ticket.
-- Call it again at each change of the state emoji or the session goal.
-- Make the `rename_chat` call the last tool call of the turn.
-- Keep the title under 60 characters. Shorten `<session goal>` when needed.
+- Call `rename_chat` (without `automatic`) first, before any other tool call or question, when the session starts or resumes a ticket.
+- Call it again with the same title at the end of the first turn (before `set_workspace` when that is the last call). VS Code can generate a title after the first prompt and replace an early one.
+- Call it again at each change of the state emoji or the goal. Before an `ask_user` form that waits for the user, set 🟡 first.
+- Keep the title under 60 characters. Shorten `<short>` when needed.
+- The Forge Master session and the maintenance automation can fix a stale title of a ticket session.
+
+### 📌 Artifacts panel
+
+The artifacts panel next to the chat input shows what this session works on. Use it, so the user sees the ticket without reading the chat.
+
+- At Start and Resume, record the ticket `README.md` as an artifact with the label `<KEY> · 📍 Now`.
+- When a gate opens, record its primary doc with the label `<KEY> · <gate> · <file>`, for example `APP-123 · Planned? · plan.draft.md`. Remove the doc of a gate that is approved.
+- Record a change request that the session creates or changes as an artifact. Record the work item URL as a reference.
+- Use the artifacts tool of the harness (`add_artifact_or_reference` in the Copilot harness, `#artifacts` in the Local harness). Use a `file:///` URI for a file. Do not record evidence files, snapshots, or logs.
+- The panel can be off. The setting is `chat.artifacts.enabled`. When the tool is not available, skip this step.
 
 ### 📋 Ticket overview
 
 When the user asks for "the board", "my tickets", or a ticket status, answer in chat. The frontmatter is the source (see Frontmatter).
 
-1. Read the README frontmatter of each folder in `<wiki>/raw/tickets/`.
-2. Group the open tickets by who must act: 🟡 Your move, ▶️ Agent working, ⏳ Waiting, 🔴 Blocked.
+1. Run `<F> board --json`. It reads the README frontmatter of each folder in `<wiki>/raw/tickets/` and groups the tickets by `state`.
+2. Show the open groups in the board order: 🟡 Needs me, 🔴 Blocked, 🟢 Go, ▶️ Active, ⏳ Waiting.
 3. Show one table for each group: key (as a link to the README), title, phase, next step, waiting on.
 4. Add the 5 newest done tickets in one line each.
 
-- A `you:` value of `waiting_on`, `state: needs-me`, or a gate `in-review` puts the ticket in "🟡 Your move".
+- The `state` field selects the group. When a gate is `in-review` or `waiting_on` starts with `you:`, but `state` is not `needs-me`, report the mismatch.
 - Start `waiting_on` with `you:`, `colleague:`, or `outside:`.
 - Add one 👥 line under the tables: people to message (`to-contact`, `drafted`, `follow-up`), replies to read (`reply-in`), and people you wait for (`waiting`), each with its ticket key.
 
-When the user asks for a visual board or a dashboard, use the bundled `forge-ticket-dashboard`
-canvas if it is available. Get this repository's wiki path with `forge.mjs where --json`, then open
-the canvas with `{ "wikiPath": "<absolute wiki path>" }`. Use a stable instance ID for that wiki.
-The `refresh` action returns current tickets and read errors. The page also refreshes every 5 seconds.
-The canvas shows the `people` list in a 👥 People tab per ticket, a global 👥 People mode, and KPI cards.
-The canvas is read-only: it does not edit tickets, approve gates, or call the tracker.
-If the host does not support canvases or the extension is not loaded, show the chat overview above
-and report the limitation. Do not require a canvas to use the ticket workflow.
+When the user wants a file to keep open, run `<F> board`. It writes `<wiki>/raw/board.md` with the same
+groups, and the user opens it in the editor. The Forge Master session and the maintenance automation
+also refresh this file. The file is a view: the README frontmatter stays the source.
 
 ### 🏷️ Frontmatter
 
@@ -559,12 +630,13 @@ README (`type: ticket`), see [templates/README.md](templates/README.md):
 | Key | Values |
 |---|---|
 | `key`, `title` | `APP-123`, the work item summary (required) |
+| `short` | 3 to 6 words for the session title and the board, for example `Doc import error telemetry` |
 | `phase` | `start`, `investigate`, `plan`, `implement`, `review`, `closed` (required) |
 | `state` | `needs-me` 🟡, `go` 🟢, `active` ▶️, `waiting` ⏳, `blocked` 🔴, `done` ✅ (required; same as the session title emoji) |
-| `workflow` | `full-v1` for every new ticket; absence means legacy, never inferred or auto-migrated |
+| `workflow` | `full-v2` for every new ticket; `full-v1` until `<F> migrate` moves it; absence means legacy, never inferred or auto-migrated |
 | `track` | legacy only: `S`, `M`, `L`; absent on new tickets; trackless legacy remains valid |
 | `next`, `waiting_on` | one line each |
-| `item`, `branch`, `worktree`, `updated` | work item URL, branch name, path, `yyyy-mm-dd`. |
+| `item`, `branch`, `worktree`, `updated` | work item URL, branch name, the absolute worktree folder path only, `yyyy-mm-dd`. The sessionStart hook compares `worktree` with the session folder. |
 | `changes` | change requests: list of `{url, label, state}`; `state`: `draft`, `open`, `merged`, `closed`, `abandoned`. |
 | `people` | people on the ticket: list of `{name, status, role, since, ask, via, draft, note}`; `name` and `status` required; `status`: `to-contact`, `drafted`, `waiting`, `follow-up`, `reply-in`, `done`; `since` is `yyyy-mm-dd`; `draft` is `outbox/<name>.md`. See People. |
 | `gates` | list of `{name, doc, need, status, date, hash, manifest, note}`; `status`: `todo`, `in-review`, `approved`, `skipped`, `blocked`. An approved gate needs the user's approval `date` and revision evidence. `manifest` is a ticket-relative JSON file; `hash` covers its raw bytes, or raw `doc` bytes for legacy single-document records. |
@@ -572,24 +644,27 @@ README (`type: ticket`), see [templates/README.md](templates/README.md):
 Other documents:
 
 - Every document has `type`, `ticket`, and `updated`. `ticket.md` has `type: item-snapshot`.
-- Gate documents also have `gate` (for example `Designed?`). The gate status lives only in the README `gates` list.
+- Gate documents also have `gate` (for example `Planned?`). The gate status lives only in the README `gates` list.
+- The README body starts with the **📍 Now** card: State, Phase, Open gate, Next, Waiting on, Done so far, Open questions, and Updated. Update it with each frontmatter change. `<F> lint` warns when State, Phase, or Next does not match the frontmatter. The hook shows the card when a session opens.
 - `outbox/` drafts have authoring `status` and optional `target` (`tracker-comment`, `tracker-item`, `change`, `email`, `chat`, `other`). Freeze all bytes for review. New approval/delivery status and per-write `approval_manifest`, `approval_hash`, `approval_date` belong in a separate record outside the hashed set; never stamp them into an approved draft. Legacy `approved`, `sent`, and `dropped` metadata remains readable, not inferred fresh approval.
 - `evidence/` files have `date`.
 - Quote a value that contains `: `, or the YAML does not parse.
 
 ## 🔁 Resume
 
-1. Read `README.md`. Select `full-v1` only by its explicit marker; otherwise preserve the original legacy contract. Missing frontmatter, unknown workflow, or contradictory metadata needs an explicit finding and user-directed repair, not template replacement or inferred state.
-2. Read the last entries of `log.md`.
-3. Read the `## Resume` policy section, for example credential checks.
-4. Validate gate revision evidence with `node "<plugin>/scripts/forge.mjs" lint --wiki "<wiki>" --json`, then open other files as the next step needs them. Default lint is read-only. Report unavailable local archives as local-only, not automatically broken.
-5. Tell the user the workflow (or legacy context, with track only when recorded), phase, last result, policy checks, open gates, approval findings, open colleague questions, people who need a message or a reply (`to-contact`, `drafted`, `follow-up`, `reply-in`), people you wait for, and next step. Findings block the affected action, not read-only resume. Never run `--fix` implicitly.
-6. Set the session title (see Session title).
-7. Before implementation or a proof run, apply the Worktrees checks. A resumed session does not need another worktree when the current one is suitable. Preserve valid approval evidence when reporting a baseline mismatch.
+1. Call `rename_chat` first, before any other tool call or question (see Session title). Use the README `state` and `short`.
+2. Read `README.md`. Select `full-v2` or `full-v1` only by its explicit marker; otherwise preserve the original legacy contract. Missing frontmatter, unknown workflow, or contradictory metadata needs an explicit finding and user-directed repair, not template replacement or inferred state.
+3. For an open `full-v1` ticket, run `<F> migrate <key>`. It moves the ticket to `full-v2`: Understood? + Agreed? become Scoped?, and Diagnosed? + Designed? become Planned?. A combined gate stays approved (with `migratedFrom`) only when both source gates are fresh; otherwise it reopens, and the phase can move back with `state: needs-me`. It creates no new approval. Report each decision to the user. Then add `short` and the 📍 Now card to the README. When the command refuses, report the finding and continue on `full-v1`.
+4. Read the last entries of `log.md`.
+5. Read the `## Resume` policy section, for example credential checks.
+6. Validate gate revision evidence with `node "<plugin>/scripts/forge.mjs" lint --wiki "<wiki>" --json`, then open other files as the next step needs them. Default lint is read-only. Report unavailable local archives as local-only, not automatically broken.
+7. Show the **📍 Now** card first. Then tell the user the workflow (or legacy context, with track only when recorded), last result, policy checks, approval findings, people who need a message or a reply (`to-contact`, `drafted`, `follow-up`, `reply-in`), and people you wait for. Findings block the affected action, not read-only resume. Never run `--fix` implicitly.
+8. Before implementation or a proof run, apply the Worktrees checks. A resumed session does not need another worktree when the current one is suitable. Preserve valid approval evidence when reporting a baseline mismatch.
 
 ## 🔎 Investigate
 
-- For `full-v1`, start only after Agreed? is fresh. Investigate every ticket, including a small fix, and obtain mandatory Diagnosed? before Plan. Legacy tickets keep their original skips and recommended Diagnosed?.
+- For `full-v2`, start only after Scoped? is fresh. Investigate every ticket, including a small fix. The diagnosis goes into `plan.draft.md` and is approved with the plan (Planned?).
+- For `full-v1`, start only after Agreed? is fresh, and obtain mandatory Diagnosed? before Plan. Legacy tickets keep their original skips and recommended Diagnosed?.
 - Keep the hypotheses table in `investigation.md` current. Status values: `open`, `supported`, `rejected`.
 - Save each tool result that supports a finding as `evidence/<yyyy-mm-dd>-<topic>.md`. Include:
   - the tool and the parameters
@@ -600,21 +675,36 @@ Other documents:
 - Read-only tools that the `## Investigate` policy section allows do not need approval. CI reads (`ci.status`, `ci.logs`) do not need approval.
 - Write environment, build, and test problems with their fixes to `troubleshooting.md`.
 - Append one `log.md` entry per work session.
-- Update `phase`, `state`, `next`, and `updated` in the `README.md` frontmatter.
+- Update `phase`, `state`, `next`, `updated`, and the 📍 Now card in `README.md`.
+
+### 🛑 Diagnosis stop
+
+When the cause or the facts do not fit the approved scope, stop before the plan. Set 🟡 in the title, then ask with one `ask_user` form. The message is a ⚡ card: what you found (max 3 lines), why it changes the scope, and the evidence link. Options:
+
+| Value | Title |
+|---|---|
+| `rescope` | 🎯 Change the scope: reopen Scoped? |
+| `keep` | ➡️ Keep the scope: plan within it and note the gap |
+| `later` | ⏸️ Hold: not now |
+
+- `rescope`: record a `scope-change` decision in `decisions.md`, update `scope.md`, and run Scoped? again. The Scoped? approval is no longer fresh.
+- `keep`: write the gap and its risk in the plan (⚠️ Risks), and continue.
+- Never choose for the user.
 
 ## 📝 Plan
 
-1. For `full-v1`, verify fresh Diagnosed? approval before drafting a plan. Legacy L retains the recommended review: offer it if not approved or declined; preserve other original skips.
+1. For `full-v2`, verify fresh Scoped? approval. For `full-v1`, verify fresh Diagnosed? approval before drafting a plan. Legacy L retains the recommended review: offer it if not approved or declined; preserve other original skips.
 2. Make the plan with the user. In Copilot, use plan mode.
-3. Save the proposed plan to `plan.draft.md` in the ticket folder before review. Use [templates/plan.draft.md](templates/plan.draft.md) (📝 Plan). It includes:
-   1. **🗺️ Change map**: a Mermaid diagram of the components from `map.md`. Highlight the changed ones (`classDef changed`).
-   2. Steps, each with the files it touches.
-   3. Tests: unit, integration, end-to-end regression scope, and the deployed-environment check with its baseline and control (or the reason why none is possible). Write the details in `test-plan.md`.
-   4. Risks and rollback.
-   5. Assumptions for open colleague questions, and **❓ Decisions needed**.
+3. Save the proposed plan to `plan.draft.md` in the ticket folder before review. Use [templates/plan.draft.md](templates/plan.draft.md) (📝 Plan). Keep the reading levels in their budgets. It includes:
+   1. **⚡ 1 min**: the 🔥 line, TL;DR, what you need from the user, and **❓ Decisions needed**.
+   2. **🗺️ Change map**: a Mermaid diagram of the components from `map.md`. Highlight the changed ones (`classDef changed`).
+   3. **🛠️ Steps**, each with the files it touches.
+   4. **🔎 Diagnosis**: the cause and its evidence from `investigation.md`.
+   5. **🧪 Test plan**: unit, integration, end-to-end regression scope, and the deployed-environment check with its baseline and control (or the reason why none is possible). Write the details in `test-plan.md`.
+   6. **⚠️ Risks and rollback**, and assumptions for open colleague questions.
 4. Fill "✏️ What this ticket changes" in `map.md` with the planned changes, marked `(planned)`.
-5. Set `phase: plan` in the `README.md` frontmatter. Set `next` to the Designed? review.
-6. Run Designed? over the exact plan set (see Approval revisions). Include byte-identical `plan.draft.md` and `plan.md` and the `approvedCopies` relation. Implementation needs fresh approval of this set.
+5. Set `phase: plan` in the `README.md` frontmatter. Set `next` to the Planned? review.
+6. Run Planned? (`full-v1`: Designed?) over the exact plan set (see Approval revisions). Include byte-identical `plan.draft.md` and `plan.md` and the `approvedCopies` relation, plus `investigation.md`, `decisions.md`, and `test-plan.md`. Implementation needs fresh approval of this set.
 7. Keep the approved `plan.md` unchanged until staging a revised review pair. Block implementation while the revised pair awaits approval.
 8. Record design choices, reasons, and rejected options in `decisions.md`.
 
@@ -630,13 +720,13 @@ Open every document that the user must read with `code -r "<absolute path>"` (as
 
 - Read the `## Implement` policy section first.
 - Use the `agents` skill to select the execution worktree (see Worktrees). Continue in a suitable current worktree; start another session only when needed. Do not edit code in the main checkout.
-- Validate Designed? in README and its revision evidence before implementation. A new manifest must cover both byte-identical plan files and the approved-copy relation; verify legacy single-document approval against raw document bytes. Unverifiable evidence blocks implementation, not read-only research.
+- Validate Planned? (`full-v1`: Designed?) in README and its revision evidence before implementation. A new manifest must cover both byte-identical plan files and the approved-copy relation; verify legacy single-document approval against raw document bytes. Unverifiable evidence blocks implementation, not read-only research.
 - Follow the repository's own instructions and skills for the code change.
 - For a quick code review before Shippable?, use a reviewer subagent (the `agents` skill).
 - Before Shippable?, and so before any push or change request (draft too), run the adversarial review subagent (the `agents` skill, "Adversarial review"). Handle its findings. Record them in `review.md`.
 - Record test results, change request links, and CI results (`ci.status`) in `log.md`.
 - Record build and test problems in `troubleshooting.md`.
-- Review changes in `plan.draft.md` and run Designed? again before replacing `plan.md`.
+- Review changes in `plan.draft.md` and run Planned? again before replacing `plan.md`.
 - Before push or change request creation, write `review.md` and run Shippable?. Use [templates/review.md](templates/review.md) (🧪 Code review). It includes:
   - **🧭 Affected areas** table: area, files (links), user impact, tests, risk.
   - A before/after Mermaid diagram when the behavior changes.
@@ -674,7 +764,7 @@ Rules:
    - Test environments can expire. Plan the traffic for right after the deploy, or extend the lifetime.
    - Add a control in the same environment: an observation that must differ when the environment is set up right. A check without a working control is `⚪ not proven`, never `🟢`.
    - A deploy may use a throwaway branch with test-only config. Never open a change request from it. Delete it after the run.
-   - Draft the deployed check plan in `test-plan.md` during the Plan step, so that Designed? covers it. If no deployed check is possible, say why in the plan.
+   - Draft the deployed check plan in `test-plan.md` during the Plan step, so that Planned? covers it. If no deployed check is possible, say why in the plan.
 6. Put each check output in `evidence/<yyyy-mm-dd>-<topic>.md`. Link it from `evidence-testing.md`. Store only aggregated or masked data (see Data rules).
 7. Cover the unhappy path where the ticket has one (error, threshold, empty input, feature toggle off).
 8. Ask the user if an automated test would bring evidence. Do this when you define the checks, with `ask_user`:
@@ -723,14 +813,11 @@ Run only when the user says that the ticket is done.
    - gotchas
    - tool tips
    - decisions
-3. Write `close.draft.md` from [templates/close.draft.md](templates/close.draft.md) (✅ Close):
-   1. **🎓 What you now know** (the debrief):
-      - the affected areas, in one table from `map.md`
-      - how the feature lives in the code: one diagram from `map.md`
-      - what the feature is for, and who uses it
-      - the gotchas and decisions to remember (max 5)
-      2. **📚 Wiki changes**: each canonical page to create or update, with its key lines.
-   3. The ticket summary.
+3. Write `close.draft.md` from [templates/close.draft.md](templates/close.draft.md) (✅ Close). Keep the reading levels in their budgets:
+   1. **⚡ 1 min**: the 🔥 line, TL;DR, and what you need from the user.
+   2. **🎓 What you now know** (the debrief): 🏆 the result, 🧭 the affected areas in one table from `map.md`, ⚠️ the gotchas and decisions to remember (max 5), 🗺️ how the feature lives in the code (one diagram from `map.md`), and 🎯 what the feature is for and who uses it.
+   3. **📚 Wiki changes**: each canonical page to create or update, with its key lines.
+   4. **📝 Ticket summary** for `tickets/<key>.md`.
    Run Learned?. Continue only after Learned? is approved.
 4. Write or update canonical pages with the `wiki` skill Record procedure:
    - the area folder of the code (see the folder layout in the `wiki` skill) for code and architecture knowledge. Use `map.md` as the main source: purpose, flow, files, data, tests.
@@ -740,16 +827,17 @@ Run only when the user says that the ticket is done.
    Read the `## Close` policy section. It can name more folders and knowledge owners.
 5. Create `<wiki>/tickets/<key>.md` from the summary template. Link canonical pages and shared work item/change request sources. Label the archive link local-only; the summary must remain useful without ignored raw material.
 6. Move the ticket from "Active" to "Done" in `<wiki>/index.md`. Add lines for the new canonical pages.
-7. Set the phase to `closed` in `README.md`.
+7. Set `phase: closed` and `state: done` in `README.md`, and update the 📍 Now card. Rename the session title to ✅.
 8. Move the folder:
    ```sh
    node -e "const fs=require('fs'),[,a,b]=process.argv;fs.mkdirSync(require('path').dirname(b),{recursive:true});fs.renameSync(a,b)" "<wiki>/raw/tickets/<key>" "<wiki>/archive/tickets/<key>"
    ```
 9. Append a `close` entry to `<wiki>/log.md` that lists each changed page. Commit the canonical pages in the wiki repository.
-10. Clean up the ticket worktree. Ask the user first:
+10. Clean up the ticket worktree. Ask the user first, with one `ask_user` confirmation. Without a "yes", leave it.
     - Run `git status --short` and check for outgoing commits in the worktree. Uncommitted or unpushed work blocks the cleanup. Report it.
     - Run the repository cleanup that the `## Close` policy section names (for example a database per worktree).
-    - Tell the user to use **Mark as Done** on the session in the Agents window, not **Delete**. Mark as Done removes a clean worktree that VS Code created, and keeps its branch. Delete leaves the worktree on disk ([vscode#332442](https://github.com/microsoft/vscode/issues/332442)). A worktree that another tool created needs that tool's remove command.
+    - A worktree that `<F> worktree --create` made (its folder is in `<repo>.worktrees/`): after the "yes", run `git worktree remove "<folder>"` from the main checkout. Keep the branch. Never use `--force`.
+    - A worktree that VS Code made (a **New Worktree** session): tell the user to use **Mark as Done** on the session in the Agents window, not **Delete**. Delete leaves the worktree on disk ([vscode#332442](https://github.com/microsoft/vscode/issues/332442)). Mark as Done keeps the branch, but it does not always remove the worktree (for example after `git branch -m`). After Mark as Done, run `git worktree list`. When the folder is still there, run `git worktree remove "<folder>"` from the main checkout, or tell the user to run **Chat: Open Worktree Cleanup**. A worktree that another tool created needs that tool's remove command.
     - A session that runs in the worktree locks the folder. Report the path that is left.
 11. Tell the user what you recorded, in one line per page.
 
@@ -762,6 +850,7 @@ The gate documents and the README use the plain ticket style. Copy them from the
 | `README.md` | [templates/README.md](templates/README.md) |
 | `context.md` | [templates/context.md](templates/context.md) |
 | `interview.md` | [templates/interview.md](templates/interview.md) |
+| `scope.md` | [templates/scope.md](templates/scope.md) |
 | `investigation.md` | [templates/investigation.md](templates/investigation.md) |
 | `plan.draft.md` | [templates/plan.draft.md](templates/plan.draft.md) |
 | `outbox/<target>.draft.md` | [templates/outbox.draft.md](templates/outbox.draft.md) |

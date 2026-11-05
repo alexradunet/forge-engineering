@@ -154,6 +154,23 @@ test('seed copies templates, keeps existing files, and the result loads', () => 
   assert.throws(() => seed(where, { ci: 'travis' }, templates), (e) => e.code === 'bad-choice');
 });
 
+test('seed writes the rule pages only when <wiki>/rules is missing', () => {
+  const wiki = path.join(root, 'rules.wiki');
+  const where = { wiki: { path: wiki } };
+  const dir = path.join(wiki, 'rules');
+  const first = seed(where, { tracker: 'local', repo: 'other', ci: 'other' }, templates);
+  assert.deepEqual(first.rules, { dir, written: ['data.md', 'toolkit.md'] });
+  const data = readFileSync(path.join(dir, 'data.md'), 'utf8');
+  assert.match(data, /^title: Data rules$/m);
+  assert.match(data, new RegExp(`^updated: ${new Date().toISOString().slice(0, 10)}$`, 'm'));
+  writeFileSync(path.join(dir, 'data.md'), '# Our rules\n');
+  for (const force of [false, true]) {
+    assert.deepEqual(seed(where, { tracker: 'local' }, templates, { force }).rules.written, []);
+    assert.equal(readFileSync(path.join(dir, 'data.md'), 'utf8'), '# Our rules\n');
+  }
+  assert.doesNotMatch(readFileSync(path.join(first.configDir, 'policy.md'), 'utf8'), /^## (Toolkit|Data rules)$/m, 'The rules left policy.md.');
+});
+
 test('seed preserves an enabled learning policy, even with force', () => {
   const wiki = path.join(root, 'learning.wiki');
   const where = { wiki: { path: wiki } };

@@ -26,19 +26,12 @@ maxImplementers: 6
 ## 🪝 Hook sections
 
 The `ticket` and `agents` skills read one section below at each step, and follow it.
-Write company rules, tools, and traps there. Delete the hint text of a section that you fill in.
+Write the step rules and traps there. Delete the hint text of a section that you fill in.
+Rules for each session (tools, credentials, data rules) go in the `<wiki>/rules/` pages, not here.
 A section can add steps and make rules stricter. It can never weaken a core rule
 (no merge, ask before every external write, explicit gate approval, no secrets,
 and the adversarial review before every change request). When a rule here conflicts
 with a core rule, the agent follows the core rule and tells the user.
-
-## Toolkit
-
-Hint: a table of needs and tools. For example: build and run, deploy, logs, company guidance.
-
-## Data rules
-
-Hint: rules for data and approvals. For example: which tools need approval, which data must not leave a ticket folder.
 
 ## Start
 

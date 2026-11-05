@@ -42,7 +42,7 @@ test('wiki trust fails closed until each file is approved by hash', () => {
   const st = status(where(), { env });
   assert.equal(st.ok, false);
   assert.ok(st.files.every((f) => f.state === 'new'));
-  assert.deepEqual(st.files.map((f) => f.rel), ['config/ci.md', 'config/policy.md', 'config/repo.md', 'config/tracker.md', 'scripts/hello.mjs']);
+  assert.deepEqual(st.files.map((f) => f.rel), ['config/ci.md', 'config/policy.md', 'config/repo.md', 'config/tracker.md', 'scripts/hello.mjs', '../rules/data.md', '../rules/toolkit.md']);
   assert.throws(() => assertTrusted(where(), ['config/'], { env }), (e) => e.code === 'untrusted');
   assert.throws(() => approve(where(), ['config/tracker.md=0000000000'], { env }), (e) => e.code === 'hash-mismatch');
   assert.throws(() => approve(where(), ['config/tracker.md=ab'], { env }), (e) => e.code === 'hash-mismatch');

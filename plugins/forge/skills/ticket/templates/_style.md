@@ -6,38 +6,56 @@ Every ticket document is easy to scan, and no information is lost. Use plain nam
 
 | Document | Title | Gate |
 |---|---|---|
-| `README.md` | 🎫 Ticket | None |
-| `context.md` | 🧭 Context | Understood? |
-| `interview.md` | 🎯 Scope interview | Agreed? |
-| `investigation.md` | 🔎 Investigation | Diagnosed? |
-| `plan.draft.md` | 📝 Plan | Designed? |
+| `README.md` | 🎫 Ticket | None (holds the 📍 Now card) |
+| `context.md` | 🧭 Context | Scoped? (evidence) |
+| `interview.md` | 🎯 Scope interview | Scoped? (evidence) |
+| `scope.md` | 🎯 Scope | Scoped? (primary, layered) |
+| `investigation.md` | 🔎 Investigation | Planned? (evidence) |
+| `plan.draft.md` | 📝 Plan | Planned? (primary, layered) |
 | `outbox\*.draft.md` | 📤 Outbox draft | Sendable? |
-| `review.md` | 🧪 Code review | Shippable? |
+| `review.md` | 🧪 Code review | Shippable? (primary, layered) |
 | `evidence-testing.md` | 🔬 Evidence Testing | None (step, required before merge) |
 | `outbox\qa-handover.draft.md` | 🧑‍🔬 QA handover | Sendable? |
-| `close.draft.md` | ✅ Close | Learned? |
+| `close.draft.md` | ✅ Close | Learned? (primary, layered) |
 
-Every new ticket uses the full workflow with mandatory Diagnosed?. Briefed? belongs
-only to legacy M tickets, where context and interview share one approval. Preserve
-existing tickets' original gates and skips; do not copy new workflow metadata over them.
+Every new ticket uses `workflow: full-v2`. Briefed? belongs only to legacy M tickets,
+and Understood?, Agreed?, Diagnosed?, and Designed? only to `full-v1` and legacy tickets.
+Preserve existing tickets' original gates and skips; do not copy new workflow metadata over them.
 
-## 🧱 Every gate document has these parts, in this order
+## ⏱️ Reading levels (primary gate docs)
+
+The user reads a primary gate doc from the top and stops at any level. Each level adds detail to the levels above it.
+
+| Level | Heading | Words from the top | What it holds |
+|---|---|---|---|
+| 1 min | `## ⚡ 1 min` | at most 150 | key fact, TL;DR, what I need from you, decisions needed (max 3) |
+| 5 min | `## ☕ 5 min` | at most 1,150 | glance table, one diagram, the main table (scope, steps, checklist, or result) |
+| 10 min | `## 📖 10 min` | at most 2,300 | reasons, tests, risks, answers, before and after |
+| 15 min | `## 🔬 15 min` | at most 3,450 | step details, findings, history, full facts |
+| Appendix | `## 📂 Appendix` | no limit | links, logs, long lists, the approval set note |
+
+- The ⚡ card is required. The approval form shows it, so it must make sense alone.
+- Keep the levels in this order. Put all content under a level: use `###` headings inside a level, never another `##`.
+- A short doc can stop after any level. Do not add empty levels.
+- Code fences, Mermaid diagrams, and link targets do not count as words.
+- `forge.mjs lint` warns when the ⚡ card is missing, a level is over its budget, or the order is wrong. Move detail down a level, or to the Appendix. Do not drop facts.
+
+## 🧱 Every primary gate document has these parts, in this order
 
 0. **Frontmatter**: copy it from the template. Keep `type`, `ticket`, `gate`, and `updated` correct. The ticket overview reads it.
 1. **Title**: `# <emoji> <Title> (<KEY>): <short title>`.
-2. **Key fact**: one line, `> 🔥 <the most surprising fact or the stakes>`. Use a real number when one exists.
-3. **Summary quote**: `> **TL;DR:**`, `> **What I need from you:**`, `> **Reading time:**`. Put a line with only `>` between them, so each starts on a new line.
-4. **At a glance**: a table of 3 to 5 main numbers or facts.
-5. **Diagram**: one Mermaid diagram (flow, timeline, or structure).
-6. **Sections**: short prose and tables first.
-7. **❓ Decisions needed**: max 5 items, or "None (GO only)".
+2. **`## ⚡ 1 min`**: the key fact (`> 🔥 <the most surprising fact or the stakes>`, with a real number when one exists), then the summary quote (`> **TL;DR:**` and `> **What I need from you:**`, with a line with only `>` between them), then **❓ Decisions needed** (max 3 one-line items with the recommended answer, or "None (GO only)").
+3. **`## ☕ 5 min`**: the glance table, one Mermaid diagram (flow, timeline, or structure), and the main table.
+4. **`## 📖 10 min`**, **`## 🔬 15 min`**, **`## 📂 Appendix`**: as the template shows.
+
+Evidence documents (`context.md`, `interview.md`, `investigation.md`) and `evidence-testing.md` keep the older shape: key fact, summary quote with `> **Reading time:**`, at a glance, diagram, sections, then **❓ Decisions needed**.
 
 The gate status lives only in the `gates` list of the README frontmatter. Do not write a status footer in the document.
 
 ## 📦 No information is lost
 
 - Start each section with the short version: what, why, what next.
-- Put the full detail below it, under a bold label: `**📂 <label>**`.
+- In a layered doc, put the full detail in a deeper level or the Appendix. In an evidence doc, put it below the short version, under a bold label: `**📂 <label>**`.
 - Every fact still links to its evidence file or to code.
 
 ## 🚫 Rendering rules

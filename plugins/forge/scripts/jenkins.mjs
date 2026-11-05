@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Jenkins REST client for the ci-jenkins template. The token comes from the OS
 // credential store (cred.mjs set jenkins, value "user:apiToken"); it is never
-// printed. The host is ci.host of the team config, or --host.
+// printed. The host is ci.host of the forge config, or --host.
 //   node jenkins.mjs check
 //   node jenkins.mjs status <job path> [--build <n>]
 //   node jenkins.mjs tests  <job path> <build>

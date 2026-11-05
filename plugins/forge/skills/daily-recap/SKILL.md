@@ -5,6 +5,9 @@ description: Prepare a personal daily recap (done since the last recap, plan for
 
 # Daily recap
 
+> When your context has no `# forge plugin` section, read [forge.md](../../context/forge.md) and
+> [style.md](../../context/style.md) first. They are the `forge` and `style` rules.
+
 A daily recap is a short personal summary of your work day.
 Use it before a daily meeting, or alone when your team has no daily meeting.
 

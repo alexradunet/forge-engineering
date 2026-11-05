@@ -1,7 +1,7 @@
 ---
 type: context
 ticket: <KEY>
-gate: Understood?
+gate: Scoped?
 updated: <yyyy-mm-dd>
 ---
 # 🧭 Context (<KEY>): <short title>
@@ -10,7 +10,7 @@ updated: <yyyy-mm-dd>
 
 > **TL;DR:** <max 3 lines>
 >
-> **What I need from you:** GO on Understood? for the displayed context and evidence revisions, or tell me what I got wrong.
+> **What I need from you:** Read the TL;DR and tell me what I got wrong. This file is evidence for Scoped?. You approve it together with [scope.md](scope.md).
 >
 > **Reading time:** about <n> minutes. Nothing here is a decision yet.
 

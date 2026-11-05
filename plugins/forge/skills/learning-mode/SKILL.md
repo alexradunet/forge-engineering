@@ -5,6 +5,9 @@ description: 'Offer optional, source-linked knowledge bites for unfamiliar conce
 
 # Learning mode
 
+> When your context has no `# forge plugin` section, read [forge.md](../../context/forge.md) and
+> [style.md](../../context/style.md) first. They are the `forge` and `style` rules.
+
 Help the developer understand a change before they approve it.
 Use one focused lesson for each accepted concept.
 This skill adds no gate and does not replace normal feedback handling.

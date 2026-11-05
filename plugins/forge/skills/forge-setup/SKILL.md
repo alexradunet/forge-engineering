@@ -1,13 +1,16 @@
 ---
 name: forge-setup
-description: Set up, check, repair, resume, or change forge for the current repository. Detects the host, the CLIs and their login, the CI files, the default branch, and the work item keys; creates or binds the repository wiki (../<repo>.wiki); seeds and fills the team config (tracker, repository host, CI, policy) for GitHub, GitLab, Jira, local Markdown, or another tool; stores credentials in the OS credential store; checks each capability with a live read; and offers the optional extras (policy hooks, learning mode, daily recap, ticket dashboard). Use when the user says "set up forge", "configure forge", "check forge", "repair forge", "finish forge setup", "resume forge setup", "switch the tracker to GitLab", or "change the CI to Jenkins".
+description: Set up, check, repair, resume, or change forge for the current repository. Detects the host, the CLIs and their login, the CI files, the default branch, and the work item keys; creates or binds the repository wiki (../<repo>.wiki); seeds and fills the forge config (tracker, repository host, CI, policy) for GitHub, GitLab, Jira, local Markdown, or another tool; stores credentials in the OS credential store; checks each capability with a live read; and offers the optional extras (policy hooks, learning mode, daily recap, Forge Master, automations). Use when the user says "set up forge", "configure forge", "check forge", "repair forge", "finish forge setup", "resume forge setup", "switch the tracker to GitLab", or "change the CI to Jenkins".
 disable-model-invocation: true
 ---
 
 # 🔧 forge setup
 
+> When your context has no `# forge plugin` section, read [forge.md](../../context/forge.md) and
+> [style.md](../../context/style.md) first. They are the `forge` and `style` rules.
+
 One chat sets up forge for the current repository. The plugin holds no machine
-paths and no team config. Both live in the repository wiki (`../<repo>.wiki`).
+paths and no config. Both live in the repository wiki (`../<repo>.wiki`).
 
 At the end of setup, each item below is true:
 
@@ -34,7 +37,7 @@ resolved path in each command. All commands run on Windows, macOS, and Linux.
 | `<F> config set <file>.<key>=<value> ...` | Set frontmatter values. Validates first; writes nothing on a problem | the wiki folder |
 | `<F> config row <checkouts\|queries> <name> [cells...] [--delete]` | Add, replace, or delete a row of the **Checkouts** or **Queries** table | the wiki folder |
 | `<F> config --json` | Read the approved config | nothing |
-| `<F> trust [approve <path>=<hash> ...]` | Show or approve the files under `<wiki>/forge` | the user data folder |
+| `<F> trust [approve <path>=<hash> ...]` | Show or approve the files under `<wiki>/forge` and `<wiki>/rules` | the user data folder |
 | `node "<plugin>/scripts/cred.mjs" set\|has\|delete <name>` | OS credential store (the user types the secret) | the credential store |
 
 - Add `--wiki <dir>` to a command to use another wiki for one call.
@@ -59,7 +62,7 @@ State the progress at each step, for example "step 4 of 11 done".
 ## ✅ Check or repair
 
 1. Run `doctor`. Report each `fail` and `warn` line with its fix.
-2. Read the latest VS Code release notes (see "VS Code Agents window" in the `forge` rule). Report each change that affects plugins, sessions, worktrees, automations, canvases, or MCP servers.
+2. Read the latest VS Code release notes (see "VS Code Agents window" in the `forge` rule). Report each change that affects plugins, sessions, worktrees, automations, hooks, custom agents, or MCP servers.
 3. Check the plugin version. When `<plugin>/../..` is a Git clone, run `git -C <plugin>/../.. fetch -q`, then
    `git -C <plugin>/../.. log --oneline "HEAD..@{u}"` (keep the quotes; PowerShell needs them). When it lists commits, tell the user to update (README, "Update forge").
    An uninstall and a new install from source can reuse the old clone, so a reinstall is not an update.
@@ -120,8 +123,9 @@ A cloned wiki usually has its config already. Then skip to step 8 and review its
 ### Step 5. Seed the config
 
 Show the four files that `seed` writes, and run it after approval.
+When `<wiki>/rules` is missing, `seed` also writes the company rule pages `rules/toolkit.md` and `rules/data.md` from templates.
 `seed` keeps existing files. Use `--force` only after the user agrees to replace a file.
-`seed` never replaces `policy.md`.
+`seed` never replaces `policy.md` or a rule page.
 
 ### Step 6. Values
 
@@ -190,6 +194,7 @@ Jenkins needs `user:apiToken` in the credential `jenkins`. Then run `doctor` aga
 Run `git -C <wiki> status --short` and `git -C <wiki> diff -- forge`. Show what changed.
 Run `trust`. Show each `new` or `changed` file with the first 12 characters of its hash.
 After the user says yes, run `trust approve <path>=<hash> ...` for exactly those files.
+A rule page shows as `../rules/<name>.md`. The hook gives a rule page to each session only after approval.
 
 ### Step 11. Live read
 
@@ -202,7 +207,7 @@ Report `ok` or the error with its fix from **Failures**. Never run a write capab
 1. Run `doctor`. It must show no `fail` line.
 2. Offer the 🧩 Optional extras.
 3. Review the tracked files and Git history before a public push.
-4. Tell the user to commit the wiki: `git -C <wiki> add forge index.md .gitignore`, then `git -C <wiki> commit`.
+4. Tell the user to commit the wiki: `git -C <wiki> add forge rules index.md .gitignore`, then `git -C <wiki> commit`.
 5. Push only when the user asks and approves the exact command.
 6. Tell the user the next action: "Say `start <KEY>` to begin a ticket."
 
@@ -251,12 +256,18 @@ Offer the extras in one form after setup, or when the user asks. Each one is opt
    - `maxImplementers`: the maximum number of implementer sessions. The default is 6.
    - `adversarialReviewModel`: the reviewer model. Empty means a model family different from the author.
 2. Write them with `config set`, for example `"policy.noMergeWeekdays=[Thursday]"`.
-3. For each hook section of `policy.md` that still holds only its `Hint:` text, ask one short question:
+3. For each rule page in `<wiki>/rules/` that has only its comment, ask one short question.
+   Write the answer under the heading, and delete the comment. The hook leaves out a page with only headings and comments.
+
+| Rule page | Question |
+|---|---|
+| `toolkit.md` | Which tools do you use to build, run, deploy, and read logs? Which credentials do they need? |
+| `data.md` | Which data must not leave a ticket folder? Which tools need approval? |
+
+4. For each hook section of `policy.md` that still holds only its `Hint:` text, ask one short question:
 
 | Section | Question |
 |---|---|
-| `Toolkit` | Which tools do you use to build, run, deploy, and read logs? |
-| `Data rules` | Which data must not leave a ticket folder? Which tools need approval? |
 | `Start` | What must the agent read when a ticket starts? |
 | `Investigate` | Which read-only tools can the agent use without approval? |
 | `Resume` | What can expire between sessions, for example a token or a test tenant? |
@@ -265,9 +276,9 @@ Offer the extras in one form after setup, or when the user asks. Each one is opt
 | `QA handover` | Where does the QA comment go? Which status does QA use? |
 | `Close` | Which wiki folders and knowledge owners get the distilled pages? |
 
-4. Write each answer under its heading, and delete the `Hint:` line. Keep the hint of a skipped section.
+5. Write each answer under its heading, and delete the `Hint:` line. Keep the hint of a skipped section.
    A hook can add steps and make rules stricter. It can never weaken a core rule.
-5. Never put a secret, a personal path, or private data into a hook of a public wiki.
+6. Never put a secret, a personal path, or private data into a rule page or a hook of a public wiki.
 
 ### Learning mode
 
@@ -281,17 +292,35 @@ Ask whether the user wants a daily recap. When yes, use the `daily-recap` skill 
 Then offer a scheduled VS Code Automation "Prepare my daily":
 
 1. Read the [Automations](https://code.visualstudio.com/docs/agents/run/automations) page first. Its UI and settings change.
-2. Tell the user to select **Automations** in the Agents window sidebar, then create a **Local** automation.
-3. Give the prompt "Prepare my daily", the repository as the workspace, and the schedule from `settings.json`.
+2. Tell the user to select **Automations** in the Agents window sidebar, then the forge template **Prepare my daily** under **Templates from Plugins** (see Automations below). Without the template, create a **Local** automation.
+3. Check the prompt "Prepare my daily" and the repository as the workspace. Set the schedule time to `preparationTime` from `settings.json`.
 4. Tell the user to review the permissions, and to enable the automation only after the review.
 5. When **Automations** is not visible, the user turns on `chat.automations.enabled`.
 
-### Ticket dashboard
+### Forge Master
 
-1. Read the [Canvases](https://code.visualstudio.com/docs/agents/run/canvases) page first.
-2. The dashboard needs `chat.canvases.enabled`, the VS Code desktop app, a local session, and the Copilot harness.
-3. Tell the user to turn on the setting in **Preferences: Open Settings (UI)**, then start a new session.
-4. Offer to open the `forge-ticket-dashboard` canvas with `{ "wikiPath": "<wiki>" }`.
+The **Forge Master** agent is one overview session for each repository. It answers questions about the tickets and sessions, keeps the titles and state groups current, and starts or resumes ticket sessions. It does not edit code, and it never relays an approval.
+
+1. Read the [Custom agents](https://code.visualstudio.com/docs/agents/reference/custom-agent-file-reference) and [Manage sessions](https://code.visualstudio.com/docs/agents/run/sessions/manage-sessions) pages first.
+2. Tell the user to start a new session in the main checkout, with the Copilot harness and **Folder** (not **New Worktree**).
+3. In the agent picker, the user selects **Forge Master**, then sends "Show the board".
+4. The agent renames the session to `Forge Master - <repo>`. The user pins it: hover the session in the sessions list, then select the pin.
+
+### Automations
+
+The forge plugin has two automation templates. VS Code shows them under **Templates from Plugins**. A template does not create or enable an automation.
+
+| Template | Schedule | What it does |
+|---|---|---|
+| **Forge maintenance** | 09:00, 11:00, 13:00, 15:00, 17:00, Monday to Friday | Board, sync notes, lint report, people waits, titles, and state groups |
+| **Prepare my daily** | 10:20, Monday to Friday | The draft daily recap of the `daily-recap` skill |
+
+1. Read the [Automations](https://code.visualstudio.com/docs/agents/run/automations) page first.
+2. Tell the user to select **Automations** in the Agents window sidebar, expand **Templates from Plugins**, and select a forge template.
+3. In the **New Automation** dialog: **Run in the Cloud** off, the main checkout as the workspace, not **New Worktree**. Review the prompt, the schedule, and the permissions.
+4. Select **Run now** one time, and review the run in **History**. Then select **Enabled**, and save.
+5. A run writes only in `<wiki>/raw/` and changes only session titles and groups. It reads the tracker, the repository host, and CI.
+6. Never create, change, or enable an automation without explicit approval. When the user asks you to create one, save it disabled.
 
 ### VS Code check
 
@@ -302,7 +331,7 @@ Then offer a scheduled VS Code Automation "Prepare my daily":
 
 ## 📚 Wiki remote
 
-The wiki is `../<repo>.wiki`, next to `../<repo>.worktrees`. It holds the team config,
+The wiki is `../<repo>.wiki`, next to `../<repo>.worktrees`. It holds the forge config,
 helper scripts, and knowledge pages. `raw/` and `archive/` stay local (`.gitignore`).
 
 | `suggestion.wikiRemote.type` | Meaning | Action |

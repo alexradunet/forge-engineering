@@ -51,11 +51,11 @@ export function readBinding(wikiPath) {
 }
 
 // The main checkout of the repository that contains cwd.
+// One git call gives the three paths: each git start costs about 100 ms on Windows.
 function mainCheckout(cwd) {
-  const top = git(cwd, ['rev-parse', '--show-toplevel']);
+  const out = git(cwd, ['rev-parse', '--show-toplevel', '--path-format=absolute', '--git-dir', '--git-common-dir']);
+  const [top, gitDir, commonDir] = out ? out.split(/\r?\n/) : [];
   if (!top) return null;
-  const gitDir = git(cwd, ['rev-parse', '--path-format=absolute', '--git-dir']);
-  const commonDir = git(cwd, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
   const linked = Boolean(gitDir && commonDir && !samePath(gitDir, commonDir));
   let main = path.resolve(top);
   if (linked) {
@@ -133,6 +133,7 @@ export function resolve({ cwd = process.cwd(), wiki, env = process.env } = {}) {
   }
 
   return {
+    top: here.top,
     repo: { path: repoPath, remote: repoRemote, worktree },
     wiki: { path: wikiPath, exists, bound: Boolean(binding?.repo), source },
     configDir: path.join(wikiPath, 'forge', 'config'),

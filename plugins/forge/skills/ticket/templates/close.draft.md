@@ -6,15 +6,21 @@ updated: <yyyy-mm-dd>
 ---
 # ✅ Close (<KEY>): <short title>
 
+## ⚡ 1 min
+
 > 🔥 <the result in one line>
 
 > **TL;DR:** <max 3 lines: what we fixed and what you now know>
 >
 > **What I need from you:** GO on Learned?. After GO, I write the wiki pages and archive the ticket folder.
->
-> **Reading time:** about <n> minutes.
 
-## 🏆 Result
+**❓ Decisions needed**
+
+1. <max 3 one-line items with the recommended answer, or "None (GO only)">
+
+## ☕ 5 min
+
+### 🏆 Result
 
 | | |
 |---|---|
@@ -23,12 +29,18 @@ updated: <yyyy-mm-dd>
 | 🔗 Change request | <link> |
 | ⏱️ Duration | <start date> → <end date> |
 
-## 🎓 What you now know
-
 ### 🧭 Affected areas
 
 | Area | Key files | Role |
 |---|---|---|
+
+### ⚠️ Remember these
+
+> 💡 **Tip:** <the most important gotcha or decision>
+
+1. <gotcha or decision; max 5 items in total, including the tip>
+
+## 📖 10 min
 
 ### 🗺️ How the feature lives in the code
 
@@ -41,23 +53,21 @@ flowchart LR
 
 <3 to 5 lines>
 
-### ⚠️ Remember these
-
-> 💡 **Tip:** <the most important gotcha or decision>
-
-1. <gotcha or decision; max 5 items in total, including the tip>
-
-## 📚 Wiki changes
+### 📚 Wiki changes
 
 | Page | Action | Key lines |
 |---|---|---|
 | `<area>/<page>.md` | create \| update | <lines> |
 | `tickets/<key>.md` | create | summary |
 
-**📂 Ticket summary (goes to tickets/<key>.md)**
+## 🔬 15 min
+
+### 📝 Ticket summary (goes to tickets/<key>.md)
 
 <problem, root cause, fix, knowledge links>
 
-## ❓ Decisions needed
+## 📂 Appendix
 
-1. <max 5 items, or "None (GO only)">
+- Code map: [map.md](map.md)
+- Decisions: [decisions.md](decisions.md)
+- Evidence Testing: [evidence-testing.md](evidence-testing.md)

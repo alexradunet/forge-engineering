@@ -1,13 +1,11 @@
 [
   {
     "id": "small-fix-full-research",
-    "workflow": "full-v1",
-    "sequence": ["research", "brief", "interview", "investigate", "plan", "implement", "review", "evidence", "close", "distill", "archive"],
+    "workflow": "full-v2",
+    "sequence": ["research", "brief", "interview", "scope", "investigate", "plan", "implement", "review", "evidence", "close", "distill", "archive"],
     "gateAfterActions": {
-      "Understood?": ["research"],
-      "Agreed?": ["brief", "interview"],
-      "Diagnosed?": ["investigate"],
-      "Designed?": ["plan"],
+      "Scoped?": ["research", "brief", "interview", "scope"],
+      "Planned?": ["investigate", "plan"],
       "Shippable?": ["review"],
       "Learned?": ["evidence"]
     },
@@ -19,34 +17,51 @@
       { "kind": "source", "name": "regression-risks", "status": "available" }
     ],
     "expectedArtifacts": [
-      { "path": "README.md", "includes": ["workflow: full-v1"], "excludes": ["track:"] },
+      { "path": "README.md", "includes": ["workflow: full-v2", "## 📍 Now"], "excludes": ["track:", "Understood?", "Designed?"] },
+      { "path": "scope.md", "includes": ["## ⚡ 1 min", "## ☕ 5 min"] },
       { "path": "context.md", "includes": ["Sources", "Regression risks"] },
       { "path": "map.md" },
       { "path": "briefing.md", "includes": ["```mermaid"] },
       { "path": "interview.md" },
       { "path": "investigation.md" },
-      { "path": "plan.draft.md" },
-      { "path": "plan.md" },
-      { "path": "review.md" },
+      { "path": "plan.draft.md", "includes": ["## ⚡ 1 min"] },
+      { "path": "plan.md", "includes": ["## ⚡ 1 min"] },
+      { "path": "review.md", "includes": ["## ⚡ 1 min"] },
       { "path": "evidence-testing.md", "includes": ["Baseline", "Control"] },
-      { "path": "close.draft.md" }
+      { "path": "close.draft.md", "includes": ["## ⚡ 1 min"] }
     ],
     "forbiddenActions": ["external-write", "select-track", "skip-phase"]
   },
   {
     "id": "large-change-full-research",
-    "workflow": "full-v1",
-    "sequence": ["research", "brief", "interview", "investigate", "plan", "implement", "review", "evidence", "close", "distill", "archive"],
+    "workflow": "full-v2",
+    "sequence": ["research", "brief", "interview", "scope", "investigate", "plan", "implement", "review", "evidence", "close", "distill", "archive"],
     "gateAfterActions": {
-      "Understood?": ["research"],
-      "Agreed?": ["brief", "interview"],
-      "Diagnosed?": ["investigate"],
-      "Designed?": ["plan"],
+      "Scoped?": ["research", "brief", "interview", "scope"],
+      "Planned?": ["investigate", "plan"],
       "Shippable?": ["review"],
       "Learned?": ["evidence"]
     },
-    "expectedArtifacts": [{ "path": "README.md", "includes": ["workflow: full-v1"], "excludes": ["track:"] }],
+    "expectedArtifacts": [{ "path": "README.md", "includes": ["workflow: full-v2"], "excludes": ["track:"] }],
     "forbiddenActions": ["external-write", "select-track", "skip-phase"]
+  },
+  {
+    "id": "diagnosis-contradicts-scope",
+    "workflow": "full-v2",
+    "sequence": ["investigate", "report-scope-conflict"],
+    "requiredEvents": [{ "kind": "decision", "subject": "scope-change", "value": "accepted" }],
+    "expectedArtifacts": [{ "path": "investigation.md", "includes": ["## ⚡ 1 min"] }],
+    "forbiddenActions": ["plan", "implement", "external-write", "infer-approval"]
+  },
+  {
+    "id": "full-v1-resume-migrates",
+    "workflow": "full-v2",
+    "sequence": ["resume", "migrate", "report-migration"],
+    "expectedArtifacts": [
+      { "path": "README.md", "includes": ["workflow: full-v2"], "excludes": ["Understood?", "Agreed?", "Diagnosed?", "Designed?"] },
+      { "path": "approvals/migration-full-v1.json", "includes": ["\"from\": \"full-v1\""] }
+    ],
+    "forbiddenActions": ["create-approval", "infer-approval", "edit-approved-document", "external-write"]
   },
   {
     "id": "mandatory-diagnosis",

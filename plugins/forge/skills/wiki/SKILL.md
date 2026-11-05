@@ -5,6 +5,9 @@ description: Engineering wiki of the current repository (../<repo>.wiki), shared
 
 # 📚 Repository wiki
 
+> When your context has no `# forge plugin` section, read [forge.md](../../context/forge.md) and
+> [style.md](../../context/style.md) first. They are the `forge` and `style` rules.
+
 The wiki is a folder of Markdown pages next to the repository: `../<repo>.wiki`. Get its path with
 `forge.mjs where` (see the `forge` rule). This skill calls that folder `<wiki>`. All
 sessions read and update it. It is the shared memory layer between sessions.
@@ -18,7 +21,7 @@ Git ignores `raw/` and `archive/`, so they stay on this machine only.
 <wiki>/
   index.md        catalog: one line per page, grouped by area
   log.md          append-only change log
-  forge/          repo.json (binding), config/ (team config), scripts/ (helper scripts)
+  forge/          repo.json (binding), config/ (forge config), scripts/ (helper scripts)
   tooling/        VS Code, MCP, build, and environment gotchas
   learning/       optional concept lessons, linked to artifacts and verified sources
   <area>/         architecture, flows, and code knowledge (one folder for each product or codebase)
@@ -40,7 +43,7 @@ canonical pages cannot.
 | One short fact that only one tool needs | Built-in memory (`store_memory`) |
 | A topic, a gotcha with a cause, a decision, or how parts connect | This wiki |
 | An accepted concept lesson with artifact and code links | `learning/`, through the `learning-mode` skill |
-| Company engineering guidance | Nowhere. Use the company source (the `## Toolkit` section of `<config>/policy.md` can name it). |
+| Company engineering guidance | Nowhere. Use the company source (the company rules in `<wiki>/rules/` can name it). |
 | Repository conventions | Nowhere. Use the repository instructions and skills. |
 
 Never write these into the wiki:
@@ -169,8 +172,8 @@ the ticket's `repair-log.jsonl`; a second pass is
 unchanged. Never infer workflow/state, grant approval, edit approved content,
 auto-migrate headerless index/log metadata, delete pages, or publish.
 
-Only explicit `workflow: full-v1` selects new mandatory gates. Existing S/M/L and
-trackless tickets retain original gates and skips. Validate revision evidence,
+Only an explicit `workflow: full-v2` (or `full-v1`, until it migrates) selects the
+mandatory gates. Existing S/M/L and trackless tickets retain original gates and skips. Validate revision evidence,
 not retroactive compliance with a new workflow. Missing/stale evidence blocks the
 affected action, not read-only resume. See the ticket skill's Approval revisions
 and [CLI contract](../../../../docs/wiki.md#local-validation-and-source-limits).

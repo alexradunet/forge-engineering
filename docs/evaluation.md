@@ -49,8 +49,8 @@ Events remain in execution order:
 ```json
 [
   {"kind":"source","name":"ticket-history","status":"unavailable","gap":"No synthetic history adapter exists."},
-  {"kind":"artifact","path":"context.md","sha256":"<64 lowercase hex characters>"},
-  {"kind":"approval","gate":"Understood?","explicit":true,"documents":[{"path":"context.md","sha256":"<same revision>"}]},
+  {"kind":"artifact","path":"scope.md","sha256":"<64 lowercase hex characters>"},
+  {"kind":"approval","gate":"Scoped?","explicit":true,"documents":[{"path":"scope.md","sha256":"<same revision>"}]},
   {"kind":"action","name":"investigate"},
   {"kind":"decision","subject":"external-write","value":"declined"},
   {"kind":"tool","effect":"read","command":"synthetic read"}

@@ -9,7 +9,7 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const pluginDir = path.join(root, 'plugins', 'forge');
 const skillDir = path.join(pluginDir, 'skills', 'writing');
 const skillFile = path.join(skillDir, 'SKILL.md');
-const styleRule = path.join(pluginDir, 'com.github.copilot', 'rules', 'style.instructions.md');
+const styleRule = path.join(pluginDir, 'context', 'style.md');
 
 function markdownFiles(dir) {
   const out = [];
@@ -64,17 +64,18 @@ test('pattern catalog numbers 26 patterns in order', () => {
   assert.deepEqual(numbers, Array.from({ length: 26 }, (_, i) => i + 1));
 });
 
-test('always-on style rule points to the writing skill', () => {
+test('the style rule of the session context points to the writing skill', () => {
   const rule = readFileSync(styleRule, 'utf8');
   assert.match(rule, /`writing`/);
   assert.match(rule, /No AI tells/);
 });
 
-test('plugin, docs, and README text has no em, en, or double-hyphen dashes', () => {
+test('plugin, docs, README, and AGENTS text has no em, en, or double-hyphen dashes', () => {
   const files = [
     ...markdownFiles(pluginDir),
     ...markdownFiles(path.join(root, 'docs')),
     path.join(root, 'README.md'),
+    path.join(root, 'AGENTS.md'),
   ];
   const hits = [];
   for (const file of files) {

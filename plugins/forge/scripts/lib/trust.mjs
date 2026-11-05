@@ -1,4 +1,4 @@
-// Trust store: SHA-256 approvals of the files under <wiki>/forge. The approvals
+// Trust store: SHA-256 approvals of the files under <wiki>/forge and <wiki>/rules. The approvals
 // live in the user data folder, outside the wiki, so a pull
 // cannot approve itself. forge fails closed on a new or changed file.
 import { createHash } from 'node:crypto';
@@ -9,6 +9,9 @@ import { ForgeError } from './repo.mjs';
 
 // Ignore legacy installation metadata so existing wikis keep their approvals.
 const SKIP = new Set(['.base', 'repo.json', 'pack.lock.json', '.git']);
+
+// The company rules for each session, relative to <wiki>/forge. The sessionStart hook gives only approved files.
+export const RULES = '../rules/';
 
 export const sha256 = (buf) => createHash('sha256').update(buf).digest('hex');
 
@@ -47,7 +50,9 @@ export function status(where, { env = process.env } = {}) {
   const file = trustFile(where, env);
   const approved = readApproved(file);
   const dir = forgeDir(where);
-  const files = listFiles(dir).map((rel) => {
+  const rels = listFiles(dir);
+  rels.push(...listFiles(path.join(dir, RULES)).map((rel) => RULES + rel));
+  const files = rels.map((rel) => {
     if (!lstatSync(path.join(dir, rel)).isFile()) return { rel, sha: '', state: 'not-a-file' };
     const sha = sha256(readFileSync(path.join(dir, rel)));
     return { rel, sha, state: !approved[rel] ? 'new' : approved[rel] === sha ? 'ok' : 'changed' };

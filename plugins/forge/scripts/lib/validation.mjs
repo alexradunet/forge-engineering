@@ -1,14 +1,58 @@
 import { createHash } from 'node:crypto';
 import { appendFileSync, lstatSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { parseFrontmatter, parseTicket, validDate } from './ticket.mjs';
+import { nowCard, parseFrontmatter, parseTicket, validDate } from './ticket.mjs';
+import { LAYERED_DOCS, readingLevels } from './reading.mjs';
 
 export const FULL_GATES = ['Understood?', 'Agreed?', 'Diagnosed?', 'Designed?', 'Shippable?', 'Sendable?', 'Learned?'];
+export const FULL_V2_GATES = ['Scoped?', 'Planned?', 'Shippable?', 'Sendable?', 'Learned?'];
+export const STRICT_WORKFLOWS = ['full-v1', 'full-v2'];
+export const WORKFLOW_GATES = { 'full-v1': FULL_GATES, 'full-v2': FULL_V2_GATES };
+// full-v2 merges each pair of full-v1 gates. A migrated approval lists both source manifests.
+export const MIGRATION_SOURCES = { 'Scoped?': ['Understood?', 'Agreed?'], 'Planned?': ['Diagnosed?', 'Designed?'] };
 const GATE_DOCS = {
   'Understood?': ['context.md'], 'Agreed?': ['interview.md'],
   'Briefed?': ['context.md', 'interview.md'], 'Diagnosed?': ['investigation.md'],
   'Designed?': ['plan.draft.md'], 'Shippable?': ['review.md'], 'Learned?': ['close.draft.md'],
+  'Scoped?': ['scope.md', 'context.md', 'interview.md'], 'Planned?': ['investigation.md', 'plan.draft.md'],
 };
+const MIGRATED_DOCS = { 'Scoped?': ['context.md', 'interview.md'], 'Planned?': ['investigation.md', 'plan.draft.md'] };
+const COPY_GATES = ['Designed?', 'Planned?'];
+const PREREQUISITES = {
+  'full-v1': {
+    start: [], investigate: FULL_GATES.slice(0, 2), plan: FULL_GATES.slice(0, 3),
+    implement: FULL_GATES.slice(0, 4), review: FULL_GATES.slice(0, 4),
+    closed: [...FULL_GATES.slice(0, 5), 'Learned?'],
+  },
+  'full-v2': {
+    start: [], investigate: ['Scoped?'], plan: ['Scoped?'],
+    implement: ['Scoped?', 'Planned?'], review: ['Scoped?', 'Planned?'],
+    closed: ['Scoped?', 'Planned?', 'Shippable?', 'Learned?'],
+  },
+};
+const ACTION_GATES = {
+  'full-v1': {
+    investigate: ['Understood?', 'Agreed?'],
+    plan: ['Understood?', 'Agreed?', 'Diagnosed?'],
+    implement: ['Understood?', 'Agreed?', 'Diagnosed?', 'Designed?'],
+    ship: ['Understood?', 'Agreed?', 'Diagnosed?', 'Designed?', 'Shippable?'],
+    write: ['Sendable?'],
+    close: ['Understood?', 'Agreed?', 'Diagnosed?', 'Designed?', 'Shippable?', 'Learned?'],
+  },
+  'full-v2': {
+    investigate: ['Scoped?'],
+    plan: ['Scoped?'],
+    implement: ['Scoped?', 'Planned?'],
+    ship: ['Scoped?', 'Planned?', 'Shippable?'],
+    write: ['Sendable?'],
+    close: ['Scoped?', 'Planned?', 'Shippable?', 'Learned?'],
+  },
+};
+/** The gates that a phase needs, for a strict workflow. */
+export function phaseGates(workflow, phase) {
+  return PREREQUISITES[workflow]?.[phase] ?? [];
+}
+const strict = (ticket) => STRICT_WORKFLOWS.includes(ticket.workflow);
 const SHA = /^[a-f0-9]{64}$/;
 const MAX_BYTES = 1024 * 1024;
 export const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
@@ -40,12 +84,46 @@ function relativeName(value) {
   return value.replaceAll('\\', '/').toLowerCase();
 }
 
+// A migrated full-v2 approval carries exactly the documents of its two full-v1 source approvals.
+// Returns the documents that the migrated manifest must list.
+function migratedDocuments(root, gateName, manifest, seen) {
+  const sources = MIGRATION_SOURCES[gateName];
+  if (!sources || !Array.isArray(manifest.migratedFrom) || manifest.migratedFrom.length !== sources.length) {
+    throw new Error('migratedFrom must list both full-v1 source approvals of this gate.');
+  }
+  const carried = new Map();
+  for (const [index, source] of manifest.migratedFrom.entries()) {
+    if (!source || source.gate !== sources[index] || typeof source.manifest !== 'string' || !SHA.test(source.hash ?? '')) {
+      throw new Error(`migratedFrom needs ${sources.join(' and ')}, each with its manifest and SHA-256.`);
+    }
+    const bytes = regular(within(root, source.manifest));
+    if (sha256(bytes) !== source.hash) throw new Error(`The source manifest ${source.manifest} changed after its approval.`);
+    const original = JSON.parse(bytes.toString('utf8'));
+    if (!original || original.version !== 1 || original.gate !== source.gate
+      || !Array.isArray(original.documents) || !original.documents.length) {
+      throw new Error(`${source.manifest} is not a ${source.gate} approval manifest.`);
+    }
+    for (const doc of original.documents) {
+      const key = relativeName(String(doc?.path ?? ''));
+      if (carried.has(key) && carried.get(key) !== doc.sha256) throw new Error(`The source approvals disagree on the revision of ${doc.path}.`);
+      carried.set(key, doc.sha256);
+    }
+  }
+  for (const doc of manifest.documents) {
+    if (carried.get(relativeName(doc.path)) !== doc.sha256) throw new Error(`${doc.path} is not in a source approval with the same revision.`);
+  }
+  for (const key of carried.keys()) {
+    if (!seen.has(key)) throw new Error(`The migrated manifest omits ${key} from a source approval.`);
+  }
+  return MIGRATED_DOCS[gateName];
+}
+
 function approval(ticket, gate, file) {
   const root = path.dirname(file);
   const findings = [];
   const references = new Set();
   const fail = (code, message, remedy) => findings.push(finding(file, code, `${gate.name}: ${message}`, remedy));
-  const expected = GATE_DOCS[gate.name] ?? [];
+  let expected = GATE_DOCS[gate.name] ?? [];
   const checkDocument = (relative, hash) => {
     references.add(relativeName(relative));
     try {
@@ -81,6 +159,9 @@ function approval(ticket, gate, file) {
         references.add(key);
         if (gate.status === 'approved') checkDocument(doc.path, doc.sha256);
       }
+      if (manifest.migratedFrom != null) {
+        expected = migratedDocuments(root, gate.name, manifest, seen);
+      }
       for (const required of [...expected, ...(gate.doc ? [gate.doc] : [])]) {
         if (!seen.has(relativeName(required))) throw new Error(`Manifest omits ${required}.`);
       }
@@ -93,12 +174,12 @@ function approval(ticket, gate, file) {
       }
       if (manifest.approvedCopies != null && !Array.isArray(manifest.approvedCopies)) throw new Error('approvedCopies must be a list.');
       const copies = manifest.approvedCopies ?? [];
-      if (copies.some((copy) => gate.name !== 'Designed?' || !copy
+      if (copies.some((copy) => !COPY_GATES.includes(gate.name) || !copy
         || copy.from !== 'plan.draft.md' || copy.to !== 'plan.md') || copies.length > 1) {
-        throw new Error('Only the Designed? plan.draft.md to plan.md copy is supported.');
+        throw new Error('Only the Designed? or Planned? plan.draft.md to plan.md copy is supported.');
       }
-      if (gate.name === 'Designed?' && !copies.some((copy) => copy.from === 'plan.draft.md' && copy.to === 'plan.md')) {
-        throw new Error('Designed? must bind plan.draft.md to its approved plan.md copy.');
+      if (COPY_GATES.includes(gate.name) && !copies.some((copy) => copy.from === 'plan.draft.md' && copy.to === 'plan.md')) {
+        throw new Error(`${gate.name} must bind plan.draft.md to its approved plan.md copy.`);
       }
       for (const copy of copies) {
         if (!copy || typeof copy.from !== 'string' || typeof copy.to !== 'string'
@@ -114,7 +195,7 @@ function approval(ticket, gate, file) {
       fail('approval-manifest', error.message, 'Supply a complete manifest outside its document set; ask for explicit approval.');
     }
   } else if (gate.status === 'approved') {
-    if (ticket.workflow === 'full-v1' || gate.name === 'Briefed?') {
+    if (strict(ticket) || gate.name === 'Briefed?') {
       fail('approval-evidence', 'The complete approved revision set is not recorded.', 'Show the exact documents and hashes, then request one explicit approval for that set.');
     } else if (!gate.doc || !SHA.test(gate.hash ?? '')) {
       fail('approval-evidence', 'The approved document revision cannot be established.', 'Review this gate before its affected action; retain unrelated read-only work.');
@@ -191,20 +272,25 @@ function inspectTicket(ticket, file) {
       unsafeRepair = true;
     }
   }
-  if (ticket.workflow === 'full-v1') {
-    for (const name of FULL_GATES) {
+  if (strict(ticket)) {
+    const workflowGates = WORKFLOW_GATES[ticket.workflow];
+    for (const name of workflowGates) {
       const gate = ticket.gates.find((item) => item.name === name);
       if (!gate || gate.need !== 'required' || gate.status === 'skipped') {
-        add('workflow-gate', `${name} is mandatory for full-v1.`, 'Restore the required gate; obtain explicit approval before its affected action.');
+        add('workflow-gate', `${name} is mandatory for ${ticket.workflow}.`, 'Restore the required gate; obtain explicit approval before its affected action.');
       }
     }
-    if (names.has('Briefed?')) add('workflow-gate', 'Briefed? belongs only to legacy workflows.', 'Use Understood? and Agreed? for full-v1; do not infer their approvals.');
-    const prerequisites = {
-      start: [], investigate: FULL_GATES.slice(0, 2), plan: FULL_GATES.slice(0, 3),
-      implement: FULL_GATES.slice(0, 4), review: FULL_GATES.slice(0, 4),
-      closed: [...FULL_GATES.slice(0, 5), 'Learned?'],
-    };
-    for (const name of prerequisites[ticket.phase]) {
+    if (names.has('Briefed?')) {
+      add('workflow-gate', 'Briefed? belongs only to legacy workflows.', ticket.workflow === 'full-v1'
+        ? 'Use Understood? and Agreed? for full-v1; do not infer their approvals.'
+        : 'Use Scoped? for full-v2; do not infer its approval.');
+    }
+    for (const name of [...names].filter((item) => item !== 'Briefed?' && !workflowGates.includes(item))) {
+      add('workflow-gate', `${name} does not belong to ${ticket.workflow}.`, ticket.workflow === 'full-v2'
+        ? 'Run forge.mjs migrate for a full-v1 ticket; never copy an approval by hand.'
+        : 'Remove the foreign gate record after review with the user; do not infer approvals.');
+    }
+    for (const name of PREREQUISITES[ticket.workflow][ticket.phase]) {
       if (!ticket.gates.some((gate) => gate.name === name && gate.status === 'approved')) {
         add('phase-before-approval', `${ticket.phase} precedes ${name} approval.`, `Obtain ${name} approval before continuing this phase; do not change state automatically.`);
       }
@@ -240,10 +326,10 @@ export function checkGate(ticket, file, name) {
   const gate = matches[0];
   if (!gate) return { allowed: false, findings: [finding(file, 'gate-missing', `${name} is not recorded.`, 'Review the original workflow and obtain the required approval.')] };
   if (matches.length !== 1) return { allowed: false, findings: [finding(file, 'duplicate-gate', `${name} has conflicting records.`, 'Reconcile the records explicitly before the affected action.')] };
-  if (ticket.workflow === 'full-v1' && gate.need !== 'required') return { allowed: false, findings: [finding(file, 'workflow-gate', `${name} must be required for full-v1.`, 'Restore the recorded contract without inferring approval.')] };
+  if (strict(ticket) && gate.need !== 'required') return { allowed: false, findings: [finding(file, 'workflow-gate', `${name} must be required for ${ticket.workflow}.`, 'Restore the recorded contract without inferring approval.')] };
   const legacyMandatory = ['Designed?', 'Shippable?', 'Sendable?', 'Learned?',
     ...(ticket.track === 'M' ? ['Briefed?'] : ticket.track === 'L' ? ['Understood?', 'Agreed?'] : [])];
-  if (gate.status === 'skipped' && ticket.workflow !== 'full-v1' && (gate.need === 'recommended'
+  if (gate.status === 'skipped' && !strict(ticket) && (gate.need === 'recommended'
     || ticket.track === 'Unspecified'
     || (['S', 'M'].includes(ticket.track) && ['Understood?', 'Agreed?', 'Diagnosed?'].includes(name)))
     && (ticket.track === 'Unspecified' || !legacyMandatory.includes(name))) return { allowed: true, findings: [] };
@@ -253,16 +339,9 @@ export function checkGate(ticket, file, name) {
 }
 
 export function checkAction(ticket, file, action, write) {
-  const required = {
-    investigate: ['Understood?', 'Agreed?'],
-    plan: ['Understood?', 'Agreed?', 'Diagnosed?'],
-    implement: ['Understood?', 'Agreed?', 'Diagnosed?', 'Designed?'],
-    ship: ['Understood?', 'Agreed?', 'Diagnosed?', 'Designed?', 'Shippable?'],
-    write: ['Sendable?'],
-    close: ['Understood?', 'Agreed?', 'Diagnosed?', 'Designed?', 'Shippable?', 'Learned?'],
-  }[action];
+  const required = ACTION_GATES[strict(ticket) ? ticket.workflow : 'full-v1'][action];
   if (!required) throw new Error(`Unknown blocked action: ${action}`);
-  const gates = ticket.workflow === 'full-v1' ? required : required.flatMap((name) => {
+  const gates = strict(ticket) ? required : required.flatMap((name) => {
     if (name === 'Diagnosed?') return ticket.gates.some((gate) => gate.name === name && gate.status === 'approved') ? [name] : [];
     if (['Understood?', 'Agreed?'].includes(name)) {
       if (ticket.track === 'S') return [];
@@ -336,6 +415,42 @@ function markdownFiles(root, onError) {
   return files;
 }
 
+const sameText = (a, b) => String(a ?? '').replace(/[`*_]/g, '').replace(/\s+/g, ' ').trim().toLowerCase()
+  === String(b ?? '').replace(/[`*_]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+// Warnings only: the Now card must agree with the frontmatter, and gate docs must keep their reading levels short.
+function readerWarnings(dir, file, readme, ticket, add, inspect) {
+  const card = nowCard(readme);
+  if (!card) {
+    add(file, 'now-card-missing', 'README has no "## 📍 Now" card.', 'Add the Now card from the README template under the hero line.', 'warning');
+  } else {
+    const { state, phase, next } = card.fields;
+    const stale = [];
+    if (!state || !new RegExp(`(^|[^a-z-])${ticket.state}([^a-z-]|$)`).test(state)) stale.push(`State should name ${ticket.state}`);
+    if (!phase || !new RegExp(`(^|[^a-z-])${ticket.phase}([^a-z-]|$)`).test(phase)) stale.push(`Phase should name ${ticket.phase}`);
+    if (!sameText(next, ticket.next)) stale.push('Next should match the frontmatter next');
+    if (stale.length) add(file, 'now-card-stale', `Now card does not agree with the frontmatter: ${stale.join('; ')}.`, 'Update the Now card in the same edit as the frontmatter.', 'warning', card.line);
+  }
+  for (const name of LAYERED_DOCS) {
+    const doc = path.join(dir, name);
+    inspect(doc, () => {
+      let text;
+      try { text = regular(doc).toString('utf8'); }
+      catch (error) { if (error.code === 'ENOENT') return; throw error; }
+      const reading = readingLevels(text);
+      if (!reading.quick) {
+        add(doc, 'reading-quick-missing', 'Gate doc has no "## ⚡ 1 min" card.', 'Start the doc with a ⚡ 1 min card of at most 150 words; the approval form shows it.', 'warning');
+      }
+      for (const level of reading.levels.filter((item) => item.over)) {
+        add(doc, 'reading-over-budget', `Reading level ${level.heading} has ${level.cumulative} words from the top; the budget is ${level.budget}.`, 'Move detail to a deeper level or to the 📂 Appendix.', 'warning', level.line);
+      }
+      if (!reading.ordered) {
+        add(doc, 'reading-order', 'Reading levels are out of order.', 'Order the levels ⚡ 1 min, ☕ 5 min, 📖 10 min, 🔬 15 min, then 📂 Appendix.', 'warning');
+      }
+    });
+  }
+}
+
 export function lint({ wikiPath, repoPath, fix = false }) {
   const report = { version: 1, wikiPath: path.resolve(wikiPath), findings: [], repairs: [], summary: { errors: 0, warnings: 0, repaired: 0 } };
   const add = (file, code, message, remedy, severity = 'error', line = null) =>
@@ -358,11 +473,13 @@ export function lint({ wikiPath, repoPath, fix = false }) {
       const file = path.join(dir, 'README.md');
       inspect(file, () => {
         if (lstatSync(dir).isSymbolicLink()) throw new Error('Ticket directory must not be a link.');
-        const ticket = parseTicket(regular(file).toString('utf8'));
+        const readme = regular(file).toString('utf8');
+        const ticket = parseTicket(readme);
         if (keys.has(ticket.key)) add(file, 'duplicate-ticket', `Duplicate ticket key ${ticket.key}.`, 'Reconcile the duplicate ticket folders.');
         keys.add(ticket.key);
         const result = inspectTicket(ticket, file);
         report.findings.push(...result.findings);
+        if (ticket.workflow === 'full-v2') readerWarnings(dir, file, readme, ticket, add, inspect);
         const drafts = markdownFiles(dir, (file, error) => add(file, 'invalid-input', error.message, 'Inspect this draft path explicitly; no linked file is repaired.'));
         for (const draft of drafts.filter((name) => name.endsWith('.draft.md'))) {
           inspect(draft, () => {

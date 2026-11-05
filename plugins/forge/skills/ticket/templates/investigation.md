@@ -1,7 +1,7 @@
 ---
 type: investigation
 ticket: <KEY>
-gate: Diagnosed?
+gate: Planned?
 updated: <yyyy-mm-dd>
 ---
 # 🔎 Investigation (<KEY>): <short title>
@@ -10,7 +10,7 @@ updated: <yyyy-mm-dd>
 
 > **TL;DR:** <max 3 lines: what we found and what it means for the plan>
 >
-> **What I need from you:** GO on Diagnosed? for the displayed investigation and evidence revisions. This gate is required before planning on every new ticket.
+> **What I need from you:** Nothing yet. This file is evidence for Planned?. You approve it together with [plan.draft.md](plan.draft.md). When the diagnosis does not agree with the approved scope, I stop and ask first.
 >
 > **Reading time:** about <n> minutes.
 

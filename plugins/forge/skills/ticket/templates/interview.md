@@ -1,7 +1,7 @@
 ---
 type: interview
 ticket: <KEY>
-gate: Agreed?
+gate: Scoped?
 updated: <yyyy-mm-dd>
 ---
 # 🎯 Scope interview (<KEY>): <short title>
@@ -10,7 +10,7 @@ updated: <yyyy-mm-dd>
 
 > **TL;DR:** <what we agreed, in max 3 lines>
 >
-> **What I need from you:** GO on Agreed? for the displayed interview and briefing revisions.
+> **What I need from you:** Answer the questions in the form. This file is evidence for Scoped?. You approve it together with [scope.md](scope.md).
 >
 > **Reading time:** about <n> minutes.
 

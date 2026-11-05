@@ -1,4 +1,4 @@
-// Validated edits of the team config: flat frontmatter keys and the rows of
+// Validated edits of the forge config: flat frontmatter keys and the rows of
 // the Checkouts (repo.md) and Queries (tracker.md) tables. Each call parses and
 // validates the edited text first, and writes nothing when a problem exists.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';

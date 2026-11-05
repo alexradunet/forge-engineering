@@ -5,6 +5,9 @@ description: Coordinate work across sessions in the VS Code Agents window. Reuse
 
 # 🤖 Agent sessions in the VS Code Agents window
 
+> When your context has no `# forge plugin` section, read [forge.md](../../context/forge.md) and
+> [style.md](../../context/style.md) first. They are the `forge` and `style` rules.
+
 The Agents window is the orchestrator. A task can continue in its current isolated session.
 You see all sessions in the sessions list and in the session grid.
 This skill decides when to use which tool. It does not repeat the VS Code documentation.
@@ -31,23 +34,23 @@ flowchart LR
 
 ## 🛠️ Implementer session
 
-1. Check the gate first. For a ticket, validate fresh Designed? revision evidence before starting implementation. For a new `workflow: full-v1` ticket, verify mandatory Diagnosed? and the Designed? manifest: its raw-byte SHA-256, every covered document, byte-identical `plan.draft.md` and `plan.md`, and `approvedCopies: [{ "from": "plan.draft.md", "to": "plan.md" }]`. Existing tickets retain their original gates and skips; do not infer `full-v1` from missing `track`. Verify legacy single-document hashes against raw document bytes. Unverifiable approval blocks implementation, not read-only resume.
-2. Select the execution worktree with the checks below. Continue here when it is suitable. Do not start another implementer merely because the ticket reached Implement.
+1. Check the gate first. For a ticket, validate fresh plan-gate revision evidence before starting implementation: Planned? for `workflow: full-v2`, mandatory Diagnosed? and Designed? for a `full-v1` ticket that has not moved yet. Verify the manifest: its raw-byte SHA-256, every covered document, byte-identical `plan.draft.md` and `plan.md`, and `approvedCopies: [{ "from": "plan.draft.md", "to": "plan.md" }]`. A migrated Planned? (with `migratedFrom`) also needs both unchanged source manifests. Existing tickets retain their original gates and skips; do not infer a workflow from missing `track`. Verify legacy single-document hashes against raw document bytes. Unverifiable approval blocks implementation, not read-only resume.
+2. Select the execution worktree with the checks below. Continue here when it is suitable. Do not start another implementer merely because the ticket reached Implement. `<F>` means `node "<plugin>/scripts/forge.mjs"`, where `<plugin>` is the folder two levels above this skill. `<F> worktree <KEY> --summary "<short>"` gives the ticket branch, the folder, and the suggested action (see "Worktrees" in the `ticket` skill).
 3. Only when another session is needed, call `create_session`:
-   - `title`: `<KEY> - ▶️ - <session goal>` (for example `APP-123 - ▶️ - Implement outbox retry on timeout`). The session keeps it current. See "Session title" in the `ticket` skill.
+   - `title`: `<KEY> - ▶️ - <short>` (for example `APP-123 - ▶️ - Implement outbox retry on timeout`). The session keeps it current. See "Session title" in the `ticket` skill.
    - `workspace`: the verified worktree path when one already exists; otherwise the checkout from `repo.checkouts` or the task repository.
    - `worktree`: `false` for an existing verified worktree; `true` only when a new worktree is needed. The tool has no base-branch parameter. Never assume that `true` selects the ticket branch or a required commit. For a pinned baseline, use the manual step below.
    - `relationship`: omit it for work on the current ticket. Use `independent` only for an unrelated task.
 4. Write a self-contained `prompt`:
    - the goal, and the paths to the approved `plan.md` and to `map.md` (the code map of the area)
    - the ticket's explicit workflow marker or original legacy process, README, and approval manifest/record paths; revalidate the exact approved revisions before editing, and stop if stale or unverifiable
-   - the branch name from `repo.branchPattern` (see "Worktrees" in the `ticket` skill)
+   - the branch name from `repo.branchPattern`, as `<F> worktree` prints it (see "Worktrees" in the `ticket` skill). In a **New Worktree** session on an `agents/...` branch, rename the branch with `git branch -m <branch>` before the first commit.
    - the selected worktree, repository identity, branch, resolved baseline SHA, and whether the task requires an exact HEAD or resumes existing implementation. Verify these before edits, builds, or fixtures. Continue in that worktree; do not delegate again merely to obtain isolation.
    - the scope, and what is out of scope
    - the stop condition: "Stop after the tests pass and report. Do not push or create a change request."
    - the report: changed files and the tests run, in a form that the lead session can copy into `map.md` and `review.md`
    - the rules: ask before CI triggers and tracker writes; never merge; plus the rules of the `## Implement` section of `<config>/policy.md`
-   - the main always-on rules, in short form. A session that `create_session` starts loads **no** plugin rules, skills, or MCP servers. The prompt is its only guide. Include the response style with the "No AI tells" list of the `style` rule, the paths `<wiki>` and the ticket folder as resolved absolute paths, and the safety rules above.
+   - the main session rules, in short form. A session that `create_session` starts loads the plugin skills and runs the Forge `sessionStart` hook, which gives the `forge`, `style`, and company rules. It gets no `AGENTS.md` text of the repository and no MCP servers. When the hook fails, the prompt is its only source of the rules. Include the response style with the "No AI tells" list of the `style` rule, the paths `<wiki>` and the ticket folder as resolved absolute paths, and the safety rules above.
 5. Give the user the session link only when a new session was created.
 6. Record the session title, worktree path, branch, baseline SHA, and selection reason in the ticket `README.md` and `log.md`. Keep approval records outside hashed documents.
 
@@ -63,7 +66,7 @@ Read the ticket `README.md`, approved plan, and current request. Inspect Git in 
 |---|---|
 | Current linked worktree belongs to this task and meets its baseline rule | Reuse the current session. A different generated branch name alone does not require another worktree. |
 | Another recorded worktree belongs to this task and meets its baseline rule | Resume its existing session, or start a session there with `workspace` set to that path and `worktree: false`. |
-| No suitable worktree exists | Create one from the selected baseline, then verify its actual HEAD before any edits, builds, or fixtures. |
+| No suitable worktree exists | Create one from the selected baseline: `<F> worktree <KEY> --summary "<short>" --base <full SHA> --create`, after one `ask_user` confirmation. Then call `set_workspace` with the new folder and `isolation: false` as the last tool call, or start a session there with `worktree: false`. Verify its actual HEAD before any edits, builds, or fixtures. |
 | Repository, task ownership, or local changes are uncertain | Report the evidence and ask before switching, moving, or replacing work. |
 
 Baseline rules:
@@ -116,7 +119,7 @@ Required before every change request, including a draft. It is a second, hostile
 5. Run it in the background. Do not poll. Continue with independent work, or wait for the notification.
 6. Verify each finding yourself. Reject a finding with evidence, or fix it and add a test where it applies.
 7. Record the result in `review.md` (a row in the checklist: model, findings, what you fixed or rejected) and in `log.md`.
-8. If the review changes the code, run the affected tests again. If it changes the approved scope or plan, reopen Designed?.
+8. If the review changes the code, run the affected tests again. If it changes the approved scope, reopen Scoped?; if it changes the approved plan, reopen Planned? (`full-v1`: Designed?).
 
 Never create a change request until step 7 is done.
 

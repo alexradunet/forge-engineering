@@ -1,6 +1,6 @@
 # ⚙️ Configuration
 
-forge reads the team config from four Markdown files in `<wiki>/forge/config/`.
+forge reads the config from four Markdown files in `<wiki>/forge/config/`.
 `<wiki>` is the wiki of the repository, by default `../<repo>.wiki`.
 
 | File | Holds | Default template |
@@ -174,19 +174,21 @@ The **Keys** section of each tracker file converts between the native id and the
 
 ## 🪝 Policy sections
 
-`policy.md` has one section for each hook point of the `ticket` skill: `Toolkit`, `Data rules`, `Start`,
+`policy.md` has one section for each hook point of the `ticket` skill: `Start`,
 `Investigate`, `Resume`, `Implement`, `Evidence Testing`, `QA handover`, and `Close`.
-Write the company rules, tools, and traps there. A section can add steps and make rules stricter.
+Write the step rules and traps there. Rules for each session (tools, credentials, data rules) go in the
+`<wiki>/rules/` pages ([wiki.md](wiki.md#company-rules)). A section can add steps and make rules stricter.
 It can never weaken a core rule: no merge, ask before every external write, explicit gate approval,
 no secrets, and the adversarial review before every change request.
 
-Every new ticket uses `workflow: full-v1` in its ticket README, not a policy sizing
+Every new ticket uses `workflow: full-v2` in its ticket README, not a policy sizing
 setting. All research, briefing, scope interview, investigation, and review phases
-apply even to small fixes. Diagnosed? must be approved before drafting the plan.
-`qaHandover: false` omits only QA handover, not Evidence Testing or a required gate.
-Sendable? applies to each external write in every phase. Existing S/M/L and trackless
-tickets retain their original gates and recorded skips; absence of `track` never
-selects the new workflow. See the [ticket skill](../plugins/forge/skills/ticket/SKILL.md).
+apply even to small fixes. The investigation comes before the plan draft, and
+Planned? approves both together. `qaHandover: false` omits only QA handover, not
+Evidence Testing or a required gate. Sendable? applies to each external write in every
+phase. Open `full-v1` tickets move to `full-v2` on resume (`forge.mjs migrate <key>`).
+Existing S/M/L and trackless tickets retain their original gates and recorded skips;
+absence of `track` never selects the new workflow. See the [ticket skill](../plugins/forge/skills/ticket/SKILL.md).
 
 ## ➕ Add a tool
 

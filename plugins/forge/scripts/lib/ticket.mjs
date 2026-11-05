@@ -1,5 +1,7 @@
 export const STATES = ['needs-me', 'go', 'active', 'waiting', 'blocked', 'done'];
-const PHASES = ['start', 'investigate', 'plan', 'implement', 'review', 'closed'];
+export const STATE_EMOJI = { 'needs-me': '🟡', go: '🟢', active: '▶️', waiting: '⏳', blocked: '🔴', done: '✅' };
+export const WORKFLOWS = ['full-v1', 'full-v2'];
+export const PHASES = ['start', 'investigate', 'plan', 'implement', 'review', 'closed'];
 const GATE_STATUSES = ['todo', 'in-review', 'approved', 'skipped', 'blocked'];
 export const PEOPLE_STATUSES = ['to-contact', 'drafted', 'waiting', 'follow-up', 'reply-in', 'done'];
 const PERSON_TEXT_FIELDS = ['role', 'ask', 'via', 'note'];
@@ -157,15 +159,15 @@ export function parseTicket(text) {
   for (const key of ['key', 'title', 'phase', 'state', 'next']) {
     if (typeof data[key] !== 'string' || !data[key].trim()) throw new Error(`Missing or invalid ${key}.`);
   }
-  for (const key of ['item', 'waiting_on', 'branch', 'worktree', 'updated']) {
-    if (data[key] != null && typeof data[key] !== 'string') throw new Error(`Invalid ${key}: expected one line of text.`);
+  for (const key of ['item', 'waiting_on', 'branch', 'worktree', 'updated', 'short']) {
+    if (data[key] != null && (typeof data[key] !== 'string' || /[\r\n]/.test(data[key]))) throw new Error(`Invalid ${key}: expected one line of text.`);
   }
   if (!STATES.includes(data.state)) throw new Error(`Unknown ticket state: ${data.state}`);
   if (!PHASES.includes(data.phase)) throw new Error(`Unknown ticket phase: ${data.phase}`);
   if (data.track != null && !['S', 'M', 'L'].includes(data.track)) throw new Error(`Unknown ticket track: ${data.track}`);
-  if (data.workflow != null && data.workflow !== 'full-v1') throw new Error(`Unknown ticket workflow: ${data.workflow}`);
-  if (data.workflow === 'full-v1' && data.track != null) throw new Error('full-v1 tickets must not select a track.');
-  if (data.workflow === 'full-v1' && data.type !== 'ticket') throw new Error('full-v1 metadata needs type: ticket.');
+  if (data.workflow != null && !WORKFLOWS.includes(data.workflow)) throw new Error(`Unknown ticket workflow: ${data.workflow}`);
+  if (data.workflow != null && data.track != null) throw new Error(`${data.workflow} tickets must not select a track.`);
+  if (data.workflow != null && data.type !== 'ticket') throw new Error(`${data.workflow} metadata needs type: ticket.`);
   for (const gate of data.gates ?? []) {
     if (!gate || typeof gate !== 'object' || Array.isArray(gate)
       || typeof gate.name !== 'string' || !GATE_STATUSES.includes(gate.status)) throw new Error('Invalid gate name or status.');
@@ -191,9 +193,9 @@ export function parseTicket(text) {
   const heroMatch = /^>\s*(?:🔥\s*)?(.+)$/m.exec(body);
   const summary = heroMatch ? heroMatch[1].trim() : '';
   return {
-    key: data.key, title: data.title, phase: data.phase, state: data.state,
+    key: data.key, title: data.title, short: data.short ?? '', phase: data.phase, state: data.state,
     workflow: data.workflow ?? null,
-    track: data.workflow === 'full-v1' ? null : data.track ?? 'Unspecified', next: data.next, waitingOn: data.waiting_on ?? '',
+    track: data.workflow != null ? null : data.track ?? 'Unspecified', next: data.next, waitingOn: data.waiting_on ?? '',
     branch: data.branch ?? '', worktree: data.worktree ?? '', updated: data.updated ?? '',
     item: data.item ?? '', summary, gates: data.gates ?? [], changes: data.changes ?? [], people,
   };
@@ -221,4 +223,35 @@ function parsePerson(person) {
   const result = { name, status: person.status };
   for (const key of [...PERSON_TEXT_FIELDS, 'since', 'draft']) result[key] = person[key] ?? '';
   return result;
+}
+
+/** The "## 📍 Now" card of a README: its 1-based heading line, text, and "- **Label:** value" fields (lower-case labels). */
+export function nowCard(text) {
+  const lines = String(text).replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').split('\n');
+  const fence = lines[0] === '---' ? lines.indexOf('---', 1) : -1;
+  const start = lines.findIndex((line, index) => index > fence && /^##\s+📍\s*Now\s*$/.test(line));
+  if (start === -1) return null;
+  let end = lines.findIndex((line, index) => index > start && /^#{1,2}\s/.test(line));
+  if (end === -1) end = lines.length;
+  const body = lines.slice(start + 1, end);
+  const fields = {};
+  for (const line of body) {
+    const match = /^\s*[-*]\s+\*\*([^*]+?):\*\*\s*(.*)$/.exec(line);
+    if (match) fields[match[1].trim().toLowerCase()] = match[2].trim();
+  }
+  // The card is its list lines. Guide text and comments under the list stay out of the hook context.
+  const items = body.filter((line) => /^\s*[-*]\s+\S/.test(line));
+  return { line: start + 1, text: items.join('\n'), fields };
+}
+
+/** The Forge session title: "<KEY> - <state emoji> - <short summary>", at most 60 characters. */
+export function sessionTitle(ticket) {
+  const head = `${ticket.key} - ${STATE_EMOJI[ticket.state] ?? '❔'} - `;
+  const max = 60 - [...head].length;
+  let summary = String(ticket.short || ticket.title || '').replace(/\s+/g, ' ').trim();
+  if ([...summary].length > max) {
+    const cut = [...summary].slice(0, max).join('');
+    summary = (cut.includes(' ') ? cut.slice(0, cut.lastIndexOf(' ')) : cut).trim();
+  }
+  return head + summary;
 }

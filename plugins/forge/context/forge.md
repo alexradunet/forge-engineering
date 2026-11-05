@@ -1,31 +1,38 @@
----
-description: Paths, capabilities, and external-write rules of the forge plugin (always on).
-applyTo: '**'
-alwaysApply: true
----
 # forge plugin
 
-The `forge` plugin gives this session its rules, skills, and scripts.
+The `forge` plugin gives this session its rules, skills, and scripts. The Forge sessionStart hook
+gives this text and the `# forge style` text at the start of each session, because plugin rule files do not load in each session.
 `<plugin>` is the plugin folder. A skill folder is `<plugin>/skills/<name>`.
 
 ## Paths
 
-Each repository has its own wiki. Get the paths with
-`node "<plugin>/scripts/forge.mjs" where --json` once per session, from the repository or a worktree:
+Each repository has its own wiki. The first lines of the Forge session context give the paths of the session folder.
+In another folder, or when those lines are missing, get the paths with
+`node "<plugin>/scripts/forge.mjs" where --json`, from the repository or a worktree:
 
 - `<repo>`: the main checkout. Worktrees are in `../<repo>.worktrees`.
-- `<wiki>`: `../<repo>.wiki`. It holds the knowledge pages, the ticket folders (`raw/tickets`), and the daily recaps.
+- `<wiki>`: `../<repo>.wiki`. It is the memory of the user and the agents, and it can be personal or shared. It holds the knowledge pages, the company rules in `<wiki>/rules/`, the ticket folders (`raw/tickets`), and the daily recaps.
 - `<config>`: `<wiki>/forge/config`, with `tracker.md`, `repo.md`, `ci.md`, and `policy.md`.
 
 When `where` fails, or the wiki or config is missing, tell the user to say "set up forge".
 When `config` or `run` says `Not approved`, show the files and their changes. Run `forge.mjs trust approve` only after the user says yes.
 A ticket lives in the wiki of the repository where it starts. Other wikis get only a link to it.
 
-New tickets use `workflow: full-v1`, with full research, briefing/interview, and mandatory
-Diagnosed? before planning; no sizing selection or `track` field. Existing S/M/L and
-trackless tickets keep their original phases, gates, and skips. Never infer workflow,
-state, or approval from missing metadata. The `ticket` skill defines revision evidence
-and affected-action blocking; read-only resume remains available.
+New tickets use `workflow: full-v2`: full research, briefing, and interview, then four review
+gates (Scoped?, Planned?, Shippable?, Learned?) plus Sendable? for each external write. Each
+primary gate doc is short and layered (⚡ 1 min to 🔬 15 min). An open `full-v1` ticket moves
+to `full-v2` on resume with `forge.mjs migrate`. Existing S/M/L and trackless tickets keep
+their original phases, gates, and skips. Never infer workflow, state, or approval from
+missing metadata. The `ticket` skill defines revision evidence and affected-action
+blocking; read-only resume remains available.
+
+## 🎫 Ticket sessions
+
+- When the first message names a work item key or URL, load the `ticket` skill (Start or Resume).
+- The user asked for ticket session titles: `<KEY> - <state emoji> - <short>`. Call `rename_chat` first, before any other tool call or question, and again at each state change. This overrides the general advice not to rename a fresh chat.
+- When the session context has a `# Forge ticket context` part, follow it.
+- Forge names the ticket worktree and branch: `forge.mjs worktree <KEY> --summary "<goal>"` (see "Worktrees" in the `ticket` skill).
+- The **Forge Master** agent is the exception. Its title is `Forge Master - <repo>`, a key in its messages is a question, and it ignores the `# Forge ticket context` part.
 
 ## 🪟 VS Code Agents window
 
@@ -36,6 +43,7 @@ forge runs in the VS Code Agents window, with the Copilot harness and the Agent 
 - Before you advise on, configure, or change a VS Code feature, read its current documentation page. This applies to sessions, worktrees, automations, agent plugins, MCP servers, settings, and harnesses.
 - Once per session, before the first such step, read the latest release notes. Check for changes to the feature.
 - When the documentation and a forge file do not agree, follow the documentation. Tell the user the forge file and the difference.
+- Prefer a native feature (session tools, artifacts, automations, hooks, custom agents) to a Forge workaround.
 
 | Topic | Documentation |
 |---|---|
@@ -45,6 +53,13 @@ forge runs in the VS Code Agents window, with the Copilot harness and the Agent 
 | Automations | https://code.visualstudio.com/docs/agents/run/automations |
 | Agent harnesses | https://code.visualstudio.com/docs/agents/run/agent-harnesses |
 | Agent plugins | https://code.visualstudio.com/docs/agent-customization/agent-plugins |
+| Agent plugin reference (agents, hooks, automation templates) | https://code.visualstudio.com/docs/agents/reference/agent-plugin-reference |
+| Manage sessions (groups, pins, move a chat, cleanup) | https://code.visualstudio.com/docs/agents/run/sessions/manage-sessions |
+| Session tools (coordinate work across sessions) | https://code.visualstudio.com/docs/agents/run/tools |
+| Artifacts panel | https://code.visualstudio.com/docs/agents/run/artifacts |
+| Hooks | https://code.visualstudio.com/docs/agent-customization/hooks |
+| Custom agents | https://code.visualstudio.com/docs/agents/reference/custom-agent-file-reference |
+| Custom instructions and AGENTS.md | https://code.visualstudio.com/docs/agent-customization/custom-instructions |
 
 ## Config and capabilities
 

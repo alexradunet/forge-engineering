@@ -1,4 +1,4 @@
-// Reads the team config: tracker.md, repo.md, ci.md, and policy.md in
+// Reads the forge config: tracker.md, repo.md, ci.md, and policy.md in
 // <wiki>/forge/config. Flat frontmatter "key: value" with inline lists [a, b],
 // plus the Queries table of tracker.md and the Checkouts table of repo.md.
 import { existsSync, readFileSync } from 'node:fs';
