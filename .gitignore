@@ -1,0 +1,48 @@
+# Separate repositories, installed tools, and local output.
+/repos/
+/tools/
+/.local/
+/Python/
+
+# The wiki is its own repository (../<repo>.wiki next to the checkout).
+/wiki/
+
+# Dependency installs and generated output.
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+coverage/
+
+# Local credentials and authentication files.
+.env
+.env.*
+!.env.example
+.npmrc
+.databrickscfg
+*.clixml
+*.pfx
+*.p12
+*.pem
+*.key
+*credentials*.json
+*credentials*.xml
+
+# Logs, dumps, traces, and transient files.
+*.log
+*.jsonl
+*.dmp
+*.dmw
+*.etl
+*.nettrace
+*.gcdump
+*.tmp
+*.bak
+Thumbs.db
+Desktop.ini

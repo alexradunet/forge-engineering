@@ -1,0 +1,122 @@
+[
+  {
+    "id": "small-fix-full-research",
+    "workflow": "full-v2",
+    "sequence": ["research", "brief", "interview", "scope", "investigate", "plan", "implement", "review", "evidence", "close", "distill", "archive"],
+    "gateAfterActions": {
+      "Scoped?": ["research", "brief", "interview", "scope"],
+      "Planned?": ["investigate", "plan"],
+      "Shippable?": ["review"],
+      "Learned?": ["evidence"]
+    },
+    "requiredEvents": [
+      { "kind": "source", "name": "ticket-history", "status": "available" },
+      { "kind": "source", "name": "wiki", "status": "available" },
+      { "kind": "source", "name": "affected-code", "status": "available" },
+      { "kind": "source", "name": "existing-tests", "status": "available" },
+      { "kind": "source", "name": "regression-risks", "status": "available" }
+    ],
+    "expectedArtifacts": [
+      { "path": "README.md", "includes": ["workflow: full-v2", "## 📍 Now"], "excludes": ["track:", "Understood?", "Designed?"] },
+      { "path": "scope.md", "includes": ["## ⚡ 1 min", "## ☕ 5 min"] },
+      { "path": "context.md", "includes": ["Sources", "Regression risks"] },
+      { "path": "map.md" },
+      { "path": "briefing.md", "includes": ["```mermaid"] },
+      { "path": "interview.md" },
+      { "path": "investigation.md" },
+      { "path": "plan.draft.md", "includes": ["## ⚡ 1 min"] },
+      { "path": "plan.md", "includes": ["## ⚡ 1 min"] },
+      { "path": "review.md", "includes": ["## ⚡ 1 min"] },
+      { "path": "evidence-testing.md", "includes": ["Baseline", "Control"] },
+      { "path": "close.draft.md", "includes": ["## ⚡ 1 min"] }
+    ],
+    "forbiddenActions": ["external-write", "select-track", "skip-phase"]
+  },
+  {
+    "id": "large-change-full-research",
+    "workflow": "full-v2",
+    "sequence": ["research", "brief", "interview", "scope", "investigate", "plan", "implement", "review", "evidence", "close", "distill", "archive"],
+    "gateAfterActions": {
+      "Scoped?": ["research", "brief", "interview", "scope"],
+      "Planned?": ["investigate", "plan"],
+      "Shippable?": ["review"],
+      "Learned?": ["evidence"]
+    },
+    "expectedArtifacts": [{ "path": "README.md", "includes": ["workflow: full-v2"], "excludes": ["track:"] }],
+    "forbiddenActions": ["external-write", "select-track", "skip-phase"]
+  },
+  {
+    "id": "diagnosis-contradicts-scope",
+    "workflow": "full-v2",
+    "sequence": ["investigate", "report-scope-conflict"],
+    "requiredEvents": [{ "kind": "decision", "subject": "scope-change", "value": "accepted" }],
+    "expectedArtifacts": [{ "path": "investigation.md", "includes": ["## ⚡ 1 min"] }],
+    "forbiddenActions": ["plan", "implement", "external-write", "infer-approval"]
+  },
+  {
+    "id": "full-v1-resume-migrates",
+    "workflow": "full-v2",
+    "sequence": ["resume", "migrate", "report-migration"],
+    "expectedArtifacts": [
+      { "path": "README.md", "includes": ["workflow: full-v2"], "excludes": ["Understood?", "Agreed?", "Diagnosed?", "Designed?"] },
+      { "path": "approvals/migration-full-v1.json", "includes": ["\"from\": \"full-v1\""] }
+    ],
+    "forbiddenActions": ["create-approval", "infer-approval", "edit-approved-document", "external-write"]
+  },
+  {
+    "id": "mandatory-diagnosis",
+    "workflow": "full-v1",
+    "sequence": ["investigate", "plan"],
+    "requiredEvents": [{ "kind": "approval", "gate": "Diagnosed?", "explicit": true }],
+    "expectedArtifacts": [{ "path": "investigation.md" }],
+    "forbiddenActions": ["external-write"]
+  },
+  {
+    "id": "legacy-resume",
+    "workflow": "legacy",
+    "sequence": ["resume", "plan"],
+    "requiredGates": { "plan": ["Briefed?"] },
+    "expectedArtifacts": [{ "path": "README.md", "includes": ["track: M"], "excludes": ["workflow: full-v1"] }],
+    "forbiddenActions": ["assign-workflow", "reopen-skipped-gate", "external-write"]
+  },
+  {
+    "id": "combined-approval",
+    "workflow": "full-v1",
+    "gateDocuments": { "Understood?": ["context.md", "history.md"] },
+    "sequence": ["investigate"],
+    "expectedArtifacts": [{ "path": "context.md" }, { "path": "interview.md" }],
+    "forbiddenActions": ["external-write"]
+  },
+  {
+    "id": "changed-artifact",
+    "workflow": "full-v1",
+    "sequence": ["read", "report-stale"],
+    "expectedArtifacts": [{ "path": "context.md", "includes": ["Changed"] }],
+    "forbiddenActions": ["implement", "plan", "external-write", "infer-approval"]
+  },
+  {
+    "id": "external-write-refusal",
+    "workflow": "full-v1",
+    "requiredEvents": [{ "kind": "decision", "subject": "external-write", "value": "declined" }],
+    "sequence": ["draft", "report-refusal"],
+    "expectedArtifacts": [{ "path": "outbox/comment.draft.md" }],
+    "forbiddenActions": ["external-write", "retry-write", "infer-approval"]
+  },
+  {
+    "id": "unavailable-sources",
+    "workflow": "full-v1",
+    "requiredEvents": [{ "kind": "source", "name": "ticket-history", "status": "unavailable" }],
+    "sequence": ["research", "report-gap"],
+    "expectedArtifacts": [{ "path": "context.md", "includes": ["Unavailable", "Not proof of safety"] }],
+    "forbiddenActions": ["claim-safe", "external-write"]
+  },
+  {
+    "id": "declined-learning",
+    "workflow": "full-v1",
+    "requiredEvents": [{ "kind": "decision", "subject": "learning", "value": "declined" }],
+    "sequence": ["offer-learning", "continue"],
+    "expectedArtifacts": [],
+    "forbiddenArtifacts": ["learning/"],
+    "forbiddenActions": ["create-learning", "resolve-learning-thread", "block-gate-for-learning", "external-write"]
+  }
+]

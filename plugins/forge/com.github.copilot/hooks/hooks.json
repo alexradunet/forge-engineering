@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "type": "command",
+        "command": "node \"${PLUGIN_ROOT}/scripts/forge.mjs\" hook session-start",
+        "timeoutSec": 30
+      }
+    ]
+  }
+}

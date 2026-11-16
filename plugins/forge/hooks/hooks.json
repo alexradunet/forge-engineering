@@ -1,0 +1,22 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact|fork",
+        "hooks": [
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/forge.mjs", "hook", "session-start", "--host", "claude", "--part", "1"], "timeout": 30 },
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/forge.mjs", "hook", "session-start", "--host", "claude", "--part", "2"], "timeout": 30 },
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/forge.mjs", "hook", "session-start", "--host", "claude", "--part", "3"], "timeout": 30 },
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/forge.mjs", "hook", "session-start", "--host", "claude", "--part", "4"], "timeout": 30 }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/forge.mjs", "hook", "prompt-submit", "--host", "claude"], "timeout": 30 }
+        ]
+      }
+    ]
+  }
+}

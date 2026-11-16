@@ -1,0 +1,16 @@
+{
+  "name": "github",
+  "title": "GitHub",
+  "description": "Generic GitHub profile: GitHub Issues, GitHub pull requests, and GitHub Actions, all with the gh CLI.",
+  "files": [
+    "plugin.json"
+  ],
+  "tests": [],
+  "terms": [],
+  "tools": [
+    "gh"
+  ],
+  "mainCheckout": null,
+  "mcpServers": [],
+  "mcpRetired": []
+}

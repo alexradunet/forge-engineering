@@ -1,0 +1,466 @@
+#!/usr/bin/env node
+// forge command line. Run with an absolute path, for example:
+//   node "<plugin>/scripts/forge.mjs" where
+// Commands:
+//   where   [--wiki <dir>]   the repository, its wiki, and the config folder (JSON)
+//   config  [--wiki <dir>]   the forge config (JSON)
+//   config set <file>.<key>=<value> ...   set frontmatter values (validated; writes nothing on a problem)
+//   config row <checkouts|queries> <name> [cells...] [--delete]   add, replace, or delete a table row
+//   doctor  [--wiki <dir>] [--json]   read-only setup check; exit 1 on a failure
+//   lint    [--wiki <dir>] [--json] [--fix]   validate tickets, approvals and wiki metadata
+//   detect  [--wiki <dir>]   host, CLIs, login, inferred values (JSON, read-only)
+//   init-wiki [--wiki <dir>] create the local wiki (git init, .gitignore, index.md) and bind it
+//   bind    [--wiki <dir>]   write <wiki>/forge/repo.json
+//   seed [--force]   copy the profile templates to <wiki>/forge/config
+//   migrate <key> [--dry-run] [--json]   move a full-v1 ticket to full-v2 (carries only valid paired approvals)
+//   board   [--json] [--dry-run] [--today <date>]   write <wiki>/raw/board.md, the tickets grouped by state
+//   worktree <KEY> --summary "<goal>" [--base <ref>] [--create] [--json]   plan or create the ticket worktree and branch
+//   snapshot <key> <gate> [--json]   save the gate doc as approvals/snapshots/<gate>-<n>.md at a review
+//   diff    <key> <gate> [--json]   the ⚡ card on a first review, else the sections changed since the last snapshot
+//   gate-approve <key> <gate> --answer "<exact user answer>" [--method form|chat] [--manifest <path>] [--hash <sha>] [--dry-run] [--json]
+//            record an explicit approval of an in-review gate (not Sendable?); checks the manifest, then writes the README and approvals/history.md
+//   hook session-start [--host <host>]   read the hook event on stdin; print {"additionalContext"} with the Forge context, else {}
+//   hook session-start --host claude --part <n>   the same for Claude Code: part n of the context in {"hookSpecificOutput"}
+//   hook prompt-submit --host claude   Claude Code: the ticket part and the session title when the prompt names a ticket
+//   context [--cwd <dir>] [--host <host>]   print the Forge context (for a host without the hook)
+//     <host> is vscode, copilot-cli, or claude (copilot is an old name). Without --host, forge.mjs finds the host from the environment.
+//   trust [approve <path>=<sha>...]   show or approve the files under <wiki>/forge
+//   run <script> [args...]   run <wiki>/forge/scripts/<script>.mjs after the trust check
+import { spawnSync } from 'node:child_process';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { resolve, ForgeError } from './lib/repo.mjs';
+import { loadConfig, KINDS } from './lib/config.mjs';
+import { setValues, upsertRow } from './lib/config-write.mjs';
+import { createStore } from './lib/cred.mjs';
+import { detect, initWiki, bind, seed } from './lib/setup.mjs';
+import { approve, assertTrusted, status as trustStatus } from './lib/trust.mjs';
+import { lint } from './lib/validation.mjs';
+import { findTicket } from './lib/tickets.mjs';
+import { migrateTicket } from './lib/migrate.mjs';
+import { approveGate } from './lib/approve.mjs';
+import { writeBoard } from './lib/board.mjs';
+import { createWorktree, planWorktree } from './lib/worktree.mjs';
+import { CLAUDE_PARTS, HOST_NAMES, contextText, promptSubmit, readEvent, resolveHost, sessionStart } from './lib/hook.mjs';
+import { diffGate, gateName, renderDiff, saveSnapshot } from './lib/reading.mjs';
+import { loadProfile, pluginRoot } from './lib/profile.mjs';
+
+// A tracker that uses an MCP server (see mcpGateway) has no CLI.
+const CLI_FOR = { github: 'gh' };
+
+export { loadProfile };
+
+// Values that each user must set. The profile templates hold the shared values.
+const PLACEHOLDER_USER = /<user>/;
+
+/** Credential names that the config names: "cred.mjs set <name>" and "--cred <name>". */
+export function credNames(texts) {
+  const names = new Set();
+  for (const t of texts) {
+    for (const m of t.matchAll(/cred\.mjs"?\s+set\s+([A-Za-z0-9][\w.-]*)|--cred\s+([A-Za-z0-9][\w.-]*)/g)) names.add(m[1] ?? m[2]);
+  }
+  return [...names];
+}
+
+/** Setup completeness: the per-user branch pattern, checkout paths, and credentials. */
+export function completeness(configDir, config, { credStore, profile = loadProfile() } = {}) {
+  const found = [];
+  const add = (check, detail) => found.push({ status: 'warn', check, detail });
+  if (PLACEHOLDER_USER.test(String(config.repo.branchPattern))) {
+    add('config:placeholder', `repo.branchPattern is the template value "${config.repo.branchPattern}". Put your name in place of <user>: forge.mjs config set "repo.branchPattern=${String(config.repo.branchPattern).replace('<user>', '<your name>')}".`);
+  }
+  const main = config.repo.checkouts[0];
+  const hint = profile.mainCheckout;
+  if (!main) add('config:checkouts', `repo.md has no Checkouts row. Add the main checkout: forge.mjs config row checkouts ${hint?.name ?? '<name>'} <path> ${hint?.remote ?? '<owner/repo>'}.`);
+  else if (!existsSync(main.path)) add('config:checkouts', `The main checkout ${main.path} does not exist on this machine. Clone it there, or change the row: forge.mjs config row checkouts ${main.name} <path> ${main.remote ?? '<remote>'}.`);
+
+  const texts = KINDS.map((k) => path.join(configDir, `${k}.md`)).filter(existsSync).map((f) => readFileSync(f, 'utf8'));
+  const names = credNames(texts);
+  for (const name of names) {
+    let has = null;
+    try { has = (credStore ?? createStore()).has(name); } catch (err) { add(`cred:${name}`, `Cannot check the credential store: ${err.message}`); continue; }
+    found.push(has
+      ? { status: 'ok', check: `cred:${name}`, detail: 'stored' }
+      : { status: 'warn', check: `cred:${name}`, detail: `Not stored. The user runs: node "<plugin>/scripts/cred.mjs" set ${name}` });
+  }
+  return found;
+}
+
+// The MCP servers of the profile (profile.mcpServers). The repository .mcp.json can give some, and the forge mcp.json
+// gives the others. When the repository adds a server that forge also gives, remove it from the forge mcp.json.
+const normUrl = (u) => String(u ?? '').trim().toLowerCase().replace(/\/+$/, '');
+const MCP_PANEL = 'Chat: Open Customizations > MCP Servers';
+
+/** Check that the profile MCP servers are configured once, and that no retired URL is in use. */
+export function mcpGateway({ repoPath, env = process.env, plugin = pluginRoot, profile = loadProfile() } = {}) {
+  const found = [];
+  const add = (status, check, detail) => found.push({ status, check, detail });
+  const sources = [
+    plugin && { file: path.join(plugin, 'mcp.json'), forge: true },
+    repoPath && { file: path.join(repoPath, '.mcp.json') },
+    { file: path.join(env.COPILOT_HOME || path.join(os.homedir(), '.copilot'), 'mcp-config.json') },
+  ].filter(Boolean);
+  const servers = [];
+  for (const { file, forge } of sources.filter((s) => existsSync(s.file))) {
+    try {
+      const entries = Object.entries(JSON.parse(readFileSync(file, 'utf8')).mcpServers ?? {});
+      for (const [name, s] of entries) servers.push({ name, url: normUrl(s?.url), file, forge: !!forge });
+    } catch (err) {
+      add('warn', 'mcp:config', `Cannot read ${file}: ${err.message}`);
+    }
+  }
+  for (const g of profile.mcpServers) {
+    const hits = servers.filter((s) => s.url === normUrl(g.url));
+    if (!hits.length) {
+      add('warn', `mcp:${g.name}`, `Not configured (${g.url}). Update the forge plugin. Forge gives each server that the repository .mcp.json does not give.`);
+    } else if (hits.some((s) => s.forge) && hits.some((s) => !s.forge)) {
+      const other = hits.find((s) => !s.forge);
+      add('warn', `mcp:${g.name}`, `Two entries: forge and "${other.name}" in ${other.file}. The tools load two times. Disable the forge entry in ${MCP_PANEL}, and remove it from the forge mcp.json in the next forge version.`);
+    } else {
+      add('ok', `mcp:${g.name}`, `${hits[0].name} in ${hits[0].forge ? 'the forge plugin' : hits[0].file}`);
+    }
+  }
+  for (const r of profile.mcpRetired) {
+    for (const s of servers.filter((x) => x.url === normUrl(r.url))) {
+      add('warn', 'mcp:retired', `Server "${s.name}" in ${s.file} uses the retired URL ${r.url}. Forge gives the new URL ${r.use}. Disable "${s.name}" in ${MCP_PANEL}.`);
+    }
+  }
+  return found;
+}
+
+export function parseArgs(argv) {
+  const out = { _: [] };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--json') out.json = true;
+    else if (['--wiki', '--cwd'].includes(a)) {
+      out[a.slice(2)] = argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[++i] : '';
+    }
+    else if (a === '--force') out.force = true;
+    else if (a === '--fix') out.fix = true;
+    else if (a === '--dry-run') out.dryRun = true;
+    else if (a === '--create') out.create = true;
+    else if (['--summary', '--base', '--today', '--answer', '--method', '--manifest', '--hash'].includes(a)) {
+      if (argv[i + 1] === undefined || argv[i + 1].startsWith('--')) throw new ForgeError(`${a} needs a value.`, 'bad-args');
+      out[a.slice(2)] = argv[++i];
+    }
+    else out._.push(a);
+  }
+  return out;
+}
+
+export function onPath(cmd, env = process.env) {
+  const dirs = (env.PATH ?? env.Path ?? '').split(path.delimiter).filter(Boolean);
+  const exts = process.platform === 'win32' ? (env.PATHEXT ?? '.EXE;.CMD;.BAT').split(';') : [''];
+  return dirs.some((d) => exts.some((e) => existsSync(path.join(d, cmd + e.toLowerCase())) || existsSync(path.join(d, cmd + e))));
+}
+
+export function doctor({ cwd, wiki, env = process.env, credStore } = {}) {
+  const results = [];
+  const add = (check, status, detail = '') => results.push({ status, check, detail });
+
+  const major = Number.parseInt(process.versions.node.split('.')[0], 10);
+  add('tool:node', major >= 20 ? 'ok' : 'fail', `v${process.versions.node}${major >= 20 ? '' : '. forge needs Node.js 20 or later.'}`);
+  add('tool:git', onPath('git', env) ? 'ok' : 'fail', onPath('git', env) ? '' : 'Not on PATH. Install Git.');
+
+  for (const rel of ['plugin.json', 'skills']) {
+    add(`plugin:${rel}`, existsSync(path.join(pluginRoot, rel)) ? 'ok' : 'fail', path.join(pluginRoot, rel));
+  }
+  const skillsDir = path.join(pluginRoot, 'skills');
+  if (existsSync(skillsDir)) {
+    for (const d of readdirSync(skillsDir, { withFileTypes: true }).filter((e) => e.isDirectory())) {
+      const f = path.join(skillsDir, d.name, 'SKILL.md');
+      const name = existsSync(f) ? /^name:\s*(\S+)/m.exec(readFileSync(f, 'utf8'))?.[1] : null;
+      add(`skill:${d.name}`, name === d.name ? 'ok' : 'fail', name === d.name ? '' : 'SKILL.md is missing, or its name does not match the folder.');
+    }
+  }
+
+  let where;
+  try {
+    where = resolve({ cwd, wiki, env });
+  } catch (err) {
+    add('repo', 'fail', err.message);
+    return results;
+  }
+  add('repo', 'ok', where.repo.path + (where.repo.worktree ? ` (worktree ${where.repo.worktree})` : ''));
+  add('repo:remote', where.repo.remote ? 'ok' : 'warn', where.repo.remote ?? 'No origin remote.');
+  add('wiki', where.wiki.exists ? 'ok' : 'fail', where.wiki.exists ? `${where.wiki.path} (${where.wiki.source})` : `Not found: ${where.wiki.path}. Run the forge-setup skill.`);
+  if (where.wiki.exists) add('wiki:binding', where.wiki.bound ? 'ok' : 'warn', where.wiki.bound ? 'forge/repo.json' : 'No forge/repo.json. Run the forge-setup skill.');
+  for (const w of where.warnings.filter((x) => !x.includes('has no forge/repo.json'))) add('warning', 'warn', w);
+  if (!where.wiki.exists) return results;
+
+  try {
+    const { config } = loadConfig(where.configDir);
+    for (const kind of KINDS) {
+      const file = path.join(where.configDir, `${kind}.md`);
+      if (!existsSync(file)) { add(`config:${kind}.md`, 'warn', 'Missing. forge uses the defaults. Run the forge-setup skill.'); continue; }
+      const provider = config[kind].provider;
+      add(`config:${kind}.md`, 'ok', provider ? `provider: ${provider}` : '');
+      const tool = CLI_FOR[provider];
+      if (tool && !onPath(tool, env)) add(`config:${kind}.md`, 'warn', `${tool} is not on PATH. The ${provider} commands need it.`);
+    }
+    results.push(...completeness(where.configDir, config, { credStore }));
+  } catch (err) {
+    add('config', 'fail', err.message);
+  }
+  results.push(...mcpGateway({ repoPath: where.repo.path, env }));
+  const st = trustStatus(where, { env });
+  const bad = st.files.filter((f) => f.state !== 'ok');
+  add('trust', bad.length ? 'fail' : 'ok', bad.length ? `Not approved: ${bad.map((f) => `${f.rel} (${f.state})`).join(', ')}. Run "forge.mjs trust".` : `${st.files.length} files approved`);
+  return results;
+}
+
+function print(results) {
+  const w = Math.max(...results.map((r) => r.check.length));
+  for (const r of results) console.log(`${r.status.padEnd(4)}  ${r.check.padEnd(w)}  ${r.detail}`);
+}
+
+export function runScript(name, rest, { cwd = process.cwd(), env = process.env } = {}) {
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(name ?? '')) throw new ForgeError('Usage: forge.mjs run <script> [args...]. The name has lowercase letters, digits, and hyphens.', 'bad-args');
+  const where = resolve({ cwd, env });
+  const file = path.join(where.wiki.path, 'forge', 'scripts', `${name}.mjs`);
+  if (!existsSync(file)) throw new ForgeError(`No wiki script: ${file}`, 'no-script');
+  assertTrusted(where, ['scripts/', 'config/'], { env });
+  const r = spawnSync(process.execPath, [file, ...rest], {
+    cwd,
+    stdio: 'inherit',
+    env: { ...env, FORGE_CORE: path.join(pluginRoot, 'scripts'), FORGE_WIKI: where.wiki.path, FORGE_REPO: where.repo.path },
+  });
+  return r.status ?? 1;
+}
+
+export function configEdit(argv, { cwd = process.cwd() } = {}) {
+  const [sub, ...rest] = argv;
+  const opts = { cwd };
+  const pos = [];
+  let remove = false;
+  for (let i = 0; i < rest.length; i++) {
+    if (['--wiki', '--cwd'].includes(rest[i])) {
+      if (!rest[i + 1] || rest[i + 1].startsWith('--')) throw new ForgeError(`${rest[i]} needs a folder.`, 'bad-args');
+      opts[rest[i].slice(2)] = rest[++i];
+    } else if (rest[i] === '--delete' && sub === 'row') remove = true;
+    else pos.push(rest[i]);
+  }
+  const where = resolve(opts);
+  const r = sub === 'set' ? setValues(where.configDir, pos) : upsertRow(where.configDir, pos[0], pos.slice(1), { remove });
+  return { configDir: r.configDir, changed: r.changed, next: r.changed.length ? 'Review the change, then approve it: forge.mjs trust' : 'No change.' };
+}
+
+/**
+ * The options of `hook <name> [--host <host>] [--part <n>]`, or null when they are not valid.
+ * A hook without --host is a Copilot hook (VS Code or Copilot CLI, from env). Claude Code hooks give --host claude.
+ */
+export function hookArgs(argv, env = process.env) {
+  const [, name, ...rest] = argv;
+  const out = { name, host: '', part: 1 };
+  let partGiven = false;
+  for (let i = 0; i < rest.length; i++) {
+    if (rest[i] === '--host' && HOST_NAMES.includes(rest[i + 1])) out.host = rest[++i];
+    else if (rest[i] === '--part' && /^[1-9]$/.test(rest[i + 1] ?? '') && Number(rest[i + 1]) <= CLAUDE_PARTS) { out.part = Number(rest[++i]); partGiven = true; }
+    else return null;
+  }
+  // Claude Code runs one hook for each part, so only an explicit --host claude gives parts.
+  const explicitClaude = out.host === 'claude';
+  out.host = explicitClaude ? 'claude' : resolveHost(out.host || 'copilot', env);
+  if (name === 'session-start' && (explicitClaude || !partGiven)) return out;
+  if (name === 'prompt-submit' && explicitClaude && !partGiven) return out;
+  return null;
+}
+
+/** `context [--cwd <dir>] [--host <host>]`: the Forge context as plain text, for a host without the hook. */
+function printContext(argv, env = process.env) {
+  const opts = { cwd: process.cwd(), host: '' };
+  for (let i = 1; i < argv.length; i++) {
+    if (argv[i] === '--cwd' && argv[i + 1]) opts.cwd = argv[++i];
+    else if (argv[i] === '--host' && HOST_NAMES.includes(argv[i + 1])) opts.host = argv[++i];
+    else { console.error(`forge: Usage: forge.mjs context [--cwd <dir>] [--host ${HOST_NAMES.join('|')}].`); return 2; }
+  }
+  const host = resolveHost(opts.host, env);
+  const text = contextText({ cwd: path.resolve(opts.cwd), source: '', prompt: '' }, { cli: fileURLToPath(import.meta.url), env, host });
+  if (!text) { console.error('forge: no Forge context: the rule files cannot be read.'); return 1; }
+  console.log(text);
+  return 0;
+}
+
+export function main(argv = process.argv.slice(2)) {
+  if (argv[0] === 'hook') {
+    // A hook never blocks the session: it prints JSON and exits 0, also on errors.
+    let result = {};
+    try {
+      const hook = hookArgs(argv);
+      if (!hook) console.error('forge: Usage: forge.mjs hook session-start [--host vscode|copilot-cli | --host claude --part <1-4>] | hook prompt-submit --host claude (reads the hook event JSON on stdin).');
+      else {
+        let raw = '';
+        try { if (!process.stdin.isTTY) raw = readFileSync(0, 'utf8'); } catch { /* no input */ }
+        const options = { cli: fileURLToPath(import.meta.url), host: hook.host, part: hook.part };
+        result = hook.name === 'prompt-submit' ? promptSubmit(readEvent(raw), options) : sessionStart(readEvent(raw), options);
+      }
+    } catch (err) {
+      console.error(`forge: hook ${argv[1]}: ${err.message}`);
+      result = {};
+    }
+    console.log(JSON.stringify(result));
+    return 0;
+  }
+  if (argv[0] === 'context') return printContext(argv);
+  if (argv[0] === 'config' && ['set', 'row'].includes(argv[1])) {
+    try {
+      console.log(JSON.stringify(configEdit(argv.slice(1)), null, 2));
+      return 0;
+    } catch (err) {
+      if (err instanceof ForgeError) { console.error(`forge: ${err.message}`); return 1; }
+      throw err;
+    }
+  }
+  if (argv[0] === 'run') {
+    try {
+      return runScript(argv[1], argv.slice(2));
+    } catch (err) {
+      if (err instanceof ForgeError) { console.error(`forge: ${err.message}`); return 1; }
+      throw err;
+    }
+  }
+  let args;
+  try { args = parseArgs(argv); }
+  catch (err) {
+    if (err instanceof ForgeError) { console.error(`forge: ${err.message}`); return 2; }
+    throw err;
+  }
+  const [cmd] = args._;
+  const opts = { cwd: args.cwd ?? process.cwd(), wiki: args.wiki };
+  try {
+    if (cmd === 'where') {
+      console.log(JSON.stringify(resolve(opts), null, 2));
+    } else if (cmd === 'config') {
+      const where = resolve(opts);
+      assertTrusted(where, ['config/']);
+      console.log(JSON.stringify({ ...loadConfig(where.configDir), warnings: where.warnings }, null, 2));
+    } else if (cmd === 'doctor') {
+      const results = doctor(opts);
+      if (args.json) console.log(JSON.stringify(results, null, 2)); else print(results);
+      return results.some((r) => r.status === 'fail') ? 1 : 0;
+    } else if (cmd === 'lint') {
+      if (args._.length !== 1 || args.force
+        || (args.wiki !== undefined && (!args.wiki || args.wiki.startsWith('--')))
+        || (args.cwd !== undefined && (!args.cwd || args.cwd.startsWith('--')))
+        || argv.some((arg, index) => ['--wiki', '--cwd'].includes(arg) && (!argv[index + 1] || argv[index + 1].startsWith('--')))) {
+        throw new ForgeError('Usage: forge.mjs lint [--wiki <dir>] [--cwd <dir>] [--json] [--fix].', 'bad-args');
+      }
+      const where = resolve(opts);
+      const report = lint({ wikiPath: where.wiki.path, repoPath: where.repo.path, fix: args.fix });
+      if (args.json) console.log(JSON.stringify(report, null, 2));
+      else {
+        for (const item of report.findings) console.log(`${item.severity} ${item.code} ${item.file}${item.line ? `:${item.line}` : ''}: ${item.message} ${item.remedy}`);
+        for (const repair of report.repairs) console.log(`repaired ${repair.code} ${repair.file}; log: ${repair.log}`);
+        console.log(`${report.summary.errors} errors, ${report.summary.warnings} warnings, ${report.summary.repaired} repairs.`);
+      }
+      return report.summary.errors ? 1 : 0;
+    } else if (cmd === 'detect') {
+      console.log(JSON.stringify(detect(resolve(opts)), null, 2));
+    } else if (cmd === 'init-wiki') {
+      console.log(JSON.stringify(initWiki(resolve(opts)), null, 2));
+    } else if (cmd === 'bind') {
+      console.log(JSON.stringify(bind(resolve(opts)), null, 2));
+    } else if (cmd === 'seed') {
+      const templates = path.join(pluginRoot, 'templates', 'config');
+      console.log(JSON.stringify(seed(resolve(opts), templates, { force: args.force }), null, 2));
+    } else if (cmd === 'migrate') {
+      if (args._.length !== 2) throw new ForgeError('Usage: forge.mjs migrate <key> [--dry-run] [--json].', 'bad-args');
+      const where = resolve(opts);
+      let result;
+      try { result = migrateTicket(findTicket(where.wiki.path, args._[1]).dir, { dryRun: args.dryRun }); }
+      catch (err) { throw new ForgeError(err.message, 'migrate'); }
+      if (args.json) console.log(JSON.stringify(result, null, 2));
+      else {
+        console.log(`${result.key}: ${result.status}.`);
+        for (const item of result.decisions) {
+          console.log(item.result === 'carried'
+            ? `  ${item.gate} carried from ${item.sources.join(' + ')} (${item.manifest})`
+            : `  ${item.gate} reopened: ${item.reasons.join('; ')}`);
+        }
+        if (result.phase) console.log(`  phase ${result.phase.from} → ${result.phase.to}, state ${result.state.from} → ${result.state.to}`);
+        for (const note of result.notes) console.log(`  note: ${note}`);
+        if (result.writes.length) console.log(`  ${args.dryRun ? 'would write' : 'wrote'}: ${result.writes.join(', ')}`);
+      }
+    } else if (cmd === 'board') {
+      if (args._.length !== 1) throw new ForgeError('Usage: forge.mjs board [--json] [--dry-run] [--today <YYYY-MM-DD>].', 'bad-args');
+      const where = resolve(opts);
+      if (!where.wiki.exists) throw new ForgeError(`No wiki at ${where.wiki.path}. Run the forge-setup skill.`, 'no-wiki');
+      let board;
+      try { board = writeBoard(where.wiki.path, { today: args.today, dryRun: args.dryRun }); }
+      catch (err) { throw new ForgeError(err.message, 'board'); }
+      if (args.json) console.log(JSON.stringify(board, null, 2));
+      else {
+        console.log(board.groups.map((group) => `${group.emoji} ${group.label} ${group.tickets.length}`).join(' · '));
+        for (const error of board.errors) console.log(`  read error ${error.folder}: ${error.message}`);
+        console.log(`${board.written ? 'wrote' : !board.changed ? 'unchanged' : 'would write'}: ${board.file}`);
+      }
+    } else if (cmd === 'worktree') {
+      if (args._.length !== 2 || !args.summary) throw new ForgeError('Usage: forge.mjs worktree <KEY> --summary "<goal>" [--base <ref>] [--create] [--json].', 'bad-args');
+      const where = resolve(opts);
+      assertTrusted(where, ['config/']);
+      const { config } = loadConfig(where.configDir);
+      let result;
+      try {
+        result = planWorktree({ repoPath: where.repo.path, cwd: opts.cwd, config, key: args._[1], summary: args.summary, base: args.base });
+        if (args.create) result = createWorktree(result, where.repo.path);
+      } catch (err) { throw new ForgeError(err.message, 'worktree'); }
+      if (args.json) console.log(JSON.stringify(result, null, 2));
+      else {
+        console.log(`${result.key}: ${result.status ?? result.action}`);
+        console.log(`  branch ${result.branch}`);
+        console.log(`  folder ${result.existing?.path ?? result.folder}`);
+        console.log(`  base   ${result.base.ref} ${result.base.sha ?? '(not found)'}`);
+        if (result.current) console.log(`  here   ${result.current.path} [${result.current.branch || 'detached'}]`);
+        for (const item of result.related) console.log(`  other  ${item.path} [${item.branch || 'detached'}]`);
+        for (const command of result.status ? [] : result.commands) console.log(`  run    ${command}`);
+      }
+    } else if (cmd === 'snapshot' || cmd === 'diff') {
+      if (args._.length !== 3) throw new ForgeError(`Usage: forge.mjs ${cmd} <key> <gate> [--json].`, 'bad-args');
+      const where = resolve(opts);
+      let result;
+      try {
+        const { dir, ticket } = findTicket(where.wiki.path, args._[1]);
+        const gate = gateName(args._[2]);
+        result = cmd === 'snapshot' ? saveSnapshot(dir, ticket, gate) : diffGate(dir, ticket, gate);
+      } catch (err) { throw new ForgeError(err.message, cmd); }
+      if (args.json) console.log(JSON.stringify(result, null, 2));
+      else if (cmd === 'diff') console.log(renderDiff(result));
+      else console.log(`${result.gate} ${result.written ? 'saved' : 'unchanged'}: ${result.snapshot}`);
+    } else if (cmd === 'gate-approve') {
+      if (args._.length !== 3 || !args.answer) throw new ForgeError('Usage: forge.mjs gate-approve <key> <gate> --answer "<exact user answer>" [--method form|chat] [--manifest <path>] [--hash <sha>] [--dry-run] [--json].', 'bad-args');
+      const where = resolve(opts);
+      let result;
+      try {
+        const { dir } = findTicket(where.wiki.path, args._[1]);
+        result = approveGate(dir, { gate: gateName(args._[2]), answer: args.answer, method: args.method, manifest: args.manifest, hash: args.hash, today: args.today, dryRun: args.dryRun });
+      } catch (err) { throw new ForgeError(err.message, 'gate-approve'); }
+      if (args.json) console.log(JSON.stringify(result, null, 2));
+      else console.log(` ${result.gate} ${result.status} (${result.date}, ${result.method}): ${result.manifest} sha256 ${result.hash}. ${args.dryRun ? 'Would write' : 'Wrote'}: ${result.writes.join(', ')}.`);
+    } else if (cmd === 'trust') {      const where = resolve(opts);
+      if (args._[1] === 'approve') console.log(JSON.stringify(approve(where, args._.slice(2)), null, 2));
+      else console.log(JSON.stringify(trustStatus(where), null, 2));
+    } else {
+      console.error('Usage: node forge.mjs <where|config|doctor|lint|detect|init-wiki|bind|seed|migrate|board|worktree|snapshot|diff|gate-approve|hook|context|trust|run> [--wiki <dir>] [--cwd <dir>] [--json]');
+      return 2;
+    }
+    return 0;
+  } catch (err) {
+    if (err instanceof ForgeError) {
+      if (cmd === 'lint' && args.json) console.log(JSON.stringify({
+        version: 1, wikiPath: args.wiki ? path.resolve(args.wiki) : null,
+        findings: [{ file: args.wiki ?? opts.cwd, line: null, code: err.code, severity: 'error', message: err.message, remedy: 'Correct the command or repository binding and run lint again.' }],
+        repairs: [], summary: { errors: 1, warnings: 0, repaired: 0 },
+      }, null, 2));
+      else console.error(`forge: ${err.message}`);
+      return 1;
+    }
+    throw err;
+  }
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  process.exitCode = main();
+}

@@ -1,0 +1,159 @@
+# 🧾 VS Code baseline
+
+Forge was last checked against these VS Code versions and docs.
+Update this page with each Forge change (see [AGENTS.md](../AGENTS.md)).
+
+| Item | Value |
+|---|---|
+| Docs and release notes read | 1.147 Insiders (notes of 2026-11-10). On 2026-11-13, 1.146 is the latest stable release, and no newer notes page exists. |
+| Installed and used for the click-checks | 1.144.0, and 1.145.0 for click-check 5 |
+| Checked on | 2026-11-15 |
+| Other hosts checked | Claude Code 2.1.322 and Copilot CLI 1.0.103 (see "Claude Code host" and "Hosts") |
+| Forge version | 6.9.0 (GitHub profile): host layer with host verbs, Claude Code hook and marketplace, `board` skill, packaging contract test, generic core with one profile |
+
+## 🗓️ Release notes read
+
+| Version | Forge impact |
+|---|---|
+| 1.147 (Insiders) | No change to the agent plugin layout, hooks, custom agents, automations, or MCP. The changes are in the inbox mode, Compare Models, and the worktree cleanup text. Forge 6.1 and 6.2 read the [agent plugin reference](https://code.visualstudio.com/docs/agents/reference/agent-plugin-reference) and the [MCP configuration reference](https://code.visualstudio.com/docs/agents/reference/mcp-configuration): the Copilot harness reads the workspace-root `.mcp.json` directly, and a plugin can ship its own `mcp.json`. A profile can ship a plugin `mcp.json` with the servers that the repository `.mcp.json` does not give. |
+| 1.146 | No change to the agent plugin layout, hooks, custom agents, or automations. The Local harness is deprecated (removal planned for February 2027). Forge uses the Copilot harness. Forge does not use canvases (`strictPluginOnlyCustomization`), the inbox mode, or Skills over MCP. Forge 6.0 drops the provider templates: one build has one profile. |
+| 1.145 | Local automations accept cron schedules (the Forge templates use them) and custom agents from the workspace. The agent list also shows the plugin agent **Forge Master**, but an automation run (click-check 5) and an interactive session (click-check 9) run as the default **Agent**. The chat **View Mode** has a **Conversation** mode (`chat.persistentProgressVerbosity`, Experimental) that keeps long chats short to read. Forge does not use canvases, nested sessions with mixed harnesses, or the Local harness tools that 1.145 removes (`#installExtension`, `#runCommand`, `#newWorkspace`). |
+| 1.144 | The plan for Forge 5.0 used these docs: agent plugin reference, session tools, move a chat, artifacts, hooks, custom agents, and automations. |
+
+## 🧩 Native features that Forge uses
+
+| Feature | Forge use | Doc |
+|---|---|---|
+| Agent plugin (Agent Plugins 1.0) | `plugin.json`, `skills/`, `com.github.copilot/` (hooks), `automations/` | [Agent plugin reference](https://code.visualstudio.com/docs/agents/reference/agent-plugin-reference) |
+| Session title (`rename_chat`) | `<KEY> - <emoji> - <short>` for each ticket session | [Manage sessions](https://code.visualstudio.com/docs/agents/run/sessions/manage-sessions) |
+| Move a chat (`set_workspace`) | A Folder session moves into the new ticket worktree (`workspaceFolder` and `isolation: false`) | [Manage sessions](https://code.visualstudio.com/docs/agents/run/sessions/manage-sessions) |
+| Session tools | `create_session`, `list_sessions`, `get_session_context`, `send_message` for implementers and the `board` skill. A new ticket session uses `relationship: independent` and `workspace`, because the default `currentSession` makes a nested chat. | [Tools](https://code.visualstudio.com/docs/agents/run/tools) |
+| Sessions list | Pins and custom state groups (`organizeSessionsList`) | [Manage sessions](https://code.visualstudio.com/docs/agents/run/sessions/manage-sessions) |
+| Artifacts panel | The ticket README (📍 Now) and the open gate doc | [Artifacts](https://code.visualstudio.com/docs/agents/run/artifacts) |
+| `sessionStart` hook | Each session gets the paths, the `forge` and `style` rules (`plugins/forge/context/`), and the approved company rules of `<wiki>/rules/`. A ticket session also gets the Now card and the title rule. | [Hooks reference](https://code.visualstudio.com/docs/agents/reference/hooks-reference) |
+| Automation templates | **Forge maintenance** and **Prepare my daily** | [Automations](https://code.visualstudio.com/docs/agents/run/automations) |
+| `ask_user` forms | Gate approvals with the ⚡ 1 min card | [Tools](https://code.visualstudio.com/docs/agents/run/tools) |
+| `AGENTS.md` | This repository's developer rules (the Copilot harness reads it at the repository root) | [Custom instructions reference](https://code.visualstudio.com/docs/agents/reference/custom-instructions-reference) |
+
+## 🛠️ Forge parts and why not native
+
+| Forge part | Why not native |
+|---|---|
+| `forge.mjs worktree` names | A VS Code worktree branch starts with `agents/`, and `create_session` has no branch name or base (microsoft/vscode#321685). Forge needs `repo.branchPattern`. |
+| `git branch -m` in a New Worktree session | The same reason. After the rename, **Mark as Done** leaves the worktree (click-check 3), so close checks `git worktree list`. |
+| `isolate_session` is not the default | It makes a native worktree, but Forge cannot set its folder or branch name. Click-check 2. |
+| Gate approvals with SHA-256 manifests | A native plan approval does not cover a set of exact revisions. |
+| Reading levels and `forge.mjs diff` | No native "changed since your last review" exists for wiki files. |
+| `forge.mjs board` and `raw/board.md` | The sessions list shows sessions, not ticket state from the wiki. Forge removed its canvas in 5.0. |
+| Sync notes in `raw/sync/` | No native cache of tracker, change request, and CI status exists. |
+| Title rule: rename first, then again at the end of the first turn | An automatic title can replace a title that was set (microsoft/vscode#338122). |
+| Rules in the `sessionStart` hook context, not in `com.github.copilot/rules/` | Plugin rule files loaded in some sessions only (click-check 11). The docs give no always-on format for plugin rules. `COPILOT_CUSTOM_INSTRUCTIONS_DIRS` is global for all repositories, and the CLI does not read `chat.instructionsFilesLocations`. The hook runs in each session, also in `create_session` and custom agent sessions. |
+| Company rules in `<wiki>/rules/` with hash trust | The native `AGENTS.md` and `.github/instructions` must be in the workspace. The wiki is a sibling folder, and the code checkout must not change for Forge. A Git pull cannot approve its own rules. |
+| Profile config templates in the plugin | A plugin cannot ship workspace settings for one repository. The wiki keeps the copy, so the hash trust and the personal values stay per user. |
+| Core and profile overlay (`templates/profile.json`, `templates/profile.md`, `tests/profile.test.mjs`) | No host has a native "company layer" for a plugin. The profile stays an overlay in the same folder: `templates/` and the files that `profile.json` lists. The wiki copies and the trusted rule pages name plugin paths, so a moved folder breaks them. The test keeps the terms of a profile out of all other files. Forge 6.8 renames the sync note field `jira` to `tracker`; the board still reads an old `jira` field. |
+| `doctor` MCP check | No native view compares the MCP servers of the profile (`profile.json`) across the plugin, workspace, and user MCP files. `doctor` names each missing server, each server with two entries (the same tools two times in the context), and each retired URL. A profile without servers has no MCP check. |
+| Host verbs (`host.title`, `host.spawn`, ...) and the tables in `hosts/` | Agent Plugins 1.0 makes only skills and MCP servers portable. Each host has other session tools (VS Code `rename_chat`, Claude Code `/rename`, Copilot CLI `/rename`), and no standard names them. The hook adds only the table of the current host, so the context does not grow with each host. `host.open` runs `code -r` only in VS Code; the terminal hosts give links, because VS Code can be missing. A test keeps the VS Code tool names out of the portable text. |
+| `board` skill, no custom agent | A custom agent file is host specific, and VS Code ignores the body of a plugin agent (click-checks 9 and 14). A skill is portable and runs in any session, so Forge 6.6 has no custom agent. The "no code edits" limit of the board is a written rule. |
+| Hand-written manifests and `tests/packaging.test.mjs`, no generator | One plugin folder serves each host: VS Code finds the Agent Plugins `$schema` in the root `plugin.json` first, so `hooks/hooks.json` (Claude Code) does not change it. [rulesync](https://github.com/dyoshikawa/rulesync) writes project config, not plugin folders: it makes no manifest, marketplace, or plugin hook for Copilot, Codex, or pi, and it adds about 23 MB. Agent Plugins 1.0 has no portable hook file. The test keeps the 3 manifests the same and runs each hook command. Add a generator only when two hosts need the same path with different content (Gemini CLI and Claude Code both read `hooks/hooks.json`), or when Agent Plugins 1.1 gives a portable `hooks.json`. |
+| `forge.mjs gate-approve` | No host has a native approval record for a set of exact revisions. The command does the same checks in each host: the answer is `approve` (form) or `approve <gate>` (chat), the gate is in review, the reviewed digest is given and agrees with the manifest, and the approved gate passes the lint check. Only then it writes the README and `approvals/history.md`, and it refuses a link as the history file. On a failed write it restores both files. |
+
+## ⚠️ Known gaps
+
+| Issue | Gap | Forge workaround |
+|---|---|---|
+| [microsoft/vscode#321685](https://github.com/microsoft/vscode/issues/321685) | No setting for the worktree branch prefix. | `forge.mjs worktree` and `git branch -m`. |
+| [microsoft/vscode#338122](https://github.com/microsoft/vscode/issues/338122) | An automatic `rename_chat` can replace a title that was set. | Rename again at the end of the first turn. The `board` skill and the maintenance automation fix stale titles. |
+| No issue found | A local automation with a plugin agent (the old **Forge Master**) runs in `~/.copilot/chats/<id>`, not in the workspace, and without the agent instructions (click-check 5, 1.145.0). | Create Forge automations with the default **Agent**. The template prompt has all the steps. |
+| No issue found | With Claude Haiku, a Copilot CLI session in a repository with many MCP servers loads all MCP tools in full (114,000 to 158,000 tokens in one test). Claude Sonnet defers them (13,000 tokens). The Forge maintenance run with Haiku stops before its first answer: "static system messages and tool definitions exceed this model's context budget" (2026-11-11, CLI 1.0.108). An `.automation.md` file cannot set the model. | `forge-setup` tells the user to select Claude Sonnet for each Forge automation. |
+| No issue found | The docs do not say if a session that `create_session` starts loads the workspace `.mcp.json`. Not click-checked. | When the MCP tools of a tool are missing, the session asks the ticket session to do that step. |
+| No issue found | Plugin rule files (`*.instructions.md`) do not load in each session (click-check 11). | The `sessionStart` hook gives the rules. Each skill tells the agent to read `context/forge.md` and `context/style.md` when the rules are missing. |
+| No issue found | A new session with the plugin agent **Forge Master** runs as the default **Agent**. After the first turn, the agent picker shows only **Agent**, **Ask**, and **Scheduled Job** (click-check 9, 1.145.0). | Forge 6.6 has no custom agent. The `board` skill runs in a session with the default **Agent**. |
+| No issue found | For a `chat.pluginLocations` folder, the name of the plugin copy in `%APPDATA%/Code/agentPlugins` is the change time of the plugin root folder (hex milliseconds, also in `cache.json`). An edit inside a file does not change that time, so **Developer: Reload Window** reuses the old copy (2026-11-15, the `host.groups` fix stayed out). There is no live refresh. | Before the reload, set the change time of `plugins/forge` to now (README, "Update forge"). |
+
+## 🤖 Claude Code host (spike)
+
+Forge 6.4.0 is a spike: Claude Code runs the same plugin folder with `claude --plugin-dir plugins/forge`.
+Docs read on 2026-11-11: [Hooks reference](https://code.claude.com/docs/en/hooks.md) and [Environment variables](https://code.claude.com/docs/en/env-vars.md).
+
+| Item | Forge use |
+|---|---|
+| `hooks/hooks.json` | Claude Code reads this file. VS Code and Copilot CLI read only `com.github.copilot/hooks/hooks.json` for an Agent Plugins 1.0 package, so the hook does not run two times there (to check with a probe). The hooks use the exec form (`command` and `args`), with no shell, so they run the same way on Windows. |
+| `SessionStart` in 4 parts | The matching hooks run in parallel, so the parts can arrive in any order. Claude Code moves an `additionalContext` value of more than 10,000 characters to a file and gives only a preview of 2,000 characters. The Forge context is about 15,000 characters or more, so 4 handlers each give one part of at most 9,000 characters (`--part 1` to `--part 4`). The matcher has the sources `startup`, `resume`, `clear`, `compact`, and `fork`. Each part starts with `Forge context part <i> of <n>, id <id>.`, where the id is a hash of the full text. Each handler builds the text again, so parts with different ids come from different texts, and the skills then run `forge.mjs context`. The last part ends with `End of Forge context.` |
+| `sessionTitle` | Claude Code has no `rename_chat`. Part 1 of `SessionStart` and the `UserPromptSubmit` hook set the ticket title. A custom title stays: part 1 changes only an empty title or a Forge title of the same ticket (`<KEY> - <state emoji> - ...`), and `UserPromptSubmit` acts only when the session has no custom title (`session_title`). A new key in a later prompt must have the `tracker.prefix` and be a whole word. |
+| `forge.mjs context` | Step 0 for a host without the hook. Each skill runs it when the context has no `End of Forge context.` line. It uses the Claude Code text when `CLAUDECODE=1`. |
+| `.claude-plugin/marketplace.json` | Forge 6.7.0. The repository is a Claude Code marketplace: `claude plugin marketplace add <clone>`, then `claude plugin install forge@forge`. The source is `./plugins/forge` (Claude Code needs `./` and refuses `..`). The plugin has no `.claude-plugin/plugin.json`: Claude Code takes the name from the folder and the version from the marketplace entry, so there is one version less to keep the same. |
+| Host line | Replaced in 6.5.0 by the host tables: the hook adds `hosts/claude.md`. `ask_user` becomes `AskUserQuestion`, a worktree move uses `EnterWorktree` or a new `claude` session, and Claude never uses its Artifact tool. Automations are not supported. |
+
+| # | Probe | Result |
+|---|---|---|
+| C1 | `claude plugin validate plugins/forge` | ✅ Pass (before 6.4.0). |
+| C2 | `claude --plugin-dir plugins/forge -p` before 6.4.0: is the Forge context there? | ❌ No context. The skills load as `forge:<name>`. `forge-setup` is hidden (`disable-model-invocation`). |
+| C3 | The same probe after 6.4.0: all parts, the end marker, and a fact from the `forge` rule. Does Claude follow the rules, or does it call them a prompt injection? | ✅ Pass in forge-engineering (2026-11-12). Claude quoted `Forge context part 1 of 2.` and found `End of Forge context.`. It treated the text as rules, because it came as session start hook context and not in a tool result. It also named this repository's `AGENTS.md`, which describes the hook, so do the same probe in a code repository. ✅ Pass in a code repository (2026-11-13), with 2 findings. (1) The context came in 3 parts (the company rules add text), and part 3 came before part 1: Claude Code runs the matching hooks in parallel. Each part header now says to read the parts in number order, and the skills run `forge.mjs context` when a part is missing. (2) Claude said that it applies the Forge context only where it fits the request, and that the organization rules come first. Probe C4 shows if it still follows the ticket steps. |
+| C4 | An interactive Claude Code session with a ticket key in the first prompt: does the title change? | ✅ Pass in a code repository (2026-11-13, Claude Code 2.1.322, Sonnet 5.5). The transcript has `custom-title` with the ticket title from `UserPromptSubmit`. Claude loaded the ticket skill, followed Resume, and gave the worktree step for the main checkout. It also told the user to run `/rename`, because it cannot see its own title. The ticket part now says that the hook set the title. |
+| C5 | Copilot CLI and a VS Code session after 6.4.0: does the hook run one time, with the end marker? | ✅ Copilot CLI passes in a code repository (2026-11-13, `copilot --plugin-dir plugins/forge`, installed copy off). `events.jsonl` has one `sessionStart` run, from `com.github.copilot/hooks/hooks.json`. Its text ends with `End of Forge context.` and has no `Forge context part` header, so the CLI did not run `hooks/hooks.json`. The model said "2" headings, because the probe prompt also had the heading text. Use `events.jsonl`, not the model count. The CLI raises `userPromptSubmitted` in each session, also with 6.3.2. ✅ VS Code passes (2026-11-13, `chat.pluginLocations` points to `plugins/forge`, the installed copies off). On resume, `events.jsonl` has one `sessionStart` run with the end marker, no part header, and 14,777 characters. VS Code runs a copy of the folder in `%APPDATA%\Code\agentPlugins\file-c-3A-dev-forge-engineering-plugins-forge\<hash>`, so `<plugin>` is that copy, not the source folder. The copy had the same files as the source. |
+| C6 | 6.7.0: `claude plugin validate .` and `claude plugin validate plugins/forge` | ✅ Pass (2026-11-15, Claude Code 2.1.322). The marketplace advice asks for an install line in the README. Not click-checked: an install from the marketplace (it changes the user config). See C7. |
+| C7 | 6.7.0: install from the marketplace (`claude plugin marketplace add <clone>`, `claude plugin install forge@forge`), then `claude -p` in a code repository without `--plugin-dir` | ✅ Pass (2026-11-15, Claude Code 2.1.322). `claude plugin list` shows `forge@forge` 6.7.0, enabled, read from `<clone>/plugins/forge` (a folder marketplace has no cache copy, so a `git pull` is the update). Claude quoted `Forge context part 3 of 3, id d3f4c3ea.` and found `End of Forge context.` |
+
+## 🔌 Hosts
+
+Forge 6.5.0 finds the host from the hook environment (probe of 2026-11-13) and adds its table from `plugins/forge/hosts/`.
+
+| Host | Environment | Table |
+|---|---|---|
+| VS Code Agents window | `AI_AGENT=github_copilot_vscode_agent` | `vscode.md`: the session tools below |
+| GitHub Copilot CLI 1.0.103 | no `AI_AGENT`. It also sets `COPILOT_CLI` and `CLAUDE_PLUGIN_ROOT`, the same as VS Code. | `copilot-cli.md`: `/rename`, `/cwd`, `copilot -C ... -i`, `ask_user` only in an interactive session |
+| Claude Code 2.1.322 | `CLAUDECODE=1` | `claude.md` |
+
+Hosts for later steps (research of 2026-11-15, not probed):
+
+| Host | Package | Context hook | Note |
+|---|---|---|---|
+| Codex | Reads the root `plugin.json` and `skills/`. Marketplace `.agents/plugins/marketplace.json`, or `.claude-plugin/marketplace.json` as a fallback. | `hooks/hooks.json` (the Claude Code format). It sets `PLUGIN_ROOT` and `CLAUDE_PLUGIN_ROOT`. | The Claude Code hooks pass `--host claude`, so Codex gets the Claude Code table. A hook output has a limit of about 2,500 tokens (`additionalContextLimit`). A `codex` host table and a probe are necessary. |
+| pi | A `pi` key in `package.json` and a TypeScript extension. `pi install` from Git or a folder. | `before_agent_start` in the extension. It runs before each prompt, so the extension must give the context one time. | Step 5 of the multi-host plan. |
+| Gemini CLI | `gemini-extension.json`. | `hooks/hooks.json` with another format (milliseconds, only JSON on stdout). | The same path as the Claude Code hooks: this needs a generator or a second plugin folder. |
+| Cursor | `.cursor-plugin/plugin.json`. | Not read. | No plan. |
+
+Live tools on 2026-11-13 (a VS Code session of the Copilot harness). These agree with `hosts/vscode.md`:
+
+- `set_workspace` still needs one question to the user about the folder and the isolation, just before the call. Tool approval is not that confirmation.
+- `move_session` reorders and nests sessions only, when the user asks. It does not change a workspace, so `host.move` stays `set_workspace`.
+- `isolate_session` still has no parameters (click-check 2). `get_current_session` gives the link of the current session. `archive_chat` archives a chat or a session. Forge does not use these tools yet.
+- Also present, not used by Forge: `list_artifacts_and_references`, `remove_artifact_or_reference`, `addComment`, `deleteComments`, `viewUnreviewedComments`.
+
+## 🧪 Click-checks
+
+Some behavior is not in the docs. Check it in the Agents window, then write the result here.
+When a check fails, use the fallback.
+
+| # | Check | Result | Fallback |
+|---|---|---|---|
+| 1 | `set_workspace` moves a Folder session into a `git worktree add` folder. Check the label, the group, the history, and the isolation. | ✅ Pass. Both parameters are necessary: `workspaceFolder` and `isolation` (`false` for a Forge worktree). The chat keeps its history, title, and group. The host sends "Continue in the requested workspace." and the chat continues in the new folder. `ask_user` can say "user not available"; the skill then moves only on a request from the user. | Tell the user to open a new session in the worktree folder. |
+| 2 | `isolate_session` ("Continue in a new Git worktree"): which folder and branch names does it make? Can Forge rename the branch? | ❌ Fail. The tool has no parameters, so Forge cannot set the folder or the branch. | Keep `forge.mjs worktree --create`. |
+| 3 | `git branch -m` in a VS Code worktree, then **Mark as Done**: does VS Code still remove the worktree? | ❌ Fail. The session is archived, but the clean worktree and its branch stay. The docs say that Mark as Done does not guarantee removal. No control test without the rename was done. | Close removes the worktree with `git worktree remove` after a "yes". |
+| 4 | Does a session from `create_session` load the plugin rules and skills? | ⚠️ Partial. It lists the 6 forge skills. It cannot answer facts that only the `forge` rule, the `style` rule, or `AGENTS.md` give, also after a file read. Its prompt must carry the rules (the `agents` skill). | The prompt is self-contained (the `agents` skill). |
+| 5 | Does an automation run have the session tools? Can a local automation select the plugin agent **Forge Master** (1.145 "custom agents from the workspace")? | ⚠️ Partial (2026-11-05, 1.145.0). **Templates from Plugins** shows both Forge templates. For the code repository, the agent list shows **Agent** and **Forge Master**. With **Forge Master**, the maintenance run worked in `~/.copilot/chats/<id>` and stopped at step 1 (no Git repository), and a probe run said that it was the default agent. That probe run had `list_sessions`, `get_session_context`, `rename_chat`, and `create_session`, but not `organizeSessionsList`. With **Agent**, the run worked in the repository folder and did all 8 steps, but `organizeSessionsList` was also not available. The run read only part of the lint output and searched the READMEs for `waiting`. | Select **Agent**. Without `organizeSessionsList`, the run lists the stale titles and groups in its report. `board --json` now gives the people `waits`, and the template tells the run to report the lint `summary` counts. An agent can create the automation with `configureAutomation` (workspace target, `isolation: folder`). With the default permission level, the run stopped at its first terminal command, and `runAutomation` returns `already_running` until that run ends. Select **Allow all** (`autoApprove`) for runs without the user. `list_sessions` hides archived sessions unless `includeArchived: true`, and `rename_chat` fails on an archived session ("Cannot persist list-visible state for unknown session"), also outside an automation. The run reports these sessions. |
+| 6 | Does the plugin `sessionStart` hook run in the Agents window? Which input does it get (cwd, session id)? | ✅ Pass. The context arrives at session start. Two installed copies of the plugin run the hook two times: keep one enabled. A ticket with `branch: main` matched every Folder session on `main`. The hook now ignores base branches and the main checkout for the match. In a session the hook took 2 to 21 s, and one run stopped at the old 10 s limit. The limit is now `timeoutSec: 30` (the documented default). | The `forge` rule and the `ticket` skill give the same steps. |
+| 7 | Does `rename_chat` on a new chat update the session row and keep the title after the first turn? | ✅ Pass. During the first turn the row can show the prompt text. After the turn it shows the title, also after a `set_workspace` move. | Rename again at the end of the first turn. |
+| 8 | Does the artifacts panel open a `file:///` wiki file outside the workspace? | open | Give the file link in the chat. |
+| 9 | Does the **Forge Master** show in the agent picker with the session tools? Can `organizeSessionsList` pin a session? | ❌ Fail (2026-11-05, 1.145.0). The new-session picker shows **Forge Master**, but the session ran as the default **Agent**: its first call was `rename_chat` with a ticket title from the first message. After the turn, the picker showed only **Agent**, **Ask**, and **Scheduled Job**. The session also called `create_session` without `relationship` and `workspace`, so the two ticket sessions became nested chats. In 1.144 the check passed: it found the session tools with tool search, and `organizeSessionsList` moved a session `to: "pinned"` and made, renamed, nested, and deleted groups. | The first message says "You are the Forge Master" (the `forge` rule). The user pins the session. Closed: Forge 6.6.0 removes the agent. |
+| 10 | Does **Chat: Open Customizations** list this repository's `AGENTS.md`? | ✅ Pass. The `AGENTS.md` text is in the instructions of a Copilot harness chat. A `create_session` session does not have it (check 4). | Copy the 5 checks into `.github/copilot-instructions.md`. |
+| 11 | Does a session that the user starts in the Agents window know the facts in the `forge` and `style` rules (then in `com.github.copilot/rules/`)? The docs do not say when plugin rules load. | ⚠️ Not reliable. Some sessions had the rule text. Many did not, including the check 11 session, which answered "unknown" to all 3 questions. Some sessions also had no `AGENTS.md` text. The cause is not known. After a VS Code restart with one `forge` copy, a `create_session` session had the skills and `AGENTS.md`, but no rule text. Its hook ended without a time-out. | Done in 5.0: the rules moved to `plugins/forge/context/`, and the hook gives them (check 12). |
+| 12 | After a plugin reload, does a new session in forge-engineering and in the code repository get the full hook context: the paths, `# forge plugin`, `# forge style`, and the company rules after trust? Ask the 3 questions of check 11, then read `hook.end` in `events.jsonl`. | ✅ Pass (2026-11-05). In both repositories the hook ended with success and gave about 14,000 characters. Both sessions gave the plugin path and `<wiki>/AGENTS.md`. forge-engineering also said "5 checks". The code repository session quoted the "not approved" note, which is the last line of the context, so the text was not cut. `events.jsonl` keeps the hook text only in `hook.end`, not in `system.message`. | Each skill tells the agent to read `context/forge.md` and `context/style.md`. |
+| 13 | After the company rules moved to `<wiki>/rules/` and trust approval, does a new session in the code repository (`create_session`, no worktree) get the rule pages? Ask one fact from each rule page, and where the company rules are. | ✅ Pass (2026-11-05). The session gave the facts from `rules/toolkit.md` and `rules/data.md`, and the `rules` folder of the wiki. It did not read files or run tools. | `forge.mjs trust` lists each rule page, and the hook names each page that is not approved. |
+| 14 | 6.5.0: does the agent picker show **Forge Master** one time (the root `agents/forge-master.md` is for Claude Code only)? Does "You are the Forge Master. Show the board." load the `forge-master` skill in VS Code, Copilot CLI, and Claude Code? | ⚠️ Partial (picker, Claude Code, Copilot CLI, and the VS Code workaround pass; the VS Code agent body is ignored) | 2026-11-13, VS Code Agents window with the dev plugin folder: the agent picker shows **Agent**, then **Forge Master** one time. Claude Code 2.1.322 in the code repository: `claude --plugin-dir <plugin> --agent forge:forge-master -p "Which skill gives your instructions?"` answers that the `forge-master` skill gives the instructions, and that it loads the skill before any other tool call. Copilot CLI in the code repository: `copilot --plugin-dir <plugin> -p "You are the Forge Master. Which skill gives your instructions?"` calls `skill(forge-master)`. Without `--plugin-dir`, the CLI used the installed forge 6.3.2 (disabled, no `forge-master` skill) and fell back to `AGENTS.md`. VS Code: a new session with **Forge Master** selected answered "No skill is loaded" and made no tool call, so the agent body did not apply. This is the gap of click-check 9, still present after 1.145. The workaround (a session with **Agent** and "You are the Forge Master. Which skill gives your instructions?") names the `forge-master` skill without a tool call. On the next message ("Show me the board"), it read the agent file and `skills/forge-master/SKILL.md` before any other step, then called `rename_chat` ("Forge Master - app"), `forge.mjs board --json`, `readSessionsList`, and `organizeSessionsList` (pin, group moves, group order). The workaround passes. The `forge` rule gives the path of the skill file. Closed: Forge 6.6.0 removes the agent. |
+| 15 | 6.6.0: does "Show me the board" in a new session (default **Agent**) load the `board` skill and run `forge.mjs board --json`? | ❌ Fail (2026-11-13, plugin copy with the `board` skill). The session called only `readSessionsList` and showed the session groups, without the gates, the next steps, or `raw/board.md`. Cause: the host verb `host.board` ("Show or set the session groups") maps to `readSessionsList`, and the request matched the verb, not the skill. | 6.6.0 renames the verb to `host.groups`. The `forge` rule says: load the `board` skill before any other tool call. A test keeps both. ✅ Pass on 2026-11-15 (plugin copy `1a1dfaab257`, after a new change time on the root folder): a new session read the `board` skill, then ran `forge.mjs board --json` and wrote `raw/board.md`. |
+
+## 📚 Doc pages
+
+Add `.md` to each URL to get Markdown. The index is https://code.visualstudio.com/llms.txt.
+
+- https://code.visualstudio.com/updates
+- https://code.visualstudio.com/docs/agents/run/agents-window
+- https://code.visualstudio.com/docs/agents/reference/agent-plugin-reference
+- https://code.visualstudio.com/docs/agents/run/sessions/manage-sessions
+- https://code.visualstudio.com/docs/agents/run/tools
+- https://code.visualstudio.com/docs/agents/run/artifacts
+- https://code.visualstudio.com/docs/agents/run/automations
+- https://code.visualstudio.com/docs/agents/reference/hooks-reference
+- https://code.visualstudio.com/docs/agents/reference/custom-agent-file-reference
+- https://code.visualstudio.com/docs/agents/reference/custom-instructions-reference
