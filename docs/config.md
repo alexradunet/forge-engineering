@@ -209,7 +209,7 @@ forge is **CLI first**. The `forge` rule, "Tool choice: CLI first", gives the or
   - `config:placeholder`: `repo.branchPattern` still holds `<user>`. `forge.mjs worktree` also refuses that pattern.
   - `config:checkouts`: no Checkouts row, or the main checkout path does not exist on this machine.
   - `cred:<name>`: a credential that the config names (`cred.mjs set <name>`, `--cred <name>`, or Jenkins) is not stored. `doctor` checks presence only and never reads the value.
-  - `mcp:<server>`: a server of the profile (`mcpServers` in `templates/profile.json`) is in no file, or it is in the forge `mcp.json` and also in the repository `.mcp.json` or the Copilot user `mcp-config.json`. Two entries load the same tools two times. `doctor` finds a server by its URL, not by its name.
+  - `mcp:<server>`: a server of the profile (`mcpServers` in `templates/profile.json`) is in no file, or it is in the forge `mcp.json` and also in the repository `.mcp.json` or the Copilot user `mcp-config.json`. Two entries load the same tools two times. `doctor` finds a server by its URL, not by its name. In a repository that is not the profile main checkout (`mainCheckout` in `templates/profile.json`), a server in no file is `ok`, because only the main checkout `.mcp.json` gives it.
   - `mcp:retired`: a server uses a retired URL (`mcpRetired` in `templates/profile.json`). Disable that server in **Chat: Open Customizations** > **MCP Servers**.
 - A missing file gives the defaults. Every capability is then `manual`.
 

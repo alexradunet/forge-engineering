@@ -31,7 +31,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { resolve, ForgeError } from './lib/repo.mjs';
+import { resolve, ForgeError, normalizeRemote } from './lib/repo.mjs';
 import { loadConfig, KINDS } from './lib/config.mjs';
 import { setValues, upsertRow } from './lib/config-write.mjs';
 import { createStore } from './lib/cred.mjs';
@@ -94,8 +94,11 @@ const normUrl = (u) => String(u ?? '').trim().toLowerCase().replace(/\/+$/, '');
 const MCP_PANEL = 'Chat: Open Customizations > MCP Servers';
 
 /** Check that the profile MCP servers are configured once, and that no retired URL is in use. */
-export function mcpGateway({ repoPath, env = process.env, plugin = pluginRoot, profile = loadProfile() } = {}) {
+export function mcpGateway({ repoPath, repoRemote, env = process.env, plugin = pluginRoot, profile = loadProfile() } = {}) {
   const found = [];
+  const main = profile.mainCheckout?.remote;
+  // Only the main checkout .mcp.json gives the servers that forge does not give.
+  const otherRepo = !!(main && repoRemote && !normalizeRemote(repoRemote)?.endsWith(`/${main.toLowerCase()}`));
   const add = (status, check, detail) => found.push({ status, check, detail });
   const sources = [
     plugin && { file: path.join(plugin, 'mcp.json'), forge: true },
@@ -113,7 +116,9 @@ export function mcpGateway({ repoPath, env = process.env, plugin = pluginRoot, p
   }
   for (const g of profile.mcpServers) {
     const hits = servers.filter((s) => s.url === normUrl(g.url));
-    if (!hits.length) {
+    if (!hits.length && otherRepo) {
+      add('ok', `mcp:${g.name}`, `Not in this repository. The ${main} .mcp.json gives it.`);
+    } else if (!hits.length) {
       add('warn', `mcp:${g.name}`, `Not configured (${g.url}). Update the forge plugin. Forge gives each server that the repository .mcp.json does not give.`);
     } else if (hits.some((s) => s.forge) && hits.some((s) => !s.forge)) {
       const other = hits.find((s) => !s.forge);
@@ -205,7 +210,7 @@ export function doctor({ cwd, wiki, env = process.env, credStore } = {}) {
   } catch (err) {
     add('config', 'fail', err.message);
   }
-  results.push(...mcpGateway({ repoPath: where.repo.path, env }));
+  results.push(...mcpGateway({ repoPath: where.repo.path, repoRemote: where.repo.remote, env }));
   const st = trustStatus(where, { env });
   const bad = st.files.filter((f) => f.state !== 'ok');
   add('trust', bad.length ? 'fail' : 'ok', bad.length ? `Not approved: ${bad.map((f) => `${f.rel} (${f.state})`).join(', ')}. Run "forge.mjs trust".` : `${st.files.length} files approved`);

@@ -173,6 +173,12 @@ test('mcpGateway finds each profile server once by URL in forge, repo, and user 
 
   writeFileSync(path.join(home, 'mcp-config.json'), '{ not json');
   assert.ok(gateway().some((f) => f.check === 'mcp:config' && f.status === 'warn'));
+
+  const main = { ...profile, mcpServers: [{ name: 'repo-only', url: url('repo-only') }], mainCheckout: { name: 'app', remote: 'Acme/App' } };
+  const repoOnly = (repoRemote) => mcpGateway({ repoPath: repo, repoRemote, env: env2, plugin, profile: main }).find((f) => f.check === 'mcp:repo-only');
+  assert.equal(repoOnly('git@github.com:acme/app.git').status, 'warn');
+  assert.equal(repoOnly('https://github.com/acme/other').status, 'ok');
+  assert.match(repoOnly('https://github.com/acme/other').detail, /Not in this repository\. The Acme\/App \.mcp\.json gives it/);
 });
 
 test('CLI config set and row print the changed files and fail without writing', () => {

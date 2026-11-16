@@ -9,7 +9,7 @@ Update this page with each Forge change (see [AGENTS.md](../AGENTS.md)).
 | Installed and used for the click-checks | 1.144.0, and 1.145.0 for click-check 5 |
 | Checked on | 2026-11-15 |
 | Other hosts checked | Claude Code 2.1.322 and Copilot CLI 1.0.103 (see "Claude Code host" and "Hosts") |
-| Forge version | 6.9.0 (GitHub profile): host layer with host verbs, Claude Code hook and marketplace, `board` skill, packaging contract test, generic core with one profile |
+| Forge version | 6.9.1 (GitHub profile): host layer with host verbs, Claude Code hook and marketplace, `board` skill, packaging contract test, generic core with one profile |
 
 ## 🗓️ Release notes read
 
