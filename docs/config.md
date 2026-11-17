@@ -139,7 +139,8 @@ This is a repository policy and skill, not a custom UI or a background watcher.
 ## 📜 Capabilities
 
 Skills never name a tool. They name a **capability**. The file `plugins/forge/context/tools.md` tells the agent how to find its row in the config file.
-A **write** changes something outside the workspace. The agent drafts the text in `outbox/`, runs the Sendable? gate, and asks before every write.
+A **write** changes something outside the workspace. The agent drafts the text in `outbox/`, runs the Sendable? steps, and asks before every write.
+The write capabilities are `tracker.comment`, `tracker.transition`, `tracker.link`, `repo.open-change`, `repo.update-change`, `repo.reply`, and `ci.trigger`. The gate guard reads the commands of these rows (the code spans of the Command and Notes cells, up to the first option or placeholder) and makes the host ask the user before each one. When a code span names an HTTP method option (`-X POST` or `--method POST`), only a command with a method other than GET is a write.
 `manual` in a row means that the agent tells the user the exact step, and waits.
 
 | Capability | Kind | Input | Output |

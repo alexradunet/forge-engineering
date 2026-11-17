@@ -158,6 +158,11 @@ displayed revision set. Approval README/records and the manifest never hash them
 `forge.mjs migrate` carries a Scoped? or Planned? approval only from two fresh `full-v1`
 approvals. Its manifest names both source manifests, and lint verifies them.
 
+From Forge 7.4, a `full-v3` write has no manifest and no sidecar. Its "yes" is the
+answer of the user to the host prompt that the gate guard asks for, and a `log`
+entry in `journal.md` records the sent write. The rest of this section applies to
+the older layouts, and to a write that a ticket sent before Forge 7.4.
+
 Each Sendable? write also retains `outbox/<name>.approval.json` outside the hashed
 set: `version: 1`, exact draft `doc`, `status: approved` or `sent`,
 `approval_manifest`, full raw-manifest `approval_hash`, user `approval_date`, exact
