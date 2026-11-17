@@ -45,7 +45,7 @@ test('the text that left the session context is in context/tools.md, and the sho
     assert.ok(!rule.includes(`\n${heading}\n`), `forge.md has no copy of ${heading}`);
   }
   // The rules that apply before a skill loads stay in the short form.
-  for (const line of ['Never, with any tool:', 'Merge a change request, or turn on auto-merge', 'Never call a tracker, repository host, or CI tool that the config does not name', 'wait for an explicit "yes" for this one write', 'Do not run the command in another form']) {
+  for (const line of ['Never, with any tool:', 'Merge a change request, or turn on auto-merge', 'Never call a tracker, repository host, or CI tool that the config does not name', 'Get an explicit "yes" for this one write', 'Do not run the command in another form']) {
     assert.ok(rule.includes(line), `forge.md: ${line}`);
   }
 });
@@ -78,7 +78,7 @@ test('each heading that another file names is in one part of the ticket skill', 
     'start.md': ['## 🚀 Start', '### 🧭 Research', '### 🧪 Spikes', '### 🎤 Interview', '### 🎯 Scope'],
     'state.md': ['### 🏷️ Frontmatter', '### 👥 People', '### 🏷️ Session title (info bar)', '### 📌 Artifacts panel', '### 📋 Ticket overview'],
     'worktrees.md': ['### 🌳 Worktrees'],
-    'gates.md': ['### 🐟 Cold read', '### Procedure for each gate', '### Approval revisions', '### Per-write Sendable? records', '### ✅ Approval form', '### 🖼️ Canvas'],
+    'gates.md': ['### 🐟 Cold read', '### Procedure for each gate', '### Approval revisions', '### Sendable? for each write', '### ✅ Approval form', '### 🖼️ Canvas'],
     'investigate-plan.md': ['## 🔎 Investigate', '### 🛑 Diagnosis stop', '## 📝 Plan'],
     'implement.md': ['## 🛠️ Implement'],
     'evidence.md': ['## 🔬 Evidence Testing', '## 🧑‍🔬 QA handover'],
