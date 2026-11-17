@@ -47,9 +47,15 @@ export function readTrace(text) {
     const content = event.message?.content;
     if (!Array.isArray(content)) continue;
     for (const block of content) {
-      if (event.type === 'assistant' && block.type === 'tool_use') calls.push({ name: block.name, input: block.input ?? {} });
+      if (event.type === 'assistant' && block.type === 'tool_use') calls.push({ name: block.name, input: block.input ?? {}, id: block.id ?? null });
       if (event.type === 'assistant' && block.type === 'text' && block.text.trim()) last = block.text;
-      if (event.type === 'user' && block.type === 'tool_result' && block.is_error) failures.push(typeof block.content === 'string' ? block.content : JSON.stringify(block.content));
+      if (event.type === 'user' && block.type === 'tool_result') {
+        const text = typeof block.content === 'string' ? block.content : JSON.stringify(block.content);
+        if (block.is_error) failures.push(text);
+        // The result of a call, by the id of the call, so a check can see what stopped one command.
+        const call = calls.find((item) => item.id && item.id === block.tool_use_id);
+        if (call) call.result = { error: Boolean(block.is_error), text };
+      }
     }
   }
   return { calls, failures, last, result, init };
@@ -57,10 +63,13 @@ export function readTrace(text) {
 
 /** The values and helpers that the checks of a case read. */
 export function runView(trace, fixture, before) {
-  const commands = trace.calls.filter((call) => ['Bash', 'PowerShell'].includes(call.name)).map((call) => String(call.input.command ?? ''));
+  const shells = trace.calls.filter((call) => ['Bash', 'PowerShell'].includes(call.name));
+  const commands = shells.map((call) => String(call.input.command ?? ''));
   return {
     ...trace, fixture, before,
     bash: (pattern) => commands.filter((command) => pattern.test(command)),
+    // The shell calls whose command matches, each as { command, result }. result is null when the trace has none.
+    shell: (pattern) => shells.filter((call) => pattern.test(String(call.input.command ?? ''))).map((call) => ({ command: String(call.input.command ?? ''), result: call.result ?? null })),
     failed: (pattern) => trace.failures.filter((text) => pattern.test(text)),
     read: (pattern) => trace.calls.some((call) => call.name === 'Read' && pattern.test(String(call.input.file_path ?? ''))),
     skill: (name) => trace.calls.some((call) => call.name === 'Skill' && new RegExp(`(^|:)${name}$`).test(String(call.input.skill ?? ''))),
