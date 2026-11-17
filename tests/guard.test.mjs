@@ -82,6 +82,20 @@ test('shellCommands splits a line into commands and keeps quoted words and Windo
   assert.deepEqual(shellCommands(null), []);
 });
 
+test('shellCommands reads the text of a heredoc as data, not as commands', () => {
+  // Found in GH-2: a journal entry in a heredoc named a push in backticks, and the guard denied a push.
+  assert.deepEqual(shellCommands("cat >> j.md <<'EOF'\nNo rule for `git push`.\ngit push\nEOF\ngit status"), [['cat', '>>', 'j.md'], ['git', 'status']]);
+  assert.deepEqual(shellCommands('cat <<EOF > out.md && echo ok\ngit push\nEOF\necho next'), [['cat', '>', 'out.md'], ['echo', 'ok'], ['echo', 'next']]);
+  assert.deepEqual(shellCommands('cat <<"END"\ngh pr create\nEND'), [['cat']]);
+  assert.deepEqual(shellCommands('cat<<-EOF\n\tgit push\n\tEOF\ngit push'), [['cat'], ['git', 'push']], '<<- ends at a line with leading tabs.');
+  assert.deepEqual(shellCommands('cat <<A <<B\ngit push\nA\ngit push\nB\necho done'), [['cat'], ['echo', 'done']], 'Two heredocs on one line.');
+  assert.deepEqual(shellCommands('cat <<EOF\r\ngit push\r\nEOF\r\ngit status'), [['cat'], ['git', 'status']], 'CRLF lines.');
+  assert.deepEqual(shellCommands('cat <<EOF\ngit push'), [['cat']], 'A heredoc with no end line runs to the end.');
+  assert.deepEqual(shellCommands('grep x <<< "git push" && git push'), [['grep', 'x', 'git push'], ['git', 'push']], 'A here-string is one word.');
+  assert.deepEqual(shellCommands('echo "a << b" && git push'), [['echo', 'a << b'], ['git', 'push']], 'Quoted << is text.');
+  assert.deepEqual(shellCommands('echo $((1<<2))\ngit push').at(-1), ['git', 'push'], 'A shift is not a heredoc, so the push stays visible.');
+});
+
 test('changeCommands reads the change request command of the repo.open-change row, without the git push', () => {
   assert.deepEqual(changeCommands(repoTemplate), [['gh', 'pr', 'create']]);
   assert.deepEqual(changeCommands('| `repo.open-change` | `az.exe repos pr create --title "<t>"` | n |'), [['az', 'repos', 'pr', 'create']]);

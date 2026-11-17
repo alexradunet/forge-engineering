@@ -20,9 +20,31 @@ const PUSH_VALUE_OPTIONS = new Set(['-o', '--push-option', '--repo', '--receive-
 const MAX_FINDINGS = 5;
 
 /**
+ * The delimiter of a heredoc that starts at `text[start]` (after `<<` or `<<-`): { delimiter, end }.
+ * Quotes in the delimiter word group it, and they are not part of it: `'EOF'` and `"EOF"` give `EOF`.
+ */
+function heredocDelimiter(text, start) {
+  let i = start;
+  while (text[i] === ' ' || text[i] === '\t') i++;
+  let delimiter = '';
+  while (i < text.length && !/\s/.test(text[i]) && !ENDS.includes(text[i]) && text[i] !== '<' && text[i] !== '>') {
+    const c = text[i];
+    if (c === "'" || c === '"') {
+      const close = text.indexOf(c, i + 1);
+      const stop = close === -1 ? text.length : close;
+      delimiter += text.slice(i + 1, stop);
+      i = stop + 1;
+    } else if (c === '\\' && i + 1 < text.length) { delimiter += text[i + 1]; i += 2; }
+    else { delimiter += c; i++; }
+  }
+  return { delimiter, end: i };
+}
+
+/**
  * The commands of one shell line, each as a list of words. Quotes group a word.
  * `&&`, `||`, `;`, `|`, `&`, parentheses, backticks, and new lines end a command.
  * A backslash is an escape only before a space, a quote, or one of these characters, so a Windows path keeps its backslashes.
+ * The text of a heredoc (`<<EOF`, `<<'EOF'`, `<<-EOF`) is data, not commands: the lines up to the end line give no command.
  */
 export function shellCommands(line) {
   const text = String(line ?? '');
@@ -30,6 +52,7 @@ export function shellCommands(line) {
   let words = [];
   let word = null;
   let quote = '';
+  let heredocs = [];
   const endWord = () => { if (word !== null) { words.push(word); word = null; } };
   const endCommand = () => { endWord(); if (words.length) commands.push(words); words = []; };
   for (let i = 0; i < text.length; i++) {
@@ -47,7 +70,33 @@ export function shellCommands(line) {
       i++;
       continue;
     }
-    if (c === '\n') { endCommand(); continue; }
+    if (c === '<' && next === '<') {
+      endWord();
+      if (text[i + 2] === '<') { i += 2; continue; } // `<<<` is a here-string: its word is data on the same line.
+      const strip = text[i + 2] === '-';
+      const { delimiter, end } = heredocDelimiter(text, i + (strip ? 3 : 2));
+      // Only a name is a delimiter. So `$((1<<2))` starts no heredoc, and it cannot hide the commands after it.
+      if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(delimiter)) { heredocs.push({ delimiter, strip }); i = end - 1; }
+      else i += 1;
+      continue;
+    }
+    if (c === '\n') {
+      endCommand();
+      // Skip the text of each heredoc of this line, up to and with its end line.
+      let pos = i + 1;
+      for (const { delimiter, strip } of heredocs) {
+        while (pos < text.length) {
+          const stop = text.indexOf('\n', pos);
+          const lineEnd = stop === -1 ? text.length : stop;
+          const body = text.slice(pos, lineEnd).replace(/\r$/, '');
+          pos = lineEnd + 1;
+          if ((strip ? body.replace(/^\t+/, '') : body) === delimiter) break;
+        }
+      }
+      heredocs = [];
+      i = pos - 1;
+      continue;
+    }
     if (/\s/.test(c)) { endWord(); continue; }
     if (ENDS.includes(c)) { endCommand(); continue; }
     word = (word ?? '') + c;
