@@ -19,6 +19,7 @@ __pycache__/
 dist/
 build/
 coverage/
+tests/evals/results/
 
 # Local credentials and authentication files.
 .env

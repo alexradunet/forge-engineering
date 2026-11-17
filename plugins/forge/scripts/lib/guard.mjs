@@ -16,6 +16,7 @@ const ENDS = ';|&()`';
 const WRAPPERS = new Set(['sudo', 'command', 'env', 'time', 'nohup', 'exec']);
 const MOVES = new Set(['cd', 'pushd', 'chdir', 'set-location', 'sl']);
 const GIT_VALUE_OPTIONS = new Set(['-c', '--git-dir', '--work-tree', '--namespace', '--super-prefix', '--config-env']);
+const PUSH_VALUE_OPTIONS = new Set(['-o', '--push-option', '--repo', '--receive-pack', '--exec']);
 const MAX_FINDINGS = 5;
 
 /**
@@ -98,8 +99,26 @@ export function changeCommands(repoText) {
 }
 
 /**
+ * The branches that a `git push` names: { refs, all }. The first plain word is the remote, and each other word is a
+ * refspec `[+]<source>[:<target>]`. `all` is true for `--all`, `--mirror`, and `--branches`.
+ * A push of a ticket branch can run from each folder of the repository, so the folder alone does not show the ticket.
+ */
+function pushTargets(args) {
+  const plain = [];
+  let all = false;
+  for (let i = 0; i < args.length; i++) {
+    if (['--all', '--mirror', '--branches'].includes(args[i])) all = true;
+    else if (PUSH_VALUE_OPTIONS.has(args[i])) i++;
+    else if (!args[i].startsWith('-')) plain.push(args[i]);
+  }
+  const refs = plain.slice(1).map((spec) => spec.replace(/^\+/, '').split(':')[0].replace(/^refs\/heads\//, '')).filter(Boolean);
+  return { refs, all };
+}
+
+/**
  * The ship actions of a shell line: each `git push` (not a dry run) and each command that starts with
  * one of the change commands. Each action has the folder where it runs: `cd` and `git -C` change it.
+ * A push also has the branches that it names (`refs`, `all`).
  */
 export function shipActions(line, cwd, changes = []) {
   const actions = [];
@@ -115,7 +134,7 @@ export function shipActions(line, cwd, changes = []) {
     }
     if (tool === 'git') {
       const call = gitCall(words, folder);
-      if (call.sub === 'push' && !call.args.some((arg) => arg === '--dry-run' || arg === '-n')) actions.push({ kind: 'push', cwd: call.cwd });
+      if (call.sub === 'push' && !call.args.some((arg) => arg === '--dry-run' || arg === '-n')) actions.push({ kind: 'push', cwd: call.cwd, ...pushTargets(call.args) });
       continue;
     }
     if (changes.some((first) => first[0] === tool && first.slice(1).every((word, i) => words[i + 1] === word))) actions.push({ kind: 'change', cwd: folder });
@@ -170,24 +189,28 @@ export function preTool(event, { env = process.env } = {}) {
     const config = where === home ? homeConfig : trustedConfig(where, env);
     const mode = GUARD_MODES.includes(config?.policy?.gateGuard) ? config.policy.gateGuard : 'deny';
     if (mode === 'off') continue;
-    let match;
-    let verdict;
+    // The ticket of the folder, and each ticket whose branch the push names: a push of a ticket branch runs from each folder.
+    let found = [];
     try {
       const tickets = listTickets(where.wiki.path).filter((entry) => entry.ticket);
       const branch = git(action.cwd, ['branch', '--show-current']);
-      match = ticketOfFolder(tickets, { here: where.top, branch, inMain: samePath(where.top, where.repo.path), getConfig: () => config });
-      if (!match) continue;
-      verdict = checkAction(match.ticket, match.file, 'ship');
+      const here = ticketOfFolder(tickets, { here: where.top, branch, inMain: samePath(where.top, where.repo.path), getConfig: () => config });
+      const named = action.kind === 'push' ? tickets.filter((entry) => entry.ticket.branch && (action.all || action.refs.includes(entry.ticket.branch))) : [];
+      found = [...new Set([here, ...named].filter(Boolean))];
     } catch { continue; }
-    if (verdict.allowed) continue;
-    const messages = [...new Set(verdict.findings.map((item) => item.message))];
-    const shown = messages.slice(0, MAX_FINDINGS).join(' ');
-    const more = messages.length > MAX_FINDINGS ? ` There are ${messages.length - MAX_FINDINGS} more findings: run \`forge.mjs lint\`.` : '';
-    const key = match.ticket.key;
-    const reason = mode === 'ask'
-      ? `Forge gate guard: ${key} has no valid approval for ${LABEL[action.kind]}. ${shown}${more} Allow this command only if you accept the step without the gate.`
-      : `Forge gate guard: ${key} has no valid approval for ${LABEL[action.kind]}. ${shown}${more} Open the gate as the ticket skill says (Review gates), and wait for the answer of the user. Do not run the command in another form. Only the user can run it without the gate, or change policy.gateGuard.`;
-    return { decision: mode, key, reason };
+    for (const match of found) {
+      let verdict;
+      try { verdict = checkAction(match.ticket, match.file, 'ship'); } catch { continue; }
+      if (verdict.allowed) continue;
+      const messages = [...new Set(verdict.findings.map((item) => item.message))];
+      const shown = messages.slice(0, MAX_FINDINGS).join(' ');
+      const more = messages.length > MAX_FINDINGS ? ` There are ${messages.length - MAX_FINDINGS} more findings: run \`forge.mjs lint\`.` : '';
+      const key = match.ticket.key;
+      const reason = mode === 'ask'
+        ? `Forge gate guard: ${key} has no valid approval for ${LABEL[action.kind]}. ${shown}${more} Allow this command only if you accept the step without the gate.`
+        : `Forge gate guard: ${key} has no valid approval for ${LABEL[action.kind]}. ${shown}${more} Open the gate as the ticket skill says (Review gates), and wait for the answer of the user. Do not run the command in another form. Tell the user which approval is missing, and offer to open the gate.`;
+      return { decision: mode, key, reason };
+    }
   }
   return null;
 }

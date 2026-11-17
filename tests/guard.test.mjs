@@ -103,10 +103,31 @@ test('shipActions finds each push and each change request command, with its fold
   assert.deepEqual(kinds('gh pr create -R a/b -t "T" -F body.md --draft'), ['change']);
   assert.deepEqual(kinds('git push -u origin x && gh pr create -t T'), ['push', 'change']);
   assert.deepEqual(shipActions('gh pr create -t T', base, []), [], 'Without a trusted config there is no change command.');
-  assert.deepEqual(shipActions('git -C ../wt push', base, []), [{ kind: 'push', cwd: path.resolve(base, '../wt') }]);
+  assert.deepEqual(shipActions('git -C ../wt push', base, []), [{ kind: 'push', cwd: path.resolve(base, '../wt'), refs: [], all: false }]);
   assert.deepEqual(shipActions('cd sub/dir && git push; cd .. && gh pr create', base, changes), [
-    { kind: 'push', cwd: path.resolve(base, 'sub/dir') }, { kind: 'change', cwd: path.resolve(base, 'sub') },
+    { kind: 'push', cwd: path.resolve(base, 'sub/dir'), refs: [], all: false }, { kind: 'change', cwd: path.resolve(base, 'sub') },
   ]);
+  // A push names its branches: the first plain word is the remote, and each other word is a refspec.
+  const targets = (line) => shipActions(line, base, []).map(({ refs, all }) => ({ refs, all }));
+  assert.deepEqual(targets('git push -u origin users/a/APP-7 +fix:refs/heads/other refs/heads/x'), [{ refs: ['users/a/APP-7', 'fix', 'x'], all: false }]);
+  assert.deepEqual(targets('git push origin :old -o ci.skip HEAD'), [{ refs: ['HEAD'], all: false }]);
+  assert.deepEqual(targets('git push --all origin'), [{ refs: [], all: true }]);
+  assert.deepEqual(targets('git push --mirror'), [{ refs: [], all: true }]);
+});
+
+test('a push that names a ticket branch is checked from each folder of the repository', (t) => {
+  // Found in an eval run of 7.3.0: an agent goes to the main checkout and pushes the ticket branch by its name.
+  const s = setup(t);
+  const branch = 'users/a/APP-7-doc-import';
+  assert.equal(run(s.app, `git push -u origin ${branch}`).decision, 'deny', 'The main checkout, with the branch name.');
+  assert.equal(run(os.tmpdir(), `cd "${s.app}" && git push origin +${branch}:refs/heads/copy`).decision, 'deny', 'A refspec with another target name.');
+  assert.equal(run(s.app, `git push origin refs/heads/${branch}`).decision, 'deny');
+  assert.equal(run(s.app, 'git push --all origin').decision, 'deny', '--all pushes the ticket branch.');
+  assert.equal(run(s.app, 'git push origin main'), null, 'A push of another branch from the main checkout is not a ticket step.');
+  assert.equal(run(s.app, 'git push'), null);
+  const done = setup(t, { approved: ['Scoped?', 'Planned?', 'Shippable?'] });
+  assert.equal(run(done.app, `git push -u origin ${branch}`), null, 'An approved ticket can push from each folder.');
+  assert.equal(run(done.app, 'git push --all origin'), null);
 });
 
 test('readToolEvent reads the command of each host format and ignores a tool call without a command', () => {

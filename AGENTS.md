@@ -30,6 +30,7 @@ so your memory of a VS Code feature can be old.
 ## 🧪 Test
 
 - Run `npm test` (Node 20 or later). It runs the test files in the `test` script of `package.json`.
+- `npm run eval` runs the behavioral cases of `tests/evals/` with a real agent session ([docs/evaluation.md](docs/evaluation.md)). Each run is a paid model run: ask the user first. Run the cases that a change of a rule, a skill, or a hook can affect, and write the result in `docs/evaluation.md`.
   Add each new test file to that script.
 - The CLI tests use `--cwd <repo root> --wiki <temporary folder>`.
 - Keep the strings that `tests/agents.test.mjs` and `tests/fixtures/scenarios.json` require,

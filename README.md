@@ -126,7 +126,7 @@ Setup offers the native wiki of the private repository, a separate private `<rep
 | `plugins/forge/skills/` | `ticket`, `agents`, `board`, `wiki`, `daily-recap`, `forge-setup`, `learning-mode`, `writing` |
 | `plugins/forge/templates/` | The profile: config (`config/`), rule pages (`rules/`), setup values (`profile.md`), and machine values with the list of the other profile files (`profile.json`) |
 | `plugins/forge/scripts/` | `forge.mjs` (setup, config, trust, lint, board, worktree, snapshot, diff, canvas, gate-approve, migrate, hook, wiki scripts), `cred.mjs` |
-| `docs/` | [config.md](docs/config.md) (config format), [wiki.md](docs/wiki.md) (sharing and scripts), [evaluation.md](docs/evaluation.md) (behavioral runs), and [vscode-baseline.md](docs/vscode-baseline.md) (the VS Code features that forge uses) |
+| `docs/` | [config.md](docs/config.md) (config format), [wiki.md](docs/wiki.md) (sharing and scripts), [evaluation.md](docs/evaluation.md) (behavioral runs: `npm run eval` gives the cases of `tests/evals/` to a real agent session), and [vscode-baseline.md](docs/vscode-baseline.md) (the VS Code features that forge uses) |
 | `AGENTS.md` | [Rules for agents that develop forge](AGENTS.md): docs-first checks, tests, and file format |
 
 ## 🧩 Skills

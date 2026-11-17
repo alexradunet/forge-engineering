@@ -73,6 +73,8 @@ An approval covers exact file revisions. Use a new ticket-relative JSON manifest
 
 Each external write has its own frozen draft, manifest, and approval record.
 
+- The draft is `outbox/<target>.draft.md`, from [templates/outbox.draft.md](../templates/outbox.draft.md). This is true in each phase, also for a write that the user asks for directly. `<F> lint` accepts no other name for the `doc` of Sendable?. Send only the text between the `send` markers.
+
 - The Sendable? manifest lists the exact draft, plus the exact `command` and `target` strings, so its hash binds the operation and the text:
 
   ```json
