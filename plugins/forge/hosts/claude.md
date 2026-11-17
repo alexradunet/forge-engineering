@@ -20,6 +20,14 @@ A Forge skill names a host verb, for example `host.title`. Do the step of the ve
 | `host.comments` | There are no document comments. Ask the user to paste the comments into the chat. |
 | `host.automation` | Forge does not support Claude Code automations. `CronCreate` lives only in the session, and `RemoteTrigger` runs on an external cloud service. Give the manual steps: a headless `claude -p "<prompt>"` run that the operating system scheduler starts. |
 
+## Ticket canvas
+
+The ticket canvas is a local HTML page (`canvas.html` in the ticket folder, from `forge.mjs canvas <KEY>`).
+
+- Give the user the `file://` link that the command prints. The user opens it in a browser, and loads the page again after each `canvas` run.
+- Never use the `Artifact` tool for the canvas: it sends the page to claude.ai.
+- A code link on the page opens the file in VS Code (`vscode://file/...`). When the user has no VS Code, run `forge.mjs canvas <KEY> --links file`.
+
 ## Claude Code features
 
 - Before you advise on a Claude Code feature, read its current documentation page. Claude Code changes often.

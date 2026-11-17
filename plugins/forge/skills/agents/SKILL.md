@@ -31,12 +31,13 @@ flowchart LR
 | Implement an approved plan in a suitable current worktree | continue here after the checks below | the current session |
 | Implement without a suitable current worktree, or delegate an independent task | a new session (`host.spawn`) after the checks below | a new session |
 | Quick review, research, or a check | a subagent (`task` tool) | nothing; the result comes back here |
+| Test a gate document on a reader without the session history | a cold read subagent (see "Cold read") | nothing; the result comes back here |
 | Give more work or a correction to a running session | `host.message` | a message in that session |
 | Status of my sessions | `host.sessions` | nothing; the result comes back here |
 
 ## 🛠️ Implementer session
 
-1. Check the gate first. For a ticket, validate fresh plan-gate revision evidence before starting implementation: Planned? for `workflow: full-v2`, mandatory Diagnosed? and Designed? for a `full-v1` ticket that has not moved yet. Verify the manifest: its raw-byte SHA-256, every covered document, byte-identical `plan.draft.md` and `plan.md`, and `approvedCopies: [{ "from": "plan.draft.md", "to": "plan.md" }]`. A migrated Planned? (with `migratedFrom`) also needs both unchanged source manifests. Existing tickets retain their original gates and skips; do not infer a workflow from missing `track`. Verify legacy single-document hashes against raw document bytes. Unverifiable approval blocks implementation, not read-only resume.
+1. Check the gate first. For a ticket, validate fresh plan-gate revision evidence before starting implementation. For `workflow: full-v3`, that is Planned?: verify the manifest, its raw-byte SHA-256, and every covered document (`plan.md` and the listed evidence). An older ticket keeps its own gates and checks ([legacy/rules.md](../ticket/legacy/rules.md)): Planned? for `full-v2` and Diagnosed? plus Designed? for `full-v1`, each with byte-identical `plan.draft.md` and `plan.md` and `approvedCopies: [{ "from": "plan.draft.md", "to": "plan.md" }]`. A migrated Planned? (with `migratedFrom`) also needs both unchanged source manifests. Do not infer a workflow from missing `track`. Verify legacy single-document hashes against raw document bytes. Unverifiable approval blocks implementation, not read-only resume.
 2. Select the execution worktree with the checks below. Continue here when it is suitable. Do not start another implementer merely because the ticket reached Implement. `<F>` means `node "<plugin>/scripts/forge.mjs"`, where `<plugin>` is the folder two levels above this skill. `<F> worktree <KEY> --summary "<short>"` gives the ticket branch, the folder, and the suggested action (see "Worktrees" in the `ticket` skill).
 3. Only when another session is needed, start it with `host.spawn`:
    - title: `<KEY> - ▶️ - <short>` (for example `APP-123 - ▶️ - Implement outbox retry on timeout`). The session keeps it current. See "Session title" in the `ticket` skill.
@@ -54,7 +55,7 @@ flowchart LR
    - the rules: ask before CI triggers and tracker writes; never merge; plus the rules of the `## Implement` section of `<config>/policy.md`
    - the main session rules, in short form. A session that `host.spawn` starts loads the plugin skills and runs the Forge `sessionStart` hook, which gives the `forge`, `style`, and company rules. It gets no `AGENTS.md` text of the repository, and it can start without MCP servers. When a capability row names an MCP server and its tools are not in the session, it asks the ticket session to do that step. When the hook fails, the prompt is its only source of the rules. Include the response style with the "No AI tells" list of the `style` rule, the paths `<wiki>` and the ticket folder as resolved absolute paths, and the safety rules above.
 5. Give the user the session link only when a new session was created.
-6. Record the session title, worktree path, branch, baseline SHA, and selection reason in the ticket `README.md` and `log.md`. Keep approval records outside hashed documents.
+6. Record the session title, worktree path, branch, baseline SHA, and selection reason in the ticket `README.md` and as a `log` entry in `journal.md` (`log.md` in an older ticket). Keep approval records outside hashed documents.
 
 ### Select the execution worktree
 
@@ -105,6 +106,23 @@ Use a subagent for a quick review. It stays inside the current session.
 
 For a full code review before Shippable?, the user can also use the **Run Code Review** button in the Changes panel.
 
+## 🐟 Cold read
+
+Required before each review gate of a `full-v3` ticket (Scoped?, Planned?, Shippable?, Learned?). The session that wrote a gate document knows more than the document says. The user reads the document later, without that knowledge. A subagent without the session history reads it the same way and shows what is missing.
+
+1. Start a subagent with `task` (a `general-purpose` or read-only research agent). When the host lets you select a model, a model family different from your own finds more.
+2. Give it only this, and nothing from the session:
+   - the absolute path of the gate document, and for `plan.md` also the path of `map.md`
+   - "Read this document and the files that it links. Do not read other ticket files. Read-only: no edits, no commits."
+   - "Answer in 4 parts. (1) Say in at most 5 lines what the document asks the user to approve. (2) List each term, name, or reference that you cannot resolve from the document and its links. (3) List each claim that has no link to evidence or code. (4) List each place where two statements do not agree."
+   - for `plan.md`: "(5) Can you implement this plan from `plan.md` and `map.md` alone? List each fact that you must guess."
+3. Do not give it the goal, the history, or your own summary. A reader that has your context cannot find what the document lacks.
+4. Compare part 1 with what you mean. When they differ, the summary is not clear: correct the document. Add each missing term to the document or to **Terms** of `map.md`. Add each missing link. Add each fact that an implementer must guess to the plan.
+5. Record one `check` entry in `journal.md`: the findings in short form, and what you changed.
+6. Run one cold read for each review revision. Run it again only after you rewrote the summary or a full section. This check has no loop and no second reviewer: a small fix gets one short read.
+
+The cold read tests the document. It does not approve a gate, and it does not replace the adversarial review of the code.
+
 ## 🥊 Adversarial review
 
 Required before every change request, including a draft. It is a second, hostile read of the change. It tries to break it.
@@ -115,19 +133,19 @@ Required before every change request, including a draft. It is a second, hostile
    - the repository path, and how to see the change (`git status`, `git diff`, untracked files)
    - the goal and the acceptance criteria
    - what was changed and why, and the decisions the user already made
-   - where the evidence is (ticket folder: `context.md`, `map.md`, `evidence/`, `plan.md`)
+   - where the evidence is (ticket folder: `story.md`, `plan.md`, `map.md`, `evidence/`; in an older ticket `context.md` in place of `story.md`)
    - specific attack questions: missed places, wrong assumptions, SDK or API behavior, tests that pass without the fix, flaky or order-dependent tests, side effects beyond the goal (EOL, BOM, accidental edits), CI and build risks
 4. Tell it: read-only, no edits, no commits, no style comments, rank findings by severity with file, line, and evidence.
 5. Run it in the background. Do not poll. Continue with independent work, or wait for the notification.
 6. Verify each finding yourself. Reject a finding with evidence, or fix it and add a test where it applies.
-7. Record the result in `review.md` (a row in the checklist: model, findings, what you fixed or rejected) and in `log.md`.
+7. Record the result in **Findings** of `review.md` (model, findings, what you fixed or rejected) and as a `check` entry in `journal.md`. An older ticket uses the checklist of its `review.md` and `log.md`.
 8. If the review changes the code, run the affected tests again. If it changes the approved scope, reopen Scoped?; if it changes the approved plan, reopen Planned? (`full-v1`: Designed?).
 
 Never create a change request until step 7 is done.
 
 ## 🔁 Hand-off
 
-- Plan → implement: obtain one approval over the exact displayed revision set, including the identical draft/approved plan pair for new manifests. Then reuse a suitable current worktree or start the implementer as described above. Native plan-mode approval alone does not approve the ticket gate.
+- Plan → implement: obtain one approval over the exact displayed revision set (Planned?). Then reuse a suitable current worktree or start the implementer as described above. Native plan-mode approval alone does not approve the ticket gate.
 - More work for a running session: `host.message`. Queue it. Interrupt the active turn only to correct it.
 - Each message states the goal, the scope, and the stop condition.
 - `host.message` does not wait for a reply. Do not poll. Tell the user that the message is sent, then stop.

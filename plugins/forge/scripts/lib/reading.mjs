@@ -12,6 +12,12 @@ export const LEVELS = [
 export const APPENDIX = '📂 Appendix';
 export const LAYERED_DOCS = ['scope.md', 'plan.draft.md', 'review.md', 'close.draft.md'];
 export const GATE_PRIMARY = { 'Scoped?': 'scope.md', 'Planned?': 'plan.draft.md', 'Shippable?': 'review.md', 'Learned?': 'close.draft.md' };
+// full-v3: one document for each gate. It has a summary under the title, then only the sections with content.
+export const V3_PRIMARY = { 'Scoped?': 'story.md', 'Planned?': 'plan.md', 'Shippable?': 'review.md', 'Learned?': 'close.md' };
+export const V3_DOCS = Object.values(V3_PRIMARY);
+export const SUMMARY_BUDGET = 150;
+export const DOC_BUDGET = 1500;
+const NO_CONTENT = /^(?:none|n\/a|tbd|todo|-)?\.?$/i;
 const MAX_DIFF_LINES = 60;
 
 const normalize = (text) => String(text).replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
@@ -72,6 +78,23 @@ export function quickCard(text) {
   return card?.text ?? '';
 }
 
+/** The summary of a full-v3 gate document: the text between the title and the first "## " heading. */
+export function summaryBlock(text) {
+  const top = sections(text)[0];
+  if (!top || top.heading) return '';
+  return top.text.split('\n').filter((line) => !/^#\s/.test(line)).join('\n').trim();
+}
+
+/** The word counts of a full-v3 gate document, and its sections that have no content. */
+export function summaryCheck(text) {
+  const all = sections(text);
+  const summary = summaryBlock(text);
+  const words = countWords(summary);
+  const total = words + all.filter((item) => item.heading).reduce((sum, item) => sum + countWords(item.text), 0);
+  const empty = all.filter((item) => item.heading && NO_CONTENT.test(item.text.trim())).map((item) => ({ heading: item.heading, line: item.line }));
+  return { summary, words, over: words > SUMMARY_BUDGET, total, totalOver: total > DOC_BUDGET, empty };
+}
+
 export function gateName(value) {
   const wanted = String(value ?? '').trim().replace(/\?$/, '').toLowerCase();
   const names = [...Object.keys(GATE_PRIMARY), 'Understood?', 'Agreed?', 'Diagnosed?', 'Designed?', 'Briefed?'];
@@ -96,9 +119,9 @@ export function listSnapshots(ticketDir, gate) {
     .map((item) => ({ ...item, file: path.join(dir, item.name), rel: `approvals/snapshots/${item.name}` }));
 }
 
-/** The primary document of a gate: the README record's doc, else the full-v2 default. */
+/** The primary document of a gate: the README record's doc, else the default of the workflow. */
 export function gateDocument(ticketDir, ticket, gate) {
-  const doc = ticket.gates.find((item) => item.name === gate)?.doc || GATE_PRIMARY[gate];
+  const doc = ticket.gates.find((item) => item.name === gate)?.doc || (ticket.workflow === 'full-v3' ? V3_PRIMARY : GATE_PRIMARY)[gate];
   if (!doc || doc.endsWith('/')) throw new Error(`${gate} has no single document to snapshot.`);
   const file = path.join(ticketDir, ...doc.split('/'));
   if (!existsSync(file)) throw new Error(`${doc} does not exist yet.`);
@@ -168,18 +191,26 @@ export function sectionDiff(before, after) {
 export function diffGate(ticketDir, ticket, gate) {
   const { doc, file } = gateDocument(ticketDir, ticket, gate);
   const text = readFileSync(file, 'utf8');
-  const card = quickCard(text);
+  // full-v3 documents have a summary under the title. Older documents have the ⚡ 1 min card.
+  const layout = ticket.workflow === 'full-v3' ? 'summary' : 'levels';
+  const card = layout === 'summary' ? summaryBlock(text) : quickCard(text);
   const latest = listSnapshots(ticketDir, gate).at(-1);
-  if (!latest) return { gate, doc, card, snapshot: null, changed: null, sections: [] };
+  if (!latest) return { gate, doc, layout, card, snapshot: null, changed: null, sections: [] };
   const list = sectionDiff(readFileSync(latest.file, 'utf8'), text);
-  return { gate, doc, card, snapshot: latest.rel, n: latest.n, changed: list.some((item) => item.status !== 'same'), sections: list };
+  return { gate, doc, layout, card, snapshot: latest.rel, n: latest.n, changed: list.some((item) => item.status !== 'same'), sections: list };
 }
 
-/** The approval form text: the ⚡ card on a first review, else only "🔀 Changed since your last review". */
+/** The approval form text: the summary (or the ⚡ card) on a first review, else only the changes since the last review. */
 export function renderDiff(result) {
-  if (!result.snapshot) return [`⚡ ${result.doc} (first review):`, result.card || '(no ⚡ 1 min card: add one before you ask for approval)'].join('\n');
-  if (!result.changed) return `🔀 ${result.doc} has not changed since your last review (${result.snapshot}).`;
-  const lines = [`🔀 Changed since your last review (${result.doc} vs ${result.snapshot}):`];
+  const plain = result.layout === 'summary';
+  if (!result.snapshot) {
+    return plain
+      ? [`Summary of ${result.doc} (first review):`, result.card || `(no summary: write at most ${SUMMARY_BUDGET} words under the title before you ask for approval)`].join('\n')
+      : [`⚡ ${result.doc} (first review):`, result.card || '(no ⚡ 1 min card: add one before you ask for approval)'].join('\n');
+  }
+  const mark = plain ? '' : '🔀 ';
+  if (!result.changed) return `${mark}${result.doc} has not changed since your last review (${result.snapshot}).`;
+  const lines = [`${mark}Changed since your last review (${result.doc} vs ${result.snapshot}):`];
   let budget = MAX_DIFF_LINES;
   for (const item of result.sections.filter((entry) => entry.status !== 'same')) {
     const plus = item.lines.filter((line) => line.startsWith('+')).length;

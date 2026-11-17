@@ -16,7 +16,8 @@
 //   board   [--json] [--dry-run] [--today <date>]   write <wiki>/raw/board.md, the tickets grouped by state
 //   worktree <KEY> --summary "<goal>" [--base <ref>] [--create] [--json]   plan or create the ticket worktree and branch
 //   snapshot <key> <gate> [--json]   save the gate doc as approvals/snapshots/<gate>-<n>.md at a review
-//   diff    <key> <gate> [--json]   the ⚡ card on a first review, else the sections changed since the last snapshot
+//   diff    <key> <gate> [--json]   the summary (or the ⚡ card) on a first review, else the sections changed since the last snapshot
+//   canvas  <key> [--json] [--links vscode|file]   write <ticket>/canvas.html, the whole ticket on one board (--json prints its model)
 //   gate-approve <key> <gate> --answer "<exact user answer>" [--method form|chat] [--manifest <path>] [--hash <sha>] [--dry-run] [--json]
 //            record an explicit approval of an in-review gate (not Sendable?); checks the manifest, then writes the README and approvals/history.md
 //   hook session-start [--host <host>]   read the hook event on stdin; print {"additionalContext"} with the Forge context, else {}
@@ -30,7 +31,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { resolve, ForgeError, normalizeRemote } from './lib/repo.mjs';
 import { loadConfig, KINDS } from './lib/config.mjs';
 import { setValues, upsertRow } from './lib/config-write.mjs';
@@ -45,6 +46,7 @@ import { writeBoard } from './lib/board.mjs';
 import { createWorktree, planWorktree } from './lib/worktree.mjs';
 import { CLAUDE_PARTS, HOST_NAMES, contextText, promptSubmit, readEvent, resolveHost, sessionStart } from './lib/hook.mjs';
 import { diffGate, gateName, renderDiff, saveSnapshot } from './lib/reading.mjs';
+import { LINK_MODES, buildCanvas, writeCanvas } from './lib/canvas.mjs';
 import { loadProfile, pluginRoot } from './lib/profile.mjs';
 
 // A tracker that uses an MCP server (see mcpGateway) has no CLI.
@@ -147,7 +149,7 @@ export function parseArgs(argv) {
     else if (a === '--fix') out.fix = true;
     else if (a === '--dry-run') out.dryRun = true;
     else if (a === '--create') out.create = true;
-    else if (['--summary', '--base', '--today', '--answer', '--method', '--manifest', '--hash'].includes(a)) {
+    else if (['--summary', '--base', '--today', '--answer', '--method', '--manifest', '--hash', '--links'].includes(a)) {
       if (argv[i + 1] === undefined || argv[i + 1].startsWith('--')) throw new ForgeError(`${a} needs a value.`, 'bad-args');
       out[a.slice(2)] = argv[++i];
     }
@@ -434,6 +436,21 @@ export function main(argv = process.argv.slice(2)) {
       if (args.json) console.log(JSON.stringify(result, null, 2));
       else if (cmd === 'diff') console.log(renderDiff(result));
       else console.log(`${result.gate} ${result.written ? 'saved' : 'unchanged'}: ${result.snapshot}`);
+    } else if (cmd === 'canvas') {
+      if (args._.length !== 2 || (args.links !== undefined && !LINK_MODES.includes(args.links))) {
+        throw new ForgeError(`Usage: forge.mjs canvas <key> [--json] [--links ${LINK_MODES.join('|')}].`, 'bad-args');
+      }
+      const where = resolve(opts);
+      try {
+        const { dir } = findTicket(where.wiki.path, args._[1]);
+        if (args.json) console.log(JSON.stringify(buildCanvas(dir), null, 2));
+        else {
+          const result = writeCanvas(dir, { links: args.links });
+          console.log(`${result.key}: wrote ${result.file}`);
+          console.log(`  open  ${pathToFileURL(result.file).href}`);
+          if (result.missing.length) console.log(`  not written yet: ${result.missing.join(', ')}`);
+        }
+      } catch (err) { throw new ForgeError(err.message, 'canvas'); }
     } else if (cmd === 'gate-approve') {
       if (args._.length !== 3 || !args.answer) throw new ForgeError('Usage: forge.mjs gate-approve <key> <gate> --answer "<exact user answer>" [--method form|chat] [--manifest <path>] [--hash <sha>] [--dry-run] [--json].', 'bad-args');
       const where = resolve(opts);
@@ -448,7 +465,7 @@ export function main(argv = process.argv.slice(2)) {
       if (args._[1] === 'approve') console.log(JSON.stringify(approve(where, args._.slice(2)), null, 2));
       else console.log(JSON.stringify(trustStatus(where), null, 2));
     } else {
-      console.error('Usage: node forge.mjs <where|config|doctor|lint|detect|init-wiki|bind|seed|migrate|board|worktree|snapshot|diff|gate-approve|hook|context|trust|run> [--wiki <dir>] [--cwd <dir>] [--json]');
+      console.error('Usage: node forge.mjs <where|config|doctor|lint|detect|init-wiki|bind|seed|migrate|board|worktree|snapshot|diff|canvas|gate-approve|hook|context|trust|run> [--wiki <dir>] [--cwd <dir>] [--json]');
       return 2;
     }
     return 0;

@@ -44,5 +44,9 @@ so your memory of a VS Code feature can be old.
   - `plugins/forge/skills/`: portable skills.
   - `plugins/forge/com.github.copilot/`: rules, hooks, and custom agents for VS Code.
   - `plugins/forge/automations/`: automation templates (`*.automation.md`).
+- `plugins/forge/skills/ticket/SKILL.md` and `templates/` are the `full-v3` layout of new tickets. `skills/ticket/legacy/` holds the rules and templates of older tickets:
+  change it only to correct a defect, because open tickets depend on it.
+- The ticket canvas (`scripts/lib/canvas.mjs`) reads the section names and the line shapes of the `full-v3` templates.
+  Change a template and the canvas together (`tests/canvas.test.mjs`). The page loads nothing from a network.
 - Change the version in `plugins/forge/plugin.json`, `.github/plugin/marketplace.json`, and `.claude-plugin/marketplace.json` together (`tests/packaging.test.mjs`).
 - Never commit a wiki `raw/` file, a credential, or a personal path.

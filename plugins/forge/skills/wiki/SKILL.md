@@ -174,7 +174,7 @@ the ticket's `repair-log.jsonl`; a second pass is
 unchanged. Never infer workflow/state, grant approval, edit approved content,
 auto-migrate headerless index/log metadata, delete pages, or publish.
 
-Only an explicit `workflow: full-v2` (or `full-v1`, until it migrates) selects the
+Only an explicit `workflow: full-v3`, `full-v2`, or `full-v1` marker selects the
 mandatory gates. Existing S/M/L and trackless tickets retain original gates and skips. Validate revision evidence,
 not retroactive compliance with a new workflow. Missing/stale evidence blocks the
 affected action, not read-only resume. See the ticket skill's Approval revisions

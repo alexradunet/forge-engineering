@@ -20,6 +20,13 @@ A Forge skill names a host verb, for example `host.title`. Do the step of the ve
 | `host.comments` | There are no document comments. Ask the user to paste the comments into the chat. |
 | `host.automation` | There are no automations. Give the manual steps: a headless `copilot -p "<prompt>"` run that the operating system scheduler starts. |
 
+## Ticket canvas
+
+The ticket canvas is a local HTML page (`canvas.html` in the ticket folder, from `forge.mjs canvas <KEY>`).
+
+- Give the user the `file://` link that the command prints. The user opens it in a browser, and loads the page again after each `canvas` run.
+- A code link on the page opens the file in VS Code (`vscode://file/...`). When the user has no VS Code, run `forge.mjs canvas <KEY> --links file`.
+
 ## Copilot CLI features
 
 - Before you advise on a Copilot CLI feature, read its current documentation page. The CLI changes often.

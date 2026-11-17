@@ -19,6 +19,9 @@ const requirements = {
     close: V2_CLOSE, distill: V2_CLOSE, archive: V2_CLOSE,
   },
 };
+// full-v3 keeps the gates of full-v2. Each gate has one document, and the plan has no copy.
+requirements['full-v3'] = requirements['full-v2'];
+const v3GateDocuments = { 'Scoped?': ['story.md'], 'Planned?': ['plan.md'], 'Shippable?': ['review.md'], 'Learned?': ['close.md'] };
 const gateDocuments = {
   'Understood?': ['context.md'], 'Agreed?': ['interview.md'],
   'Briefed?': ['context.md', 'interview.md'], 'Diagnosed?': ['investigation.md'],
@@ -49,14 +52,15 @@ export function evaluate(scenario, trace, artifacts) {
       revisions.set(event.path, event.sha256);
     } else if (event.kind === 'approval') {
       const docs = event.documents;
-      const expected = scenario.gateDocuments?.[event.gate] ?? gateDocuments[event.gate] ?? [];
+      const v3 = scenario.workflow === 'full-v3';
+      const expected = scenario.gateDocuments?.[event.gate] ?? (v3 ? v3GateDocuments : gateDocuments)[event.gate] ?? [];
       const valid = event.explicit === true && typeof event.gate === 'string'
         && Array.isArray(docs) && docs.length > 0
         && docs.every((doc) => doc && typeof doc.path === 'string' && /^[a-f0-9]{64}$/.test(doc.sha256 ?? '') && revisions.get(doc.path) === doc.sha256)
         && new Set(docs.map((doc) => doc.path)).size === docs.length
         && expected.every((name) => docs.some((doc) => doc.path === name))
         && (scenario.gateAfterActions?.[event.gate] ?? []).every((name) => actions.includes(name))
-        && (!PLAN_COPY_GATES.includes(event.gate) || docs.find((doc) => doc.path === 'plan.draft.md')?.sha256 === docs.find((doc) => doc.path === 'plan.md')?.sha256)
+        && (v3 || !PLAN_COPY_GATES.includes(event.gate) || docs.find((doc) => doc.path === 'plan.draft.md')?.sha256 === docs.find((doc) => doc.path === 'plan.md')?.sha256)
         && (event.gate !== 'Sendable?' || docs.some((doc) => /^outbox[\\/].+\.draft\.md$/.test(doc.path)));
       check(`${tag}:explicit-revisions`, valid, 'One approval must list the complete current revision set.');
       if (valid) approvals.set(event.gate, event);

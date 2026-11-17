@@ -16,7 +16,9 @@ The original repository tests retain the legacy parser and lifecycle contracts.
 The `legacy-resume` scenario captures the original M workflow with combined Briefed? approval.
 It forbids assigning a new workflow or reopening a skipped gate.
 The small and large scenarios intentionally replace the original size-dependent process.
-Their full sequence is identical.
+Their full sequence is identical. Each pair exists two times: for `full-v2`, the layout of older tickets, and for `full-v3`,
+the layout of new tickets (one document for each gate, a cold read before Scoped?, and no file of the older layout).
+The `older-ticket-keeps-its-layout` scenario forbids a move of a `full-v2` ticket to the new layout.
 
 No model baseline or changed-prompt model run was performed.
 Fixture success is not a measured improvement in model behavior.

@@ -5,18 +5,18 @@ Update this page with each Forge change (see [AGENTS.md](../AGENTS.md)).
 
 | Item | Value |
 |---|---|
-| Docs and release notes read | 1.147 Insiders (notes of 2026-11-10). On 2026-11-13, 1.146 is the latest stable release, and no newer notes page exists. |
+| Docs and release notes read | 1.147 Insiders (notes last updated 2026-11-13). On 2026-11-17, 1.146 (2026-11-11) is the latest stable release, and no newer notes page exists. |
 | Installed and used for the click-checks | 1.144.0, and 1.145.0 for click-check 5 |
-| Checked on | 2026-11-15 |
+| Checked on | 2026-11-17 |
 | Other hosts checked | Claude Code 2.1.322 and Copilot CLI 1.0.103 (see "Claude Code host" and "Hosts") |
-| Forge version | 6.9.1 (GitHub profile): host layer with host verbs, Claude Code hook and marketplace, `board` skill, packaging contract test, generic core with one profile |
+| Forge version | 7.0.0 (GitHub profile): workflow `full-v3` with one plain document for each gate, the ticket canvas (`forge.mjs canvas`), the cold read before each gate, and the rules of older tickets in `skills/ticket/legacy/` |
 
 ## 🗓️ Release notes read
 
 | Version | Forge impact |
 |---|---|
-| 1.147 (Insiders) | No change to the agent plugin layout, hooks, custom agents, automations, or MCP. The changes are in the inbox mode, Compare Models, and the worktree cleanup text. Forge 6.1 and 6.2 read the [agent plugin reference](https://code.visualstudio.com/docs/agents/reference/agent-plugin-reference) and the [MCP configuration reference](https://code.visualstudio.com/docs/agents/reference/mcp-configuration): the Copilot harness reads the workspace-root `.mcp.json` directly, and a plugin can ship its own `mcp.json`. A profile can ship a plugin `mcp.json` with the servers that the repository `.mcp.json` does not give. |
-| 1.146 | No change to the agent plugin layout, hooks, custom agents, or automations. The Local harness is deprecated (removal planned for February 2027). Forge uses the Copilot harness. Forge does not use canvases (`strictPluginOnlyCustomization`), the inbox mode, or Skills over MCP. Forge 6.0 drops the provider templates: one build has one profile. |
+| 1.147 (Insiders) | No change to the agent plugin layout, hooks, custom agents, automations, canvases, or MCP. The changes are in the inbox mode, Compare Models, and the worktree cleanup text. Web links now open in the integrated browser (2026-11-11), so an `https` link on the ticket canvas stays in VS Code. Forge 6.1 and 6.2 read the [agent plugin reference](https://code.visualstudio.com/docs/agents/reference/agent-plugin-reference) and the [MCP configuration reference](https://code.visualstudio.com/docs/agents/reference/mcp-configuration): the Copilot harness reads the workspace-root `.mcp.json` directly, and a plugin can ship its own `mcp.json`. A profile can ship a plugin `mcp.json` with the servers that the repository `.mcp.json` does not give. |
+| 1.146 | No change to the agent plugin layout, hooks, custom agents, or automations. Canvases (Preview, `chat.canvases.enabled`): a canvas extension asks for permission before it uses a privileged capability, and the menus separate running and available canvases. The integrated browser can copy the `file://` address of a local HTML file. Forge 7.0 reads these pages for the ticket canvas and uses the integrated browser, not a canvas extension. The Local harness is deprecated (removal planned for February 2027). Forge uses the Copilot harness. Forge does not use canvases (`strictPluginOnlyCustomization`), the inbox mode, or Skills over MCP. Forge 6.0 drops the provider templates: one build has one profile. |
 | 1.145 | Local automations accept cron schedules (the Forge templates use them) and custom agents from the workspace. The agent list also shows the plugin agent **Forge Master**, but an automation run (click-check 5) and an interactive session (click-check 9) run as the default **Agent**. The chat **View Mode** has a **Conversation** mode (`chat.persistentProgressVerbosity`, Experimental) that keeps long chats short to read. Forge does not use canvases, nested sessions with mixed harnesses, or the Local harness tools that 1.145 removes (`#installExtension`, `#runCommand`, `#newWorkspace`). |
 | 1.144 | The plan for Forge 5.0 used these docs: agent plugin reference, session tools, move a chat, artifacts, hooks, custom agents, and automations. |
 
@@ -33,6 +33,8 @@ Update this page with each Forge change (see [AGENTS.md](../AGENTS.md)).
 | `sessionStart` hook | Each session gets the paths, the `forge` and `style` rules (`plugins/forge/context/`), and the approved company rules of `<wiki>/rules/`. A ticket session also gets the Now card and the title rule. | [Hooks reference](https://code.visualstudio.com/docs/agents/reference/hooks-reference) |
 | Automation templates | **Forge maintenance** and **Prepare my daily** | [Automations](https://code.visualstudio.com/docs/agents/run/automations) |
 | `ask_user` forms | Gate approvals with the ⚡ 1 min card | [Tools](https://code.visualstudio.com/docs/agents/run/tools) |
+| Integrated browser | Shows the ticket canvas (`canvas.html`, a local file) with **Open in Integrated Browser**. `workbench.browser.autoReloadOnFileChange` loads the page again after each `forge.mjs canvas` run. | [Integrated browser](https://code.visualstudio.com/docs/debugtest/integrated-browser) |
+| Subagents (`task`) | The reviewer, the adversarial review, and the cold read of a gate document | [Tools](https://code.visualstudio.com/docs/agents/run/tools) |
 | `AGENTS.md` | This repository's developer rules (the Copilot harness reads it at the repository root) | [Custom instructions reference](https://code.visualstudio.com/docs/agents/reference/custom-instructions-reference) |
 
 ## 🛠️ Forge parts and why not native
@@ -43,8 +45,11 @@ Update this page with each Forge change (see [AGENTS.md](../AGENTS.md)).
 | `git branch -m` in a New Worktree session | The same reason. After the rename, **Mark as Done** leaves the worktree (click-check 3), so close checks `git worktree list`. |
 | `isolate_session` is not the default | It makes a native worktree, but Forge cannot set its folder or branch name. Click-check 2. |
 | Gate approvals with SHA-256 manifests | A native plan approval does not cover a set of exact revisions. |
-| Reading levels and `forge.mjs diff` | No native "changed since your last review" exists for wiki files. |
-| `forge.mjs board` and `raw/board.md` | The sessions list shows sessions, not ticket state from the wiki. Forge removed its canvas in 5.0. |
+| Summary budget, `forge.mjs diff`, and the reading levels of older tickets | No native "changed since your last review" exists for wiki files, and no native check keeps a document short. |
+| `forge.mjs canvas` and `canvas.html` | A native canvas comes from a canvas extension, runs only in a Copilot harness session, and cannot open without a session ([Canvases](https://code.visualstudio.com/docs/agents/run/canvases)). The docs give no file format for a canvas extension, and an enterprise policy can block one (`strictPluginOnlyCustomization`). The Markdown preview shows one static Mermaid diagram for each file. Forge needs the same page in each host and outside a session, so the page is one generated HTML file without a network request, opened in the integrated browser or in any browser. The first Forge canvas was a canvas extension, and Forge 5.0 removed it because the feature was not reliable. It is a view like `raw/board.md`: no manifest lists it. Comments go back to the session by copy and paste, so there is no server. |
+| Cold read (`agents` skill) | No host checks a document with a reader that does not have the session context. The check uses the native subagent tool, with a prompt that holds only the path of the document. It follows the Elephant-Goldfish pattern (Dave Rensin, Google Research), reduced to one read for each review revision. |
+| `skills/ticket/legacy/` and the hook line for an older ticket | A skill has no native way to hold two versions of its steps and to select one by ticket. The `sessionStart` hook reads the `workflow` marker and names `legacy/rules.md` for each ticket that is not `full-v3`. |
+| `forge.mjs board` and `raw/board.md` | The sessions list shows sessions, not ticket state from the wiki. Forge removed its canvas in 5.0: it was a Copilot canvas extension, and that feature was not reliable then. |
 | Sync notes in `raw/sync/` | No native cache of tracker, change request, and CI status exists. |
 | Title rule: rename first, then again at the end of the first turn | An automatic title can replace a title that was set (microsoft/vscode#338122). |
 | Rules in the `sessionStart` hook context, not in `com.github.copilot/rules/` | Plugin rule files loaded in some sessions only (click-check 11). The docs give no always-on format for plugin rules. `COPILOT_CUSTOM_INSTRUCTIONS_DIRS` is global for all repositories, and the CLI does not read `chat.instructionsFilesLocations`. The hook runs in each session, also in `create_session` and custom agent sessions. |
@@ -120,6 +125,8 @@ Live tools on 2026-11-13 (a VS Code session of the Copilot harness). These agree
 - `isolate_session` still has no parameters (click-check 2). `get_current_session` gives the link of the current session. `archive_chat` archives a chat or a session. Forge does not use these tools yet.
 - Also present, not used by Forge: `list_artifacts_and_references`, `remove_artifact_or_reference`, `addComment`, `deleteComments`, `viewUnreviewedComments`.
 
+Live tools on 2026-11-17 (a Claude Code session, CLI 2.1.316). These agree with `hosts/claude.md`: `AskUserQuestion`, `Agent` (subagents), `EnterWorktree`, `ListAgents`, `SendMessage`, and `Artifact` (not used by Forge). No VS Code session was open for Forge 7.0.0, so the VS Code tool list was not compared again.
+
 ## 🧪 Click-checks
 
 Some behavior is not in the docs. Check it in the Agents window, then write the result here.
@@ -142,6 +149,9 @@ When a check fails, use the fallback.
 | 13 | After the company rules moved to `<wiki>/rules/` and trust approval, does a new session in the code repository (`create_session`, no worktree) get the rule pages? Ask one fact from each rule page, and where the company rules are. | ✅ Pass (2026-11-05). The session gave the facts from `rules/toolkit.md` and `rules/data.md`, and the `rules` folder of the wiki. It did not read files or run tools. | `forge.mjs trust` lists each rule page, and the hook names each page that is not approved. |
 | 14 | 6.5.0: does the agent picker show **Forge Master** one time (the root `agents/forge-master.md` is for Claude Code only)? Does "You are the Forge Master. Show the board." load the `forge-master` skill in VS Code, Copilot CLI, and Claude Code? | ⚠️ Partial (picker, Claude Code, Copilot CLI, and the VS Code workaround pass; the VS Code agent body is ignored) | 2026-11-13, VS Code Agents window with the dev plugin folder: the agent picker shows **Agent**, then **Forge Master** one time. Claude Code 2.1.322 in the code repository: `claude --plugin-dir <plugin> --agent forge:forge-master -p "Which skill gives your instructions?"` answers that the `forge-master` skill gives the instructions, and that it loads the skill before any other tool call. Copilot CLI in the code repository: `copilot --plugin-dir <plugin> -p "You are the Forge Master. Which skill gives your instructions?"` calls `skill(forge-master)`. Without `--plugin-dir`, the CLI used the installed forge 6.3.2 (disabled, no `forge-master` skill) and fell back to `AGENTS.md`. VS Code: a new session with **Forge Master** selected answered "No skill is loaded" and made no tool call, so the agent body did not apply. This is the gap of click-check 9, still present after 1.145. The workaround (a session with **Agent** and "You are the Forge Master. Which skill gives your instructions?") names the `forge-master` skill without a tool call. On the next message ("Show me the board"), it read the agent file and `skills/forge-master/SKILL.md` before any other step, then called `rename_chat` ("Forge Master - app"), `forge.mjs board --json`, `readSessionsList`, and `organizeSessionsList` (pin, group moves, group order). The workaround passes. The `forge` rule gives the path of the skill file. Closed: Forge 6.6.0 removes the agent. |
 | 15 | 6.6.0: does "Show me the board" in a new session (default **Agent**) load the `board` skill and run `forge.mjs board --json`? | ❌ Fail (2026-11-13, plugin copy with the `board` skill). The session called only `readSessionsList` and showed the session groups, without the gates, the next steps, or `raw/board.md`. Cause: the host verb `host.board` ("Show or set the session groups") maps to `readSessionsList`, and the request matched the verb, not the skill. | 6.6.0 renames the verb to `host.groups`. The `forge` rule says: load the `board` skill before any other tool call. A test keeps both. ✅ Pass on 2026-11-15 (plugin copy `1a1dfaab257`, after a new change time on the root folder): a new session read the `board` skill, then ran `forge.mjs board --json` and wrote `raw/board.md`. |
+| 16 | 7.0.0: does **Open in Integrated Browser** show `canvas.html` from the wiki folder (a folder outside the workspace)? Does `workbench.browser.autoReloadOnFileChange` load the page again after `forge.mjs canvas <KEY>`? | open. On 2026-11-17 the page was checked only in headless Chromium 157 on Linux: the board, the code map arrows, a saved comment, and the copy message are correct. | Open the `file://` link in a browser outside VS Code, and load the page again by hand. |
+| 17 | 7.0.0: does a `vscode://file/<path>:<line>` link on the canvas open the file from the integrated browser? Does **Copy all** get the clipboard permission for a `file://` page? | open | `forge.mjs canvas <KEY> --links file`. The page also shows the message in a text box for a manual copy. |
+| 18 | 7.0.0: does a `task` subagent in VS Code and in Copilot CLI start without the session history, so that the cold read is a real test? | open. Claude Code: the description of the `Agent` tool in the session says that a new agent knows only its prompt. | Start a new independent session (`host.spawn`) with the cold read prompt. |
 
 ## 📚 Doc pages
 
@@ -153,6 +163,8 @@ Add `.md` to each URL to get Markdown. The index is https://code.visualstudio.co
 - https://code.visualstudio.com/docs/agents/run/sessions/manage-sessions
 - https://code.visualstudio.com/docs/agents/run/tools
 - https://code.visualstudio.com/docs/agents/run/artifacts
+- https://code.visualstudio.com/docs/agents/run/canvases
+- https://code.visualstudio.com/docs/debugtest/integrated-browser
 - https://code.visualstudio.com/docs/agents/run/automations
 - https://code.visualstudio.com/docs/agents/reference/hooks-reference
 - https://code.visualstudio.com/docs/agents/reference/custom-agent-file-reference

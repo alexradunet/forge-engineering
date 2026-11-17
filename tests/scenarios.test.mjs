@@ -17,6 +17,7 @@ const APPROVAL_SETS = {
     'Scoped?': ['scope.md', 'context.md', 'interview.md'], 'Planned?': ['investigation.md', 'plan.draft.md', 'plan.md'],
     'Shippable?': ['review.md'], 'Learned?': ['close.draft.md'],
   },
+  'full-v3': { 'Scoped?': ['story.md'], 'Planned?': ['plan.md'], 'Shippable?': ['review.md'], 'Learned?': ['close.md'] },
 };
 function fixture(scenario) {
   const artifacts = Object.fromEntries((scenario.expectedArtifacts ?? []).map((artifact) => [artifact.path, (artifact.includes ?? ['Synthetic evidence']).join('\n') + '\n']));
@@ -73,6 +74,27 @@ for (const scenario of scenarios) {
 
 test('small and large scenarios require the same full phase sequence', () => {
   assert.deepEqual(scenarios[0].sequence, scenarios[1].sequence);
+  const v3 = scenarios.filter((entry) => entry.workflow === 'full-v3' && entry.id.endsWith('-full-research'));
+  assert.equal(v3.length, 2);
+  assert.deepEqual(v3[0].sequence, v3[1].sequence);
+});
+
+test('full-v3 approves one document for each gate, and a changed plan blocks the implementation', () => {
+  const scenario = scenarios.find((entry) => entry.id === 'v3-small-fix-full-research');
+  for (const gate of Object.keys(APPROVAL_SETS['full-v3'])) {
+    const { trace, artifacts } = fixture(scenario);
+    const without = trace.filter((event) => !(event.kind === 'approval' && event.gate === gate));
+    assert.equal(evaluate(scenario, without, artifacts).passed, false, gate);
+  }
+  const { trace, artifacts } = fixture(scenario);
+  const index = trace.findIndex((event) => event.kind === 'action' && event.name === 'implement');
+  artifacts['plan.md'] = 'Changed plan\n';
+  trace.splice(index, 0, { kind: 'artifact', path: 'plan.md', sha256: sha256(artifacts['plan.md']) });
+  assert.equal(evaluate(scenario, trace, artifacts).passed, false, 'A plan that changed after Planned? is not approved.');
+  const old = fixture(scenario);
+  const swapped = old.trace.map((event) => event.kind === 'approval' && event.gate === 'Scoped?'
+    ? { ...event, documents: ['scope.md', 'context.md', 'interview.md'].map((name) => ({ path: name, sha256: sha256('x') })) } : event);
+  assert.equal(evaluate(scenario, swapped, old.artifacts).passed, false, 'The full-v2 document set does not approve a full-v3 scope.');
 });
 
 test('every critical full-workflow gate has a failing missing-approval check', () => {

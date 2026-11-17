@@ -145,7 +145,7 @@ export function migrateTicket(dir, { dryRun = false, today = new Date().toISOStr
   const file = path.join(dir, 'README.md');
   const text = readFileSync(file, 'utf8');
   const ticket = parseTicket(text);
-  if (ticket.workflow === 'full-v2') return { status: 'already', key: ticket.key, decisions: [], writes: [], notes: ['The ticket already uses full-v2.'] };
+  if (ticket.workflow === 'full-v2' || ticket.workflow === 'full-v3') return { status: 'already', key: ticket.key, decisions: [], writes: [], notes: [`The ticket already uses ${ticket.workflow}.`] };
   if (ticket.workflow !== 'full-v1') throw new Error(`${ticket.key} is a legacy ticket (no workflow marker). Forge migrates only full-v1 tickets.`);
   if (ticket.phase === 'closed') throw new Error(`${ticket.key} is closed. A closed ticket keeps full-v1.`);
   if (existsSync(path.join(dir, ...MIGRATION_RECORD.split('/')))) {

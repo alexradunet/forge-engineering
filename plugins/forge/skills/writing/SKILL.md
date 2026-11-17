@@ -28,13 +28,14 @@ Find the mode of the text. Then apply its row.
 | Mode | Texts | STE | AI patterns | Formatting |
 |---|---|---|---|---|
 | Chat | Replies to the user, comment replies, progress updates | Yes, plus the ADHD shape | The "No AI tells" list | Emoji in headings, Mermaid, lists of max 5 |
-| Forge document | Gate documents, ticket `README.md`, `map.md`, `briefing.md`, daily recaps, config files | Yes, short version first | Strong tells: §1 to §5, §8, §22 to §25 | [Ticket style](../ticket/templates/_style.md): emoji titles and the fixed labels |
+| Forge document | Ticket documents (`README.md`, `story.md`, `plan.md`, `review.md`, `proof.md`, `map.md`, `journal.md`, `close.md`), daily recaps, config files | Yes, short version first | Strong tells: §1 to §5, §8, §22 to §25 | [Ticket style](../ticket/templates/_style.md): plain, with emoji only for a state |
 | Wiki page | Canonical pages, lessons, ticket summaries | Yes | Full pass | Plain: no emoji, no bold labels |
 | Outbound text | Text between the `send` markers of an outbox draft, change request titles and descriptions, tracker comments, emails, messages to colleagues | Yes, unless a sample or policy sets a different voice | Full pass (mandatory) | The target format. No emoji, no bold labels, no decorative headings |
 | User text | Text that the user asks you to check or rewrite | Match the voice of the text | Full pass | Keep the format of the text |
 
-The fixed labels are the labels that the ticket templates define: `**📂 <label>**`, `**TL;DR:**`, `**What I need from you:**`, `**Reading time:**`, `**Target:**`, and the four labeled quotes of [_style.md](../ticket/templates/_style.md).
-Forge lint and the layered reading levels find sections by these labels. Do not change them.
+A ticket document has no bold labels. Its fixed parts are the section names and the plain line labels of the ticket templates, for example `Need from you:`, `Files:`, and `A -> B:` in the flow of `map.md`.
+Forge lint and the ticket canvas find the content by these names. Do not change them.
+An older ticket (`full-v2`, `full-v1`, or no `workflow` marker) keeps the emoji titles and the bold labels of [its own style](../ticket/legacy/templates/_style.md).
 
 ## ⚖️ Precedence
 

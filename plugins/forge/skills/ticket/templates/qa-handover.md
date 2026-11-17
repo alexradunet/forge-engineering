@@ -5,35 +5,15 @@ target: tracker-comment
 status: draft          # authoring metadata; freeze all bytes at review
 updated: <yyyy-mm-dd>
 ---
-# 🧑‍🔬 QA handover (<KEY>): <short title>
+# QA handover <KEY>: <short title>
 
-> 🔥 <one line: what QA can now test and the one thing to watch>
+Why now: <what QA can now test, and the one thing to watch>
 
-> **Target:** tracker comment on <KEY>, before the ticket moves to QA.
->
-> **What I need from you:** GO on Sendable?. After GO, I send exactly the text between the markers. Moving the ticket to QA is a separate question.
->
-> **Reading time:** about <n> minutes.
+Target: tracker comment on <KEY>, <work item URL>, before the ticket moves to QA. Readers: QA testers.
 
-Use a unique Sendable? manifest for this comment. Retain the exact draft path,
-`approval_manifest`, `approval_hash`, and `approval_date` in a separate per-write
-`outbox/qa-handover.approval.json` sidecar outside the hashed set, with `version: 1`,
-`doc`, exact `target`, and exact `command`. After the write set sidecar `status: sent`
-and `result` to the returned URL/id. Never stamp those fields or change status in this approved draft.
-The hashed manifest includes exact `command` and `target`; sidecar values must
-match both exactly. README Sendable? `doc` names this draft, not the sidecar.
-The QA transition is a separate write needing its own approval and record.
+Need from you: GO on Sendable?. Then I send exactly the text between the markers. To move the ticket to QA is a separate question.
 
-## 📊 At a glance
-
-| | |
-|---|---|
-| 📍 Where | <work item URL> |
-| 👥 Who reads it | QA testers |
-| 🔁 Action | comment |
-| 🔀 Change request | <link>, merged <yyyy-mm-dd> |
-
-## 📝 Message
+## Message
 
 <!-- send: start -->
 ### Self-testing and QA guidance (<KEY>)
@@ -77,15 +57,12 @@ Regression areas to watch: <list>.
 Known limits: <list>.
 <!-- send: end -->
 
-> ⚠️ **Warning:** Check before GO: no customer or customer environment names, no secrets or credentials, no links that only developers can open.
+## Checked before GO
 
-**📂 Why this wording**
+- No customer or customer environment names, no secrets, and no credentials.
+- No links that only developers can open.
+- Writing check: full pass, <remaining patterns, or "none">.
 
-<sources: evidence-testing.md checks, test-plan.md, review.md, CI build links, evidence files>
+## Why this wording
 
-Writing check: full pass, <remaining patterns, or "none">.
-
-## ❓ Decisions needed
-
-1. Move <KEY> to <target status> after the comment is sent? (separate tracker write, ask first)
-2. <max 4 more items, or "None (GO only)">
+<The sources: the checks of proof.md, the tests of plan.md, review.md, CI build links, and evidence files.>

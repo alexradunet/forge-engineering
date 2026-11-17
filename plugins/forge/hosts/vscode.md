@@ -20,6 +20,16 @@ A Forge skill names a host verb, for example `host.title`. Do the step of the ve
 | `host.comments` | Read the comment threads of a document with `listComments`. Answer a question with `replyToComment`. Resolve a handled thread with `resolveComments`. Comments that the user sends with the comment submit button (`/act-on-feedback`) arrive the same way. |
 | `host.automation` | Use `configureAutomation` to create or change an automation, `listAutomations` for the IDs and the models, and `runAutomation` for a test run. |
 
+## Ticket canvas
+
+The ticket canvas is a local HTML page (`canvas.html` in the ticket folder, from `forge.mjs canvas <KEY>`).
+
+- Give the user the `file://` link, and this step: in the Explorer, right-click `canvas.html` and select **Open in Integrated Browser**. The address bar of the integrated browser also accepts the `file://` link.
+- Tell the user one time to turn on `workbench.browser.autoReloadOnFileChange`. Then the page loads again after each `canvas` run.
+- The first **Copy all** on the page can ask for the clipboard permission of the site. The page also shows the text for a manual copy.
+- A code link on the page opens the file in VS Code (`vscode://file/...`).
+- Do not use the native canvas tools of VS Code for the ticket canvas. They run only in a Copilot harness session, and the page must be the same in each host.
+
 ## VS Code features
 
 - Give UI steps for the Agents window: the sessions list, the Changes panel, **Chat: Open Customizations**, and Command Palette commands.
@@ -41,6 +51,7 @@ A Forge skill names a host verb, for example `host.title`. Do the step of the ve
 | Manage sessions (groups, pins, move a chat, cleanup) | https://code.visualstudio.com/docs/agents/run/sessions/manage-sessions |
 | Session tools (coordinate work across sessions) | https://code.visualstudio.com/docs/agents/run/tools |
 | Artifacts panel | https://code.visualstudio.com/docs/agents/run/artifacts |
+| Integrated browser (the ticket canvas) | https://code.visualstudio.com/docs/debugtest/integrated-browser |
 | Hooks | https://code.visualstudio.com/docs/agent-customization/hooks |
 | Custom agents | https://code.visualstudio.com/docs/agents/reference/custom-agent-file-reference |
 | Custom instructions and AGENTS.md | https://code.visualstudio.com/docs/agent-customization/custom-instructions |

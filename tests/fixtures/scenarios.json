@@ -118,5 +118,61 @@
     "expectedArtifacts": [],
     "forbiddenArtifacts": ["learning/"],
     "forbiddenActions": ["create-learning", "resolve-learning-thread", "block-gate-for-learning", "external-write"]
+  },
+  {
+    "id": "v3-small-fix-full-research",
+    "workflow": "full-v3",
+    "sequence": ["research", "canvas", "interview", "scope", "cold-read", "investigate", "plan", "implement", "review", "evidence", "close", "distill", "archive"],
+    "gateAfterActions": {
+      "Scoped?": ["research", "canvas", "interview", "scope", "cold-read"],
+      "Planned?": ["investigate", "plan"],
+      "Shippable?": ["review"],
+      "Learned?": ["evidence"]
+    },
+    "requiredEvents": [
+      { "kind": "source", "name": "ticket-history", "status": "available" },
+      { "kind": "source", "name": "wiki", "status": "available" },
+      { "kind": "source", "name": "affected-code", "status": "available" },
+      { "kind": "source", "name": "existing-tests", "status": "available" },
+      { "kind": "source", "name": "regression-risks", "status": "available" }
+    ],
+    "expectedArtifacts": [
+      { "path": "README.md", "includes": ["workflow: full-v3", "## Now"], "excludes": ["track:", "## 📍 Now", "Understood?", "Designed?"] },
+      { "path": "story.md", "includes": ["Need from you:", "## Scope", "## Done when"], "excludes": ["## ⚡ 1 min"] },
+      { "path": "plan.md", "includes": ["Need from you:", "## Diagnosis", "## Steps", "## Checks"], "excludes": ["## ⚡ 1 min"] },
+      { "path": "map.md", "includes": ["## Components", "## Flow"] },
+      { "path": "review.md", "includes": ["Need from you:", "## Changes", "## Findings"] },
+      { "path": "proof.md", "includes": ["Baseline", "Control"] },
+      { "path": "journal.md", "includes": ["check: cold read"] },
+      { "path": "close.md", "includes": ["Need from you:", "## Wiki changes"] },
+      { "path": "canvas.html" }
+    ],
+    "forbiddenArtifacts": ["context.md", "briefing.md", "interview.md", "scope.md", "investigation.md", "plan.draft.md", "test-plan.md", "evidence-testing.md", "close.draft.md", "decisions.md", "log.md", "troubleshooting.md"],
+    "forbiddenActions": ["external-write", "select-track", "skip-phase"]
+  },
+  {
+    "id": "v3-large-change-full-research",
+    "workflow": "full-v3",
+    "sequence": ["research", "canvas", "interview", "scope", "cold-read", "investigate", "plan", "implement", "review", "evidence", "close", "distill", "archive"],
+    "gateAfterActions": {
+      "Scoped?": ["research", "canvas", "interview", "scope", "cold-read"],
+      "Planned?": ["investigate", "plan"],
+      "Shippable?": ["review"],
+      "Learned?": ["evidence"]
+    },
+    "expectedArtifacts": [{ "path": "README.md", "includes": ["workflow: full-v3"], "excludes": ["track:"] }],
+    "forbiddenArtifacts": ["context.md", "briefing.md", "interview.md", "scope.md", "investigation.md", "plan.draft.md", "test-plan.md", "evidence-testing.md", "close.draft.md", "decisions.md", "log.md", "troubleshooting.md"],
+    "forbiddenActions": ["external-write", "select-track", "skip-phase"]
+  },
+  {
+    "id": "older-ticket-keeps-its-layout",
+    "workflow": "full-v2",
+    "sequence": ["resume", "read-legacy-rules", "report-status"],
+    "expectedArtifacts": [
+      { "path": "README.md", "includes": ["workflow: full-v2"], "excludes": ["workflow: full-v3"] },
+      { "path": "scope.md" }
+    ],
+    "forbiddenArtifacts": ["story.md", "journal.md", "proof.md"],
+    "forbiddenActions": ["migrate-layout", "assign-workflow", "copy-new-templates", "external-write"]
   }
 ]

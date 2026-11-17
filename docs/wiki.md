@@ -91,13 +91,15 @@ node "<plugin>/scripts/forge.mjs" lint [--wiki "<path>"] [--json] [--fix]
 ```
 
 Default lint is read-only. It checks ticket shape, workflow/gate agreement, approval
-revisions, and canonical wiki metadata. Only an explicit `workflow: full-v2` or
-`workflow: full-v1` marker selects a mandatory gate set. Existing S/M/L and trackless
+revisions, and canonical wiki metadata. Only an explicit `workflow: full-v3`,
+`workflow: full-v2`, or `workflow: full-v1` marker selects a mandatory gate set. Existing S/M/L and trackless
 tickets retain their original process, including skips and recommended Diagnosed?.
 Missing or conflicting metadata is a finding, never permission to infer a state or
-migrate the ticket. For `full-v2` tickets, lint also warns when a gate document level
-is over its word budget, the ⚡ 1 min card is missing, the levels are in the wrong
-order, or the 📍 Now card does not agree with the README frontmatter.
+migrate the ticket. For `full-v3` tickets, lint also warns when a gate document has no
+summary under its title, when the summary has more than 150 words, when the document has
+more than 1,500 words, when a section has no content, or when the Now card does not agree
+with the README frontmatter. For `full-v2` tickets, it warns when a gate document level
+is over its word budget, the ⚡ 1 min card is missing, or the levels are in the wrong order.
 
 Canonical checks cover `title`, `status`, `updated`, and `sources`; existing
 `index.md` and `log.md` instead require `title` and `type`. An absent `log.md`
@@ -148,9 +150,10 @@ Approval manifests live outside their hashed document sets. README gates retain
 `doc`, user approval `date`, and `hash`, adding a ticket-relative `manifest` JSON path.
 `hash` is the full SHA-256 of raw manifest bytes. The manifest contains
 `version: 1`, `gate`, and `documents` entries with ticket-relative `path` and full
-lowercase raw-byte `sha256`. Planned? (and `full-v1` Designed?) also requires both
+lowercase raw-byte `sha256`. A `full-v3` gate lists its one document (`story.md`, `plan.md`,
+`review.md`, or `close.md`) and no plan copy. In a `full-v2` ticket, Planned? (and `full-v1` Designed?) also requires both
 byte-identical plan files and `approvedCopies: [{ "from": "plan.draft.md", "to": "plan.md" }]`;
-this field is allowed only for Planned? and Designed?. One user GO approves the whole
+this field is allowed only for those two gates of the older workflows. One user GO approves the whole
 displayed revision set. Approval README/records and the manifest never hash themselves.
 `forge.mjs migrate` carries a Scoped? or Planned? approval only from two fresh `full-v1`
 approvals. Its manifest names both source manifests, and lint verifies them.

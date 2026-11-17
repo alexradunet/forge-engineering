@@ -1,6 +1,6 @@
 export const STATES = ['needs-me', 'go', 'active', 'waiting', 'blocked', 'done'];
 export const STATE_EMOJI = { 'needs-me': '🟡', go: '🟢', active: '▶️', waiting: '⏳', blocked: '🔴', done: '✅' };
-export const WORKFLOWS = ['full-v1', 'full-v2'];
+export const WORKFLOWS = ['full-v1', 'full-v2', 'full-v3'];
 export const PHASES = ['start', 'investigate', 'plan', 'implement', 'review', 'closed'];
 const GATE_STATUSES = ['todo', 'in-review', 'approved', 'skipped', 'blocked'];
 export const PEOPLE_STATUSES = ['to-contact', 'drafted', 'waiting', 'follow-up', 'reply-in', 'done'];
@@ -225,19 +225,22 @@ function parsePerson(person) {
   return result;
 }
 
-/** The "## 📍 Now" card of a README: its 1-based heading line, text, and "- **Label:** value" fields (lower-case labels). */
+/**
+ * The Now card of a README: its 1-based heading line, text, and fields (lower-case labels).
+ * full-v3 writes "## Now" with "- Label: value" lines. Older tickets write "## 📍 Now" with "- **Label:** value".
+ */
 export function nowCard(text) {
   const lines = String(text).replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').split('\n');
   const fence = lines[0] === '---' ? lines.indexOf('---', 1) : -1;
-  const start = lines.findIndex((line, index) => index > fence && /^##\s+📍\s*Now\s*$/.test(line));
+  const start = lines.findIndex((line, index) => index > fence && /^##\s+(?:📍\s*)?Now\s*$/.test(line));
   if (start === -1) return null;
   let end = lines.findIndex((line, index) => index > start && /^#{1,2}\s/.test(line));
   if (end === -1) end = lines.length;
   const body = lines.slice(start + 1, end);
   const fields = {};
   for (const line of body) {
-    const match = /^\s*[-*]\s+\*\*([^*]+?):\*\*\s*(.*)$/.exec(line);
-    if (match) fields[match[1].trim().toLowerCase()] = match[2].trim();
+    const match = /^\s*[-*]\s+(?:\*\*([^*]+?):\*\*|([A-Za-z][A-Za-z ]*?):)\s*(.*)$/.exec(line);
+    if (match) fields[(match[1] ?? match[2]).trim().toLowerCase()] = match[3].trim();
   }
   // The card is its list lines. Guide text and comments under the list stay out of the hook context.
   const items = body.filter((line) => /^\s*[-*]\s+\S/.test(line));

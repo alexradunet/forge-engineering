@@ -1,96 +1,86 @@
 # ✍️ Ticket document style
 
-Every ticket document is easy to scan, and no information is lost. Use plain names. Do not use a theme.
+A ticket document is plain. The reader sees the content, not the format.
+An older ticket (`full-v2`, `full-v1`, or no `workflow` marker) keeps the style in [legacy/templates/_style.md](../legacy/templates/_style.md).
 
 ## 📄 Documents
 
-| Document | Title | Gate |
+Each fact has one home. Another document gives a link to it, not a copy.
+
+| Document | Holds | Gate |
 |---|---|---|
-| `README.md` | 🎫 Ticket | None (holds the 📍 Now card) |
-| `context.md` | 🧭 Context | Scoped? (evidence) |
-| `interview.md` | 🎯 Scope interview | Scoped? (evidence) |
-| `scope.md` | 🎯 Scope | Scoped? (primary, layered) |
-| `investigation.md` | 🔎 Investigation | Planned? (evidence) |
-| `plan.draft.md` | 📝 Plan | Planned? (primary, layered) |
-| `outbox\*.draft.md` | 📤 Outbox draft | Sendable? |
-| `review.md` | 🧪 Code review | Shippable? (primary, layered) |
-| `evidence-testing.md` | 🔬 Evidence Testing | None (step, required before merge) |
-| `outbox\qa-handover.draft.md` | 🧑‍🔬 QA handover | Sendable? |
-| `close.draft.md` | ✅ Close | Learned? (primary, layered) |
+| `README.md` | The state of the ticket: frontmatter and the Now card | None |
+| `story.md` | The problem, the scope, your answers, the history, and the open questions | Scoped? |
+| `plan.md` | The diagnosis, the steps, the tests, the checks, and the risks | Planned? |
+| `review.md` | What changed, the tests that ran, and the review findings | Shippable? |
+| `proof.md` | The result of each Evidence Testing check | None (required before a merge) |
+| `journal.md` | The dated log: work, decisions, and problems | None |
+| `map.md` | The code map: components, flow, data, tests, and terms | None |
+| `close.md` | What you now know, and the wiki changes | Learned? |
+| `outbox/*.draft.md` | The exact text of one external write | Sendable? |
 
-Every new ticket uses `workflow: full-v2`. Briefed? belongs only to legacy M tickets,
-and Understood?, Agreed?, Diagnosed?, and Designed? only to `full-v1` and legacy tickets.
-Preserve existing tickets' original gates and skips; do not copy new workflow metadata over them.
+A file starts to exist when its phase starts. Do not create an empty file.
 
-## ⏱️ Reading levels (primary gate docs)
+## 🔇 Signal only
 
-The user reads a primary gate doc from the top and stops at any level. Each level adds detail to the levels above it.
+- Write no emoji in a title or a heading.
+- Use an emoji only for a state, where the color is the message: the ticket states (🟡 🔴 🟢 ▶️ ⏳ ✅), a risk level (🟢 🟡 🔴), and a check result (🟢 verified, 🔴 failed, ⚪ not proven).
+- Write no bold labels and no bold text. Start a line with a plain label and a colon, for example `Cause:`.
+- Write no quote blocks for emphasis, no tip or warning boxes, and no horizontal rules.
+- Use a table only for rows that the reader compares, with 3 columns or more. Use a list for all other content.
+- Do not add a Mermaid diagram to a ticket document. The canvas (`forge.mjs canvas <key>`) draws the code map, the plan, and the history from these files.
 
-| Level | Heading | Words from the top | What it holds |
-|---|---|---|---|
-| 1 min | `## ⚡ 1 min` | at most 150 | key fact, TL;DR, what I need from you, decisions needed (max 3) |
-| 5 min | `## ☕ 5 min` | at most 1,150 | glance table, one diagram, the main table (scope, steps, checklist, or result) |
-| 10 min | `## 📖 10 min` | at most 2,300 | reasons, tests, risks, answers, before and after |
-| 15 min | `## 🔬 15 min` | at most 3,450 | step details, findings, history, full facts |
-| Appendix | `## 📂 Appendix` | no limit | links, logs, long lists, the approval set note |
+## 🧱 Shape of a gate document
 
-- The ⚡ card is required. The approval form shows it, so it must make sense alone.
-- Keep the levels in this order. Put all content under a level: use `###` headings inside a level, never another `##`.
-- A short doc can stop after any level. Do not add empty levels.
-- Code fences, Mermaid diagrams, and link targets do not count as words.
-- `forge.mjs lint` warns when the ⚡ card is missing, a level is over its budget, or the order is wrong. Move detail down a level, or to the Appendix. Do not drop facts.
+A gate document (`story.md`, `plan.md`, `review.md`, `close.md`) has these parts, in this order:
 
-## 🧱 Every primary gate document has these parts, in this order
+1. Frontmatter: copy it from the template. Keep `type`, `ticket`, `gate`, and `updated` correct.
+2. Title: `# <Document> <KEY>: <short title>`.
+3. Summary: at most 150 words, directly under the title, before the first `##` heading. The approval form shows only this text, so it must make sense alone. It has one short paragraph for each label of the template, then `Need from you:`, then at most 3 `Decision <n>:` lines with the recommended answer.
+4. Sections: only the sections that have content, in the order of the template.
 
-0. **Frontmatter**: copy it from the template. Keep `type`, `ticket`, `gate`, and `updated` correct. The ticket overview reads it.
-1. **Title**: `# <emoji> <Title> (<KEY>): <short title>`.
-2. **`## ⚡ 1 min`**: the key fact (`> 🔥 <the most surprising fact or the stakes>`, with a real number when one exists), then the summary quote (`> **TL;DR:**` and `> **What I need from you:**`, with a line with only `>` between them), then **❓ Decisions needed** (max 3 one-line items with the recommended answer, or "None (GO only)").
-3. **`## ☕ 5 min`**: the glance table, one Mermaid diagram (flow, timeline, or structure), and the main table.
-4. **`## 📖 10 min`**, **`## 🔬 15 min`**, **`## 📂 Appendix`**: as the template shows.
+- Leave out a section that has no content. Do not write "None". The exceptions are the summary and `Need from you:`.
+- Keep the section names of the template. The canvas and `forge.mjs lint` find the content by these names.
+- Keep the line shapes of the template inside a section (for example `Files:` under a step, or `A -> B: text` in the flow). The canvas reads them.
+- The whole document has at most 1,500 words. Code and link targets do not count. Put longer material in an `evidence/` file, and give the link. Do not drop a fact to make a document shorter.
+- `forge.mjs lint` warns when the summary is missing or over its budget, when the document is over its budget, and when a section is empty.
 
-Evidence documents (`context.md`, `interview.md`, `investigation.md`) and `evidence-testing.md` keep the older shape: key fact, summary quote with `> **Reading time:**`, at a glance, diagram, sections, then **❓ Decisions needed**.
+## 🔗 Evidence and links
 
-The gate status lives only in the `gates` list of the README frontmatter. Do not write a status footer in the document.
+- Link each fact to its evidence file or to code: `[File.cs](<checkout>/path/File.cs:42)` with the absolute checkout path.
+- Explain each term that the user possibly does not know in plain words, or put it in **Terms** of `map.md`.
+- Tool outputs, the work item snapshot, and spike results go to `evidence/<yyyy-mm-dd>-<topic>.md`, with `date` in the frontmatter.
+- The gate status is only in the `gates` list of the README frontmatter. Do not write a status, a hash, or an approval note in a document.
 
-## 📦 No information is lost
+## 📓 Journal
 
-- Start each section with the short version: what, why, what next.
-- In a layered doc, put the full detail in a deeper level or the Appendix. In an evidence doc, put it below the short version, under a bold label: `**📂 <label>**`.
-- Every fact still links to its evidence file or to code.
+`journal.md` is append-only. Add each entry at the end:
 
-## 🚫 Rendering rules
+```markdown
+## <yyyy-mm-dd> <kind>: <title>
+```
 
-The VS Code preview in the Agents window does not render HTML or GitHub alerts.
-
-- Do not use `<details>`, `<summary>`, or other HTML.
-- Do not use `> [!NOTE]`, `> [!TIP]`, `> [!WARNING]`, `> [!IMPORTANT]`, or `> [!CAUTION]`.
-- Use a plain quote with an emoji label instead:
-
-| Label | Use for |
+| Kind | Use for |
 |---|---|
-| `> 💡 **Tip:**` | A shortcut, a pattern to copy, or a useful tool |
-| `> ℹ️ **Note:**` | Background that helps but is not required |
-| `> ⚠️ **Warning:**` | A risk, a data rule, or a trap |
-| `> 🛑 **Caution:**` | Something that can break production or lose data |
+| `log` | What a work session did, and its results |
+| `decision` | A choice, its reason, and the rejected options |
+| `problem` | An environment, build, or test problem, with its cause and its fix |
+| `check` | The result of a cold read or an adversarial review |
+| `step <n> done` | A plan step that is implemented. Write `step <n> verified` after its Evidence Testing check. |
 
-Use max 3 labeled quotes in one document.
+A decision that an approval depends on also goes into the gate document (`Answers` in `story.md`, `Decisions` in `plan.md`).
 
 ## ✍️ Voice
 
 - Follow the forge document mode of the [`writing` skill](../../writing/SKILL.md): STE, and no strong AI tells (§1 to §5, §8, §22 to §25).
 - Write direct and plain. Address the user as "you". Write "we" for the user and the agent together.
-- Use only the fixed bold labels of this file and the templates. Add no other bold labels.
-- Text between the `send` markers of an outbox draft is outbound text. It gets a full pass, with no emoji and no bold labels.
-
-## 🔀 Before and after
-
-When a document describes a change in behavior, add a before/after table (`🔴 Before` / `🟢 After`) or two Mermaid diagrams.
+- Text between the `send` markers of an outbox draft is outbound text. It gets a full pass, in the format of its target.
 
 ## 🟢 Gate form labels
 
 | Value | Title |
 |---|---|
 | `approve` | 🟢 GO: approve and start the next step |
-| `comments` | 💬 Comments: I added comments in the editor |
+| `comments` | 💬 Comments: I added comments in the editor or on the canvas |
 | `changes` | ✏️ Changes: I type them in the free-text answer |
 | `later` | ⏸️ Hold: not now |

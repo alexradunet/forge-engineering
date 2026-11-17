@@ -39,9 +39,10 @@ the folder two levels above the folder of this file.
 Use the sources in this order. Stop when you can answer.
 
 1. `<F> board --json`.
-2. The 📍 Now card at the top of `<wiki>/raw/tickets/<folder>/README.md`, then the latest `log.md` entries.
-3. The ⚡ 1 min section of the open gate doc, when the user asks what to approve.
-4. `host.sessions`, only for the sessions that the question needs.
+2. The Now card at the top of `<wiki>/raw/tickets/<folder>/README.md`, then the latest entries of `journal.md` (`log.md` in an older ticket).
+3. The summary of the open gate document (the text under its title), when the user asks what to approve. An older ticket has the ⚡ 1 min section in its place.
+4. `<F> canvas <KEY>`, when the user asks to see a ticket: it writes `canvas.html` in the ticket folder. Give the `file://` link.
+5. `host.sessions`, only for the sessions that the question needs.
 
 Answer in a few lines. Give the ticket key, the session title, and a link to the README.
 When a source is old (a large `days` value, or an old `checked` time in the sync note), say so.

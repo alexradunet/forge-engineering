@@ -345,3 +345,25 @@ test('forge.mjs context prints the context for a host without the hook, and the 
     assert.match(wrong.stderr, /Usage/);
   }
 });
+
+test('a full-v3 ticket gets the plain Now card and Resume; an older ticket is sent to the legacy rules', (t) => {
+  const s = setup(t, { workflow: 'full-v3' });
+  writeFileSync(s.readme, readFileSync(s.readme, 'utf8')
+    .replace('## 📍 Now', '## Now').replace(/- \*\*(\w+):\*\*/g, '- $1:'));
+  const folder = path.join(`${s.app}.worktrees`, 'app-7-doc-import');
+  git(s.app, 'worktree', 'add', '-q', '-b', 'APP-7-doc-import', folder);
+  const v3 = ticketOf(run({ cwd: folder, prompt: '' }).additionalContext);
+  assert.match(v3, /workflow full-v3\./);
+  assert.match(v3, /2\. Load the ticket skill and follow Resume\./);
+  assert.match(v3, /Now card from the README:\n- State: 🟡 needs-me\n- Phase: plan\n- Next: Approve Planned\?/);
+  assert.doesNotMatch(v3, /legacy/);
+  assert.deepEqual(nowCard('# A\n\n## Now\n\n- State: ▶️ active\n- Waiting on: nobody\n\n## Files\n').fields, { state: '▶️ active', 'waiting on': 'nobody' });
+
+  for (const workflow of ['full-v2', 'full-v1']) {
+    const old = setup(t, { workflow });
+    const oldFolder = path.join(`${old.app}.worktrees`, 'app-7-doc-import');
+    git(old.app, 'worktree', 'add', '-q', '-b', 'APP-7-doc-import', oldFolder);
+    const text = ticketOf(run({ cwd: oldFolder, prompt: '' }).additionalContext);
+    assert.match(text, new RegExp(`uses the ${workflow} layout, so read legacy/rules\\.md in the folder of the ticket skill and follow Resume there`), workflow);
+  }
+});

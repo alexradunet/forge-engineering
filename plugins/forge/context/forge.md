@@ -18,13 +18,14 @@ When `where` fails, or the wiki or config is missing, tell the user to say "set 
 When `config` or `run` says `Not approved`, show the files and their changes. Run `forge.mjs trust approve` only after the user says yes.
 A ticket lives in the wiki of the repository where it starts. Other wikis get only a link to it.
 
-New tickets use `workflow: full-v2`: full research, briefing, and interview, then four review
+New tickets use `workflow: full-v3`: full research and an interview, then four review
 gates (Scoped?, Planned?, Shippable?, Learned?) plus Sendable? for each external write. Each
-primary gate doc is short and layered (⚡ 1 min to 🔬 15 min). An open `full-v1` ticket moves
-to `full-v2` on resume with `forge.mjs migrate`. Existing S/M/L and trackless tickets keep
-their original phases, gates, and skips. Never infer workflow, state, or approval from
-missing metadata. The `ticket` skill defines revision evidence and affected-action
-blocking; read-only resume remains available.
+gate has one plain document (`story.md`, `plan.md`, `review.md`, `close.md`) with a summary of
+at most 150 words under its title. `forge.mjs canvas <KEY>` shows the whole ticket on one HTML page.
+An older ticket (`full-v2`, `full-v1`, S/M/L, or no marker) keeps its own layout, phases, gates, and
+skips: its rules are in `legacy/rules.md` of the `ticket` skill, and it never moves to `full-v3`.
+Never infer workflow, state, or approval from missing metadata. The `ticket` skill defines revision
+evidence and affected-action blocking; read-only resume remains available.
 
 ## 🧩 Host verbs
 
@@ -103,7 +104,7 @@ A write capability changes something outside the workspace. Before each one:
 1. Draft the text in the ticket `outbox/` folder. Run a full pass of the `writing` skill (outbound mode) on it. Then run the Sendable? gate (the `ticket` skill). Its hashed manifest binds this exact draft plus exact `command` and `target`; sidecar values must match. README gate `doc` names the draft, never its sidecar. Any command or target change requires fresh explicit approval.
 2. Show the exact command, the target, and the text. Wait for an explicit "yes" for this one write.
 3. Pass long text through a file in the system temp folder: `forge-<key>-body.md`. Delete the file after the write.
-4. After GO, create `outbox/<name>.approval.json` outside the hashed set with `version: 1`, exact `doc`, `status: approved`, `approval_manifest`, `approval_hash`, `approval_date`, exact `target`, and exact `command`. After sending, set sidecar `status: sent` and `result` to the returned URL/id, and record it in `log.md`. Never stamp metadata into the approved draft or reuse one approval for another write.
+4. After GO, create `outbox/<name>.approval.json` outside the hashed set with `version: 1`, exact `doc`, `status: approved`, `approval_manifest`, `approval_hash`, `approval_date`, exact `target`, and exact `command`. After sending, set sidecar `status: sent` and `result` to the returned URL/id, and record it in the ticket journal. Never stamp metadata into the approved draft or reuse one approval for another write.
 
 Never, with any tool:
 
@@ -119,7 +120,7 @@ When a row says `manual`, or a tool is missing:
 
 1. Tell the user what to do in one numbered list: where, what to click or paste, and the text.
 2. For a read, ask for the result or a link. Mark it as user-supplied in the ticket notes.
-3. For a write, ask the user to confirm when it is done. Record the confirmation in `log.md`.
+3. For a write, ask the user to confirm when it is done. Record the confirmation in the ticket journal (`journal.md`, or `log.md` in an older ticket).
 4. Continue. A missing tool never blocks a gate by itself.
 
 When a call fails, stop and do not retry a write. Report the location, the cause, and the fix from **Failures** of the config file.

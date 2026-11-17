@@ -2,8 +2,8 @@
 
 `forge` is an agent plugin for the [VS Code Agents window](https://code.visualstudio.com/docs/agents/run/agents-window).
 The same plugin folder also runs in GitHub Copilot CLI and Claude Code (see Hosts).
-It gives every agent session a ticket workflow with review gates, a repository wiki,
-daily recaps, coordinated agent sessions, and a ticket board that any session can show.
+It gives every agent session a ticket workflow with review gates, a small set of plain ticket documents,
+a ticket canvas in the browser, a repository wiki, daily recaps, coordinated agent sessions, and a ticket board that any session can show.
 
 forge has a generic core and one profile (see Profile). This build has the GitHub profile:
 
@@ -125,7 +125,7 @@ Setup offers the native wiki of the private repository, a separate private `<rep
 | `plugins/forge/automations/` | Automation templates: Forge maintenance and Prepare my daily |
 | `plugins/forge/skills/` | `ticket`, `agents`, `board`, `wiki`, `daily-recap`, `forge-setup`, `learning-mode`, `writing` |
 | `plugins/forge/templates/` | The profile: config (`config/`), rule pages (`rules/`), setup values (`profile.md`), and machine values with the list of the other profile files (`profile.json`) |
-| `plugins/forge/scripts/` | `forge.mjs` (setup, config, trust, lint, board, worktree, snapshot, diff, gate-approve, migrate, hook, wiki scripts), `cred.mjs` |
+| `plugins/forge/scripts/` | `forge.mjs` (setup, config, trust, lint, board, worktree, snapshot, diff, canvas, gate-approve, migrate, hook, wiki scripts), `cred.mjs` |
 | `docs/` | [config.md](docs/config.md) (config format), [wiki.md](docs/wiki.md) (sharing and scripts), [evaluation.md](docs/evaluation.md) (behavioral runs), and [vscode-baseline.md](docs/vscode-baseline.md) (the VS Code features that forge uses) |
 | `AGENTS.md` | [Rules for agents that develop forge](AGENTS.md): docs-first checks, tests, and file format |
 
@@ -133,8 +133,8 @@ Setup offers the native wiki of the private repository, a separate private `<rep
 
 | Skill | Use |
 |---|---|
-| `ticket` | One folder per work item in `<wiki>/raw/tickets/<key>`, full research and investigation, review gates, code map, evidence, outbox |
-| `agents` | Implementer sessions in worktrees, reviewer subagents, hand-off, session status |
+| `ticket` | One folder per work item in `<wiki>/raw/tickets/<key>`, full research and investigation, review gates, code map, ticket canvas, evidence, outbox. The rules of older tickets are in `legacy/`. |
+| `agents` | Implementer sessions in worktrees, reviewer subagents, the cold read of gate documents, hand-off, session status |
 | `board` | "Show the board" in any session: ticket status, refresh, session titles and state groups |
 | `wiki` | Query, record, and lint the repository wiki |
 | `daily-recap` | "Prepare my daily" (done, plan, blockers), with or without a daily meeting, and "record the daily outcome" |
@@ -155,7 +155,7 @@ The [`writing` skill](plugins/forge/skills/writing/SKILL.md) decides which rules
 | Text | AI pattern check | Formatting |
 |---|---|---|
 | Chat replies | Short list in the `style` rule | Emoji headings |
-| Gate documents, recaps, config | Strong tells | Ticket style with emoji and fixed labels |
+| Ticket documents, recaps, config | Strong tells | Plain ticket style: emoji only for a state, no bold labels |
 | Wiki pages and lessons | Full pass | Plain: no emoji, no bold labels |
 | Outbox drafts, change request text, tracker comments | Full pass, required before Sendable? | Target format, plain |
 
@@ -170,38 +170,44 @@ No mode allows em dashes or en dashes in prose. License texts are in [NOTICE.md]
    - **New Worktree** session: the agent renames the `agents/...` branch with `git branch -m` before the first commit. VS Code keeps its folder name.
    - **Folder** session on the main checkout: after one "yes", the agent creates the worktree and moves the session there with `set_workspace`.
    - When a worktree of the ticket exists, the agent continues there.
-3. Every new ticket uses `workflow: full-v2`, with no sizing question or `track` field:
-   research → visual briefing → scope interview → **Scoped?** →
+3. Every new ticket uses `workflow: full-v3`, with no sizing question:
+   research → canvas and scope interview → **Scoped?** →
    investigation (🛑 diagnosis stop) → plan → **Planned?** → implement → **Shippable?** → Evidence Testing.
-4. Read and comment on the gate documents. One explicit user approval covers the
-   displayed file/revision set, recorded in a SHA-256 manifest. `forge.mjs gate-approve <key> <gate> --answer "<your exact answer>" --method form|chat --hash <reviewed digest>`
-   accepts only `approve` in the form or `approve <gate>` in chat, and refuses a missing or changed digest. It checks the manifest and the documents, then records the approval in the README and in `approvals/history.md`. When a write fails, it restores both files. Small fixes follow
-   the same phases; unavailable sources and test gaps are recorded, not treated as safety evidence.
+   A small fix has the same phases and gates. Its documents are shorter.
+4. Read the gate document, or read the ticket canvas, and add your comments. One explicit user approval covers the
+   displayed file and revision set, recorded in a SHA-256 manifest. `forge.mjs gate-approve <key> <gate> --answer "<your exact answer>" --method form|chat --hash <reviewed digest>`
+   accepts only `approve` in the form or `approve <gate>` in chat, and refuses a missing or changed digest. It checks the manifest and the documents, then records the approval in the README and in `approvals/history.md`. When a write fails, it restores both files.
+   Unavailable sources and test gaps are recorded, not treated as safety evidence.
 5. At Implement, the `agents` skill reuses a suitable current worktree. It starts another session only when needed.
 6. Approve **Sendable?** for each external write. QA handover runs only when configured.
    Say "close APP-42"; **Learned?** approves distillation into wiki pages and archive.
 
 ```mermaid
 flowchart LR
-  R[Research, briefing, interview] --> S{{Scoped?}} --> I[Investigation] --> P{{Planned?}}
+  R[Research, canvas, interview] --> S{{Scoped?}} --> I[Investigation] --> P{{Planned?}}
   P --> C[Implement] --> SH{{Shippable?}} --> E[Evidence Testing] --> L{{Learned?}}
   I -. the scope is wrong .-> S
 ```
 
-| Gate | You approve | Evidence in the same approval |
+| Gate | You approve | It holds |
 |---|---|---|
-| **Scoped?** | `scope.md` | `context.md`, `briefing.md`, `interview.md` |
-| **Planned?** | `plan.draft.md` and its byte-identical copy `plan.md` | `investigation.md`, `decisions.md`, `test-plan.md` |
-| **Shippable?** | `review.md` | the listed `evidence/` files |
-| **Sendable?** | each `outbox/` draft, before it is sent | none |
-| **Learned?** | `close.draft.md` | none |
+| **Scoped?** | `story.md` | The problem, the scope, the acceptance checks, your interview answers, the history, and the open questions |
+| **Planned?** | `plan.md` | The diagnosis, the steps with their files, the tests, the deployed checks, the risks, and the decisions |
+| **Shippable?** | `review.md` | What changed, the tests that ran, and the findings of the adversarial review |
+| **Sendable?** | each `outbox/` draft, before it is sent | The exact text, command, and target of one external write |
+| **Learned?** | `close.md` | What you now know, and the wiki changes |
 
-Open `full-v1` tickets move to `full-v2` on resume with `forge.mjs migrate <key>`.
-Approved and current Understood? and Agreed? approvals become Scoped?, and Diagnosed? and Designed? become Planned?.
-When one of a pair is missing or stale, the merged gate opens again. Migration never creates an approval.
-Existing S/M/L and trackless tickets retain their original phases, gates, and skips,
-including recommended rather than mandatory Diagnosed?. Briefed? remains legacy-only.
-Missing `track` never identifies the new workflow. Resume reports missing or stale
+A manifest can also list `evidence/` files that you must see in an exact revision.
+Before a gate opens, a subagent without the session history reads the gate document (the cold read).
+It gives a paraphrase and the terms that it cannot resolve, and the session corrects the document before you see it.
+
+### 🕰️ Older tickets
+
+A ticket with `workflow: full-v2`, `workflow: full-v1`, S/M/L, or no marker finishes in its own layout.
+Its rules and templates are in [`skills/ticket/legacy/`](plugins/forge/skills/ticket/legacy/rules.md), and the session hook tells the agent to read them.
+Forge never moves a ticket to `full-v3`. An open `full-v1` ticket still moves to `full-v2` on resume with `forge.mjs migrate <key>`:
+approved and current Understood? and Agreed? approvals become Scoped?, and Diagnosed? and Designed? become Planned?.
+Migration never creates an approval. Missing `track` never identifies a workflow. Resume reports missing or stale
 approval evidence and blocks only the affected action, not unrelated read-only work.
 See the [ticket workflow contract](plugins/forge/skills/ticket/SKILL.md#-workflow).
 
@@ -213,30 +219,58 @@ See the [worktree selection checks](plugins/forge/skills/agents/SKILL.md#select-
 
 The agent never merges. It asks before every write to the tracker, the repository host, or the CI.
 
-### 📖 Read in layers
+### 📄 Ticket documents
 
-Each primary gate document (`scope.md`, `plan.draft.md`, `review.md`, `close.draft.md`) has cumulative
-reading levels. Read from the top, and stop when you know enough:
+A ticket has about 7 Markdown files, and each fact has one home. A file starts to exist when its phase starts.
 
-| Level | Words from the top | What you get |
-|---|---|---|
-| ⚡ 1 min | 150 | The key fact, the TL;DR, what the agent needs from you, and at most 3 ❓ decisions with a recommended answer |
-| ☕ 5 min | 1,150 | The problem, the proposal, and the main risks |
-| 📖 10 min | 2,300 | Your interview answers, the options, and the reasons |
-| 🔬 15 min | 3,450 | The history and the deep detail |
-| 📂 Appendix | no limit | Links to the evidence. Nothing is dropped to make a document shorter. |
+| File | Content |
+|---|---|
+| `README.md` | The state: frontmatter and the Now card |
+| `story.md` | Scoped?: problem, scope, acceptance checks, answers, history, open questions |
+| `plan.md` | Planned?: diagnosis, steps, tests, checks, risks, decisions |
+| `review.md` | Shippable?: changes, tests run, review findings |
+| `proof.md` | Evidence Testing: one check for each changed behavior, with its result |
+| `journal.md` | The dated log: work, decisions, problems, and finished steps |
+| `map.md` | The code map: components with their layer, flow, data, tests, terms |
+| `close.md` | Learned?: what you now know, and the wiki changes |
 
-- The approval form shows only the ⚡ card. At a later review, it shows only "🔀 Changed since your last review"
+- A ticket document is plain: no emoji in a heading, no bold labels, and no section without content.
+  An emoji shows only a state: 🟡 🔴 🟢 for the ticket and a risk, and 🟢 🔴 ⚪ for a check result.
+- A gate document starts with a summary of at most 150 words: the key fact, the change, what the agent needs from you,
+  and at most 3 decisions with a recommended answer. The whole document has at most 1,500 words. Longer material goes to `evidence/`.
+- The approval form shows only the summary. At a later review, it shows only the changes since your last review
   (`forge.mjs diff <key> <gate>`). `forge.mjs snapshot <key> <gate>` saves the version that you saw.
-- `forge.mjs lint` warns when a level is over its budget, the ⚡ card is missing, or the levels are in the wrong order.
-  Code, Mermaid, and link targets do not count as words.
+- `forge.mjs lint` warns when a summary is missing or too long, a document is over its budget, or a section is empty.
+- `proof.md` is not in `review.md`, because Evidence Testing writes its results after Shippable?, and a changed file makes an approval stale.
+
+### 🗺️ Ticket canvas
+
+`forge.mjs canvas <KEY>` writes `canvas.html` into the ticket folder: one page that shows the whole ticket on one board.
+Open it in a browser tab, or in VS Code with **Open in Integrated Browser**.
+
+| Part | Shows |
+|---|---|
+| Gate rail | The state, each gate with its status, the next step, and who the ticket waits on |
+| Story | The summary and each section of `story.md`, the open questions, and the people |
+| Code map | One lane for each layer of `map.md`, an arrow for each flow line, and a mark on each planned or changed component |
+| Plan | The diagnosis, then the steps as a path with their state (planned, done, verified) |
+| Review and proof | The review sections and each Evidence Testing check with its result |
+| Journal | The newest entries |
+
+- Scroll to move, hold Ctrl and scroll to zoom, and drag the background. Zoomed out, the board shows only titles. A click on a part name or a double-click on a card zooms in to read.
+- A click on a component of the code map shows its arrows and their labels.
+- **Comment** on a card saves a note in the browser. **Copy all** gives one message that starts with `Canvas comments for <KEY>:`. Paste it into the ticket session.
+- The page is a view of the Markdown files. It loads nothing from a network, it is in `raw/` and so never committed, and no approval comes from it. Gate approval stays in the session.
+- A link can name one part, for example `canvas.html#zone-plan` or `canvas.html#plan-step-2`.
+- A code link opens the file in VS Code. `--links file` writes plain `file://` links. `--json` prints the content of the page as data.
+- An older ticket gets a simple canvas: one column for each of its files.
 
 ### 📍 Where a ticket is
 
-- The 📍 Now card at the top of each ticket README shows the state, the phase, the open gate, the next step,
-  who the ticket waits on, what is done, the open questions, and the date. `forge.mjs lint` warns when the card
+- The Now card at the top of each ticket README shows the state, the phase, the open gate, the next step,
+  who the ticket waits on, what is done, and the date. `forge.mjs lint` warns when the card
   does not agree with the frontmatter.
-- The artifacts panel next to the chat input shows `<KEY> · 📍 Now` and the document of the open gate
+- The artifacts panel next to the chat input shows `<KEY> · Now` and the document of the open gate
   (`chat.artifacts.enabled`).
 - VS Code 1.145 and later: in the Chat view, open **More Actions**, select **View Mode**, then **Conversation**
   (`chat.persistentProgressVerbosity`, experimental). The tool calls collapse, so a long session is easier to read.
@@ -257,7 +291,7 @@ The title has less than 60 characters. Keys of one project have the same width, 
 
 The plugin has a `sessionStart` [hook](plugins/forge/com.github.copilot/hooks/hooks.json).
 When a session starts, `forge.mjs hook session-start` finds the ticket from the session folder, the branch,
-or the key in the first prompt. It gives the agent the title, the 📍 Now card, and the worktree step.
+or the key in the first prompt. It gives the agent the title, the Now card, and the worktree step.
 The agent renames the session before any other step, and again at the end of the first turn,
 because VS Code can replace the title after the first prompt
 (see "Known gaps" in [vscode-baseline.md](docs/vscode-baseline.md)).
@@ -304,7 +338,7 @@ Each row shows the session title, the open gate, the next step, who the ticket w
 When `<wiki>/raw/sync/<KEY>.md` exists, the row also shows the change request, CI, and tracker status.
 `forge.mjs board --json` gives the same data to agents. Ticket README files remain the source of truth.
 
-The reader supports the [ticket template](plugins/forge/skills/ticket/templates/README.md):
+The reader supports the [ticket template](plugins/forge/skills/ticket/templates/README.md) and the templates of older tickets:
 scalar fields, comments, quoted strings, folded text (`>`), literal text (`|`), and flat object lists
 for `gates`, `changes`, and `people`. Text blocks support strip (`-`) and keep (`+`) chomping.
 Lists can use inline arrays, inline objects, or indented fields.
@@ -324,8 +358,8 @@ A question that names a key does not start or resume that ticket.
 | Say | Result |
 |---|---|
 | "Show the board" | The count for each state, then the tickets that need you |
-| "What did we do on APP-42?" | The 📍 Now card, the latest log entries, and the session link |
-| "What must I approve on APP-42?" | The ⚡ 1 min card of the open gate |
+| "What did we do on APP-42?" | The Now card, the latest journal entries, and the session link |
+| "What must I approve on APP-42?" | The summary of the open gate document |
 | "Refresh" | Reads the tracker, the change requests, and CI (read-only), writes `raw/sync/`, then fixes titles and state groups |
 | "Fix the session titles" | Renames stale ticket session titles and, in VS Code, moves the sessions to their state groups |
 
