@@ -5,13 +5,13 @@
   },
   "metadata": {
     "description": "forge: an engineering workflow plugin for the VS Code Agents window, GitHub Copilot CLI, and Claude Code.",
-    "version": "7.2.0"
+    "version": "7.3.0"
   },
   "plugins": [
     {
       "name": "forge",
       "description": "Ticket workspace (GitHub Issues, pull requests, and Actions) with review gates, plain ticket documents, a ticket canvas, ticket worktrees and session titles, a ticket board skill, automations, a repository wiki, and daily recaps.",
-      "version": "7.2.0",
+      "version": "7.3.0",
       "source": "plugins/forge"
     }
   ]

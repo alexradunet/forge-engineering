@@ -21,7 +21,7 @@ flowchart LR
   tpl["templates/config<br/>profile values"] -- seed --> cfg["&lt;wiki&gt;/forge/config/*.md"]
   remote["wiki Git remote"] <-->|push / pull| cfg
   cfg --> trust{"trust check<br/>SHA-256"}
-  trust --> rule["forge rule<br/>capability to command"]
+  trust --> rule["context/tools.md<br/>capability to command"]
   rule --> skills["ticket, agents, daily-recap skills"]
 ```
 
@@ -96,6 +96,7 @@ node "<plugin>/scripts/forge.mjs" config row checkouts "old" --delete
 | | `learningMode` | Offer optional lessons for unfamiliar concepts in artifact comments | `false` |
 | | `adversarialReviewModel` | Model of the adversarial reviewer; empty means a model different from the author's | empty |
 | | `maxImplementers` | Maximum implementer sessions at the same time | `6` |
+| | `gateGuard` | The gate guard for a push or a new change request of a ticket without a valid Shippable? approval: `deny`, `ask` (the host asks you), or `off` | `deny` |
 
 ## Learning mode
 
@@ -137,7 +138,7 @@ This is a repository policy and skill, not a custom UI or a background watcher.
 
 ## 📜 Capabilities
 
-Skills never name a tool. They name a **capability**. The `forge` rule finds its row in the config file.
+Skills never name a tool. They name a **capability**. The file `plugins/forge/context/tools.md` tells the agent how to find its row in the config file.
 A **write** changes something outside the workspace. The agent drafts the text in `outbox/`, runs the Sendable? gate, and asks before every write.
 `manual` in a row means that the agent tells the user the exact step, and waits.
 
@@ -191,7 +192,7 @@ No ticket moves to `full-v3`, and absence of `track` never selects a workflow. S
 
 ## ➕ Change a tool
 
-forge is **CLI first**. The `forge` rule, "Tool choice: CLI first", gives the order: official CLI, then REST, then MCP.
+forge is **CLI first**. The file `plugins/forge/context/tools.md`, "Tool choice: CLI first", gives the order: official CLI, then REST, then MCP.
 
 1. Change the template in `plugins/forge/templates/config/<kind>.md` of this repository, so that each user gets it. Raise the plugin version.
 2. Fill in the frontmatter, the **Auth check**, and each capability row. Keep `manual` for a gap.

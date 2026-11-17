@@ -81,7 +81,8 @@ function findByKey(tickets, text) {
   return null;
 }
 
-function trustedConfig(where, env) {
+/** The config of a wiki when the user approved its files, else null. */
+export function trustedConfig(where, env) {
   try {
     assertTrusted(where, ['config/'], { env });
     return loadConfig(where.configDir).config;
@@ -99,7 +100,23 @@ function baseBranches(cwd, config) {
   return names;
 }
 
-const IGNORE_LINE = 'A board request (the `board` skill) and Forge automations ignore this context.';
+/**
+ * The ticket of a folder: by the recorded worktree, then by the recorded branch (not a base branch),
+ * then by a key in the branch name or the folder name. The main checkout matches only by a ticket branch.
+ * here is the top folder of the work tree, and getConfig gives the trusted config or null.
+ */
+export function ticketOfFolder(tickets, { here, branch, inMain, getConfig }) {
+  if (!here) return null;
+  let match = !inMain ? tickets.find((entry) => entry.ticket.worktree && samePath(entry.ticket.worktree, here)) : null;
+  if (!match && branch) {
+    const hit = tickets.find((entry) => entry.ticket.branch === branch);
+    if (hit && !baseBranches(here, getConfig()).has(branch)) match = hit;
+  }
+  if (!match && !inMain) match = findByKey(tickets, `${branch} ${path.basename(here)}`);
+  return match ?? null;
+}
+
+const IGNORE_LINE ='A board request (the `board` skill) and Forge automations ignore this context.';
 
 function placeLine(here, branch, mainPath, recorded, host) {
   if (!here) return '';
@@ -161,11 +178,19 @@ function pathsLine(pluginDir, where) {
   return parts.join(' ');
 }
 
-/** The verb table of the host from <plugin>/hosts/<host>.md, or '' when it cannot be read. */
-function hostTable(pluginDir, host) {
-  try {
-    return readFileSync(path.join(pluginDir, 'hosts', `${host}.md`), 'utf8').replace(/\r\n/g, '\n').trim();
-  } catch { return ''; }
+/**
+ * The verb table of the host: the text of <plugin>/hosts/<host>.md up to the heading after "## Host verbs",
+ * and a line that names the file for the other parts (the ticket canvas, the feature documentation).
+ * Returns '' when the file cannot be read.
+ */
+export function hostTable(pluginDir, host) {
+  const file = path.join(pluginDir, 'hosts', `${host}.md`);
+  let text;
+  try { text = readFileSync(file, 'utf8').replace(/\r\n/g, '\n').trim(); } catch { return ''; }
+  const verbs = text.indexOf('\n## Host verbs');
+  const next = verbs === -1 ? -1 : text.indexOf('\n## ', verbs + 1);
+  if (next === -1) return text;
+  return `${text.slice(0, next).trimEnd()}\n\nMore steps for this host are in \`${file}\`: the ticket canvas, the board page, and the feature documentation. Read that file before you show a canvas or a board page, start the canvas server, or advise on a feature of the host.`;
 }
 
 /** Step 1 of the ticket part: the session title of a known ticket. */
@@ -196,15 +221,7 @@ function ticketPart(event, where, forge, env, { host = 'vscode', promptOnly = fa
   const inMain = Boolean(here) && samePath(here, where.repo.path);
   let config;
   const getConfig = () => (config === undefined ? (config = trustedConfig(where, env)) : config);
-  let match = null;
-  if (!promptOnly) {
-    match = here && !inMain ? tickets.find((entry) => entry.ticket.worktree && samePath(entry.ticket.worktree, here)) : null;
-    if (!match && here && branch) {
-      const hit = tickets.find((entry) => entry.ticket.branch === branch);
-      if (hit && !baseBranches(here, getConfig()).has(branch)) match = hit;
-    }
-    if (!match && here && !inMain) match = findByKey(tickets, `${branch} ${path.basename(here)}`);
-  }
+  let match = promptOnly ? null : ticketOfFolder(tickets, { here, branch, inMain, getConfig });
   if (!match) match = findByKey(tickets, event.prompt);
 
   if (match) {

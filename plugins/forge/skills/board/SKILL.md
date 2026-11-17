@@ -57,7 +57,7 @@ When the user says "refresh" or "sync":
 
 1. Run `<F> board`.
 2. For each ticket that is not ✅, read the tracker status, the change request state, and the CI result.
-   Use read-only commands only (see "Config and capabilities" in the `forge` rule).
+   Use read-only commands only (see "Config and capabilities" in `<plugin>/context/tools.md`).
 3. Write `<wiki>/raw/sync/<KEY>.md`. Each value is one line. Leave a value empty when you cannot read it,
    and write the failure under the frontmatter. The field `tracker` holds the tracker status for each tracker. An old note can name it `jira`.
 

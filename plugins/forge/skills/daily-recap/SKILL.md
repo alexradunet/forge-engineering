@@ -78,7 +78,7 @@ Never invent calendar entries, attendance, cancellations, or transcripts.
 ## 📝 Prepare the recap
 
 1. Use the configured sources only.
-2. For the tracker, use `tracker.search` (see the `forge` rule) with the configured query and fields. Follow pagination.
+2. For the tracker, use `tracker.search` (see `<plugin>/context/tools.md`) with the configured query and fields. Follow pagination.
 3. Read the matching local ticket folders: `README.md` first, then the latest entries of `journal.md` (`log.md` in an older ticket).
 4. Read the previous reviewed `recap.md` and its `outcome.md`, if they exist.
 5. Write `days/<yyyy-mm-dd>/recap.md` with the configured sections. Mark it as a draft, and ask the user to review it.

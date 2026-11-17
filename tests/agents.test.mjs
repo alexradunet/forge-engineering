@@ -5,7 +5,12 @@ import { parseFile } from '../plugins/forge/scripts/lib/config.mjs';
 
 const read = (file) => readFileSync(new URL(`../plugins/forge/skills/${file}`, import.meta.url), 'utf8');
 const agents = read('agents/SKILL.md');
-const ticket = read('ticket/SKILL.md');
+// 7.3.0: the ticket skill is a short SKILL.md and one file for each phase in phases/, so that SKILL.md stays whole
+// in the context after a compaction. `ticket` is the text of all parts, in the order of the workflow.
+const ticketCore = read('ticket/SKILL.md');
+const PHASES = ['start', 'state', 'worktrees', 'gates', 'investigate-plan', 'implement', 'evidence', 'closing'];
+const phase = (name) => read(`ticket/phases/${name}.md`);
+const ticket = [ticketCore, ...PHASES.map(phase)].join('\n');
 const plan = read('ticket/templates/plan.md');
 const legacy = read('ticket/legacy/rules.md');
 const legacyPlan = read('ticket/legacy/templates/plan.draft.md');
@@ -43,9 +48,9 @@ test('pinned proof checks stay exact while resumed implementation preserves task
 });
 
 test('ticket start, resume, implementation, and plan template agree on worktree reuse', () => {
-  const start = ticket.split('## 🚀 Start')[1].split('###')[0];
-  const resume = ticket.split('## 🔁 Resume')[1].split('## 🔎 Investigate')[0];
-  const implement = ticket.split('## 🛠️ Implement')[1].split('## 🔬 Evidence Testing')[0];
+  const start = phase('start').split('## 🚀 Start')[1].split('###')[0];
+  const resume = ticketCore.split('## 🔁 Resume')[1];
+  const implement = phase('implement').split('## 🛠️ Implement')[1];
   assert.match(start, /Preserve an existing session worktree/);
   assert.match(resume, /does not need another worktree when the current one is suitable/);
   assert.match(implement, /Continue in a suitable current worktree/);
@@ -68,8 +73,9 @@ test('the ticket skill is full-v3 only, and the older rules stay complete in leg
   assert.doesNotMatch(ticket, /Understood\?|Agreed\?|Diagnosed\?|Designed\?|Briefed\?|plan\.draft\.md|approvedCopies|track: [SML]/);
   for (const text of ['workflow: full-v2', 'workflow: full-v1', 'track: M', 'Briefed?', 'approvedCopies', 'forge.mjs" context']) assert.ok(legacy.includes(text), text);
   assert.match(legacy, /A ticket with `workflow: full-v3` uses \[SKILL\.md\]\(\.\.\/SKILL\.md\)/);
-  for (const [text, base] of [[ticket, 'ticket/'], [legacy, 'ticket/legacy/']]) {
-    for (const [, target] of text.matchAll(/\]\(((?:templates|legacy|\.\.)\/[^)#]+)\)/g)) {
+  const parts = [[ticketCore, 'ticket/'], [legacy, 'ticket/legacy/'], ...PHASES.map((name) => [phase(name), 'ticket/phases/'])];
+  for (const [text, base] of parts) {
+    for (const [, target] of text.matchAll(/\]\(((?:templates|legacy|phases|\.\.)\/[^)#]+|[a-z-]+\.md)\)/g)) {
       assert.ok(existsSync(new URL(`../plugins/forge/skills/${base}${target}`, import.meta.url)), `${base}${target}`);
     }
   }
@@ -86,7 +92,7 @@ test('full-v3 templates are plain: no emoji in headings, no bold labels, and the
     assert.doesNotMatch(body, /\*\*/, `${name}: bold text`);
     assert.doesNotMatch(body, /^> /m, `${name}: quote block`);
     assert.doesNotMatch(body, /```mermaid/, `${name}: the canvas draws the diagrams`);
-    assert.ok(ticket.includes(`(templates/${name})`), `the skill lists templates/${name}`);
+    assert.ok(ticket.includes(`templates/${name})`), `a part of the skill links templates/${name}`);
   }
   for (const [name, gate] of [['story.md', 'Scoped?'], ['plan.md', 'Planned?'], ['review.md', 'Shippable?'], ['close.md', 'Learned?']]) {
     const text = read(`ticket/templates/${name}`);

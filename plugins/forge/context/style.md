@@ -1,8 +1,5 @@
 # forge style
 
-Company rules for each session (tools, credentials, data rules) go into the `<wiki>/rules/` pages. The hook gives the approved pages to each session.
-Step rules for tickets go into the hook sections of `<config>/policy.md`. Helper scripts go into `<wiki>/forge/scripts`.
-
 ## ✍️ Response style
 
 Use ASD-STE100 Simplified Technical English when you respond to the user.
@@ -20,6 +17,7 @@ Use ASD-STE100 Simplified Technical English when you respond to the user.
 - Limit each paragraph to six sentences.
 - Use emoji in headings and where it helps an ADHD reader scan content.
 - Add a Mermaid diagram when it explains a process, relationship, or architecture more clearly than prose.
+- Never tell the user to open a Markdown file. Give a Markdown link, so that the user can add comments.
 
 The `writing` skill is the single source for documents, wiki pages, and outbound text.
 It also decides conflicts between these rules. Load it before you write one of these:
@@ -73,17 +71,3 @@ Use a hybrid memory layer. The `wiki` skill describes the rules.
 - Verify a wiki claim before you rely on it.
 - After you record something in the wiki, tell the user which pages changed.
 - Never put secrets, personal data, or copies of company documentation in the wiki.
-
-## 🎫 Tickets and change requests
-
-- Use the `ticket` skill for work items. When the user names a ticket, read its `README.md` first.
-- Never tell the user to open a Markdown file. Give a Markdown link, so that the user can add comments.
-- Wait for explicit approval of the current plan before implementation.
-- Before any change request, including a draft, run the adversarial review of the `agents` skill. Never skip it.
-- Distill and archive a ticket folder only when the user says that the ticket is done.
-
-## 🤖 Agent sessions
-
-- Use the `agents` skill to start implementer sessions, reviewer subagents, and hand-offs.
-- Never answer a session's question, trust prompt, or permission prompt for the user.
-- Delete or archive only sessions that the user asks you to remove.

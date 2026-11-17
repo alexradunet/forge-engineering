@@ -176,9 +176,11 @@ test('portable plugin text names host verbs, not VS Code session tools', () => {
 });
 
 test('each host table has one row for each host verb, and the skills name only known verbs', () => {
-  const rule = readFileSync(path.join(plugin, 'context', 'forge.md'), 'utf8');
-  const verbs = [...rule.matchAll(/^\| `(host\.[a-z]+)` \|/gm)].map((m) => m[1]);
-  assert.ok(verbs.length >= 10, `forge.md lists ${verbs.length} verbs`);
+  // 7.3.0: the session context is short, so forge.md has no verb list. The VS Code table is the reference list.
+  const rows = (text) => [...text.matchAll(/^\| `(host\.[a-z]+)` \|/gm)].map((m) => m[1]);
+  const verbs = rows(readFileSync(path.join(plugin, 'hosts', 'vscode.md'), 'utf8'));
+  assert.ok(verbs.length >= 10, `hosts/vscode.md lists ${verbs.length} verbs`);
+  assert.deepEqual(rows(readFileSync(path.join(plugin, 'context', 'forge.md'), 'utf8')), [], 'The verb rows are in the host tables only.');
   for (const host of ['vscode', 'copilot-cli', 'claude']) {
     const table = readFileSync(path.join(plugin, 'hosts', `${host}.md`), 'utf8');
     assert.match(table, /^# Forge host: /, `${host}: the hook finds the table by its heading`);

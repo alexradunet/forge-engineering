@@ -7,6 +7,14 @@
         "command": "node \"${PLUGIN_ROOT}/scripts/forge.mjs\" hook session-start",
         "timeoutSec": 30
       }
+    ],
+    "preToolUse": [
+      {
+        "type": "command",
+        "matcher": "bash|powershell",
+        "command": "node \"${PLUGIN_ROOT}/scripts/forge.mjs\" hook pre-tool",
+        "timeoutSec": 30
+      }
     ]
   }
 }

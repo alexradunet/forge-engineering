@@ -5,6 +5,7 @@ qaHandover: false
 learningMode: false
 adversarialReviewModel:
 maxImplementers: 6
+gateGuard: deny
 ---
 
 # 🛡️ Policy
@@ -22,6 +23,7 @@ maxImplementers: 6
 | `learningMode` | Offer optional, source-linked lessons for unfamiliar concepts in artifact comments | `false` |
 | `adversarialReviewModel` | Model of the adversarial reviewer. Empty means a model different from the author's | empty |
 | `maxImplementers` | Maximum implementer sessions at the same time | `6` |
+| `gateGuard` | The gate guard (a preToolUse hook) for a push or a new change request of a ticket without a valid Shippable? approval: `deny`, `ask` (the host asks you), or `off` | `deny` |
 
 ## 🪝 Hook sections
 

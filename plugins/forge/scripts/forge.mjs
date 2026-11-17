@@ -27,6 +27,8 @@
 //   hook session-start [--host <host>]   read the hook event on stdin; print {"additionalContext"} with the Forge context, else {}
 //   hook session-start --host claude --part <n>   the same for Claude Code: part n of the context in {"hookSpecificOutput"}
 //   hook prompt-submit --host claude   Claude Code: the ticket part and the session title when the prompt names a ticket
+//   hook pre-tool [--host <host>]   the gate guard: read the preToolUse event on stdin; for a push or a new change request
+//            in a ticket worktree without a valid Shippable? approval, print the deny (or ask) decision, else {}
 //   context [--cwd <dir>] [--host <host>]   print the Forge context (for a host without the hook)
 //     <host> is vscode, copilot-cli, or claude (copilot is an old name). Without --host, forge.mjs finds the host from the environment.
 //   trust [approve <path>=<sha>...]   show or approve the files under <wiki>/forge
@@ -49,6 +51,7 @@ import { approveGate } from './lib/approve.mjs';
 import { writeBoard } from './lib/board.mjs';
 import { createWorktree, planWorktree } from './lib/worktree.mjs';
 import { CLAUDE_PARTS, HOST_NAMES, contextText, promptSubmit, readEvent, resolveHost, sessionStart } from './lib/hook.mjs';
+import { preTool, preToolOutput, readToolEvent } from './lib/guard.mjs';
 import { diffGate, gateName, renderDiff, saveSnapshot } from './lib/reading.mjs';
 import { LINK_MODES, buildCanvas } from './lib/canvas.mjs';
 import { writeViews } from './lib/views.mjs';
@@ -280,6 +283,7 @@ export function hookArgs(argv, env = process.env) {
   out.host = explicitClaude ? 'claude' : resolveHost(out.host || 'copilot', env);
   if (name === 'session-start' && (explicitClaude || !partGiven)) return out;
   if (name === 'prompt-submit' && explicitClaude && !partGiven) return out;
+  if (name === 'pre-tool' && !partGiven) return out;
   return null;
 }
 
@@ -304,12 +308,13 @@ export function main(argv = process.argv.slice(2)) {
     let result = {};
     try {
       const hook = hookArgs(argv);
-      if (!hook) console.error('forge: Usage: forge.mjs hook session-start [--host vscode|copilot-cli | --host claude --part <1-4>] | hook prompt-submit --host claude (reads the hook event JSON on stdin).');
+      if (!hook) console.error(`forge: Usage: forge.mjs hook session-start [--host vscode|copilot-cli | --host claude --part <1-${CLAUDE_PARTS}>] | hook prompt-submit --host claude | hook pre-tool [--host <host>] (reads the hook event JSON on stdin).`);
       else {
         let raw = '';
         try { if (!process.stdin.isTTY) raw = readFileSync(0, 'utf8'); } catch { /* no input */ }
         const options = { cli: fileURLToPath(import.meta.url), host: hook.host, part: hook.part };
-        result = hook.name === 'prompt-submit' ? promptSubmit(readEvent(raw), options) : sessionStart(readEvent(raw), options);
+        if (hook.name === 'pre-tool') result = preToolOutput(preTool(readToolEvent(raw)), hook.host);
+        else result = hook.name === 'prompt-submit' ? promptSubmit(readEvent(raw), options) : sessionStart(readEvent(raw), options);
       }
     } catch (err) {
       console.error(`forge: hook ${argv[1]}: ${err.message}`);

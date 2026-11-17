@@ -72,7 +72,7 @@ State the progress at each step, for example "step 4 of 10 done".
 ## ✅ Check or repair
 
 1. Run `doctor`. Report each `fail` and `warn` line with its fix.
-2. Read the latest VS Code release notes (see "VS Code Agents window" in the `forge` rule). Report each change that affects plugins, sessions, worktrees, automations, hooks, custom agents, or MCP servers.
+2. Read the latest VS Code release notes (see "VS Code features" in `<plugin>/hosts/vscode.md`). Report each change that affects plugins, sessions, worktrees, automations, hooks, custom agents, or MCP servers.
 3. Check the plugin version. When `<plugin>/../..` is a Git clone, run `git -C <plugin>/../.. fetch -q`, then
    `git -C <plugin>/../.. log --oneline "HEAD..@{u}"` (keep the quotes; PowerShell needs them). When it lists commits, tell the user to update (README, "Update forge").
    An uninstall and a new install from source can reuse the old clone, so a reinstall is not an update.
@@ -212,6 +212,7 @@ The profile `policy.md` already holds the hook sections and the values. Show the
 - `qaHandover`: whether QA tests after the merge.
 - `maxImplementers`: the maximum number of implementer sessions. The default is 6.
 - `adversarialReviewModel`: the reviewer model. Empty means a model family different from the author.
+- `gateGuard`: what the gate guard does with a push or a new change request of a ticket that has no valid Shippable? approval: `deny` (default), `ask`, or `off`.
 
 Write a change with `config set`, for example `"policy.maxImplementers=4"`.
 A hook can add steps and make rules stricter. It can never weaken a core rule.
@@ -297,7 +298,7 @@ helper scripts, and knowledge pages. `raw/` and `archive/` stay local (`.gitigno
 - Never put a secret in a config file or in the wiki.
 - Ask before each write to the wiki: show the command and the files that change.
 - Write CLI commands in the capability rows. Use MCP only when no CLI or REST call can do the
-  capability (see the `forge` rule, "Tool choice: CLI first"). `profile.md` names each exception.
+  capability (see `<plugin>/context/tools.md`, "Tool choice: CLI first"). `profile.md` names each exception.
 - A profile value that all users share changes in the forge repository (`templates/`), not only in one wiki.
   Then each user runs 🔄 Refresh the profile config. Helper scripts go into `<wiki>/forge/scripts`. See `docs/wiki.md` for sharing and trust.
 - Never approve trust for the user. Never run a write capability during setup.

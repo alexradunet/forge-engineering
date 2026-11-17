@@ -55,7 +55,7 @@ At the end, it offers the optional extras: learning mode, daily recap, and autom
 
 `forge.mjs doctor` warns while `<user>` remains in `repo.branchPattern`, while the main checkout path is missing, or while a credential is missing.
 
-forge targets the VS Code Agents window. VS Code changes each month. So the `forge` rule tells the agent
+forge targets the VS Code Agents window. VS Code changes each month. So the VS Code host file (`plugins/forge/hosts/vscode.md`) tells the agent
 to read the current [VS Code documentation](https://code.visualstudio.com/docs/agents/run/agents-window) and the
 [release notes](https://code.visualstudio.com/updates) before it advises on a VS Code feature.
 
@@ -70,7 +70,7 @@ for a verb, the agent tells you the manual step.
 |---|---|---|---|
 | VS Code Agents window | Install the plugin (above) | `AI_AGENT` contains `vscode` | Session tools, forms, artifacts, comments, and automations |
 | GitHub Copilot CLI | `copilot plugin install` or `copilot --plugin-dir <clone>/plugins/forge` | no `AI_AGENT` and no `CLAUDECODE` | You run `/rename` and `/cwd`. The board is the session overview. |
-| Claude Code | `claude plugin marketplace add <clone>`, then `claude plugin install forge@forge`. Or `claude --plugin-dir <clone>/plugins/forge` | `CLAUDECODE=1` | The hooks set the title. The context comes in 4 parts. No automations. |
+| Claude Code | `claude plugin marketplace add <clone>`, then `claude plugin install forge@forge`. Or `claude --plugin-dir <clone>/plugins/forge` | `CLAUDECODE=1` | The hooks set the title. The context comes in numbered parts. No automations. |
 
 `forge.mjs context --host <vscode|copilot-cli|claude>` prints the context of a host, for a check or for a host without the hook.
 
@@ -118,10 +118,10 @@ Setup offers the native wiki of the private repository, a separate private `<rep
 |---|---|
 | `plugins/forge/plugin.json` | Plugin manifest ([Agent Plugins 1.0](https://agent-plugins.org)) for all hosts. Claude Code takes the name from the folder and the version from its marketplace. |
 | `.github/plugin/marketplace.json`, `.claude-plugin/marketplace.json` | The marketplaces for VS Code and Copilot CLI, and for Claude Code. `tests/packaging.test.mjs` keeps the name, the version, and the source the same in each manifest, and runs each hook command. |
-| `plugins/forge/context/` | The session rules: `forge` (paths, capabilities, host verbs, write rules), `style` (response style, "No AI tells", memory, sessions). The `sessionStart` hook gives them to each session. |
-| `plugins/forge/hosts/` | One verb table for each host: `vscode.md`, `copilot-cli.md`, `claude.md`. The hook adds the table of the current host to the context. |
-| `plugins/forge/com.github.copilot/hooks/` | `hooks.json`: the `sessionStart` hook. It gives each session the paths, the ticket context, the `forge` and `style` rules, and the approved company rules of `<wiki>/rules/` |
-| `plugins/forge/hooks/` | `hooks.json`: the same context for Claude Code (spike). `SessionStart` gives it in 4 parts of at most 9,000 characters, and `UserPromptSubmit` sets the ticket title. See `Claude Code host` in [vscode-baseline.md](docs/vscode-baseline.md) |
+| `plugins/forge/context/` | The session rules, in a short form: `forge` (paths, ticket sessions, host verbs, the rules for external writes) and `style` (response style, "No AI tells", response shape, memory). The `sessionStart` hook gives them to each session. `tools.md` holds the steps that the agent reads before the first external call: capabilities, tool choice, external writes, the gate guard, and the manual step. `tests/context-budget.test.mjs` keeps the sizes. |
+| `plugins/forge/hosts/` | One verb table for each host: `vscode.md`, `copilot-cli.md`, `claude.md`. The hook adds the verb table of the current host to the context. The other parts of the file (the ticket canvas, the feature documentation) stay in the file, and the agent reads them at the step. |
+| `plugins/forge/com.github.copilot/hooks/` | `hooks.json`: the `sessionStart` hook. It gives each session the paths, the ticket context, the `forge` and `style` rules, and the approved company rules of `<wiki>/rules/`. The `preToolUse` hook is the gate guard (`forge.mjs hook pre-tool`, see Review gates). |
+| `plugins/forge/hooks/` | `hooks.json`: the same context for Claude Code (spike). `SessionStart` gives it in parts of at most 9,000 characters (2 parts for a session without company rules), `UserPromptSubmit` sets the ticket title, and `PreToolUse` is the gate guard. See `Claude Code host` in [vscode-baseline.md](docs/vscode-baseline.md) |
 | `plugins/forge/automations/` | Automation templates: Forge maintenance and Prepare my daily |
 | `plugins/forge/skills/` | `ticket`, `agents`, `board`, `wiki`, `daily-recap`, `forge-setup`, `learning-mode`, `writing` |
 | `plugins/forge/templates/` | The profile: config (`config/`), rule pages (`rules/`), setup values (`profile.md`), and machine values with the list of the other profile files (`profile.json`) |
@@ -133,7 +133,7 @@ Setup offers the native wiki of the private repository, a separate private `<rep
 
 | Skill | Use |
 |---|---|
-| `ticket` | One folder per work item in `<wiki>/raw/tickets/<key>`, full research and investigation, review gates, code map, ticket canvas, evidence, outbox. The rules of older tickets are in `legacy/`. |
+| `ticket` | One folder per work item in `<wiki>/raw/tickets/<key>`, full research and investigation, review gates, code map, ticket canvas, evidence, outbox. `SKILL.md` is short, and the steps of each phase are in `phases/`. The rules of older tickets are in `legacy/`. |
 | `agents` | Implementer sessions in worktrees, reviewer subagents, the cold read of gate documents, hand-off, session status |
 | `board` | "Show the board" in any session: ticket status, refresh, session titles and state groups |
 | `wiki` | Query, record, and lint the repository wiki |
@@ -200,6 +200,10 @@ flowchart LR
 A manifest can also list `evidence/` files that you must see in an exact revision.
 Before a gate opens, a subagent without the session history reads the gate document (the cold read).
 It gives a paraphrase and the terms that it cannot resolve, and the session corrects the document before you see it.
+
+The gate guard is a `preToolUse` hook. Before a `git push` or a new change request in a ticket worktree, it checks the approvals of Scoped?, Planned?, and Shippable?.
+When one is missing or stale, it stops the command and names each finding. `policy.gateGuard` selects `deny` (default), `ask` (the host asks you), or `off`.
+The guard reads the words of a shell command, so it is a net and not a wall: the written rules stay in force.
 
 ### 🕰️ Older tickets
 

@@ -17,6 +17,14 @@
           { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/forge.mjs", "hook", "prompt-submit", "--host", "claude"], "timeout": 30 }
         ]
       }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/forge.mjs", "hook", "pre-tool", "--host", "claude"], "timeout": 30 }
+        ]
+      }
     ]
   }
 }

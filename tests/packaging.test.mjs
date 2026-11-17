@@ -92,3 +92,32 @@ test('the Claude hooks ask for each context part and give each part under the Cl
   assert.ok(texts.at(-1).endsWith(`\n\n${END_MARKER}`));
   assert.deepEqual(outputs.at(-1), {}, 'A prompt without a ticket key gives no prompt context.');
 });
+
+test('each host has the gate guard as a preToolUse hook for its shell tools, and the command runs', (t) => {
+  const root = scratch(t);
+  // A command that is not a ship action gives {}, so the normal permission flow of the host continues.
+  const event = (extra) => JSON.stringify({ cwd: root, ...extra });
+  const [copilot, ...moreCopilot] = copilotHooks.hooks.preToolUse;
+  assert.equal(moreCopilot.length, 0);
+  assert.equal(copilot.type, 'command');
+  assert.equal(copilot.matcher, 'bash|powershell', 'The Copilot matcher is a regex for the full tool name. Without it, the hook runs for each tool.');
+  assert.ok(copilot.timeoutSec > 0);
+  assert.match(copilot.command, /^node "\$\{PLUGIN_ROOT\}\/scripts\/forge\.mjs" hook pre-tool$/);
+  const command = copilot.command.replaceAll('${PLUGIN_ROOT}', pluginDir.replaceAll('\\', '/'));
+  const first = spawnSync(command, { shell: true, input: event({ toolName: 'bash', toolArgs: JSON.stringify({ command: 'git status' }) }), encoding: 'utf8', env: hookEnv(root), cwd: root });
+  assert.equal(first.status, 0, first.stderr);
+  assert.deepEqual(JSON.parse(first.stdout), {});
+
+  const [group, ...moreClaude] = claudeHooks.hooks.PreToolUse;
+  assert.equal(moreClaude.length, 0);
+  assert.equal(group.matcher, 'Bash|PowerShell');
+  const [claude, ...moreHooks] = group.hooks;
+  assert.equal(moreHooks.length, 0);
+  assert.equal(claude.command, 'node');
+  assert.ok(claude.timeout > 0);
+  assert.deepEqual(claude.args, ['${CLAUDE_PLUGIN_ROOT}/scripts/forge.mjs', 'hook', 'pre-tool', '--host', 'claude']);
+  const args = claude.args.map((a) => a.replaceAll('${CLAUDE_PLUGIN_ROOT}', pluginDir));
+  const second = spawnSync(process.execPath, args, { input: event({ tool_name: 'Bash', tool_input: { command: 'git push' } }), encoding: 'utf8', env: hookEnv(root, { CLAUDECODE: '1' }), cwd: root });
+  assert.equal(second.status, 0, second.stderr);
+  assert.deepEqual(JSON.parse(second.stdout), {}, 'A push outside a ticket worktree is not a ticket step.');
+});
