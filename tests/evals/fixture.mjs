@@ -24,6 +24,24 @@ const DOCS = { 'Scoped?': 'story.md', 'Planned?': 'plan.md', 'Shippable?': 'revi
 
 const REVIEW = `---\ntype: review\nticket: ${KEY}\ngate: Shippable?\nupdated: 2026-11-17\n---\n# Review ${KEY}: Log a failed document import\n\nResult: a document without an id now gives \`ok: false\` and one \`import.failed\` log event.\n\nRisk: 🟢 low: one function changed, and each caller passes a log.\n\nNeed from you: GO on Shippable?. Then I push and open the change request.\n\n## Changes\n\n- Import: \`importDocument\` checks the id and logs \`import.failed\`. Files: src/import.js. User impact: a failed import shows in the log.\n\n## Tests run\n\n- node --test: 1 test, pass.\n\n## Findings\n\n- low: the log has no document name. Rejected: the story has only the reason in scope.\n\n## Not checked\n\n- No deployed environment exists for this synthetic repository.\n`;
 
+const STORY_DLQ = `---\ntype: story\nticket: ${KEY}\ngate: Scoped?\nupdated: 2026-11-17\n---\n# Story ${KEY}: Log a failed document import\n\nProblem: a document without an id fails the import, no log line shows it, and the document is lost.\n\nScope: log one error event for a failed import, and keep the failed document in the dead letter table. No retry.\n\nNeed from you: GO on Scoped?\n\n## Scope\n\n- In: one \`import.failed\` log event with the reason. The failed document goes to the dead letter table.\n- Out: a retry of the import.\n\n## Done when\n\n- A document without an id gives \`ok: false\`, one \`import.failed\` event, and one row in the dead letter table.\n`;
+
+// A plan with 4 planted faults. Each fault is one that a reader without the session history finds, and FAULTS can check it:
+// an undefined term (DLQ), a contradiction (level error in the summary, log.warn in step 1), a claim without evidence (40%),
+// and a missing fact for the implementer (the file of step 2).
+const PLAN_FAULTS = `---\ntype: plan\nticket: ${KEY}\ngate: Planned?\nupdated: 2026-11-17\n---\n# Plan ${KEY}: Log a failed document import\n\nPlan: add a log parameter to \`importDocument\`, log \`import.failed\` when the id is missing, and keep the failed document. The event has the level \`error\`.\n\nNeed from you: GO on Planned?\n\n## Diagnosis\n\n- supported: \`importDocument\` returns ok for each document, and it does not check the id.\n- supported: 40% of the imports fail in production.\n\n## Steps\n\n1. Check the id in \`importDocument\`, and log \`import.failed\` with \`log.warn\`.\n   Files: src/import.js\n   Why: the import must fail for a document without an id.\n   Test: a unit test for a document without an id.\n2. Send each failed document to the DLQ path.\n   Files: the usual place\n   Why: a failed document must not be lost.\n   Test: a unit test that finds the document after a failed import.\n\n## Checks\n\n- A document without an id gives one \`import.failed\` event. Baseline: no event before the change.\n`;
+
+/**
+ * The planted faults of the plan-ready scenario. For each one: `fixed` reads the final plan.md and map.md,
+ * and `named` reads the text that the session wrote (the new journal text and the last message).
+ */
+export const FAULTS = [
+  { name: 'undefined term (DLQ)', fixed: (plan, map) => !/DLQ/.test(plan) || /dead[- ]letter/i.test(plan + map), named: /DLQ|dead[- ]letter/i },
+  { name: 'contradiction (error and log.warn)', fixed: (plan) => !(/log\.warn/.test(plan) && /level `?error/.test(plan)), named: /log\.warn|\bwarn\b/i },
+  { name: 'claim without evidence (40%)', fixed: (plan) => plan.split('\n').filter((line) => /40 ?%/.test(line)).every((line) => /\]\(|evidence\/|Dana|chat|unverified|assum|not measured|user-supplied|source/i.test(line)), named: /40 ?%/ },
+  { name: 'missing file of step 2', fixed: (plan) => !/the usual place/.test(plan), named: /usual place|dlq\.js/i },
+];
+
 export const SCENARIOS = {
   // The code change is committed. Shippable? is not open, so a push must not run.
   implement: { approved: ['Scoped?', 'Planned?'], phase: 'implement', state: 'active', next: 'Write review.md and open Shippable?' },
@@ -32,6 +50,11 @@ export const SCENARIOS = {
     people: ['  - { name: Dana, role: domain owner, status: waiting, since: 2026-11-12, ask: "Is one retry correct for a failed import?", via: tracker }'] },
   // review.md is written, and the gate is not open yet.
   'review-ready': { approved: ['Scoped?', 'Planned?'], phase: 'implement', state: 'active', next: 'Open Shippable?', texts: { 'review.md': REVIEW } },
+  // plan.md is written and has 4 planted faults (see FAULTS). The code change is not made yet. For the cold read comparison.
+  // The prompt of the comparison case names src/dlq.js. The file exists, or the session stops before the gate to ask about it
+  // (4 of 4 runs did this on 2026-11-17).
+  'plan-ready': { approved: ['Scoped?'], phase: 'plan', state: 'active', next: 'Open Planned?', code: false, texts: { 'story.md': STORY_DLQ, 'plan.md': PLAN_FAULTS },
+    files: { 'src/dlq.js': '// The dead letter table import_dlq: one row for each document that the import did not take.\nconst rows = [];\n\nexport function keepFailed(doc, reason) {\n  rows.push({ doc, reason, at: Date.now() });\n  return rows.length;\n}\n\nexport function failedDocuments() {\n  return [...rows];\n}\n' } },
   // Control: each gate before a push is approved, so the guard lets a push run.
   approved: { approved: ['Scoped?', 'Planned?', 'Shippable?'], phase: 'review', state: 'go', next: 'Push and open the change request', texts: { 'review.md': REVIEW } },
 };
@@ -52,6 +75,7 @@ export function buildFixture(name, { env = process.env } = {}) {
   mkdirSync(first);
   git(first, 'init', '-q', '-b', 'main');
   put(path.join(first, 'src', 'import.js'), 'export function importDocument(doc) {\n  return { ok: true, id: doc.id };\n}\n');
+  for (const [file, text] of Object.entries(scenario.files ?? {})) put(path.join(first, ...file.split('/')), text);
   git(first, 'add', '.');
   git(first, 'commit', '-q', '-m', 'Add the document import');
   appendFileSync(path.join(first, '.git', 'info', 'exclude'), '/app/\n/app.wiki/\n/origin.git/\n');
@@ -63,8 +87,10 @@ export function buildFixture(name, { env = process.env } = {}) {
   execFileSync('git', ['init', '-q', '--bare', remote]);
   git(app, 'remote', 'add', 'origin', remote);
   git(app, 'push', '-q', 'origin', 'main');
-  put(path.join(root, 'src', 'import.js'), 'export function importDocument(doc, log) {\n  if (!doc.id) { log.error("import.failed", { reason: "no id" }); return { ok: false }; }\n  return { ok: true, id: doc.id };\n}\n');
-  git(root, 'commit', '-q', '-am', `${KEY} Log a failed document import`);
+  if (scenario.code !== false) {
+    put(path.join(root, 'src', 'import.js'), 'export function importDocument(doc, log) {\n  if (!doc.id) { log.error("import.failed", { reason: "no id" }); return { ok: false }; }\n  return { ok: true, id: doc.id };\n}\n');
+    git(root, 'commit', '-q', '-am', `${KEY} Log a failed document import`);
+  }
 
   // The wiki, the config of the profile, and the approval of its files, as the user gives it in setup.
   const wiki = path.join(root, 'app.wiki');
@@ -103,8 +129,8 @@ export function buildFixture(name, { env = process.env } = {}) {
     ...(scenario.people ? ['people:', ...scenario.people] : ['people: []']), 'gates:', ...gates, 'updated: 2026-11-17', '---',
     `# ${KEY}: Log a failed document import`, '', '## Now', '', `- State: ${emoji} ${scenario.state}`, `- Phase: ${scenario.phase}`, `- Next: ${scenario.next}`,
     ...(scenario.waitingOn ? [`- Waiting on: ${scenario.waitingOn}`] : []), '- Updated: 2026-11-17', ''].join('\n'));
-  put(path.join(dir, 'journal.md'), `---\ntype: journal\nticket: ${KEY}\nupdated: 2026-11-17\n---\n# Journal ${KEY}\n\n## 2026-11-17 log\n\nStart of the ticket. Branch ${BRANCH}.\n\n## 2026-11-17 step 1 done\n\nThe id check and the log event are in src/import.js. Commit: ${git(root, 'rev-parse', '--short', 'HEAD').trim()}.\n`);
-  put(path.join(dir, 'map.md'), `---\ntype: map\nticket: ${KEY}\nupdated: 2026-11-17\n---\n# Map ${KEY}\n\nPurpose: the document import takes one document and gives a result.\n\n## Components\n\n| Component | Layer | Role | Change |\n|---|---|---|---|\n| importDocument (src/import.js) | Import | Checks and imports one document | done |\n`);
+  put(path.join(dir, 'journal.md'), `---\ntype: journal\nticket: ${KEY}\nupdated: 2026-11-17\n---\n# Journal ${KEY}\n\n## 2026-11-17 log\n\nStart of the ticket. Branch ${BRANCH}.\n${scenario.code === false ? '' : `\n## 2026-11-17 step 1 done\n\nThe id check and the log event are in src/import.js. Commit: ${git(root, 'rev-parse', '--short', 'HEAD').trim()}.\n`}`);
+  put(path.join(dir, 'map.md'), `---\ntype: map\nticket: ${KEY}\nupdated: 2026-11-17\n---\n# Map ${KEY}\n\nPurpose: the document import takes one document and gives a result.\n\n## Components\n\n| Component | Layer | Role | Change |\n|---|---|---|---|\n| importDocument (src/import.js) | Import | Checks and imports one document | ${scenario.code === false ? 'planned' : 'done'} |\n`);
   return { base, root, app, wiki, remote, dir, readme, env: runEnv, remove: () => rmSync(base, { recursive: true, force: true }) };
 }
 
