@@ -51,7 +51,9 @@ const ACTION_GATES = {
   },
 };
 PREREQUISITES['full-v3'] = PREREQUISITES['full-v2'];
-ACTION_GATES['full-v3'] = ACTION_GATES['full-v2'];
+// full-v3 (GH-2): the "yes" for a write is the prompt of the host that the gate guard asks for. A write needs
+// no Sendable? approval record, only its outbox draft. Older layouts keep their per-write records.
+ACTION_GATES['full-v3'] = { ...ACTION_GATES['full-v2'], write: [] };
 /** The gates that a phase needs, for a strict workflow. */
 export function phaseGates(workflow, phase) {
   return PREREQUISITES[workflow]?.[phase] ?? [];
@@ -364,7 +366,15 @@ export function checkAction(ticket, file, action, write) {
     return [name];
   });
   const findings = gates.flatMap((name) => checkGate(ticket, file, name).findings);
-  if (action === 'write') {
+  if (action === 'write' && v3Ticket(ticket)) {
+    const draft = write?.draft;
+    if (typeof draft !== 'string' || !/^outbox[\\/].+\.draft\.md$/.test(draft)) {
+      findings.push(finding(file, 'write-draft', 'The write names no outbox/<target>.draft.md file.', 'Write the text from the outbox.draft.md template before the write.'));
+    } else {
+      try { regular(within(path.dirname(file), draft)); }
+      catch (error) { findings.push(finding(file, 'write-draft', `${draft}: ${error.message}`, 'Write the text from the outbox.draft.md template before the write.')); }
+    }
+  } else if (action === 'write') {
     const gate = ticket.gates.find((item) => item.name === 'Sendable?');
     if (!write || typeof write.command !== 'string' || typeof write.target !== 'string') {
       findings.push(finding(file, 'write-target', 'The exact command and target are not supplied.', 'Show the exact command, target and revisions before requesting approval.'));

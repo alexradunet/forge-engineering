@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { changeCommands, preTool, preToolOutput, readToolEvent, shellCommands, shipActions } from '../plugins/forge/scripts/lib/guard.mjs';
+import { capabilityCommands, changeCommands, guardActions, preTool, preToolOutput, readToolEvent, shellCommands, shipActions, writeCommands } from '../plugins/forge/scripts/lib/guard.mjs';
 import { sha256 } from '../plugins/forge/scripts/lib/validation.mjs';
 import { status as trustStatus, approve } from '../plugins/forge/scripts/lib/trust.mjs';
 import { resolve } from '../plugins/forge/scripts/lib/repo.mjs';
@@ -104,6 +104,25 @@ test('changeCommands reads the change request command of the repo.open-change ro
   assert.deepEqual(changeCommands(''), []);
 });
 
+test('writeCommands reads the commands of the 7 write capabilities, also from the Notes cell', () => {
+  const texts = Object.fromEntries(['tracker', 'repo', 'ci'].map((kind) => [kind, readFileSync(path.join(templates, `${kind}.md`), 'utf8')]));
+  const found = writeCommands(texts).map(({ capability, words, method }) => `${capability}: ${words.join(' ')}${method ? ` (${method})` : ''}`);
+  assert.deepEqual(found, [
+    'tracker.comment: gh issue comment',
+    'tracker.transition: gh issue close', 'tracker.transition: gh issue reopen', 'tracker.transition: gh issue edit',
+    'tracker.link: gh issue comment',
+    'repo.open-change: gh pr create',
+    'repo.update-change: gh pr edit', 'repo.update-change: gh pr comment',
+    'repo.reply: gh api (POST)',
+    'ci.trigger: gh workflow run', 'ci.trigger: gh run rerun',
+  ]);
+  assert.deepEqual(writeCommands({}), [], 'No config gives no write command.');
+  assert.deepEqual(capabilityCommands(texts.tracker, 'tracker.fetch'), [{ words: ['gh', 'issue', 'view'] }], 'A read row gives its commands, but writeCommands does not ask for it.');
+  assert.deepEqual(capabilityCommands('| `repo.reply` | `curl --method=PATCH https://h/<id>` | n |', 'repo.reply'), [], 'One word is not a command.');
+  assert.deepEqual(capabilityCommands('| `repo.reply` | `az repos pr reply -X POST` | n |', 'repo.reply'), [{ words: ['az', 'repos', 'pr', 'reply'], method: 'POST' }]);
+  assert.deepEqual(capabilityCommands('| `tracker.comment` | manual | Paste it in the web UI. |', 'tracker.comment'), []);
+});
+
 test('shipActions finds each push and each change request command, with its folder', () => {
   const changes = [['gh', 'pr', 'create']];
   const base = path.resolve('/base');
@@ -145,9 +164,10 @@ test('a push that names a ticket branch is checked from each folder of the repos
 });
 
 test('readToolEvent reads the command of each host format and ignores a tool call without a command', () => {
-  assert.deepEqual(readToolEvent('{"cwd":"/x","tool_name":"Bash","tool_input":{"command":"git push"}}'), { cwd: '/x', command: 'git push' });
-  assert.deepEqual(readToolEvent('{"cwd":"/x","toolName":"bash","toolArgs":"{\\"command\\":\\"git push\\"}"}'), { cwd: '/x', command: 'git push' });
-  assert.deepEqual(readToolEvent('{"toolName":"powershell","toolArgs":{"command":"git push"}}'), { cwd: '', command: 'git push' });
+  assert.deepEqual(readToolEvent('{"cwd":"/x","tool_name":"Bash","tool_input":{"command":"git push"}}'), { cwd: '/x', command: 'git push', mode: '' });
+  assert.deepEqual(readToolEvent('{"cwd":"/x","permission_mode":"bypassPermissions","tool_name":"Bash","tool_input":{"command":"git push"}}'), { cwd: '/x', command: 'git push', mode: 'bypassPermissions' });
+  assert.deepEqual(readToolEvent('{"cwd":"/x","toolName":"bash","toolArgs":"{\\"command\\":\\"git push\\"}"}'), { cwd: '/x', command: 'git push', mode: '' });
+  assert.deepEqual(readToolEvent('{"toolName":"powershell","toolArgs":{"command":"git push"}}'), { cwd: '', command: 'git push', mode: '' });
   for (const raw of ['', '{bad', '[1]', '{"tool_name":"Edit","tool_input":{"file_path":"a"}}', '{"toolName":"bash","toolArgs":"not json"}', '{"tool_input":{"command":"  "}}']) {
     assert.equal(readToolEvent(raw), null, raw);
   }
@@ -229,6 +249,89 @@ test('a trusted config adds the change request command, and policy.gateGuard sel
   assert.equal(run(changed.worktree, 'git push').decision, 'deny');
 });
 
+test('guardActions finds each write command of the config, and a read with the same first words is not a write', () => {
+  const texts = Object.fromEntries(['tracker', 'repo', 'ci'].map((kind) => [kind, readFileSync(path.join(templates, `${kind}.md`), 'utf8')]));
+  const writes = writeCommands(texts);
+  const changes = changeCommands(texts.repo);
+  const base = path.resolve('/base');
+  const found = (line) => guardActions(line, base, { changes, writes }).map((action) => (action.kind === 'write' ? `${action.words.join(' ')} [${action.capabilities.join(', ')}]` : action.kind));
+  assert.deepEqual(found('gh issue comment 2 -R a/b -F /tmp/body.md'), ['gh issue comment [tracker.comment, tracker.link]']);
+  assert.deepEqual(found('gh issue close 2 -R a/b --reason completed'), ['gh issue close [tracker.transition]']);
+  assert.deepEqual(found('gh issue edit 2 --add-label x'), ['gh issue edit [tracker.transition]']);
+  assert.deepEqual(found('gh pr edit 3 -t T'), ['gh pr edit [repo.update-change]']);
+  assert.deepEqual(found('gh pr comment 3 -F b.md'), ['gh pr comment [repo.update-change]']);
+  assert.deepEqual(found('gh api -X POST repos/a/b/pulls/3/comments/9/replies -F body=@b.md'), ['gh api [repo.reply]']);
+  assert.deepEqual(found('gh api --method=PATCH repos/a/b/issues/2'), ['gh api [repo.reply]'], 'Another write method is also a write.');
+  assert.deepEqual(found('gh workflow run ci.yml -r main'), ['gh workflow run [ci.trigger]']);
+  assert.deepEqual(found('gh run rerun 77 --failed'), ['gh run rerun [ci.trigger]']);
+  assert.deepEqual(found('git push -u origin x && gh pr create -t T'), ['push', 'change'], 'A change command is a change action, not also a write action.');
+  for (const line of ['gh issue view 2', 'gh issue list', 'gh pr view 3', 'gh api repos/a/b/pulls/3', 'gh api -X GET repos/a/b', 'gh api graphql -f query=q', 'gh run view 77', 'echo "gh issue comment 2"', "cat <<'EOF'\ngh issue comment 2\nEOF"]) {
+    assert.deepEqual(found(line), [], line);
+  }
+});
+
+test('a write in a ticket worktree gets ask, and the reason names the ticket, the command, and the draft', (t) => {
+  const s = setup(t);
+  trustConfig(s);
+  const comment = 'gh issue comment 7 -R a/b -F /tmp/forge-app-7-body.md';
+  const verdict = run(s.worktree, comment);
+  assert.equal(verdict.decision, 'ask');
+  assert.equal(verdict.key, 'APP-7');
+  assert.match(verdict.reason, /^Forge gate guard: APP-7: this command is an external write: `gh issue comment` \(tracker\.comment or tracker\.link\)\. No outbox draft is in review for it/);
+  assert.match(verdict.reason, /Allow it only if you read the text and you want this one write now\.$/);
+  // With the draft in the README Sendable? doc, the reason names the draft file.
+  mkdirSync(path.join(s.dir, 'outbox'));
+  writeFileSync(path.join(s.dir, 'outbox', 'item-comment.draft.md'), '---\nstatus: draft\n---\nText\n');
+  writeFileSync(s.readme, readFileSync(s.readme, 'utf8').replace('  - { name: Sendable?, need: required, status: todo }', '  - { name: Sendable?, doc: outbox/item-comment.draft.md, need: required, status: in-review }'));
+  assert.ok(run(s.worktree, comment).reason.includes(`The text is in ${path.join(s.dir, 'outbox', 'item-comment.draft.md')}.`));
+  for (const command of ['gh issue close 7', 'gh workflow run ci.yml', 'gh api -X POST repos/a/b/pulls/1/comments/2/replies -F body=@b.md']) {
+    assert.equal(run(s.worktree, command).decision, 'ask', command);
+  }
+  for (const command of ['gh issue view 7', 'gh api repos/a/b/pulls/1']) assert.equal(run(s.worktree, command), null, command);
+  assert.equal(run(s.app, comment), null, 'The main checkout on the base branch has no ticket, so the written rule applies there.');
+  const plain = setup(t);
+  assert.equal(run(plain.worktree, comment), null, 'Without a trusted config there is no write command.');
+});
+
+test('a new change request asks after its gates pass, and a deny wins over an ask', (t) => {
+  const none = setup(t);
+  trustConfig(none);
+  assert.equal(run(none.worktree, 'gh pr create -t T').decision, 'deny', 'The ship gates come first.');
+  assert.equal(run(none.worktree, 'gh issue comment 7 -F b.md && git push').decision, 'deny', 'A write and a push without gates: the deny wins.');
+  const done = setup(t, { approved: ['Scoped?', 'Planned?', 'Shippable?'] });
+  trustConfig(done);
+  const change = run(done.worktree, 'gh pr create -R a/b -t "APP-7 T" -F b.md');
+  assert.equal(change.decision, 'ask');
+  assert.match(change.reason, /this command is an external write: a new change request \(repo\.open-change\)\./);
+  assert.equal(run(done.worktree, 'git push -u origin users/a/APP-7-doc-import'), null, 'A push gets no ask: it sends commits, not text.');
+  const off = setup(t, { approved: ['Scoped?', 'Planned?', 'Shippable?'] });
+  trustConfig(off, ['policy.gateGuard=off']);
+  assert.equal(run(off.worktree, 'gh issue comment 7 -F b.md'), null, 'off stops the write check too.');
+  const asks = setup(t);
+  trustConfig(asks, ['policy.gateGuard=ask']);
+  assert.equal(run(asks.worktree, 'gh issue comment 7 -F b.md').decision, 'ask', 'The ask mode changes only the ship verdict.');
+});
+
+test('in bypassPermissions the host shows no prompt, so each ask becomes a deny', (t) => {
+  const s = setup(t);
+  trustConfig(s);
+  const comment = 'gh issue comment 7 -F b.md';
+  const mode = (permission) => preTool({ cwd: s.worktree, command: comment, mode: permission }, { env });
+  assert.equal(mode('default').decision, 'ask');
+  assert.equal(mode('').decision, 'ask', 'A host that gives no mode keeps the ask.');
+  assert.equal(mode('acceptEdits').decision, 'ask');
+  const deny = mode('bypassPermissions');
+  assert.equal(deny.decision, 'deny');
+  assert.match(deny.reason, /^Forge gate guard: APP-7: this command is an external write: `gh issue comment`/);
+  assert.match(deny.reason, /This session runs in bypassPermissions mode, so the host shows the user no prompt for it\. Do not run the command in another form\. Show the user the text and the exact command/);
+  const asks = setup(t);
+  trustConfig(asks, ['policy.gateGuard=ask']);
+  const push = preTool({ cwd: asks.worktree, command: 'git push', mode: 'bypassPermissions' }, { env });
+  assert.equal(push.decision, 'deny', 'The ask mode of a push also needs a prompt.');
+  assert.match(push.reason, /APP-7 has no valid approval for a push\./);
+  assert.equal(preTool({ cwd: s.worktree, command: 'gh issue view 7', mode: 'bypassPermissions' }, { env }), null);
+});
+
 test('each host gets its own output format, and no verdict gives an empty object', () => {
   const verdict = { decision: 'deny', key: 'APP-7', reason: 'Forge gate guard: text.' };
   assert.deepEqual(preToolOutput(null, 'claude'), {});
@@ -252,6 +355,10 @@ test('forge.mjs hook pre-tool always exits 0 with JSON', (t) => {
   assert.equal(copilot.status, 0, copilot.stderr);
   assert.equal(JSON.parse(copilot.stdout).permissionDecision, 'deny');
   assert.match(JSON.parse(copilot.stdout).permissionDecisionReason, /^Forge gate guard: APP-7/);
+  trustConfig(s);
+  const write = (permission_mode) => JSON.parse(call(JSON.stringify({ cwd: s.worktree, permission_mode, tool_name: 'Bash', tool_input: { command: 'gh issue comment 7 -F b.md' } }), '--host', 'claude').stdout).hookSpecificOutput.permissionDecision;
+  assert.equal(write('default'), 'ask');
+  assert.equal(write('bypassPermissions'), 'deny', 'The CLI passes the permission mode to the guard.');
   for (const input of ['{bad', '', JSON.stringify({ cwd: s.worktree, tool_name: 'Bash', tool_input: { command: 'git status' } })]) {
     const quiet = call(input, '--host', 'claude');
     assert.equal(quiet.status, 0);
