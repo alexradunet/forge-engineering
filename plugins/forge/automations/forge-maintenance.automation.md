@@ -37,7 +37,7 @@ Do all 8 steps in each run. Do not skip a step because an earlier run did it or 
 
 Rules:
 
-- Write only `<wiki>/raw/board.md` and `<wiki>/raw/sync/<KEY>.md`. Change only session titles and groups.
+- Write only `<wiki>/raw/board.md` and `<wiki>/raw/sync/<KEY>.md`. `<F> board` also writes the pages of the same data (`<wiki>/raw/board.html`, and `canvas.html` in each ticket folder). Change only session titles and groups.
 - Do not change code, ticket files, approvals, or wiki pages.
 - Read the tracker, the repository host, and CI only. No comments, transitions, pushes, or merges.
 - Never send a message to a session. Never answer a session question, an approval form, or a permission prompt.

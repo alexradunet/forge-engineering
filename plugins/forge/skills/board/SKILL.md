@@ -30,9 +30,11 @@ the folder two levels above the folder of this file.
 1. Run `<F> board --json`. For each ticket it gives: state, phase, open gate, next step, waiting on, days since the
    update, `sessionTitle`, `worktree`, `branch`, change requests, the sync note, and the people `waits`
    (`waiting` people after more than 3 working days).
-   It also writes `<wiki>/raw/board.md`.
+   It also writes `<wiki>/raw/board.md` and the pages: the board page `<wiki>/raw/board.html` and the `canvas.html` of each ticket.
+   `page.url` is the link of the board page.
 2. Show the count for each state, then the 🟡 tickets with their open gate, then one short line for each other ticket.
-3. Give the link of `<wiki>/raw/board.md`.
+3. Give the link of the board page (`page.url`), and then the link of `<wiki>/raw/board.md`.
+   On the board page, the user filters the tickets and opens the canvas of each ticket. The host table says how the user opens a local HTML page.
 
 ## 📚 Questions
 
@@ -42,6 +44,7 @@ Use the sources in this order. Stop when you can answer.
 2. The Now card at the top of `<wiki>/raw/tickets/<folder>/README.md`, then the latest entries of `journal.md` (`log.md` in an older ticket).
 3. The summary of the open gate document (the text under its title), when the user asks what to approve. An older ticket has the ⚡ 1 min section in its place.
 4. `<F> canvas <KEY>`, when the user asks to see a ticket: it writes `canvas.html` in the ticket folder. Give the `file://` link.
+   The page has links to the board page and to the canvas of each other ticket.
 5. `host.sessions`, only for the sessions that the question needs.
 
 Answer in a few lines. Give the ticket key, the session title, and a link to the README.
@@ -85,9 +88,10 @@ When the user asks, and after each refresh:
 
 ## 🚫 Rules
 
-- The board steps write only `<wiki>/raw/board.md` (through `<F> board`) and `<wiki>/raw/sync/<KEY>.md`.
-  They change no code, no ticket file, no approval, and no wiki page.
-- In the terminal, the board steps run only `<F> board`, `<F> where`, read-only `git` commands, and the read-only
+- The board steps write only `<wiki>/raw/sync/<KEY>.md` and, through `<F> board`, `<wiki>/raw/board.md` and the pages
+  (`<wiki>/raw/board.html`, and `canvas.html` in each ticket folder). The pages are views: no approval lists them.
+  The board steps change no code, no ticket document, no approval, and no wiki page.
+- In the terminal, the board steps run only `<F> board`, `<F> canvas <KEY>`, `<F> where`, read-only `git` commands, and the read-only
   tracker, change request, and CI commands of the refresh.
 - No external writes. Never comment on, move, or change a work item, a change request, or a CI job.
 - Never answer a session's question, trust prompt, or permission prompt for the user. Report it.

@@ -13,11 +13,13 @@
 //   bind    [--wiki <dir>]   write <wiki>/forge/repo.json
 //   seed [--force]   copy the profile templates to <wiki>/forge/config
 //   migrate <key> [--dry-run] [--json]   move a full-v1 ticket to full-v2 (carries only valid paired approvals)
-//   board   [--json] [--dry-run] [--today <date>]   write <wiki>/raw/board.md, the tickets grouped by state
+//   board   [--json] [--dry-run] [--today <date>] [--links vscode|file]   write <wiki>/raw/board.md, the tickets grouped by state,
+//           and the pages: raw/board.html and the canvas of each ticket
 //   worktree <KEY> --summary "<goal>" [--base <ref>] [--create] [--json]   plan or create the ticket worktree and branch
 //   snapshot <key> <gate> [--json]   save the gate doc as approvals/snapshots/<gate>-<n>.md at a review
 //   diff    <key> <gate> [--json]   the summary (or the ⚡ card) on a first review, else the sections changed since the last snapshot
-//   canvas  <key> [--json] [--links vscode|file]   write <ticket>/canvas.html, the whole ticket on one board (--json prints its model)
+//   canvas  <key> [--json] [--links vscode|file]   write <ticket>/canvas.html, the whole ticket on one board (--json prints its model),
+//           and raw/board.html, so the page has a link to the board and to each other ticket
 //   canvas  <key> --serve [--port <n>] [--links vscode|file]   show the canvas on http://127.0.0.1 until the user sends the comments
 //            from the page; then print the comment message and stop. Exit 0 after a Send, and not 0 when it stops without comments.
 //   gate-approve <key> <gate> --answer "<exact user answer>" [--method form|chat] [--manifest <path>] [--hash <sha>] [--dry-run] [--json]
@@ -48,7 +50,8 @@ import { writeBoard } from './lib/board.mjs';
 import { createWorktree, planWorktree } from './lib/worktree.mjs';
 import { CLAUDE_PARTS, HOST_NAMES, contextText, promptSubmit, readEvent, resolveHost, sessionStart } from './lib/hook.mjs';
 import { diffGate, gateName, renderDiff, saveSnapshot } from './lib/reading.mjs';
-import { LINK_MODES, buildCanvas, writeCanvas } from './lib/canvas.mjs';
+import { LINK_MODES, buildCanvas } from './lib/canvas.mjs';
+import { writeViews } from './lib/views.mjs';
 import { serveCanvas } from './lib/canvas-serve.mjs';
 import { loadProfile, pluginRoot } from './lib/profile.mjs';
 
@@ -396,17 +399,24 @@ export function main(argv = process.argv.slice(2)) {
         if (result.writes.length) console.log(`  ${args.dryRun ? 'would write' : 'wrote'}: ${result.writes.join(', ')}`);
       }
     } else if (cmd === 'board') {
-      if (args._.length !== 1) throw new ForgeError('Usage: forge.mjs board [--json] [--dry-run] [--today <YYYY-MM-DD>].', 'bad-args');
+      if (args._.length !== 1 || (args.links !== undefined && !LINK_MODES.includes(args.links))) throw new ForgeError(`Usage: forge.mjs board [--json] [--dry-run] [--today <YYYY-MM-DD>] [--links ${LINK_MODES.join('|')}].`, 'bad-args');
       const where = resolve(opts);
       if (!where.wiki.exists) throw new ForgeError(`No wiki at ${where.wiki.path}. Run the forge-setup skill.`, 'no-wiki');
       let board;
-      try { board = writeBoard(where.wiki.path, { today: args.today, dryRun: args.dryRun }); }
-      catch (err) { throw new ForgeError(err.message, 'board'); }
-      if (args.json) console.log(JSON.stringify(board, null, 2));
+      let views;
+      try {
+        board = writeBoard(where.wiki.path, { today: args.today, dryRun: args.dryRun });
+        // The pages of the same board: raw/board.html and the canvas of each ticket.
+        views = writeViews(where.wiki.path, { links: args.links, today: args.today, dryRun: args.dryRun });
+      } catch (err) { throw new ForgeError(err.message, 'board'); }
+      const page = { file: views.page.file, url: pathToFileURL(views.page.file).href, written: views.page.written, canvases: views.canvases.written.length, failed: views.canvases.failed };
+      if (args.json) console.log(JSON.stringify({ ...board, page }, null, 2));
       else {
         console.log(board.groups.map((group) => `${group.emoji} ${group.label} ${group.tickets.length}`).join(' · '));
         for (const error of board.errors) console.log(`  read error ${error.folder}: ${error.message}`);
+        for (const error of page.failed) console.log(`  no canvas ${error.folder}: ${error.message}`);
         console.log(`${board.written ? 'wrote' : !board.changed ? 'unchanged' : 'would write'}: ${board.file}`);
+        console.log(`  open  ${page.url}`);
       }
     } else if (cmd === 'worktree') {
       if (args._.length !== 2 || !args.summary) throw new ForgeError('Usage: forge.mjs worktree <KEY> --summary "<goal>" [--base <ref>] [--create] [--json].', 'bad-args');
@@ -450,18 +460,21 @@ export function main(argv = process.argv.slice(2)) {
       }
       const where = resolve(opts);
       try {
-        const { dir } = findTicket(where.wiki.path, args._[1]);
+        const { dir, folder } = findTicket(where.wiki.path, args._[1]);
         if (args.json) console.log(JSON.stringify(buildCanvas(dir), null, 2));
         else if (args.serve) {
           // The server runs after main() returns. The exit code comes when the user sends the comments or the server stops.
-          serveCanvas(dir, { links: args.links, port }).then(
+          serveCanvas(dir, { links: args.links, port, wiki: where.wiki.path, folder }).then(
             (code) => { process.exitCode = code; },
             (err) => { console.error(`forge: ${err.message}`); process.exitCode = 1; },
           );
         } else {
-          const result = writeCanvas(dir, { links: args.links });
+          // The page links to the board page and to the canvas of each other ticket, so this command writes those that are missing.
+          const views = writeViews(where.wiki.path, { links: args.links, focus: folder, all: false });
+          const result = views.focus;
           console.log(`${result.key}: wrote ${result.file}`);
           console.log(`  open  ${pathToFileURL(result.file).href}`);
+          console.log(`  board ${pathToFileURL(views.page.file).href}`);
           if (result.missing.length) console.log(`  not written yet: ${result.missing.join(', ')}`);
         }
       } catch (err) { throw new ForgeError(err.message, 'canvas'); }

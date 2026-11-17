@@ -1,13 +1,20 @@
 // The canvas server: `forge.mjs canvas <key> --serve`. It shows the ticket canvas on this machine only (127.0.0.1),
 // and it stops when the user sends the comments from the page. Then it prints the comment message for the session.
-// It writes no file except canvas.html, it has no CORS header, and each request needs the token of this run.
+// With the wiki, it also shows the board page (/board) and the canvas of each other ticket (/ticket/<folder>/),
+// so the user can go from ticket to ticket. Only the page of its own ticket can send comments.
+// It writes no file except the pages (canvas.html, board.html), it has no CORS header, and each request needs the token of this run.
 import http from 'node:http';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { lstatSync, readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { buildBoard } from './board.mjs';
+import { BOARD_SCRIPT, renderBoardPage } from './board-page.mjs';
 import { buildCanvas, renderCanvas, writeCanvas } from './canvas.mjs';
 import { CANVAS_SCRIPT, canvasMessage } from './canvas-page.mjs';
+import { ticketRoot } from './tickets.mjs';
+import { buildNav } from './ui.mjs';
+import { writeViews } from './views.mjs';
 
 export const SERVE_HOST = '127.0.0.1';
 const PORT_BASE = 41000;
@@ -24,8 +31,10 @@ const TYPES = {
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp',
 };
 const BASE_HEADERS = { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff' };
-// The page can run only its own script, and it can connect only to this server.
-const PAGE_POLICY = `default-src 'none'; script-src 'sha256-${createHash('sha256').update(CANVAS_SCRIPT).digest('base64')}'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'`;
+// A page can run only its own script, and it can connect only to this server.
+const policy = (script) => `default-src 'none'; script-src 'sha256-${createHash('sha256').update(script).digest('base64')}'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'`;
+const PAGE_POLICY = policy(CANVAS_SCRIPT);
+const BOARD_POLICY = policy(BOARD_SCRIPT);
 const OLD_LINK = 'This link is old or not complete. Ask the ticket session for the new canvas link.\n';
 
 /** The first port that the server tries for a ticket. The same ticket gets the same port, so the browser keeps the view and the comments. */
@@ -135,9 +144,11 @@ async function bind(server, key, port) {
 /**
  * Serves the canvas of one ticket folder until the user sends the comments. Gives the exit code:
  * 0 after a Send (the message is on `out`), 130 or 143 after a signal, and 3 at the time limit.
+ * With `wiki` and `folder` (the folder name of the ticket), the pages have the links to the board and to the other tickets.
  */
-export async function serveCanvas(dir, { links = 'vscode', port, limitMs = LIMIT_MS, out = process.stdout, err = process.stderr, signals = process } = {}) {
-  const written = writeCanvas(dir, { links });
+export async function serveCanvas(dir, { links = 'vscode', port, limitMs = LIMIT_MS, out = process.stdout, err = process.stderr, signals = process, wiki = '', folder = '' } = {}) {
+  const linked = Boolean(wiki && folder);
+  const written = linked ? writeViews(wiki, { links, focus: folder, all: false }).focus : writeCanvas(dir, { links });
   const { key } = written;
   const token = randomBytes(16).toString('hex');
   let finish;
@@ -173,10 +184,39 @@ export async function serveCanvas(dir, { links = 'vscode', port, limitMs = LIMIT
         send(res, 200, 'application/json', '{"ok":true}');
         return;
       }
+      // Each load reads the ticket files again, so a page shows the current tickets.
+      const board = linked ? buildBoard(wiki) : null;
       if (url.pathname === '/') {
-        // Each load reads the ticket files again, so the page shows the current ticket.
-        const page = renderCanvas(buildCanvas(dir), { links, serve: { token } });
+        const page = renderCanvas(buildCanvas(dir), { links, serve: { token }, nav: board && buildNav(board, { from: folder, token, home: folder }) });
         send(res, 200, 'text/html; charset=utf-8', page, { 'Content-Security-Policy': PAGE_POLICY });
+        return;
+      }
+      if (board && url.pathname === '/board') {
+        const page = renderBoardPage(board, { links, wiki, serve: { token }, nav: buildNav(board, { token, home: folder }) });
+        send(res, 200, 'text/html; charset=utf-8', page, { 'Content-Security-Policy': BOARD_POLICY });
+        return;
+      }
+      const other = board ? /^\/ticket\/([^/]+)(\/.*)?$/.exec(url.pathname) : null;
+      if (other) {
+        // Only the folder of a ticket on the board is a route. Another name, also a path that goes up, is not found.
+        let name = '';
+        try { name = decodeURIComponent(other[1]); } catch { name = ''; }
+        const known = board.groups.some((group) => group.tickets.some((item) => item.folder === name));
+        if (!known) { plain(res, 404, 'Not found.\n'); return; }
+        const there = path.join(ticketRoot(wiki), name);
+        if (other[2] === undefined || (other[2] === '/' && name === folder)) {
+          const target = name === folder ? `/?t=${token}` : `/ticket/${encodeURIComponent(name)}/?t=${token}`;
+          send(res, 302, 'text/plain; charset=utf-8', 'See the new address.\n', { Location: target });
+          return;
+        }
+        if (other[2] === '/') {
+          const page = renderCanvas(buildCanvas(there), { links, serve: { token, home: key }, nav: buildNav(board, { from: name, token, home: folder }) });
+          send(res, 200, 'text/html; charset=utf-8', page, { 'Content-Security-Policy': PAGE_POLICY });
+          return;
+        }
+        const file = ticketFile(there, other[2]);
+        if (!file) { plain(res, 404, 'Not found.\n'); return; }
+        send(res, 200, file.type, readFileSync(file.file), { 'Content-Security-Policy': "default-src 'none'; sandbox" });
         return;
       }
       const found = ticketFile(dir, url.pathname);
@@ -189,14 +229,15 @@ export async function serveCanvas(dir, { links = 'vscode', port, limitMs = LIMIT
   });
 
   const bound = await bind(server, key, port);
-  out.write(`${key}: serving http://${SERVE_HOST}:${bound}/?t=${token}\n  file  ${pathToFileURL(written.file).href}\n`
-    + (written.missing.length ? `  not written yet: ${written.missing.join(', ')}\n` : ''));
-
+  // The signal handlers come before the first line: a reader of that line can stop the server at once.
   const onInt = () => finish({ code: 130 });
   const onTerm = () => finish({ code: 143 });
   signals.once('SIGINT', onInt);
   signals.once('SIGTERM', onTerm);
   const timer = setTimeout(() => finish({ code: 3 }), limitMs);
+  out.write(`${key}: serving http://${SERVE_HOST}:${bound}/?t=${token}\n  file  ${pathToFileURL(written.file).href}\n`
+    + (linked ? `  board http://${SERVE_HOST}:${bound}/board?t=${token}\n` : '')
+    + (written.missing.length ? `  not written yet: ${written.missing.join(', ')}\n` : ''));
 
   const result = await ended;
   clearTimeout(timer);

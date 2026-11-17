@@ -1,13 +1,15 @@
 // The canvas server: the comment message, the request checks, and one run from the first link to the Send.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { BOARD_SCRIPT } from '../plugins/forge/scripts/lib/board-page.mjs';
 import { CANVAS_SCRIPT, canvasLine, canvasMessage } from '../plugins/forge/scripts/lib/canvas-page.mjs';
 import { checkRequest, defaultPort, readSend } from '../plugins/forge/scripts/lib/canvas-serve.mjs';
 import { buildCanvas, renderCanvas } from '../plugins/forge/scripts/lib/canvas.mjs';
@@ -81,12 +83,14 @@ test('the comment message cuts a long quote and removes control characters', () 
   assert.match(message, /^Canvas comments for K EY:\n1\. a \[31mb c d e f, /);
 });
 
-test('the page script has the message functions, LF line ends, and one request to its own server', () => {
+test('the page script has the message functions, LF line ends, and only requests to its own server', () => {
   assert.doesNotThrow(() => new Function(CANVAS_SCRIPT));
   assert.ok(!CANVAS_SCRIPT.includes('\r'), 'a CR changes the hash of the script in the browser');
   assert.ok(!CANVAS_SCRIPT.includes('`'));
   for (const name of ['function canvasClean(', 'function canvasLine(', 'function canvasMessage(']) assert.ok(CANVAS_SCRIPT.includes(name), name);
-  assert.equal(CANVAS_SCRIPT.match(/\bfetch\(/g).length, 1);
+  // Forge 7.2 adds one request: before a served page goes to another page, it asks its own server for that page (a relative link).
+  assert.equal(CANVAS_SCRIPT.match(/\bfetch\(/g).length, 2);
+  assert.match(CANVAS_SCRIPT, /fetch\(href, \{ cache: 'no-store' \}\)/);
   assert.match(CANVAS_SCRIPT, /fetch\('send', \{ method: 'POST'/);
   assert.doesNotMatch(CANVAS_SCRIPT, /XMLHttpRequest|WebSocket|sendBeacon|EventSource|https?:\/\/(?!www\.w3\.org\/2000\/svg)/);
 });
@@ -252,6 +256,64 @@ test('a run gives the page, refuses each bad request, prints the sent comments, 
   ].join('\n'));
   assert.equal(run.stderr, '');
   assert.match(readFileSync(path.join(f.dir, 'canvas.html'), 'utf8'), /^<!doctype html>/, 'the file page is the fallback');
+});
+
+test('with the wiki, the server shows the board and each other ticket, and only its own ticket can send', async (t) => {
+  const f = wiki(t);
+  const other = path.join(f.root, 'raw', 'tickets', 'app-10');
+  mkdirSync(path.join(other, 'evidence'), { recursive: true });
+  writeFileSync(path.join(other, 'README.md'), [
+    '---', 'type: ticket', 'key: APP-10', 'title: Slow inbox query', 'workflow: full-v3', 'phase: plan', 'state: active', 'next: Read the query plan',
+    'changes: []', 'people: []', 'gates: []', 'updated: 2026-11-12', '---', '# APP-10', '',
+  ].join('\n'));
+  writeFileSync(path.join(other, 'story.md'), '---\ntype: story\n---\n# Story APP-10\n\nProblem: the inbox is slow.\n');
+  writeFileSync(path.join(other, 'evidence', 'plan.md'), '# Query plan\n');
+  const run = start(t, f, '--port', '0');
+  const { port, token } = await run.ready;
+  assert.match(run.stdout, new RegExp(`\\n  board http://127\\.0\\.0\\.1:${port}/board\\?t=${token}\\n`));
+  assert.ok(existsSync(path.join(f.root, 'raw', 'board.html')) && existsSync(path.join(other, 'canvas.html')), 'the file pages are the fallback');
+  const get = (url) => request(port, { url });
+  const hash = (script) => `'sha256-${createHash('sha256').update(script).digest('base64')}'`;
+
+  const home = await get(`/?t=${token}`);
+  assert.match(home.text, new RegExp(`<a class="quiet" href="/board\\?t=${token}" data-nav`));
+  assert.match(home.text, new RegExp(`href="/ticket/app-10/\\?t=${token}" data-nav rel="next"`));
+  assert.doesNotMatch(home.text, /"home"/, 'the page of the ticket of the server can send');
+
+  const board = await get(`/board?t=${token}`);
+  assert.equal(board.status, 200);
+  assert.ok(board.headers['content-security-policy'].includes(`script-src ${hash(BOARD_SCRIPT)};`), 'the policy names the script of the board page');
+  assert.equal(/<script>([\s\S]*)<\/script>/.exec(board.text)[1], BOARD_SCRIPT);
+  assert.match(board.text, new RegExp(`<a class="open" href="/\\?t=${token}#zone-plan" data-nav`), 'the ticket of the server stays at the root');
+  assert.match(board.text, new RegExp(`<a class="open" href="/ticket/app-10/\\?t=${token}" data-nav`));
+  assert.equal((await get('/board')).status, 403);
+
+  const page = await get(`/ticket/app-10/?t=${token}`);
+  assert.equal(page.status, 200);
+  assert.ok(page.headers['content-security-policy'].includes(`script-src ${hash(CANVAS_SCRIPT)};`));
+  assert.match(page.text, /the inbox is slow/);
+  assert.match(page.text, /"home":"APP-9"/, 'the page of another ticket cannot send');
+  assert.match(page.text, new RegExp(`href="story\\.md\\?t=${token}"`));
+  assert.match(page.text, new RegExp(`href="/\\?t=${token}" data-nav rel="prev"`));
+  // The page shows the current ticket files on each load.
+  writeFileSync(path.join(other, 'story.md'), '---\ntype: story\n---\n# Story APP-10\n\nProblem: the inbox is very slow.\n');
+  assert.match((await get(`/ticket/app-10/?t=${token}`)).text, /the inbox is very slow/);
+
+  const doc = await get(`/ticket/app-10/evidence/plan.md?t=${token}`);
+  assert.equal(doc.status, 200);
+  assert.match(doc.headers['content-type'], /^text\/plain/);
+  assert.match(doc.text, /Query plan/);
+  const moved = await get(`/ticket/app-10?t=${token}`);
+  assert.equal(moved.status, 302);
+  assert.equal(moved.headers.location, `/ticket/app-10/?t=${token}`);
+  assert.equal((await get(`/ticket/app-9/?t=${token}`)).headers.location, `/?t=${token}`, 'the ticket of the server has one address');
+  for (const url of ['/ticket/app-10/canvas.html', '/ticket/nope/', '/ticket/..%2f..%2f/', '/ticket/%2e%2e/%2e%2e/board.md', '/ticket/app-10/..%2f..%2f..%2foutside.md', '/tickets/app-10/', '/board/']) {
+    assert.equal((await get(`${url}?t=${token}`)).status, 404, url);
+  }
+  assert.equal((await get('/ticket/app-10/')).status, 403);
+  assert.equal(run.child.exitCode, null);
+  run.child.kill('SIGTERM');
+  await run.exit;
 });
 
 test('a stop signal ends the server without a message', { skip: process.platform === 'win32' }, async (t) => {

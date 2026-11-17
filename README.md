@@ -248,6 +248,7 @@ A ticket has about 7 Markdown files, and each fact has one home. A file starts t
 `forge.mjs canvas <KEY>` writes `canvas.html` into the ticket folder: one page that shows the whole ticket on one board.
 Open it in a browser tab, or in VS Code with **Open in Integrated Browser**.
 `forge.mjs canvas <KEY> --serve` shows the same page on `http://127.0.0.1` until you send your comments from it.
+The canvas and the [board page](#-ticket-overview) have links to each other, so you go from ticket to ticket in the browser.
 
 | Part | Shows |
 |---|---|
@@ -258,11 +259,14 @@ Open it in a browser tab, or in VS Code with **Open in Integrated Browser**.
 | Review and proof | The review sections and each Evidence Testing check with its result |
 | Journal | The newest entries |
 
-- Scroll to move, hold Ctrl and scroll to zoom, and drag the background. Zoomed out, the board shows only titles. A click on a part name or a double-click on a card title zooms in to read.
+- Scroll to move, hold Ctrl and scroll to zoom, and drag the background. Zoomed out, each card shows its title in a large size and its state as a tint. A click on a part name or a double-click on a card title zooms in to read.
+- Go to another ticket: **Board** opens the board page (key `b`), the ticket key opens a list of all tickets with a filter (key `t`), and the arrows go to the previous and the next ticket of the board (keys `[` and `]`). The browser keeps your view and your comments for each ticket.
+- The `?` key shows all keys. The theme button changes between the system theme, light, and dark.
 - A click on a component of the code map shows its arrows and their labels.
 - **Comment** on a card saves a note in the browser. Select words on a card to comment on those words only, to mark them with **Remove**, or to give them a label (`unclear`, `wrong`, `too much`). The Comments panel has one box for a comment on the whole ticket.
 - With `--serve`, **Send to agent** gives the comments to the ticket session: the command prints one message that starts with `Canvas comments for <KEY>:`, and stops. The server listens only on `127.0.0.1`, each run has a new link with a token, and `--port <n>` sets a fixed port for a forwarded port.
 - Without `--serve`, **Copy all** gives the same message. Paste it into the ticket session.
+- With `--serve`, the server also shows the board page and the other tickets. Only the page of its own ticket can send. For another ticket, use **Copy all** and the session of that ticket. After a Send the server stops: the page stays, and it tells you to get a new link from the session.
 - The page is a view of the Markdown files. It loads nothing from a network, it sends the comments only to the forge server on your machine, it is in `raw/` and so never committed, and no approval comes from it. Gate approval stays in the session.
 - A link can name one part, for example `canvas.html#zone-plan` or `canvas.html#plan-step-2`.
 - A code link opens the file in VS Code. `--links file` writes plain `file://` links. `--json` prints the content of the page as data.
@@ -339,6 +343,14 @@ and groups the tickets by state: 🟡 Needs me, 🔴 Blocked, 🟢 Go, ▶️ Ac
 `forge.mjs board` writes the same view to `<wiki>/raw/board.md`, so you can keep it open in the editor.
 Each row shows the session title, the open gate, the next step, who the ticket waits on, and the days since the update.
 When `<wiki>/raw/sync/<KEY>.md` exists, the row also shows the change request, CI, and tracker status.
+
+The same command writes the board page, `<wiki>/raw/board.html`, and the canvas of each ticket. Open the page in a browser tab, or in VS Code with **Open in Integrated Browser**.
+
+- The tickets that wait for you are first, in a lane with the full width. The other open states are side by side, and **Done** is a closed list.
+- A card shows the key, the title, the gates as steps, the next step, who the ticket waits on, and the change request, CI, and tracker status. A click on the card opens the ticket canvas. A ticket with a gate in review opens at the document of that gate.
+- The filter (key `/`) hides tickets by their words. A state chip or a number key shows one state. The keys `j` and `k` go from ticket to ticket, and `t` opens the list of all tickets.
+- An open ticket without an update for 7 days has a mark. Long waits for people and read errors have their own lists.
+- The page loads nothing from a network, and it is in `raw/`, so it is never committed. [design-system.md](docs/design-system.md) gives the tokens, the components, and the UX cases of both pages.
 `forge.mjs board --json` gives the same data to agents. Ticket README files remain the source of truth.
 
 The reader supports the [ticket template](plugins/forge/skills/ticket/templates/README.md) and the templates of older tickets:
@@ -366,7 +378,7 @@ A question that names a key does not start or resume that ticket.
 | "Refresh" | Reads the tracker, the change requests, and CI (read-only), writes `raw/sync/`, then fixes titles and state groups |
 | "Fix the session titles" | Renames stale ticket session titles and, in VS Code, moves the sessions to their state groups |
 
-The board does not edit code, ticket files, or wiki pages. It writes only `raw/board.md` and `raw/sync/`.
+The board does not edit code, ticket documents, or wiki pages. It writes only `raw/board.md`, `raw/sync/`, and the pages (`raw/board.html` and the `canvas.html` of each ticket).
 It never approves a gate and never answers a question of a session for you,
 because an approval covers the exact revision that the ticket session shows.
 It never merges, pushes, or writes to the tracker.

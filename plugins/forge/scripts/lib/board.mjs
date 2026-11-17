@@ -1,4 +1,4 @@
-// The ticket board: <wiki>/raw/board.md, grouped by state. The output is the same for the same wiki and day.
+// The ticket board: <wiki>/raw/board.md, grouped by state. The output is the same for the same wiki and day. board-page.mjs shows the same model as a page.
 import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { STATE_EMOJI, parseFrontmatter, sessionTitle, validDate } from './ticket.mjs';
@@ -78,9 +78,9 @@ export function buildBoard(wikiPath, { today = new Date().toISOString().slice(0,
     const sync = readSync(wikiPath, ticket.key);
     if (sync?.error) errors.push({ folder: entry.folder, message: sync.error });
     tickets.push({
-      key: ticket.key, folder: entry.folder, sessionTitle: sessionTitle(ticket), title: oneLine(ticket.title),
+      key: ticket.key, folder: entry.folder, sessionTitle: sessionTitle(ticket), title: oneLine(ticket.title), short: oneLine(ticket.short),
       state: ticket.state, emoji: STATE_EMOJI[ticket.state], phase: ticket.phase, workflow: ticket.workflow ?? 'legacy',
-      openGate: openGate(ticket), next: oneLine(ticket.next), waitingOn: oneLine(ticket.waitingOn),
+      openGate: openGate(ticket), gates: ticket.gates.filter((gate) => gate.need === 'required').map((gate) => ({ name: gate.name, status: gate.status, doc: gate.doc ?? '' })), next: oneLine(ticket.next), waitingOn: oneLine(ticket.waitingOn),
       updated: ticket.updated, days: daysSince(ticket.updated, today), branch: ticket.branch, worktree: ticket.worktree,
       changes: ticket.changes.map((change) => ({ url: change.url, state: change.state, label: change.label ?? '' })),
       sync: sync && !sync.error ? sync : null,

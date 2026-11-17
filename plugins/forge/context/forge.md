@@ -21,7 +21,7 @@ A ticket lives in the wiki of the repository where it starts. Other wikis get on
 New tickets use `workflow: full-v3`: full research and an interview, then four review
 gates (Scoped?, Planned?, Shippable?, Learned?) plus Sendable? for each external write. Each
 gate has one plain document (`story.md`, `plan.md`, `review.md`, `close.md`) with a summary of
-at most 150 words under its title. `forge.mjs canvas <KEY>` shows the whole ticket on one HTML page.
+at most 150 words under its title. `forge.mjs canvas <KEY>` shows the whole ticket on one HTML page, with links to the board page and to the other tickets.
 An older ticket (`full-v2`, `full-v1`, S/M/L, or no marker) keeps its own layout, phases, gates, and
 skips: its rules are in `legacy/rules.md` of the `ticket` skill, and it never moves to `full-v3`.
 Never infer workflow, state, or approval from missing metadata. The `ticket` skill defines revision

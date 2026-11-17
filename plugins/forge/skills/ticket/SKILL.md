@@ -348,11 +348,14 @@ The canvas is one HTML page that shows the whole ticket on one board: the gate r
 - Make it with `<F> canvas <KEY>`. It writes `<wiki>/raw/tickets/<key>/canvas.html` from the ticket files and prints the path. `<F> canvas <KEY> --json` prints the same content as data.
 - Run it again after each change of a ticket document that the user will read: after the research, when a gate opens, after you handle comments, and at Resume. Run it when the user asks to "show the canvas" or "show the code map".
 - Give the user the `file://` link of `canvas.html`. The host table says how the user opens a local HTML page.
+- The command also writes the board page (`<wiki>/raw/board.html`) and the canvas of each ticket that has none. So the page has links to the other pages: **Board**, the ticket key (it opens a list of all tickets), and the arrows to the previous and the next ticket.
 - For a review, run `<F> canvas <KEY> --serve`. It shows the same page on `http://127.0.0.1` (this machine only) and prints the link. This page has the button **Send to agent**. When the user selects it, the command prints the comment message and stops.
   - Use it when a gate opens, and when the user wants to comment on the canvas. Start it as the host table says, give the user the link, and do not wait for the command in the turn.
   - Each run has a new link. After you handle the comments, run it again and give the new link.
   - When the gate has its approval, stop a canvas server that still runs. It also stops after 8 hours.
   - The page from the `file://` link has no **Send to agent**. There, the user selects **Copy all** and pastes the message into the session.
+  - The server also shows the board page and the canvas of each other ticket, so the user can go from ticket to ticket. Only the page of this ticket has **Send to agent**. On the page of another ticket, the user selects **Copy all** and pastes the message into the session of that ticket.
+  - When a message starts with `Canvas comments for` and names the key of another ticket, change no document. Tell the user to paste the message into the session of that ticket.
 - The page is a view. Never edit it, never list it in a manifest, and never take a fact or an approval from it.
 - The canvas reads the section names and the line shapes of the templates. Keep them, or a card stays empty.
 - On the canvas, the user can comment on a card or on selected words, mark text with **Remove**, give a label (`unclear`, `wrong`, `too much`), and write one comment on the whole ticket. The comments come as one message. That message starts with `Canvas comments for <KEY>:`. Handle it as review comments (gate Procedure, step 8).

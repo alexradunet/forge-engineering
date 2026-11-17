@@ -1,0 +1,59 @@
+// The pages of one wiki: raw/board.html (board-page.mjs) and raw/tickets/<folder>/canvas.html (canvas.mjs).
+// writeViews() writes them together, so that each link between the pages has a target.
+// The pages are views: no approval manifest lists them, and no step reads a fact from them.
+import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { buildBoard } from './board.mjs';
+import { BOARD_PAGE, renderBoardPage } from './board-page.mjs';
+import { CANVAS_FILE, buildCanvas, writeCanvas } from './canvas.mjs';
+import { ticketRoot } from './tickets.mjs';
+import { buildNav } from './ui.mjs';
+
+export function boardPageFile(wikiPath) {
+  return path.join(wikiPath, 'raw', BOARD_PAGE);
+}
+
+/**
+ * Writes the board page and the ticket canvases of a wiki.
+ * - `focus` is the folder of one ticket: its canvas is always written, and a read error of that ticket is thrown.
+ * - `all` writes the canvas of each ticket when its content changed. Without it, another ticket gets a canvas only when it has none.
+ * A ticket that cannot give a canvas is in `failed`, and its links go to its README.
+ */
+export function writeViews(wikiPath, { links = 'vscode', today, now, focus = '', all = true, dryRun = false } = {}) {
+  const board = buildBoard(wikiPath, { today });
+  const items = board.groups.flatMap((group) => group.tickets);
+  const models = new Map();
+  const failed = [];
+  for (const item of items) {
+    const dir = path.join(ticketRoot(wikiPath), item.folder);
+    if (item.folder === focus) { models.set(item.folder, buildCanvas(dir, { now })); continue; }
+    if (!all && existsSync(path.join(dir, CANVAS_FILE))) continue;
+    try { models.set(item.folder, buildCanvas(dir, { now })); }
+    catch (error) { failed.push({ folder: item.folder, message: error.message }); }
+  }
+  const broken = failed.map((item) => item.folder);
+  const written = [];
+  let focused = null;
+  for (const [folder, model] of models) {
+    const dir = path.join(ticketRoot(wikiPath), folder);
+    if (dryRun) continue;
+    try {
+      const result = writeCanvas(dir, { links, model, nav: buildNav(board, { from: folder, broken }), keep: folder !== focus });
+      if (result.written) written.push(folder);
+      if (folder === focus) focused = result;
+    } catch (error) {
+      if (folder === focus) throw error;
+      failed.push({ folder, message: error.message });
+    }
+  }
+  const file = boardPageFile(wikiPath);
+  const text = renderBoardPage(board, { links, wiki: wikiPath, nav: buildNav(board, { broken: failed.map((item) => item.folder) }) });
+  let changed = true;
+  try { changed = readFileSync(file, 'utf8') !== text; } catch { /* first page */ }
+  if (!dryRun && changed) {
+    mkdirSync(path.dirname(file), { recursive: true });
+    if (existsSync(file) && (lstatSync(file).isSymbolicLink() || !lstatSync(file).isFile())) throw new Error(`${file} must be a regular file, not a link.`);
+    writeFileSync(file, text);
+  }
+  return { board, page: { file, changed, written: !dryRun && changed }, canvases: { written, failed }, focus: focused };
+}

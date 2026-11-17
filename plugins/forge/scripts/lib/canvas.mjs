@@ -3,11 +3,14 @@
 // no approval manifest lists it, and no step reads a fact from it.
 // The canvas server (canvas-serve.mjs) gives the same page with a token, and then the page can send its comments.
 // buildCanvas() gives the model (also `forge.mjs canvas <key> --json`), and renderCanvas() gives the page.
+// With `nav` (ui.mjs), the page has the links to the board page and to the canvas of each other ticket.
 import { existsSync, lstatSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { STATE_EMOJI, parseTicket } from './ticket.mjs';
+import { STATE_LABEL } from './board.mjs';
 import { listSnapshots, sections, summaryBlock } from './reading.mjs';
 import { CANVAS_SCRIPT, CANVAS_STYLE } from './canvas-page.mjs';
+import { GATE_TEXT, TOOLS_HTML, esc, helpHtml, navData, switcherHtml } from './ui.mjs';
 
 export const CANVAS_FILE = 'canvas.html';
 export const LINK_MODES = ['vscode', 'file'];
@@ -20,7 +23,6 @@ const LANE_GAP = 84;
 const LEGACY_DOCS = ['scope.md', 'context.md', 'briefing.md', 'interview.md', 'investigation.md', 'plan.draft.md', 'map.md',
   'review.md', 'evidence-testing.md', 'close.draft.md', 'decisions.md', 'log.md'];
 
-const esc = (value) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const unesc = (value) => value.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
 const slug = (value) => String(value ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '') || 'x';
 const plain = (value) => String(value ?? '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[`*]/g, '').replace(/\s+/g, ' ').trim();
@@ -341,7 +343,6 @@ export function markdown(text, ctx = { links: 'vscode' }) {
 
 // --- The page ---
 
-const GATE_TEXT = { approved: 'approved', 'in-review': 'waits for you', todo: 'not open', blocked: 'blocked', skipped: 'skipped' };
 const GATE_MARK = { approved: '✔', 'in-review': '🟡', todo: '○', blocked: '🔴', skipped: '–' };
 const STEP_TEXT = { planned: 'planned', done: 'done', verified: 'verified' };
 const CHECK_TEXT = { verified: '🟢 verified', failed: '🔴 failed', gap: '⚪ not proven', open: 'open' };
@@ -398,26 +399,62 @@ function zoneHtml(zone, ctx, width = 0) {
   return `<section class="zone z-${esc(zone.id)}" id="zone-${esc(zone.id)}" data-zone="${esc(zone.id)}"${width ? ` style="width:${width}px"` : ''}>${parts.join('')}</section>`;
 }
 
-function railHtml(model) {
+function railHtml(model, nav) {
   const { ticket } = model;
   const gates = model.gates.filter((gate) => gate.name !== 'Sendable?' || gate.status === 'in-review').map((gate) => {
     const note = gate.status === 'approved' && gate.date ? `approved ${gate.date}` : GATE_TEXT[gate.status] ?? gate.status;
-    return `<li class="g-${esc(gate.status)}"><span class="mark">${GATE_MARK[gate.status] ?? ''}</span> ${esc(gate.name.replace(/\?$/, ''))} <small>${esc(note)}</small></li>`;
+    // The mark says "approved" and "not open". Only a gate that needs attention shows its words.
+    const quiet = ['approved', 'todo'].includes(gate.status);
+    return `<li class="g-${esc(gate.status)}"${quiet ? ` title="${esc(`${gate.name} ${note}`)}"` : ''}><span class="mark">${GATE_MARK[gate.status] ?? ''}</span> ${esc(gate.name.replace(/\?$/, ''))} <small${quiet ? ' class="sr"' : ''}>${esc(note)}</small></li>`;
   }).join('');
-  const nav = model.zones.map((zone, index) => `<button type="button" data-goto="zone-${esc(zone.id)}" title="Key ${index + 1}">${esc(zone.title)}</button>`).join('');
+  const zones = model.zones.map((zone, index) => `<button type="button" class="quiet" data-goto="zone-${esc(zone.id)}" title="Key ${index + 1}">${esc(zone.title)}</button>`).join('');
   const changes = model.changes.map((change) => `<a href="${esc(linkTarget(change.url))}" target="_blank" rel="noopener noreferrer">${esc(change.label || 'change')} ${esc(change.state)}</a>`).join(' ');
+  // With the links of the wiki, the key opens the ticket switcher. Without them, the page stands alone.
+  const hop = (item, rel, mark, key) => (item
+    ? `<a class="quiet icon" href="${esc(item.href)}" data-nav rel="${rel}" title="${rel === 'prev' ? 'Previous' : 'Next'} ticket: ${esc(item.key)} (${key})" aria-label="${rel === 'prev' ? 'Previous' : 'Next'} ticket: ${esc(item.key)}">${mark}</a>`
+    : `<span class="quiet icon off" aria-hidden="true">${mark}</span>`);
+  const where = nav
+    ? `<a class="quiet" href="${esc(nav.board)}" data-nav title="The board of all tickets (b)">Board</a><span class="sep" aria-hidden="true">/</span>`
+      + `<button type="button" class="crumb" id="switch-open" aria-haspopup="dialog" title="Go to a ticket (t)"><span class="key">${esc(ticket.key)}</span></button>`
+    : `<strong class="key">${esc(ticket.key)}</strong>`;
   return `<header id="rail">`
-    + `<div class="id"><span class="state" title="${esc(ticket.state)}">${ticket.emoji ?? ''}</span> <strong>${esc(ticket.key)}</strong> <span class="short">${esc(ticket.short || ticket.title)}</span></div>`
-    + `<ol class="gates">${gates}</ol>`
-    + `<div class="next"><span>Next:</span> ${esc(ticket.next)}${ticket.waitingOn ? ` <span>Waiting on:</span> ${esc(ticket.waitingOn)}` : ''} ${changes}</div>`
-    + `<nav>${nav}</nav>`
-    + `<div class="tools"><button type="button" id="zoom-out" title="Zoom out (-)">−</button><output id="zoom-level">100%</output><button type="button" id="zoom-in" title="Zoom in (+)">+</button>`
-    + `<button type="button" id="zoom-fit" title="Show the whole board (0)">Fit</button><button type="button" id="tray-toggle">Comments <span id="comment-count">0</span></button></div>`
+    + `<div class="bar">${where}<h1 title="${esc(ticket.title)}">${esc(ticket.short || ticket.title)}</h1>`
+    + `<span class="pill st-${esc(ticket.state)}"><span aria-hidden="true">${ticket.emoji ?? ''}</span> ${esc(STATE_LABEL[ticket.state] ?? ticket.state)}</span><span class="phase">${esc(ticket.phase)}</span>`
+    + `<div class="tools">${nav ? hop(nav.prev, 'prev', '‹', '[') + hop(nav.next, 'next', '›', ']') : ''}`
+    + `<button type="button" id="tray-toggle" title="Your comments on this ticket">Comments <span id="comment-count">0</span></button>${TOOLS_HTML}</div></div>`
+    + `<div class="sub"><ol class="gates" aria-label="Gates">${gates}</ol>`
+    + `<div class="next" title="${esc(`Next: ${ticket.next}${ticket.waitingOn ? `. Waiting on: ${ticket.waitingOn}` : ''}`)}"><span>Next</span> ${esc(ticket.next)}${ticket.waitingOn ? ` <span>· Waiting on</span> ${esc(ticket.waitingOn)}` : ''} ${changes}</div>`
+    + `<nav aria-label="Parts of the ticket">${zones}</nav></div>`
     + `</header>`;
 }
 
-/** The self-contained HTML page of a canvas model. With serve.token, the page can send its comments to the canvas server. */
-export function renderCanvas(model, { links = 'vscode', serve = null } = {}) {
+const HELP = [
+  'Move',
+  [['Scroll'], 'Move the board. Drag the background to do the same'],
+  [['Ctrl', 'Scroll'], 'Zoom in or out'],
+  [['0'], 'Show the whole ticket'],
+  [['1', '…', '9'], 'Go to a part: the story, the code map, the plan, and so on'],
+  [['+', '-'], 'Zoom in or out'],
+  [['←', '↑', '↓', '→'], 'Move the board'],
+  'Read and comment',
+  [['Double-click'], 'On a card title: show the card at a size that you can read'],
+  [['Click'], 'On a component of the code map: show its arrows'],
+  [['Select'], 'Select words on a card to comment on them, or use the Comment button of the card'],
+  [['Ctrl', 'Enter'], 'Save the comment'],
+  'Go',
+  [['t'], 'Go to a ticket by its key or its words'],
+  [['b'], 'Go to the board of all tickets'],
+  [['[', ']'], 'Go to the previous or the next ticket of the board'],
+  [['?'], 'Show this list'],
+  [['Esc'], 'Close a dialog, the toolbar of selected words, or the comments'],
+];
+
+/**
+ * The self-contained HTML page of a canvas model. With serve.token, the page can send its comments to the canvas server.
+ * serve.home is the key of the ticket of that server, when this page shows another ticket: then the page cannot send.
+ * nav (buildNav in ui.mjs) adds the links to the board page and to the other tickets.
+ */
+export function renderCanvas(model, { links = 'vscode', serve = null, nav = null } = {}) {
   if (!LINK_MODES.includes(links)) throw new Error(`Unknown link mode: ${links}. Use ${LINK_MODES.join(' or ')}.`);
   const token = serve?.token ?? '';
   if (token && !/^[0-9a-f]{32}$/.test(token)) throw new Error('The canvas token must have 32 hexadecimal characters.');
@@ -432,38 +469,52 @@ export function renderCanvas(model, { links = 'vscode', serve = null } = {}) {
     const column = (...ids) => `<div class="column">${ids.map(zone).filter(Boolean).map((item) => zoneHtml(item, ctx, ['code', 'plan'].includes(item.id) ? wide : 0)).join('')}</div>`;
     board = column('story') + column('code', 'plan') + column('review', 'close', 'journal');
   } else {
-    board = model.zones.map((item) => `<div class="column">${zoneHtml(item, ctx)}</div>`).join('');
+    board = model.zones.map((item) => `<div class="column">${zoneHtml(item, ctx)}</div>`).join('')
+      || `<section class="zone"><h2>No documents yet</h2><p class="empty">This ticket has only its <a href="${esc(withToken('README.md', ctx))}">README.md</a>.</p></section>`;
   }
   const note = model.layout === 'columns'
     ? `<p class="note">This ticket uses the ${esc(ticket.workflow)} layout. The canvas shows its files as columns.</p>`
     : model.missing.length ? `<p class="note">Not written yet: ${esc(model.missing.join(', '))}.</p>` : '';
-  const data = JSON.stringify({ key: ticket.key, generated: model.generated, ...(token ? { token } : {}) }).replace(/</g, '\\u003c');
+  const home = token && serve.home && serve.home !== ticket.key ? String(serve.home) : '';
+  const data = JSON.stringify({ key: ticket.key, generated: model.generated, ...(token ? { token } : {}), ...(home ? { home } : {}), ...(nav ? { nav: navData(nav) } : {}) }).replace(/</g, '\\u003c');
   return [
     '<!doctype html>', '<html lang="en">', '<head>', '<meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
     `<title>${esc(ticket.key)} · ${esc(ticket.short || ticket.title)}</title>`,
     `<style>${CANVAS_STYLE}</style>`, '</head>', `<body class="layout-${model.layout}">`,
-    railHtml(model),
-    `<main id="viewport"><div id="board">${board}</div></main>`,
-    `<footer id="foot">${note}<p>Generated ${esc(model.generated)} UTC by <code>forge.mjs canvas</code> from the ticket files. This page is a view: change the Markdown files, not this page. `
-      + 'Scroll to move. Hold Ctrl and scroll to zoom. Drag the background to move. Keys: 0 shows all, 1 to 9 go to a part. Double-click a card title to read it. Select words on a card to comment on them. Click a component of the code map to see its arrows.</p></footer>',
+    railHtml(model, nav),
+    `<div id="stage"><main id="viewport"><div id="board">${board}</div></main>`,
     '<div id="pop" role="toolbar" aria-label="Selected words" hidden><button type="button" data-act="comment">Comment</button><button type="button" data-act="remove">Remove</button>'
       + '<button type="button" data-label="unclear">unclear</button><button type="button" data-label="wrong">wrong</button><button type="button" data-label="too much">too much</button></div>',
     '<aside id="tray" hidden><h2>Comments</h2><p class="hint" id="tray-hint">Select words on a card, or use the Comment button of a card. Then copy the comments and paste them into the ticket session.</p><ol id="tray-list"></ol>'
       + '<label for="general">Whole ticket</label><textarea id="general" rows="3" placeholder="A comment on the whole ticket."></textarea>'
       + '<div class="tray-tools"><button type="button" id="send-all" hidden>Send to agent</button><button type="button" id="copy-all">Copy all</button><button type="button" id="clear-all">Delete all</button></div>'
-      + '<textarea id="copy-fallback" hidden readonly rows="6" aria-label="Comments to copy"></textarea></aside>',
+      + '<textarea id="copy-fallback" hidden readonly rows="6" aria-label="Comments to copy"></textarea></aside></div>',
+    `<footer id="foot">${note}<p>Generated ${esc(model.generated)} UTC by <code>forge.mjs canvas</code> from the ticket files. This page is a view: change the Markdown files, not this page. Press <kbd>?</kbd> for the keys.</p>`
+      + '<div class="zoomer" role="group" aria-label="Zoom"><button type="button" class="quiet icon" id="zoom-out" title="Zoom out (-)" aria-label="Zoom out">−</button><output id="zoom-level">100%</output>'
+      + '<button type="button" class="quiet icon" id="zoom-in" title="Zoom in (+)" aria-label="Zoom in">+</button><button type="button" class="quiet" id="zoom-fit" title="Show the whole ticket (0)">Fit</button></div></footer>',
+    switcherHtml(nav), helpHtml(HELP),
     '<div id="toast" role="status" hidden></div>',
     `<script type="application/json" id="canvas-data">${data}</script>`,
     `<script>${CANVAS_SCRIPT}</script>`, '</body>', '</html>', '',
   ].join('\n');
 }
 
-/** Builds the model and writes <ticket>/canvas.html. */
-export function writeCanvas(dir, { links = 'vscode', now } = {}) {
-  const model = buildCanvas(dir, { now });
+/**
+ * Builds the model and writes <ticket>/canvas.html. With `keep`, a page that differs only in its time is not written again,
+ * so a browser with the page open does not load it again.
+ */
+export function writeCanvas(dir, { links = 'vscode', now, nav = null, model = null, keep = false } = {}) {
+  model ??= buildCanvas(dir, { now });
   const file = path.join(dir, CANVAS_FILE);
-  if (existsSync(file) && (lstatSync(file).isSymbolicLink() || !lstatSync(file).isFile())) throw new Error(`${CANVAS_FILE} must be a regular file, not a link.`);
-  writeFileSync(file, renderCanvas(model, { links }));
-  return { key: model.ticket.key, file, layout: model.layout, zones: model.zones.map((zone) => zone.id), missing: model.missing, model };
+  const present = existsSync(file);
+  if (present && (lstatSync(file).isSymbolicLink() || !lstatSync(file).isFile())) throw new Error(`${CANVAS_FILE} must be a regular file, not a link.`);
+  let written = true;
+  if (keep && present) {
+    const old = readFileSync(file, 'utf8');
+    const stamp = /"generated":"([^"]*)"/.exec(old)?.[1];
+    if (stamp && renderCanvas({ ...model, generated: stamp }, { links, nav }) === old) written = false;
+  }
+  if (written) writeFileSync(file, renderCanvas(model, { links, nav }));
+  return { key: model.ticket.key, file, written, layout: model.layout, zones: model.zones.map((zone) => zone.id), missing: model.missing, model };
 }

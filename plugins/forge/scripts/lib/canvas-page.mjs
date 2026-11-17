@@ -1,7 +1,9 @@
 // The style and the browser script of the ticket canvas (see canvas.mjs). Both go inline into the page,
 // so the page needs no network and no other file. The script uses no template literals: it sits in one.
+// The tokens, the shared components, and the links between the pages come from the design system (ui.mjs).
 // The three message functions below are the one source of the comment message. The page gets their text
 // (Copy all), and the canvas server calls them (Send to agent). They use only ES5 and no outer name.
+import { UI_SCRIPT, UI_STYLE } from './ui.mjs';
 
 /** One line of plain text: no control character, single spaces, at most max characters. */
 export function canvasClean(value, max) {
@@ -40,50 +42,49 @@ export function canvasMessage(key, items, general) {
 // The page gets the source text of the functions. The line ends are LF, as in the rest of the script.
 const MESSAGE_SOURCE = [canvasClean, canvasLine, canvasMessage].map((fn) => fn.toString().replace(/\r\n?/g, '\n')).join('\n');
 
-export const CANVAS_STYLE = String.raw`
-:root { color-scheme: light dark; --bg: #f3f2ee; --panel: #faf9f6; --card: #ffffff; --ink: #1d1d1b; --muted: #68665e; --line: #d8d5cb; --accent: #2a5d8c; --amber: #a86a12; --green: #2a7748; --red: #b03a2a; --rail: #ffffff; }
-@media (prefers-color-scheme: dark) {
-  :root { --bg: #16171a; --panel: #1d1f23; --card: #25282d; --ink: #e8e6e0; --muted: #9c998f; --line: #3b3e44; --accent: #8fbbe3; --amber: #e2aa4c; --green: #6fc391; --red: #e88a78; --rail: #1d1f23; }
-}
-* { box-sizing: border-box; }
-[hidden] { display: none !important; }
-html, body { height: 100%; margin: 0; }
-body { display: flex; flex-direction: column; overflow: hidden; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--ink); background: var(--bg); }
-button { font: inherit; color: inherit; background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 2px 9px; cursor: pointer; }
-button:hover { border-color: var(--accent); }
-button:focus-visible, a:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-a { color: var(--accent); text-underline-offset: 2px; }
+export const CANVAS_STYLE = UI_STYLE + String.raw`
+html, body { height: 100%; }
+body { display: flex; flex-direction: column; overflow: hidden; }
 
-#rail { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; padding: 8px 14px; background: var(--rail); border-bottom: 1px solid var(--line); z-index: 3; }
-#rail .id { font-size: 16px; white-space: nowrap; }
-#rail .short { color: var(--muted); }
-.gates { display: flex; flex-wrap: wrap; gap: 4px; list-style: none; margin: 0; padding: 0; }
-.gates li { padding: 2px 10px; border: 1px solid var(--line); border-radius: 999px; white-space: nowrap; color: var(--muted); }
-.gates small { font-size: 12px; }
-.gates li.g-approved { color: var(--green); border-color: var(--green); }
-.gates li.g-in-review { color: var(--ink); border-color: var(--amber); background: color-mix(in srgb, var(--amber) 20%, transparent); font-weight: 600; }
+#rail { flex: none; }
+#rail .bar { padding-bottom: 2px; }
+.sub { display: flex; flex-wrap: wrap; align-items: center; gap: 6px var(--s-5); padding: 4px var(--s-4) var(--s-2); }
+.gates { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 0; list-style: none; margin: 0; padding: 0; }
+.gates li { position: relative; padding: 1px 10px; font-size: var(--t-sm); white-space: nowrap; color: var(--muted); background: var(--card); border: 1px solid var(--line); border-radius: var(--r-pill); }
+.gates li + li { margin-left: 16px; }
+.gates li + li::before { content: ""; position: absolute; right: calc(100% + 1px); top: 50%; width: 16px; border-top: 2px solid var(--line); }
+.gates li.g-approved + li::before { border-color: color-mix(in srgb, var(--green) 60%, var(--line)); }
+.gates small { font-size: var(--t-xs); }
+.gates li.g-approved { color: var(--green); border-color: color-mix(in srgb, var(--green) 60%, var(--line)); }
+.gates li.g-in-review { color: var(--ink); font-weight: 600; border-color: var(--amber); background: color-mix(in srgb, var(--amber) 20%, var(--card)); }
 .gates li.g-blocked { color: var(--red); border-color: var(--red); }
-.next { flex: 1 1 260px; min-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.next span { color: var(--muted); }
-#rail nav, .tools { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
-#zoom-level { min-width: 44px; text-align: center; color: var(--muted); font-size: 13px; }
+.next { flex: 1 1 0; min-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.next span { font-size: var(--t-sm); color: var(--muted); }
+.next a { margin-left: var(--s-2); font-size: var(--t-sm); }
+#rail nav { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; }
+#rail nav button[aria-current="true"] { color: var(--ink); font-weight: 600; background: color-mix(in srgb, var(--accent) 16%, transparent); }
 #comment-count { font-weight: 600; }
+#tray-toggle.has { border-color: var(--amber); background: color-mix(in srgb, var(--amber) 14%, var(--card)); }
 
+#stage { flex: 1; position: relative; min-height: 0; display: flex; }
 #viewport { flex: 1; position: relative; overflow: hidden; cursor: grab; touch-action: none; }
 #viewport.dragging { cursor: grabbing; user-select: none; }
 #board { --s: 1; position: absolute; left: 0; top: 0; transform-origin: 0 0; display: flex; align-items: flex-start; gap: 56px; padding: 48px; width: max-content; }
 @media (prefers-reduced-motion: no-preference) { #board.moving { transition: transform 0.25s ease; } }
+.zoomer { flex: none; display: flex; align-items: center; gap: 2px; margin-left: auto; }
+.zoomer button { padding: 0 8px; font-size: var(--t-sm); }
+#zoom-level { min-width: 44px; text-align: center; }
 .column { display: flex; flex-direction: column; gap: 56px; }
-.zone { width: 560px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px 22px; cursor: default; }
+.zone { width: 560px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-3); padding: 18px 20px 22px; cursor: default; }
 .z-code, .z-plan { width: 1180px; }
 .zone > .card, .zone > .row, .zone > .graph { max-width: 100%; }
-.zone > h2 { margin: 0 0 14px; font-size: 26px; line-height: 1.2; cursor: pointer; transform-origin: 0 100%; }
-.src { margin-left: 8px; font-size: 13px; font-weight: 400; color: var(--muted); }
-h4.group { margin: 18px 0 8px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); }
+.zone > h2 { margin: 0 0 14px; font-size: var(--t-2xl); line-height: 1.2; cursor: pointer; transform-origin: 0 100%; }
+.src { margin-left: 8px; font-size: var(--t-sm); font-weight: 400; color: var(--muted); }
+h4.group { margin: 18px 0 8px; font-size: var(--t-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); }
 .empty { color: var(--muted); font-style: italic; margin: 0; }
 
-.card, .node { position: relative; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin: 0 0 12px; }
-.card > h3, .node > h3 { margin: 0 0 6px; font-size: 16px; line-height: 1.3; transform-origin: 0 0; }
+.card, .node { position: relative; background: var(--card); border: 1px solid var(--line); border-radius: var(--r-2); padding: 12px 14px; margin: 0 0 12px; }
+.card > h3, .node > h3 { margin: 0 0 6px; font-size: 16px; line-height: 1.3; }
 .k-summary { border: 2px solid var(--accent); }
 .k-summary > h3 { font-size: 18px; }
 .body > :first-child { margin-top: 0; }
@@ -92,14 +93,13 @@ h4.group { margin: 18px 0 8px; font-size: 12px; font-weight: 600; text-transform
 .body ul, .body ol { padding-left: 20px; }
 .body li { margin: 2px 0; }
 .body h4 { font-size: 14px; }
-code { font: 13px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; background: color-mix(in srgb, var(--muted) 16%, transparent); padding: 1px 4px; border-radius: 4px; overflow-wrap: anywhere; }
-pre { overflow: auto; max-height: 320px; padding: 8px 10px; background: color-mix(in srgb, var(--muted) 12%, transparent); border-radius: 6px; }
+pre { overflow: auto; max-height: 320px; padding: 8px 10px; background: color-mix(in srgb, var(--muted) 12%, transparent); border-radius: var(--r-1); }
 pre code { background: none; padding: 0; overflow-wrap: normal; }
 table { border-collapse: collapse; font-size: 14px; }
 th, td { border: 1px solid var(--line); padding: 3px 8px; text-align: left; vertical-align: top; }
 blockquote { border-left: 3px solid var(--line); padding-left: 10px; color: var(--muted); }
-.badge { float: right; margin-left: 8px; padding: 1px 8px; font-size: 12px; font-weight: 600; white-space: nowrap; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; }
-.file { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.badge { float: right; margin-left: 8px; padding: 1px 8px; font-size: var(--t-xs); font-weight: 600; white-space: nowrap; color: var(--muted); border: 1px solid var(--line); border-radius: var(--r-pill); }
+.file { font-size: var(--t-sm); color: var(--muted); overflow-wrap: anywhere; }
 
 .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
 .row > .card { width: 272px; margin: 0; }
@@ -122,7 +122,7 @@ blockquote { border-left: 3px solid var(--line); padding-left: 10px; color: var(
 .graph { position: relative; margin: 8px 0 6px; }
 .lanes { display: flex; gap: 84px; align-items: flex-start; }
 .lane { flex: 1 1 210px; min-width: 210px; max-width: 330px; display: flex; flex-direction: column; gap: 24px; }
-.lane > h4 { margin: 0; padding-bottom: 6px; text-align: center; font-size: 12px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); border-bottom: 1px dashed var(--line); }
+.lane > h4 { margin: 0; padding-bottom: 6px; text-align: center; font-size: var(--t-xs); text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); border-bottom: 1px dashed var(--line); }
 .node { margin: 0; z-index: 1; cursor: pointer; }
 .graph.focus .node { opacity: 0.45; }
 .graph.focus .node.on { opacity: 1; }
@@ -138,10 +138,10 @@ svg.edges marker path { fill: context-stroke; }
 .graph.focus path.edge.on { opacity: 1; stroke: var(--accent); stroke-width: 2.4; }
 svg.labels text { display: none; font-size: 13px; font-weight: 600; fill: var(--ink); paint-order: stroke; stroke: var(--panel); stroke-width: 6px; stroke-linejoin: round; }
 svg.labels text.on { display: block; }
-.edge-list { margin: 8px 0 0; padding-left: 20px; font-size: 13px; color: var(--muted); }
+.edge-list { margin: 8px 0 0; padding-left: 20px; font-size: var(--t-sm); color: var(--muted); }
 .graph.drawn + .edge-list { display: none; }
 
-.cbtn { position: absolute; right: 8px; bottom: 6px; padding: 0 8px; font-size: 12px; opacity: 0; }
+.cbtn { position: absolute; right: 8px; bottom: 6px; padding: 0 8px; font-size: var(--t-xs); opacity: 0; }
 .card:hover > .cbtn, .node:hover > .cbtn, .cbtn:focus-visible { opacity: 1; }
 @media (hover: none) { .cbtn { position: static; display: block; margin: 8px 0 0 auto; opacity: 0.8; } }
 .has-comments { box-shadow: 0 0 0 2px var(--amber); }
@@ -149,37 +149,43 @@ svg.labels text.on { display: block; }
 .comments li { display: flex; gap: 8px; align-items: flex-start; margin: 0 0 6px; padding: 6px 8px; border-left: 3px solid var(--amber); background: color-mix(in srgb, var(--amber) 12%, transparent); border-radius: 0 6px 6px 0; }
 .comments span { flex: 1; white-space: pre-wrap; overflow-wrap: anywhere; }
 .comments li.rm { border-left-color: var(--red); background: color-mix(in srgb, var(--red) 10%, transparent); }
-.comments q, .editor q, #tray-list q { display: block; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
-.comments button { padding: 0 6px; font-size: 12px; }
+.comments q, .editor q, #tray-list q { display: block; font-size: var(--t-sm); color: var(--muted); overflow-wrap: anywhere; }
+.comments button { padding: 0 6px; font-size: var(--t-xs); }
 .editor { margin-top: 10px; }
-.editor textarea, #copy-fallback, #general { width: 100%; font: inherit; color: inherit; background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; resize: vertical; }
+.editor textarea, #copy-fallback, #general { width: 100%; font: inherit; color: inherit; background: var(--card); border: 1px solid var(--line); border-radius: var(--r-1); padding: 6px 8px; resize: vertical; }
 .editor div { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-.chips button, #pop button { padding: 0 8px; font-size: 13px; }
-.chips button[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, var(--card)); }
-#pop { position: fixed; z-index: 6; display: flex; gap: 4px; padding: 4px; background: var(--rail); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2); }
+.chips button, #pop button { padding: 0 8px; font-size: var(--t-sm); }
+#pop { position: fixed; z-index: 6; display: flex; gap: 4px; padding: 4px; background: var(--rail); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--sh-2); }
 
-.far svg.labels, .far .card > .body, .far .node > .body, .far .badge, .far h4.group, .far .src, .far .lane > h4, .far .cbtn, .far .comments, .far .editor, .far .empty, .far .row.path > .card + .card::before { visibility: hidden; }
+/* The far view is a map: each card shows its title in a large size and its state as a tint. */
+.far svg.labels, .far .card > h3, .far .node > h3, .far .card > .body, .far .node > .body, .far h4.group, .far .src, .far .lane > h4, .far .cbtn, .far .comments, .far .editor, .far .row.path > .card + .card::before { visibility: hidden; }
 .far .card, .far .node { overflow: hidden; }
+.far .card::after, .far .node::after { content: attr(data-title); position: absolute; left: 12px; top: 9px; width: calc((100% - 22px) / var(--s)); max-height: calc((100% - 12px) / var(--s)); overflow: hidden; transform: scale(var(--s)); transform-origin: 0 0; font-size: 15px; font-weight: 600; line-height: 1.25; overflow-wrap: break-word; }
+/* Whole lines only: a line that does not fit is not shown in part. */
+@supports (height: round(down, 10px, 1lh)) { .far .card::after, .far .node::after { max-height: max(1lh, round(down, calc((100% - 12px) / var(--s)), 1lh)); } }
+.far .node::after { font-size: 13px; }
+.far .s-done, .far .s-verified, .far .s-supported, .far .node.c-done { background: color-mix(in srgb, var(--green) 16%, var(--card)); }
+.far .s-failed, .far .k-entry.s-problem { background: color-mix(in srgb, var(--red) 16%, var(--card)); }
+.far .k-question, .far .node.c-planned, .far .s-to-contact, .far .s-drafted, .far .s-follow-up, .far .s-reply-in { background: color-mix(in srgb, var(--amber) 16%, var(--card)); }
+.far .s-rejected::after { color: var(--muted); text-decoration: line-through; }
+.far .zone > .empty { transform: scale(var(--s)); transform-origin: 0 0; white-space: nowrap; margin-bottom: calc(1.5em * (var(--s) - 1)); }
 .far #board { user-select: none; }
-.far .card > h3, .far .node > h3 { transform: scale(var(--s)); width: calc(100% / var(--s)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .far .zone > h2 { transform: scale(var(--s)); white-space: nowrap; }
 .far .zone, .far .card, .far .node { cursor: zoom-in; }
 
-#tray { position: fixed; right: 12px; top: 64px; z-index: 4; width: 380px; max-width: calc(100% - 24px); max-height: calc(100% - 110px); overflow: auto; padding: 14px 16px; background: var(--rail); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2); }
+#tray { position: absolute; right: var(--s-3); top: var(--s-3); z-index: 4; width: 380px; max-width: calc(100% - 24px); max-height: calc(100% - 24px); overflow: auto; padding: 14px 16px; background: var(--rail); border: 1px solid var(--line); border-radius: var(--r-3); box-shadow: var(--sh-2); }
 #tray h2 { margin: 0 0 4px; font-size: 16px; }
-.hint { margin: 0 0 8px; font-size: 13px; color: var(--muted); }
+.hint { margin: 0 0 8px; font-size: var(--t-sm); color: var(--muted); }
 #tray-list { margin: 0 0 10px; padding-left: 22px; }
 #tray-list li { margin-bottom: 8px; cursor: pointer; overflow-wrap: anywhere; }
 #tray-list small { display: block; color: var(--muted); }
-#tray label { display: block; margin: 0 0 4px; font-size: 13px; color: var(--muted); }
+#tray label { display: block; margin: 0 0 4px; font-size: var(--t-sm); color: var(--muted); }
 #general { margin: 0 0 10px; }
 .tray-tools { display: flex; flex-wrap: wrap; gap: 6px; }
-#send-all { border-color: var(--accent); font-weight: 600; }
-#copy-fallback { margin-top: 8px; font: 13px/1.4 ui-monospace, Consolas, monospace; }
-#toast { position: fixed; left: 50%; bottom: 44px; z-index: 5; transform: translateX(-50%); padding: 6px 14px; color: var(--bg); background: var(--ink); border-radius: 999px; }
-#foot { flex: none; display: flex; gap: 16px; padding: 4px 14px; font-size: 12px; color: var(--muted); background: var(--rail); border-top: 1px solid var(--line); }
-#foot p { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#foot .note { flex: none; color: var(--ink); }
+#send-all { color: var(--card); background: var(--accent); border-color: var(--accent); font-weight: 600; }
+#copy-fallback { margin-top: 8px; font: 13px/1.4 var(--mono); }
+#foot { flex: none; align-items: center; }
+#foot p { min-width: 0; }
 `;
 
 export const CANVAS_SCRIPT = String.raw`
@@ -187,6 +193,7 @@ export const CANVAS_SCRIPT = String.raw`
   'use strict';
 ${MESSAGE_SOURCE}
   var data = JSON.parse(document.getElementById('canvas-data').textContent);
+${UI_SCRIPT}
   var viewport = document.getElementById('viewport');
   var board = document.getElementById('board');
   var tray = document.getElementById('tray');
@@ -203,13 +210,6 @@ ${MESSAGE_SOURCE}
   };
   var MIN = 0.1, MAX = 2, FAR = 0.5;
   var view = { x: 0, y: 0, k: 1 };
-
-  function make(tag, className, text) {
-    var el = document.createElement(tag);
-    if (className) el.className = className;
-    if (text !== undefined) el.textContent = text;
-    return el;
-  }
 
   function offsetWithin(el, root) {
     var x = 0, y = 0, node = el;
@@ -229,6 +229,23 @@ ${MESSAGE_SOURCE}
     board.style.setProperty('--s', String(Math.min(3.4, Math.max(1, 0.75 / view.k))));
     document.getElementById('zoom-level').textContent = Math.round(view.k * 100) + '%';
     store.set('view', view);
+    if (!zoneTimer) zoneTimer = requestAnimationFrame(markZone);
+  }
+
+  // The part name in the rail that agrees with the middle of the view. A far view shows all parts, so it marks none.
+  var zoneTimer = 0;
+  function markZone() {
+    zoneTimer = 0;
+    var cx = (viewport.clientWidth / 2 - view.x) / view.k, cy = (viewport.clientHeight / 2 - view.y) / view.k;
+    var best = '', least = Infinity;
+    if (view.k >= FAR) each(document.querySelectorAll('.zone'), function (zone) {
+      var rect = offsetWithin(zone, board);
+      var dx = Math.max(rect.left - cx, 0, cx - rect.left - rect.width), dy = Math.max(rect.top - cy, 0, cy - rect.top - rect.height);
+      if (dx * dx + dy * dy < least) { least = dx * dx + dy * dy; best = zone.id; }
+    });
+    each(document.querySelectorAll('[data-goto]'), function (button) {
+      if (button.getAttribute('data-goto') === best) button.setAttribute('aria-current', 'true'); else button.removeAttribute('aria-current');
+    });
   }
 
   function zoomAt(cx, cy, factor, animate) {
@@ -301,7 +318,7 @@ ${MESSAGE_SOURCE}
   });
 
   document.addEventListener('keydown', function (event) {
-    if (event.target.closest('textarea, input') || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (event.defaultPrevented || typing(event) || modalOpen() || event.ctrlKey || event.metaKey || event.altKey) return;
     var zones = document.querySelectorAll('.zone');
     var cx = viewport.clientWidth / 2, cy = viewport.clientHeight / 2;
     if (event.key === '0') fitAll(true);
@@ -433,15 +450,11 @@ ${MESSAGE_SOURCE}
   var sendButton = document.getElementById('send-all');
   generalBox.value = general;
 
-  function toast(text) {
-    var el = document.getElementById('toast');
-    el.textContent = text;
-    el.hidden = false;
-    clearTimeout(toast.timer);
-    toast.timer = setTimeout(function () { el.hidden = true; }, 3200);
-  }
-
   function total() { return comments.length + (general.trim() ? 1 : 0); }
+  function showTotal() {
+    document.getElementById('comment-count').textContent = String(total());
+    document.getElementById('tray-toggle').classList.toggle('has', total() > 0);
+  }
   function message() { return canvasMessage(data.key, comments, general); }
   function shortQuote(text) { return text.length > 90 ? text.slice(0, 87) + '...' : text; }
 
@@ -481,7 +494,7 @@ ${MESSAGE_SOURCE}
       });
       el.insertBefore(list, el.querySelector(':scope > .editor') || el.querySelector(':scope > .cbtn'));
     });
-    document.getElementById('comment-count').textContent = String(total());
+    showTotal();
     var trayList = document.getElementById('tray-list');
     while (trayList.firstChild) trayList.removeChild(trayList.firstChild);
     comments.forEach(function (comment) {
@@ -624,7 +637,7 @@ ${MESSAGE_SOURCE}
   generalBox.addEventListener('input', function () {
     general = generalBox.value;
     store.set('general', general);
-    document.getElementById('comment-count').textContent = String(total());
+    showTotal();
   });
 
   function copyFallback(text) {
@@ -656,8 +669,11 @@ ${MESSAGE_SOURCE}
   });
   document.getElementById('tray-toggle').addEventListener('click', function () { tray.hidden = !tray.hidden; });
 
-  // The canvas server (forge.mjs canvas <key> --serve) puts a token into the page. Only then can the page send.
-  if (data.token) {
+  // The canvas server (forge.mjs canvas <key> --serve) puts a token into the page. Only the page of its own ticket can send.
+  if (data.token && data.home) {
+    document.getElementById('tray-hint').textContent = 'This page comes from the session of ' + data.home + ', so it cannot send. Use Copy all, and paste the comments into the session of ' + data.key + '.';
+  }
+  if (data.token && !data.home) {
     sendButton.hidden = false;
     document.getElementById('tray-hint').textContent = 'Select words on a card, or use the Comment button of a card. Then select Send to agent.';
     sendButton.addEventListener('click', function () {
@@ -673,6 +689,7 @@ ${MESSAGE_SOURCE}
           saveComments();
           sendButton.hidden = true;
           document.getElementById('tray-hint').textContent = 'Sent. The ticket session gives you a new link for more comments.';
+          setOffline();
           toast('Sent to the session. The server stopped.');
         })
         .catch(function (error) {
