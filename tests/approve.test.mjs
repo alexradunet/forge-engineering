@@ -71,7 +71,7 @@ test('gate-approve writes nothing when the review set changed, in a dry run, or 
   assert.equal(readFileSync(path.join(dry.dir, 'README.md'), 'utf8'), dry.readme);
   assert.equal(existsSync(path.join(dry.dir, 'approvals', 'history.md')), false);
 
-  assert.throws(() => approveGate(dir, { gate: 'Sendable?', answer: 'approve' }), /per-write approval record/);
+  assert.throws(() => approveGate(dir, { gate: 'Sendable?', answer: 'approve' }), /the host prompt that the gate guard asks for/);
   assert.throws(() => approveGate(dir, { gate: 'Planned?', answer: 'approve' }), /Planned\? is todo, not in-review/);
   assert.throws(() => approveGate(dir, { gate: 'Scoped?', answer: ' ' }), /exact answer/);
   const cliResult = run(wiki, 'SYN-3', 'scoped', '--answer', 'approve', '--hash', digest);
