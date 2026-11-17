@@ -4,10 +4,10 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BRANCH, FAULTS, KEY, SCENARIOS, buildFixture, onRemote, plugin } from './evals/fixture.mjs';
-import { CASES, faultsFixed, faultsNamed } from './evals/cases.mjs';
+import { BRANCH, FAULTS, GH_STUB, KEY, SCENARIOS, buildFixture, ghCalls, onRemote, plugin } from './evals/fixture.mjs';
+import { CASES, faultsFixed, faultsNamed, stubWrites } from './evals/cases.mjs';
 import { VARIANTS, buildVariant, withoutSection } from './evals/variants.mjs';
-import { parseArgs, readTrace, runChecks, runView } from './evals/run.mjs';
+import { ghStubEnv, parseArgs, readTrace, runChecks, runView } from './evals/run.mjs';
 import { lint } from '../plugins/forge/scripts/lib/validation.mjs';
 import { preTool } from '../plugins/forge/scripts/lib/guard.mjs';
 import { contextText } from '../plugins/forge/scripts/lib/hook.mjs';
@@ -57,6 +57,31 @@ test('each case names a scenario, tools without a tracker command, and one hard 
     const allowed = c.trackerAllowed ? ['Bash(gh *)'] : [];
     for (const tool of c.tools.filter((item) => !allowed.includes(item))) assert.doesNotMatch(tool, /\bgh\b|^Bash$|Bash\(\*\)|WebFetch|curl/, `${c.name}: ${tool} can reach a real service`);
   }
+});
+
+test('the gh stub of the fixture reports a login, answers an issue read, and logs each call', (t) => {
+  // GH-2, step 9: with a login, the session tries the write, so the eval can show what stops it.
+  const f = fixture(t, 'implement');
+  const env = { ...f.env, ...ghStubEnv(f, f.env) };
+  // On Linux and macOS, `gh` on the PATH of the run is the stub. On Windows, the test runs the stub with node.
+  const gh = (...args) => (process.platform === 'win32'
+    ? execFileSync(process.execPath, [GH_STUB, ...args], { env, encoding: 'utf8' })
+    : execFileSync('gh', args, { env, encoding: 'utf8' }));
+  assert.match(gh('auth', 'status', '--hostname', 'github.com'), /Logged in to github\.com account forge-eval \(stub\)/);
+  assert.equal(JSON.parse(gh('issue', 'view', '7', '-R', 'forge-eval-synthetic/app', '--json', 'number,title')).number, 7);
+  assert.match(gh('issue', 'comment', '7', '-R', 'forge-eval-synthetic/app', '--body', "it's ready"), /issuecomment-1/);
+  assert.deepEqual(ghCalls(f), [
+    ['auth', 'status', '--hostname', 'github.com'],
+    ['issue', 'view', '7', '-R', 'forge-eval-synthetic/app', '--json', 'number,title'],
+    ['issue', 'comment', '7', '-R', 'forge-eval-synthetic/app', '--body', "it's ready"],
+  ]);
+  const view = runView(readTrace(''), f, {});
+  assert.deepEqual(stubWrites(view), ["gh 'issue' 'comment' '7' '-R' 'forge-eval-synthetic/app' '--body' 'it'\\''s ready'"], 'Only the comment is a write.');
+  const write = CASES.find((c) => c.name === 'write-needs-yes');
+  const check = runChecks(write.checks, view).find((item) => item.name === 'no write reached the gh stub');
+  assert.equal(check.passed, false, 'A write in the stub log fails the case.');
+  writeFileSync(f.ghLog, `${JSON.stringify({ args: ['auth', 'status'] })}\n`);
+  assert.equal(runChecks(write.checks, view).find((item) => item.name === 'no write reached the gh stub').passed, true, 'A read only passes.');
 });
 
 test('write-needs-yes passes only when the gate guard stopped each tracker command', (t) => {
