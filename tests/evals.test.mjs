@@ -1,10 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BRANCH, KEY, SCENARIOS, buildFixture, onRemote } from './evals/fixture.mjs';
-import { CASES } from './evals/cases.mjs';
+import { BRANCH, FAULTS, KEY, SCENARIOS, buildFixture, onRemote, plugin } from './evals/fixture.mjs';
+import { CASES, faultsFixed, faultsNamed } from './evals/cases.mjs';
+import { VARIANTS, buildVariant, withoutSection } from './evals/variants.mjs';
 import { parseArgs, readTrace, runChecks, runView } from './evals/run.mjs';
 import { lint } from '../plugins/forge/scripts/lib/validation.mjs';
 import { preTool } from '../plugins/forge/scripts/lib/guard.mjs';
@@ -112,7 +114,43 @@ test('the trace reader and the checks read tool calls, failed results, and the l
 });
 
 test('the runner arguments are strict', () => {
-  assert.deepEqual(parseArgs(['--case', 'board-question', '--runs', '1', '--model', 'opus', '--max-usd', '2', '--keep']), { cases: ['board-question'], runs: 1, model: 'opus', maxUsd: 2, keep: true, list: false });
+  assert.deepEqual(parseArgs(['--case', 'board-question', '--runs', '1', '--model', 'opus', '--max-usd', '2', '--keep']), { cases: ['board-question'], runs: 1, model: 'opus', maxUsd: 2, keep: true, list: false, variant: '' });
+  assert.equal(parseArgs(['--variant', 'no-cold-read']).variant, 'no-cold-read');
   assert.equal(parseArgs([]).maxUsd, 5);
-  for (const argv of [['--case', 'nope'], ['--runs', '0'], ['--runs'], ['--max-usd', '0'], ['--what']]) assert.throws(() => parseArgs(argv), /./, argv.join(' '));
+  for (const argv of [['--case', 'nope'], ['--runs', '0'], ['--runs'], ['--max-usd', '0'], ['--what'], ['--variant', 'nope']]) assert.throws(() => parseArgs(argv), /./, argv.join(' '));
+});
+
+test('the cold read comparison has checkable faults, and its variant removes only the cold read', (t) => {
+  const f = fixture(t, 'plan-ready');
+  const view = (last = '') => runView(readTrace(JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: last || 'Planned? is open.' }] } })), f, { journal: readFileSync(path.join(f.dir, 'journal.md'), 'utf8') });
+  assert.equal(FAULTS.length, 4);
+  assert.equal(faultsFixed(view()), 0, 'The plan of the fixture has each fault.');
+  assert.equal(faultsNamed(view()), 0);
+  assert.equal(faultsNamed(view('The plan does not say what DLQ is, and 40% has no source.')), 2, 'A fault that the session names counts as named.');
+  const plan = path.join(f.dir, 'plan.md');
+  const fixed = readFileSync(plan, 'utf8')
+    .replace('with `log.warn`', 'with `log.error`')
+    .replace('- supported: 40% of the imports fail in production.', '- supported: 40% of the imports fail in production. Source: Dana, in chat (user-supplied).')
+    .replace('to the DLQ path', 'to the dead letter table `import_dlq` (DLQ)')
+    .replace('Files: the usual place', 'Files: src/dlq.js');
+  writeFileSync(plan, fixed);
+  assert.equal(faultsFixed(view()), 4);
+  assert.equal(faultsNamed(view()), 4);
+
+  const comparison = CASES.find((c) => c.name === 'cold-read-value');
+  assert.equal(comparison.explicit, true, 'A comparison case runs only with --case.');
+  assert.equal(comparison.scenario, 'plan-ready');
+  const variant = buildVariant('no-cold-read');
+  t.after(variant.remove);
+  assert.equal(path.basename(variant.dir), 'forge', 'Claude Code takes the plugin name from the folder name.');
+  const read = (dir, file) => readFileSync(path.join(dir, ...file.split('/')), 'utf8');
+  for (const file of Object.keys(VARIANTS['no-cold-read'])) {
+    assert.doesNotMatch(read(variant.dir, file), /cold read/i, `${file}: the variant has no cold read text`);
+    assert.match(read(plugin, file), /cold read/i, `${file}: the plugin itself is not changed`);
+  }
+  assert.match(read(variant.dir, 'skills/ticket/phases/gates.md'), /### Procedure for each gate\r?\n/, 'The other steps of the gate stay.');
+  assert.match(read(variant.dir, 'skills/agents/SKILL.md'), /## 🥊 Adversarial review\r?\n/, 'The adversarial review stays.');
+  assert.equal(buildVariant('').dir, plugin);
+  assert.throws(() => buildVariant('nope'), /Unknown variant/);
+  assert.equal(withoutSection('# A\n\n## B\n\nb\n\n### C\n\nc\n\n## D\n\nd\n', '## B'), '# A\n\n## D\n\nd\n');
 });

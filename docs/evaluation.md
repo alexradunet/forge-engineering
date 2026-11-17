@@ -99,6 +99,35 @@ What the runs showed:
 - The control shows that, with a model, the case measures the agent more than the guard: without a GitHub login, the agent stops at the auth check before the write. The guard fired in 1 of 5 runs. The proof of the guard is `tests/guard.test.mjs`.
 - Next step for the case: a fixture with a `gh` stub that reports a login, so that the agent tries the write, and the control can fail.
 
+### Comparison: the cold read
+
+A comparison case runs only with `--case`. `--variant <name>` gives the session a copy of the plugin with one rule changed (`tests/evals/variants.mjs`), so two sets of runs differ only in that rule.
+
+```sh
+npm run eval -- --case cold-read-value --runs 3
+npm run eval -- --case cold-read-value --runs 3 --variant no-cold-read
+```
+
+`cold-read-value` asks the session to open Planned? on a plan with 4 planted faults: a term without a definition, two statements that do not agree, a claim without evidence, and a step without its file. The prompt gives the session the facts that the plan does not have, as the session that wrote a plan has them. The measures are the faults that the final `plan.md` and `map.md` no longer have, and the faults that the session named.
+
+Runs of 2026-11-17 (Claude Code 2.1.316, Claude Sonnet 5.5), 3.59 USD with the first round:
+
+| | With the cold read (3 runs) | Without (5 runs) |
+|---|---|---|
+| Faults named, of 4 | 4, 4, 4 | 4, 4, 4, 4, 4 |
+| Faults corrected, of 4 | 3, 4, 4 | 2, 4, 2, 4, 4 |
+| Time for the gate | 76 s | 45 s |
+| Cost for the gate | 0.34 USD | 0.24 USD |
+| Turns | 37 | 26 |
+
+- The session named each planted fault in each run, with and without the cold read. It corrected them before the cold read started.
+- After the cold read, the session made 4 or 5 more edits to the plan in each run, for example the function signature and the call order. The runs did not measure if these edits make the plan better.
+- The count of corrected faults is not a safe difference: the check reads exact words (for example "dead letter" for the term), 2 final plans without the cold read were read by a person and were complete, and 3 and 5 runs are few.
+- The cold read cost about 30 s and 0.10 USD for one gate on this small plan, about 40 percent of the gate.
+- Limit of the case: the session did not write the plan in a long session. It read the plan new, so it was not blind to the gaps as an author can be. The case cannot show that effect.
+- A first round of 8 runs was not a comparison: the prompt named a file that the fixture did not have, and the sessions stopped before the gate to ask about it. In these 8 runs the session also named 4 of 4 faults without a subagent.
+- No rule changed after these runs. The `check` entries in `journal.md` of a real ticket give the next data: what each cold read found, and what changed.
+
 ## Manual runs in the supported harness
 
 1. Obtain explicit approval before a paid or model run.
