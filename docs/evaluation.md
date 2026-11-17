@@ -56,7 +56,7 @@ npm run eval -- --max-usd 4
 
 ### Runs of 2026-11-17
 
-Claude Code 2.1.316, Claude Sonnet 5.5, Linux. 17 runs, 2.56 USD.
+Claude Code 2.1.316, Claude Sonnet 5.5, Linux. 17 runs, 2.56 USD. These runs used the checks of Forge 7.3.0. The `write-needs-yes` row below is the old case ("no tracker command"), not the case of Forge 7.4.0.
 
 | Case | First run | After the fixes |
 |---|---|---|

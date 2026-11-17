@@ -21,6 +21,9 @@ const GIT_VALUE_OPTIONS = new Set(['-c', '--git-dir', '--work-tree', '--namespac
 const PUSH_VALUE_OPTIONS = new Set(['-o', '--push-option', '--repo', '--receive-pack', '--exec']);
 const MAX_FINDINGS = 5;
 const METHOD_OPTIONS = new Set(['-X', '--method']);
+// The shells that run the text of a heredoc or a pipe as commands.
+const SHELLS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'fish', 'pwsh', 'powershell']);
+const HELP = new Set(['--help', '-h']);
 // The capabilities that change something outside the workspace. The core holds the names; the trusted config gives the commands.
 export const WRITE_CAPABILITIES = ['tracker.comment', 'tracker.transition', 'tracker.link', 'repo.open-change', 'repo.update-change', 'repo.reply', 'ci.trigger'];
 // Permission modes in which a host runs a command with no prompt, also after a hook `ask` (GH-2: Claude Code bypassPermissions).
@@ -52,6 +55,9 @@ function heredocDelimiter(text, start) {
  * `&&`, `||`, `;`, `|`, `&`, parentheses, backticks, and new lines end a command.
  * A backslash is an escape only before a space, a quote, or one of these characters, so a Windows path keeps its backslashes.
  * The text of a heredoc (`<<EOF`, `<<'EOF'`, `<<-EOF`) is data, not commands: the lines up to the end line give no command.
+ * There are 2 exceptions, so that the text that a shell runs stays visible: a line with a shell command (`bash <<EOF`,
+ * `cat <<EOF | sh`) keeps the heredoc text as commands, and `<<` in arithmetic (`$((a<<b))`) starts no heredoc.
+ * A `#` at the start of a word starts a comment up to the end of the line, as in a shell.
  */
 export function shellCommands(line) {
   const text = String(line ?? '');
@@ -60,6 +66,8 @@ export function shellCommands(line) {
   let word = null;
   let quote = '';
   let heredocs = [];
+  let lineStart = 0; // the index in `text` of the start of the current line
+  let lineFirst = 0; // the index in `commands` of the first command of the current line
   const endWord = () => { if (word !== null) { words.push(word); word = null; } };
   const endCommand = () => { endWord(); if (words.length) commands.push(words); words = []; };
   for (let i = 0; i < text.length; i++) {
@@ -72,23 +80,33 @@ export function shellCommands(line) {
       continue;
     }
     if (c === "'" || c === '"') { quote = c; word ??= ''; continue; }
-    if (c === '\\' && next !== undefined && (/\s/.test(next) || `'"\\${ENDS}`.includes(next))) {
+    if (c === '\\' && next !== undefined && (/\s/.test(next) || `'"\\<>#${ENDS}`.includes(next))) {
       if (next !== '\n') word = (word ?? '') + next;
       i++;
+      continue;
+    }
+    if (c === '#' && word === null) {
+      const stop = text.indexOf('\n', i);
+      i = (stop === -1 ? text.length : stop) - 1;
       continue;
     }
     if (c === '<' && next === '<') {
       endWord();
       if (text[i + 2] === '<') { i += 2; continue; } // `<<<` is a here-string: its word is data on the same line.
+      const before = text.slice(lineStart, i);
+      const arithmetic = (before.match(/\(\(/g) ?? []).length > (before.match(/\)\)/g) ?? []).length;
       const strip = text[i + 2] === '-';
       const { delimiter, end } = heredocDelimiter(text, i + (strip ? 3 : 2));
-      // Only a name is a delimiter. So `$((1<<2))` starts no heredoc, and it cannot hide the commands after it.
-      if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(delimiter)) { heredocs.push({ delimiter, strip }); i = end - 1; }
+      // Only a name is a delimiter, and not in arithmetic. So `$((1<<2))` starts no heredoc, and it cannot hide the commands after it.
+      if (!arithmetic && /^[A-Za-z_][A-Za-z0-9_]*$/.test(delimiter)) { heredocs.push({ delimiter, strip }); i = end - 1; }
       else i += 1;
       continue;
     }
     if (c === '\n') {
       endCommand();
+      // A shell on this line runs the heredoc text (`bash <<EOF`, `cat <<EOF | sh`), so that text stays as commands.
+      const runsText = commands.slice(lineFirst).some((command) => SHELLS.has(toolName(toolWords(command)[0])));
+      if (runsText) heredocs = [];
       // Skip the text of each heredoc of this line, up to and with its end line.
       let pos = i + 1;
       for (const { delimiter, strip } of heredocs) {
@@ -102,6 +120,8 @@ export function shellCommands(line) {
       }
       heredocs = [];
       i = pos - 1;
+      lineStart = pos;
+      lineFirst = commands.length;
       continue;
     }
     if (/\s/.test(c)) { endWord(); continue; }
@@ -135,17 +155,23 @@ function gitCall(words, cwd) {
   return { sub: words[i] ?? '', args: words.slice(i + 1), cwd: folder };
 }
 
-/** The HTTP method that a command names with `-X <method>`, `-X<method>`, `--method <method>`, or `--method=<method>`, in capitals. */
+/**
+ * The HTTP method that a command names with `-X <method>`, `-X<method>`, `--method <method>`, or `--method=<method>`, in capitals.
+ * When a command names more than one, the last one counts, as in the tools that read these options.
+ */
 function commandMethod(words) {
+  let method = null;
   for (let i = 0; i < words.length; i++) {
     if (METHOD_OPTIONS.has(words[i])) {
       const value = words[i + 1];
-      return value && !value.includes('<') ? value.toUpperCase() : null;
+      method = value && !value.includes('<') ? value.toUpperCase() : null;
+      i++;
+      continue;
     }
     const joined = /^(?:-X|--method=)(.+)$/.exec(words[i]);
-    if (joined) return joined[1].toUpperCase();
+    if (joined) method = joined[1].toUpperCase();
   }
-  return null;
+  return method;
 }
 
 /** The cells after the name cell of the row of capability `name` in a config text, or null when the row is missing. */
@@ -192,9 +218,26 @@ export function writeCommands(texts = {}) {
     .map((command) => ({ capability, ...command })));
 }
 
-/** True when the words of a command start with the words of a config command. A command with a method must name a method other than GET. */
+/**
+ * True when the words of a command (from index `from`) have the words `rest` in order, with options between them.
+ * An option can have a value or not, so both readings are tried: a match in one of them is a match.
+ */
+function wordsInOrder(words, rest, from = 1) {
+  if (!rest.length) return true;
+  const word = words[from];
+  if (word === undefined) return false;
+  if (word === rest[0]) return wordsInOrder(words, rest.slice(1), from + 1);
+  if (!word.startsWith('-')) return false;
+  return wordsInOrder(words, rest, from + 1) || (!word.includes('=') && wordsInOrder(words, rest, from + 2));
+}
+
+/**
+ * True when a command matches a config command: the same tool, then the config words in order, also with options
+ * between them (`gh issue -R o/r comment`). A command with a method must name a method other than GET. A help call is no match.
+ */
 function matches(words, command) {
-  if (toolName(words[0]) !== command.words[0] || !command.words.slice(1).every((word, i) => words[i + 1] === word)) return false;
+  if (toolName(words[0]) !== command.words[0] || !wordsInOrder(words, command.words.slice(1))) return false;
+  if (words.some((word) => HELP.has(word))) return false;
   if (!command.method) return true;
   const method = commandMethod(words);
   return Boolean(method) && method !== 'GET';
@@ -338,21 +381,31 @@ export function preTool(event, { env = process.env } = {}) {
   const changes = homeConfig ? changeCommands(configText(home, 'repo.md')) : [];
   const writes = homeConfig ? writeCommands({ tracker: configText(home, 'tracker.md'), repo: configText(home, 'repo.md'), ci: configText(home, 'ci.md') }) : [];
   const verdicts = [];
-  for (const action of guardActions(event.command, base, { changes, writes })) {
-    const where = samePath(action.cwd, base) ? home : locate(action.cwd, env);
-    if (!where?.wiki.exists || samePath(where.top, where.wiki.path)) continue;
-    const config = where === home ? homeConfig : trustedConfig(where, env);
-    const mode = GUARD_MODES.includes(config?.policy?.gateGuard) ? config.policy.gateGuard : 'deny';
-    if (mode === 'off') continue;
-    // The ticket of the folder, and each ticket whose branch the push names: a push of a ticket branch runs from each folder.
-    let found = [];
+  // The ticket of a folder, and each ticket whose branch a push names: a push of a ticket branch runs from each folder.
+  const ticketsAt = (where, config, action, cwd) => {
+    if (!where?.wiki.exists || samePath(where.top, where.wiki.path)) return [];
     try {
       const tickets = listTickets(where.wiki.path).filter((entry) => entry.ticket);
-      const branch = git(action.cwd, ['branch', '--show-current']);
+      const branch = git(cwd, ['branch', '--show-current']);
       const here = ticketOfFolder(tickets, { here: where.top, branch, inMain: samePath(where.top, where.repo.path), getConfig: () => config });
       const named = action.kind === 'push' ? tickets.filter((entry) => entry.ticket.branch && (action.all || action.refs.includes(entry.ticket.branch))) : [];
-      found = [...new Set([here, ...named].filter(Boolean))];
-    } catch { continue; }
+      return [...new Set([here, ...named].filter(Boolean))];
+    } catch { return []; }
+  };
+  for (const action of guardActions(event.command, base, { changes, writes })) {
+    let where = samePath(action.cwd, base) ? home : locate(action.cwd, env);
+    let config = where === home ? homeConfig : (where?.wiki.exists ? trustedConfig(where, env) : null);
+    let found = ticketsAt(where, config, action, action.cwd);
+    // A write names its target (for example `-R owner/repo`), so a `cd` to another folder does not change it:
+    // the ticket of the session folder is the ticket of the write (GH-2 review).
+    if (!found.length && action.kind === 'write' && where !== home) {
+      where = home;
+      config = homeConfig;
+      found = ticketsAt(home, homeConfig, action, base);
+    }
+    if (!found.length) continue;
+    const mode = GUARD_MODES.includes(config?.policy?.gateGuard) ? config.policy.gateGuard : 'deny';
+    if (mode === 'off') continue;
     for (const match of found) {
       if (action.kind !== 'write') {
         let verdict;

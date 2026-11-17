@@ -94,6 +94,14 @@ test('shellCommands reads the text of a heredoc as data, not as commands', () =>
   assert.deepEqual(shellCommands('grep x <<< "git push" && git push'), [['grep', 'x', 'git push'], ['git', 'push']], 'A here-string is one word.');
   assert.deepEqual(shellCommands('echo "a << b" && git push'), [['echo', 'a << b'], ['git', 'push']], 'Quoted << is text.');
   assert.deepEqual(shellCommands('echo $((1<<2))\ngit push').at(-1), ['git', 'push'], 'A shift is not a heredoc, so the push stays visible.');
+  // Found by the adversarial review of GH-2: these inputs hid a command that bash runs.
+  assert.deepEqual(shellCommands('echo $((a<<b))\ngit push').at(-1), ['git', 'push'], 'A shift with a name operand.');
+  assert.deepEqual(shellCommands('echo $(( 1 << n ))\ngit push').at(-1), ['git', 'push']);
+  assert.deepEqual(shellCommands('echo \\<<EOF\ngit push').at(-1), ['git', 'push'], 'An escaped < starts no heredoc.');
+  assert.deepEqual(shellCommands('echo hi # <<EOF\ngit push'), [['echo', 'hi'], ['git', 'push']], 'A comment starts no heredoc.');
+  assert.deepEqual(shellCommands("bash <<'EOF'\ngit push\nEOF"), [['bash'], ['git', 'push'], ['EOF']], 'A shell runs the heredoc text, so it stays as commands.');
+  assert.deepEqual(shellCommands('cat <<EOF | sh\ngh issue comment 7\nEOF').slice(0, 3), [['cat'], ['sh'], ['gh', 'issue', 'comment', '7']]);
+  assert.deepEqual(shellCommands('echo a#b "#c"'), [['echo', 'a#b', '#c']], 'A # inside a word or in quotes is text.');
 });
 
 test('changeCommands reads the change request command of the repo.open-change row, without the git push', () => {
@@ -265,6 +273,16 @@ test('guardActions finds each write command of the config, and a read with the s
   assert.deepEqual(found('gh workflow run ci.yml -r main'), ['gh workflow run [ci.trigger]']);
   assert.deepEqual(found('gh run rerun 77 --failed'), ['gh run rerun [ci.trigger]']);
   assert.deepEqual(found('git push -u origin x && gh pr create -t T'), ['push', 'change'], 'A change command is a change action, not also a write action.');
+  // Found by the adversarial review of GH-2.
+  assert.deepEqual(found('gh issue -R o/r comment 1 -F b.md'), ['gh issue comment [tracker.comment, tracker.link]'], 'An option before the subcommand.');
+  assert.deepEqual(found('gh -R o/r issue comment 1'), ['gh issue comment [tracker.comment, tracker.link]']);
+  assert.deepEqual(found('gh --verbose pr comment 3'), ['gh pr comment [repo.update-change]'], 'An option with no value.');
+  assert.deepEqual(found('gh pr -R o/r create -t T'), ['change']);
+  assert.deepEqual(found('gh api -X GET -X POST repos/x/y'), ['gh api [repo.reply]'], 'The last method counts.');
+  assert.deepEqual(found('gh api --method POST --method GET repos/x/y'), []);
+  assert.deepEqual(found("bash <<'EOF'\ngh issue comment 7 -F b.md\nEOF"), ['gh issue comment [tracker.comment, tracker.link]']);
+  assert.deepEqual(found('gh issue comment --help'), [], 'A help call is no write.');
+  assert.deepEqual(found('gh issue view 2 --comments'), []);
   for (const line of ['gh issue view 2', 'gh issue list', 'gh pr view 3', 'gh api repos/a/b/pulls/3', 'gh api -X GET repos/a/b', 'gh api graphql -f query=q', 'gh run view 77', 'echo "gh issue comment 2"', "cat <<'EOF'\ngh issue comment 2\nEOF"]) {
     assert.deepEqual(found(line), [], line);
   }
@@ -289,6 +307,11 @@ test('a write in a ticket worktree gets ask, and the reason names the ticket, th
   }
   for (const command of ['gh issue view 7', 'gh api repos/a/b/pulls/1']) assert.equal(run(s.worktree, command), null, command);
   assert.equal(run(s.app, comment), null, 'The main checkout on the base branch has no ticket, so the written rule applies there.');
+  // Found by the adversarial review of GH-2: a cd to another folder does not change the target of a write.
+  for (const command of [`cd "${os.tmpdir()}" && ${comment}`, `cd .. && ${comment}`, `cd "${s.app}" && ${comment}`, `pushd "${os.tmpdir()}"; ${comment}`]) {
+    assert.equal(run(s.worktree, command)?.decision, 'ask', command);
+  }
+  assert.equal(run(s.app, `cd "${s.worktree}" && ${comment}`).decision, 'ask', 'A cd into the ticket worktree also asks.');
   const plain = setup(t);
   assert.equal(run(plain.worktree, comment), null, 'Without a trusted config there is no write command.');
 });
