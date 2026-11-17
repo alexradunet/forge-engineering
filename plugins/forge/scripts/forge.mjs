@@ -18,6 +18,8 @@
 //   snapshot <key> <gate> [--json]   save the gate doc as approvals/snapshots/<gate>-<n>.md at a review
 //   diff    <key> <gate> [--json]   the summary (or the ⚡ card) on a first review, else the sections changed since the last snapshot
 //   canvas  <key> [--json] [--links vscode|file]   write <ticket>/canvas.html, the whole ticket on one board (--json prints its model)
+//   canvas  <key> --serve [--port <n>] [--links vscode|file]   show the canvas on http://127.0.0.1 until the user sends the comments
+//            from the page; then print the comment message and stop. Exit 0 after a Send, and not 0 when it stops without comments.
 //   gate-approve <key> <gate> --answer "<exact user answer>" [--method form|chat] [--manifest <path>] [--hash <sha>] [--dry-run] [--json]
 //            record an explicit approval of an in-review gate (not Sendable?); checks the manifest, then writes the README and approvals/history.md
 //   hook session-start [--host <host>]   read the hook event on stdin; print {"additionalContext"} with the Forge context, else {}
@@ -47,6 +49,7 @@ import { createWorktree, planWorktree } from './lib/worktree.mjs';
 import { CLAUDE_PARTS, HOST_NAMES, contextText, promptSubmit, readEvent, resolveHost, sessionStart } from './lib/hook.mjs';
 import { diffGate, gateName, renderDiff, saveSnapshot } from './lib/reading.mjs';
 import { LINK_MODES, buildCanvas, writeCanvas } from './lib/canvas.mjs';
+import { serveCanvas } from './lib/canvas-serve.mjs';
 import { loadProfile, pluginRoot } from './lib/profile.mjs';
 
 // A tracker that uses an MCP server (see mcpGateway) has no CLI.
@@ -149,7 +152,8 @@ export function parseArgs(argv) {
     else if (a === '--fix') out.fix = true;
     else if (a === '--dry-run') out.dryRun = true;
     else if (a === '--create') out.create = true;
-    else if (['--summary', '--base', '--today', '--answer', '--method', '--manifest', '--hash', '--links'].includes(a)) {
+    else if (a === '--serve') out.serve = true;
+    else if (['--summary', '--base', '--today', '--answer', '--method', '--manifest', '--hash', '--links', '--port'].includes(a)) {
       if (argv[i + 1] === undefined || argv[i + 1].startsWith('--')) throw new ForgeError(`${a} needs a value.`, 'bad-args');
       out[a.slice(2)] = argv[++i];
     }
@@ -437,14 +441,24 @@ export function main(argv = process.argv.slice(2)) {
       else if (cmd === 'diff') console.log(renderDiff(result));
       else console.log(`${result.gate} ${result.written ? 'saved' : 'unchanged'}: ${result.snapshot}`);
     } else if (cmd === 'canvas') {
-      if (args._.length !== 2 || (args.links !== undefined && !LINK_MODES.includes(args.links))) {
-        throw new ForgeError(`Usage: forge.mjs canvas <key> [--json] [--links ${LINK_MODES.join('|')}].`, 'bad-args');
+      // --port 0 lets the system select a free port. A fixed port is for a browser on another machine (a forwarded port).
+      const port = args.port === undefined ? undefined : Number(args.port);
+      const badPort = args.port !== undefined && (!/^\d{1,5}$/.test(args.port) || (port !== 0 && (port < 1024 || port > 65535)));
+      if (args._.length !== 2 || (args.links !== undefined && !LINK_MODES.includes(args.links))
+        || (args.serve && args.json) || (args.port !== undefined && !args.serve) || badPort) {
+        throw new ForgeError(`Usage: forge.mjs canvas <key> [--json] [--links ${LINK_MODES.join('|')}] [--serve [--port <n>]]. A port is 0, or 1024 to 65535.`, 'bad-args');
       }
       const where = resolve(opts);
       try {
         const { dir } = findTicket(where.wiki.path, args._[1]);
         if (args.json) console.log(JSON.stringify(buildCanvas(dir), null, 2));
-        else {
+        else if (args.serve) {
+          // The server runs after main() returns. The exit code comes when the user sends the comments or the server stops.
+          serveCanvas(dir, { links: args.links, port }).then(
+            (code) => { process.exitCode = code; },
+            (err) => { console.error(`forge: ${err.message}`); process.exitCode = 1; },
+          );
+        } else {
           const result = writeCanvas(dir, { links: args.links });
           console.log(`${result.key}: wrote ${result.file}`);
           console.log(`  open  ${pathToFileURL(result.file).href}`);

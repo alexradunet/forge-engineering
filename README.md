@@ -247,6 +247,7 @@ A ticket has about 7 Markdown files, and each fact has one home. A file starts t
 
 `forge.mjs canvas <KEY>` writes `canvas.html` into the ticket folder: one page that shows the whole ticket on one board.
 Open it in a browser tab, or in VS Code with **Open in Integrated Browser**.
+`forge.mjs canvas <KEY> --serve` shows the same page on `http://127.0.0.1` until you send your comments from it.
 
 | Part | Shows |
 |---|---|
@@ -257,10 +258,12 @@ Open it in a browser tab, or in VS Code with **Open in Integrated Browser**.
 | Review and proof | The review sections and each Evidence Testing check with its result |
 | Journal | The newest entries |
 
-- Scroll to move, hold Ctrl and scroll to zoom, and drag the background. Zoomed out, the board shows only titles. A click on a part name or a double-click on a card zooms in to read.
+- Scroll to move, hold Ctrl and scroll to zoom, and drag the background. Zoomed out, the board shows only titles. A click on a part name or a double-click on a card title zooms in to read.
 - A click on a component of the code map shows its arrows and their labels.
-- **Comment** on a card saves a note in the browser. **Copy all** gives one message that starts with `Canvas comments for <KEY>:`. Paste it into the ticket session.
-- The page is a view of the Markdown files. It loads nothing from a network, it is in `raw/` and so never committed, and no approval comes from it. Gate approval stays in the session.
+- **Comment** on a card saves a note in the browser. Select words on a card to comment on those words only, to mark them with **Remove**, or to give them a label (`unclear`, `wrong`, `too much`). The Comments panel has one box for a comment on the whole ticket.
+- With `--serve`, **Send to agent** gives the comments to the ticket session: the command prints one message that starts with `Canvas comments for <KEY>:`, and stops. The server listens only on `127.0.0.1`, each run has a new link with a token, and `--port <n>` sets a fixed port for a forwarded port.
+- Without `--serve`, **Copy all** gives the same message. Paste it into the ticket session.
+- The page is a view of the Markdown files. It loads nothing from a network, it sends the comments only to the forge server on your machine, it is in `raw/` and so never committed, and no approval comes from it. Gate approval stays in the session.
 - A link can name one part, for example `canvas.html#zone-plan` or `canvas.html#plan-step-2`.
 - A code link opens the file in VS Code. `--links file` writes plain `file://` links. `--json` prints the content of the page as data.
 - An older ticket gets a simple canvas: one column for each of its files.

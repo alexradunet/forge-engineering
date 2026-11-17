@@ -1,6 +1,7 @@
 // The ticket canvas: one self-contained HTML page that shows a whole ticket on one board.
 // It is a view of the ticket Markdown files. It loads nothing from a network, and it is never a source:
 // no approval manifest lists it, and no step reads a fact from it.
+// The canvas server (canvas-serve.mjs) gives the same page with a token, and then the page can send its comments.
 // buildCanvas() gives the model (also `forge.mjs canvas <key> --json`), and renderCanvas() gives the page.
 import { existsSync, lstatSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -246,12 +247,19 @@ export function linkTarget(target, links = 'vscode') {
   return safe(text.replaceAll('\\', '/'));
 }
 
+// A served page gets the token on each relative link, because the canvas server refuses a request without it.
+function withToken(href, ctx) {
+  if (!ctx.token || !href || /^[a-z][a-z0-9+.-]*:/i.test(href)) return href;
+  const [target, hash = ''] = href.split(/(?=#)/, 2);
+  return `${target}${target.includes('?') ? '&' : '?'}t=${ctx.token}${hash}`;
+}
+
 function inline(text, ctx) {
   const codes = [];
   let out = String(text).replace(/`([^`\n]+)`/g, (_, code) => { codes.push(code); return `${codes.length - 1}`; });
   out = esc(out);
   out = out.replace(/\[([^\]]+)\]\((&lt;.*?&gt;|[^)\s]+)\)/g, (all, label, target) => {
-    const href = linkTarget(unesc(target), ctx.links);
+    const href = withToken(linkTarget(unesc(target), ctx.links), ctx);
     if (!href) return label;
     return `<a href="${esc(href)}"${/^https?:/i.test(href) ? ' target="_blank" rel="noopener noreferrer"' : ''}>${label}</a>`;
   });
@@ -371,7 +379,7 @@ function peopleHtml(zone) {
 }
 
 function zoneHtml(zone, ctx, width = 0) {
-  const files = zone.files.map((name) => `<a class="src" href="${esc(name)}">${esc(name)}</a>`).join(' ');
+  const files = zone.files.map((name) => `<a class="src" href="${esc(withToken(name, ctx))}">${esc(name)}</a>`).join(' ');
   const parts = [`<h2>${esc(zone.title)} ${files}</h2>`];
   if (!zone.present) parts.push(`<p class="empty">No ${esc(zone.files.join(' or '))} yet.</p>`);
   const column = (cards) => cards.map((card) => cardHtml(card, ctx)).join('');
@@ -408,10 +416,12 @@ function railHtml(model) {
     + `</header>`;
 }
 
-/** The self-contained HTML page of a canvas model. */
-export function renderCanvas(model, { links = 'vscode' } = {}) {
+/** The self-contained HTML page of a canvas model. With serve.token, the page can send its comments to the canvas server. */
+export function renderCanvas(model, { links = 'vscode', serve = null } = {}) {
   if (!LINK_MODES.includes(links)) throw new Error(`Unknown link mode: ${links}. Use ${LINK_MODES.join(' or ')}.`);
-  const ctx = { links };
+  const token = serve?.token ?? '';
+  if (token && !/^[0-9a-f]{32}$/.test(token)) throw new Error('The canvas token must have 32 hexadecimal characters.');
+  const ctx = { links, token };
   const { ticket } = model;
   const zone = (id) => model.zones.find((item) => item.id === id);
   let board;
@@ -427,7 +437,7 @@ export function renderCanvas(model, { links = 'vscode' } = {}) {
   const note = model.layout === 'columns'
     ? `<p class="note">This ticket uses the ${esc(ticket.workflow)} layout. The canvas shows its files as columns.</p>`
     : model.missing.length ? `<p class="note">Not written yet: ${esc(model.missing.join(', '))}.</p>` : '';
-  const data = JSON.stringify({ key: ticket.key, generated: model.generated }).replace(/</g, '\\u003c');
+  const data = JSON.stringify({ key: ticket.key, generated: model.generated, ...(token ? { token } : {}) }).replace(/</g, '\\u003c');
   return [
     '<!doctype html>', '<html lang="en">', '<head>', '<meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
@@ -436,9 +446,12 @@ export function renderCanvas(model, { links = 'vscode' } = {}) {
     railHtml(model),
     `<main id="viewport"><div id="board">${board}</div></main>`,
     `<footer id="foot">${note}<p>Generated ${esc(model.generated)} UTC by <code>forge.mjs canvas</code> from the ticket files. This page is a view: change the Markdown files, not this page. `
-      + 'Scroll to move. Hold Ctrl and scroll to zoom. Drag the background to move. Keys: 0 shows all, 1 to 9 go to a part. Double-click a card to read it. Click a component of the code map to see its arrows.</p></footer>',
-    '<aside id="tray" hidden><h2>Comments</h2><p class="hint">Write comments on the cards. Then copy them and paste them into the ticket session.</p><ol id="tray-list"></ol>'
-      + '<div class="tray-tools"><button type="button" id="copy-all">Copy all</button><button type="button" id="clear-all">Delete all</button></div>'
+      + 'Scroll to move. Hold Ctrl and scroll to zoom. Drag the background to move. Keys: 0 shows all, 1 to 9 go to a part. Double-click a card title to read it. Select words on a card to comment on them. Click a component of the code map to see its arrows.</p></footer>',
+    '<div id="pop" role="toolbar" aria-label="Selected words" hidden><button type="button" data-act="comment">Comment</button><button type="button" data-act="remove">Remove</button>'
+      + '<button type="button" data-label="unclear">unclear</button><button type="button" data-label="wrong">wrong</button><button type="button" data-label="too much">too much</button></div>',
+    '<aside id="tray" hidden><h2>Comments</h2><p class="hint" id="tray-hint">Select words on a card, or use the Comment button of a card. Then copy the comments and paste them into the ticket session.</p><ol id="tray-list"></ol>'
+      + '<label for="general">Whole ticket</label><textarea id="general" rows="3" placeholder="A comment on the whole ticket."></textarea>'
+      + '<div class="tray-tools"><button type="button" id="send-all" hidden>Send to agent</button><button type="button" id="copy-all">Copy all</button><button type="button" id="clear-all">Delete all</button></div>'
       + '<textarea id="copy-fallback" hidden readonly rows="6" aria-label="Comments to copy"></textarea></aside>',
     '<div id="toast" role="status" hidden></div>',
     `<script type="application/json" id="canvas-data">${data}</script>`,

@@ -26,6 +26,8 @@ The ticket canvas is a local HTML page (`canvas.html` in the ticket folder, from
 
 - Give the user the `file://` link that the command prints. The user opens it in a browser, and loads the page again after each `canvas` run.
 - Never use the `Artifact` tool for the canvas: it sends the page to claude.ai.
+- For comments, run `forge.mjs canvas <KEY> --serve` with `Bash` and `run_in_background: true`. Read the `http://127.0.0.1` link from its output, give it to the user, and end the turn. The session continues when the user selects **Send to agent** and the command stops. Then read the output: it holds the comment message.
+- The link works only in a browser on the machine of the session. For a browser on another machine, run it with `--port <n>`, and tell the user to forward that port. Never use another address than `127.0.0.1`.
 - A code link on the page opens the file in VS Code (`vscode://file/...`). When the user has no VS Code, run `forge.mjs canvas <KEY> --links file`.
 
 ## Claude Code features

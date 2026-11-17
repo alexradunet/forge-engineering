@@ -48,5 +48,6 @@ so your memory of a VS Code feature can be old.
   change it only to correct a defect, because open tickets depend on it.
 - The ticket canvas (`scripts/lib/canvas.mjs`) reads the section names and the line shapes of the `full-v3` templates.
   Change a template and the canvas together (`tests/canvas.test.mjs`). The page loads nothing from a network.
+  In serve mode (`scripts/lib/canvas-serve.mjs`), the page sends the comments only to the forge server on `127.0.0.1` (`tests/canvas-serve.test.mjs`).
 - Change the version in `plugins/forge/plugin.json`, `.github/plugin/marketplace.json`, and `.claude-plugin/marketplace.json` together (`tests/packaging.test.mjs`).
 - Never commit a wiki `raw/` file, a credential, or a personal path.

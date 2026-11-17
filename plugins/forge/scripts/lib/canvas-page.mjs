@@ -1,5 +1,44 @@
 // The style and the browser script of the ticket canvas (see canvas.mjs). Both go inline into the page,
 // so the page needs no network and no other file. The script uses no template literals: it sits in one.
+// The three message functions below are the one source of the comment message. The page gets their text
+// (Copy all), and the canvas server calls them (Send to agent). They use only ES5 and no outer name.
+
+/** One line of plain text: no control character, single spaces, at most max characters. */
+export function canvasClean(value, max) {
+  var text = String(value === undefined || value === null ? '' : value)
+    .replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, ' ').replace(/\s+/g, ' ').trim();
+  return text.length > max ? text.slice(0, max).trim() + ' [...]' : text;
+}
+
+/** The parts of one comment line: { where, quote, say }, or null when the comment says nothing. */
+export function canvasLine(item) {
+  var labels = ['unclear', 'wrong', 'too much'];
+  var section = canvasClean(item.section, 200);
+  var title = canvasClean(item.title, 200);
+  var where = canvasClean(item.file, 200) + ', ' + section;
+  if (title && title !== section) where += ', "' + title + '"';
+  var quote = canvasClean(item.quote, 20000).replace(/"/g, "'");
+  if (quote.length > 240) quote = quote.slice(0, 160).trim() + ' [...] ' + quote.slice(-60).trim();
+  var text = canvasClean(item.text, 2000);
+  var label = labels.indexOf(item.label) >= 0 ? item.label : '';
+  var say = item.kind === 'remove' ? 'remove this' + (text ? '. ' + text : '') : (label ? '[' + label + ']' + (text ? ' ' : '') : '') + text;
+  return say ? { where: where, quote: quote, say: say } : null;
+}
+
+/** The message that the ticket session gets. The ticket skill names its first line. */
+export function canvasMessage(key, items, general) {
+  var lines = ['Canvas comments for ' + canvasClean(key, 80) + ':'];
+  (items || []).forEach(function (item) {
+    var line = canvasLine(item || {});
+    if (line) lines.push(lines.length + '. ' + line.where + (line.quote ? ', on "' + line.quote + '"' : '') + ': ' + line.say);
+  });
+  var whole = canvasClean(general, 4000);
+  if (whole) lines.push(lines.length + '. Whole ticket: ' + whole);
+  return lines.join('\n');
+}
+
+// The page gets the source text of the functions. The line ends are LF, as in the rest of the script.
+const MESSAGE_SOURCE = [canvasClean, canvasLine, canvasMessage].map((fn) => fn.toString().replace(/\r\n?/g, '\n')).join('\n');
 
 export const CANVAS_STYLE = String.raw`
 :root { color-scheme: light dark; --bg: #f3f2ee; --panel: #faf9f6; --card: #ffffff; --ink: #1d1d1b; --muted: #68665e; --line: #d8d5cb; --accent: #2a5d8c; --amber: #a86a12; --green: #2a7748; --red: #b03a2a; --rail: #ffffff; }
@@ -109,13 +148,19 @@ svg.labels text.on { display: block; }
 .comments { list-style: none; margin: 10px 0 0; padding: 0; }
 .comments li { display: flex; gap: 8px; align-items: flex-start; margin: 0 0 6px; padding: 6px 8px; border-left: 3px solid var(--amber); background: color-mix(in srgb, var(--amber) 12%, transparent); border-radius: 0 6px 6px 0; }
 .comments span { flex: 1; white-space: pre-wrap; overflow-wrap: anywhere; }
+.comments li.rm { border-left-color: var(--red); background: color-mix(in srgb, var(--red) 10%, transparent); }
+.comments q, .editor q, #tray-list q { display: block; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
 .comments button { padding: 0 6px; font-size: 12px; }
 .editor { margin-top: 10px; }
-.editor textarea, #copy-fallback { width: 100%; font: inherit; color: inherit; background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; resize: vertical; }
-.editor div { display: flex; gap: 6px; margin-top: 6px; }
+.editor textarea, #copy-fallback, #general { width: 100%; font: inherit; color: inherit; background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; resize: vertical; }
+.editor div { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.chips button, #pop button { padding: 0 8px; font-size: 13px; }
+.chips button[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, var(--card)); }
+#pop { position: fixed; z-index: 6; display: flex; gap: 4px; padding: 4px; background: var(--rail); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2); }
 
 .far svg.labels, .far .card > .body, .far .node > .body, .far .badge, .far h4.group, .far .src, .far .lane > h4, .far .cbtn, .far .comments, .far .editor, .far .empty, .far .row.path > .card + .card::before { visibility: hidden; }
 .far .card, .far .node { overflow: hidden; }
+.far #board { user-select: none; }
 .far .card > h3, .far .node > h3 { transform: scale(var(--s)); width: calc(100% / var(--s)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .far .zone > h2 { transform: scale(var(--s)); white-space: nowrap; }
 .far .zone, .far .card, .far .node { cursor: zoom-in; }
@@ -126,7 +171,10 @@ svg.labels text.on { display: block; }
 #tray-list { margin: 0 0 10px; padding-left: 22px; }
 #tray-list li { margin-bottom: 8px; cursor: pointer; overflow-wrap: anywhere; }
 #tray-list small { display: block; color: var(--muted); }
-.tray-tools { display: flex; gap: 6px; }
+#tray label { display: block; margin: 0 0 4px; font-size: 13px; color: var(--muted); }
+#general { margin: 0 0 10px; }
+.tray-tools { display: flex; flex-wrap: wrap; gap: 6px; }
+#send-all { border-color: var(--accent); font-weight: 600; }
 #copy-fallback { margin-top: 8px; font: 13px/1.4 ui-monospace, Consolas, monospace; }
 #toast { position: fixed; left: 50%; bottom: 44px; z-index: 5; transform: translateX(-50%); padding: 6px 14px; color: var(--bg); background: var(--ink); border-radius: 999px; }
 #foot { flex: none; display: flex; gap: 16px; padding: 4px 14px; font-size: 12px; color: var(--muted); background: var(--rail); border-top: 1px solid var(--line); }
@@ -137,10 +185,13 @@ svg.labels text.on { display: block; }
 export const CANVAS_SCRIPT = String.raw`
 (function () {
   'use strict';
+${MESSAGE_SOURCE}
   var data = JSON.parse(document.getElementById('canvas-data').textContent);
   var viewport = document.getElementById('viewport');
   var board = document.getElementById('board');
   var tray = document.getElementById('tray');
+  var pop = document.getElementById('pop');
+  var picked = null;
   var prefix = 'forge-canvas:' + data.key + ':';
   var store = {
     get: function (name, fallback) {
@@ -166,7 +217,12 @@ export const CANVAS_SCRIPT = String.raw`
     return { left: x, top: y, width: el.offsetWidth, height: el.offsetHeight };
   }
 
+  function hidePop() { pop.hidden = true; picked = null; }
+  function dropSelection() { var sel = window.getSelection ? window.getSelection() : null; if (sel) sel.removeAllRanges(); }
+  function hasSelection() { var sel = window.getSelection ? window.getSelection() : null; return !!sel && !sel.isCollapsed; }
+
   function apply(animate) {
+    hidePop();
     board.classList.toggle('moving', !!animate);
     board.style.transform = 'translate(' + view.x + 'px,' + view.y + 'px) scale(' + view.k + ')';
     document.body.classList.toggle('far', view.k < FAR);
@@ -233,9 +289,11 @@ export const CANVAS_SCRIPT = String.raw`
   viewport.addEventListener('pointercancel', endDrag);
 
   viewport.addEventListener('dblclick', function (event) {
-    if (event.target.closest('button, a, textarea')) return;
+    if (event.target.closest('button, a, textarea, .comments, .editor')) return;
+    // In the text of a card, a double-click selects a word for a comment. On a title, it shows the card.
+    if (!document.body.classList.contains('far') && event.target.closest('.body')) return;
     var el = event.target.closest('.card, .node, .zone');
-    if (el) goTo(el, true);
+    if (el) { dropSelection(); goTo(el, true); }
   });
   board.addEventListener('click', function (event) {
     var title = event.target.closest('.zone > h2');
@@ -254,7 +312,7 @@ export const CANVAS_SCRIPT = String.raw`
     else if (event.key === 'ArrowRight') { view.x -= 90; apply(false); }
     else if (event.key === 'ArrowUp') { view.y += 90; apply(false); }
     else if (event.key === 'ArrowDown') { view.y -= 90; apply(false); }
-    else if (event.key === 'Escape') tray.hidden = true;
+    else if (event.key === 'Escape') { if (pop.hidden) tray.hidden = true; else hidePop(); }
     else return;
     event.preventDefault();
   });
@@ -359,15 +417,21 @@ export const CANVAS_SCRIPT = String.raw`
     graph.addEventListener('mouseleave', function () { focusNode(graph, graph.getAttribute('data-focus') || ''); });
     graph.addEventListener('click', function (event) {
       var node = event.target.closest('.node');
-      if (!node || event.target.closest('button, a, textarea')) return;
+      if (!node || hasSelection() || event.target.closest('button, a, textarea, .comments, .editor')) return;
       graph.setAttribute('data-focus', graph.getAttribute('data-focus') === node.id ? '' : node.id);
       focusNode(graph, graph.getAttribute('data-focus'));
     });
   });
 
-  // Comments stay in this browser until the user copies them into the ticket session.
+  // Comments stay in this browser until the user sends them or copies them into the ticket session.
+  var LABELS = ['unclear', 'wrong', 'too much'];
   var comments = store.get('comments', []);
   if (!Array.isArray(comments)) comments = [];
+  var general = store.get('general', '');
+  if (typeof general !== 'string') general = '';
+  var generalBox = document.getElementById('general');
+  var sendButton = document.getElementById('send-all');
+  generalBox.value = general;
 
   function toast(text) {
     var el = document.getElementById('toast');
@@ -377,21 +441,22 @@ export const CANVAS_SCRIPT = String.raw`
     toast.timer = setTimeout(function () { el.hidden = true; }, 3200);
   }
 
-  function place(comment) {
-    var where = comment.file + ', ' + comment.section;
-    if (comment.title && comment.title !== comment.section) where += ', "' + comment.title + '"';
-    return where;
-  }
-
-  function message() {
-    var lines = ['Canvas comments for ' + data.key + ':'];
-    comments.forEach(function (comment, index) {
-      lines.push((index + 1) + '. ' + place(comment) + ': ' + comment.text.replace(/\s*\n\s*/g, ' '));
-    });
-    return lines.join('\n');
-  }
+  function total() { return comments.length + (general.trim() ? 1 : 0); }
+  function message() { return canvasMessage(data.key, comments, general); }
+  function shortQuote(text) { return text.length > 90 ? text.slice(0, 87) + '...' : text; }
 
   function saveComments() { store.set('comments', comments); renderComments(); }
+
+  function addComment(el, fields) {
+    var comment = { id: el.id, file: el.getAttribute('data-file'), section: el.getAttribute('data-section'), title: el.getAttribute('data-title'), text: fields.text || '' };
+    if (fields.quote) comment.quote = fields.quote;
+    if (fields.label) comment.label = fields.label;
+    if (fields.remove) comment.kind = 'remove';
+    if (!canvasLine(comment)) return false;
+    comments.push(comment);
+    saveComments();
+    return true;
+  }
 
   function renderComments() {
     Array.prototype.forEach.call(document.querySelectorAll('[data-file]'), function (el) {
@@ -402,36 +467,78 @@ export const CANVAS_SCRIPT = String.raw`
       if (!own.length) return;
       var list = make('ul', 'comments');
       own.forEach(function (comment) {
-        var item = make('li');
-        item.appendChild(make('span', '', comment.text));
+        var line = canvasLine(comment);
+        var item = make('li', comment.kind === 'remove' ? 'rm' : '');
+        var words = make('span');
+        if (line && line.quote) words.appendChild(make('q', '', shortQuote(line.quote)));
+        words.appendChild(document.createTextNode(line ? line.say : ''));
+        item.appendChild(words);
         var remove = make('button', '', 'Delete');
         remove.type = 'button';
         remove.addEventListener('click', function () { comments.splice(comments.indexOf(comment), 1); saveComments(); });
         item.appendChild(remove);
         list.appendChild(item);
       });
-      el.insertBefore(list, el.querySelector(':scope > .cbtn'));
+      el.insertBefore(list, el.querySelector(':scope > .editor') || el.querySelector(':scope > .cbtn'));
     });
-    document.getElementById('comment-count').textContent = String(comments.length);
+    document.getElementById('comment-count').textContent = String(total());
     var trayList = document.getElementById('tray-list');
     while (trayList.firstChild) trayList.removeChild(trayList.firstChild);
     comments.forEach(function (comment) {
+      var line = canvasLine(comment);
+      if (!line) return;
       var item = make('li');
-      item.appendChild(make('small', '', place(comment)));
-      item.appendChild(document.createTextNode(comment.text));
+      item.appendChild(make('small', '', line.where));
+      if (line.quote) item.appendChild(make('q', '', shortQuote(line.quote)));
+      item.appendChild(document.createTextNode(line.say));
       item.addEventListener('click', function () { var el = document.getElementById(comment.id); if (el) goTo(el, true); });
       trayList.appendChild(item);
     });
     drawEdges();
   }
 
-  function openEditor(el) {
-    var open = el.querySelector(':scope > .editor textarea');
-    if (open) { open.focus(); return; }
+  // The editor of one card. With a quote, the comment is about the selected words.
+  function openEditor(el, quote) {
+    var before = '';
+    var old = el.querySelector(':scope > .editor');
+    if (old) {
+      if (!quote) { old.querySelector('textarea').focus(); return; }
+      before = old.querySelector('textarea').value;
+      el.removeChild(old);
+    }
     var box = make('div', 'editor');
+    if (quote) box.appendChild(make('q', '', shortQuote(quote)));
     var area = make('textarea');
     area.rows = 3;
-    area.placeholder = 'Your comment on this card. Ctrl+Enter saves it.';
+    area.value = before;
+    area.placeholder = quote ? 'Your comment on these words. Ctrl+Enter saves it.' : 'Your comment on this card. Ctrl+Enter saves it.';
+    var chips = make('div', 'chips');
+    var label = '';
+    var removal = false;
+    function press(button, on) { button.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+    var labelButtons = LABELS.map(function (name) {
+      var button = make('button', '', name);
+      button.type = 'button';
+      press(button, false);
+      button.addEventListener('click', function () {
+        label = label === name ? '' : name;
+        removal = false;
+        press(removeButton, false);
+        labelButtons.forEach(function (other) { press(other, other === button && label === name); });
+      });
+      chips.appendChild(button);
+      return button;
+    });
+    var removeButton = make('button', '', 'Remove this');
+    removeButton.type = 'button';
+    press(removeButton, false);
+    removeButton.addEventListener('click', function () {
+      removal = !removal;
+      label = '';
+      press(removeButton, removal);
+      labelButtons.forEach(function (other) { press(other, false); });
+    });
+    chips.appendChild(removeButton);
     var tools = make('div');
     var save = make('button', '', 'Save');
     var cancel = make('button', '', 'Cancel');
@@ -439,20 +546,21 @@ export const CANVAS_SCRIPT = String.raw`
     cancel.type = 'button';
     function close() { el.removeChild(box); drawEdges(); }
     function keep() {
-      var text = area.value.trim();
-      if (text) comments.push({ id: el.id, file: el.getAttribute('data-file'), section: el.getAttribute('data-section'), title: el.getAttribute('data-title'), text: text });
+      var fields = { text: area.value.trim(), quote: quote || '', label: label, remove: removal };
+      if (!fields.text && !fields.label && !fields.remove) { toast('Write a comment, or select a label.'); area.focus(); return; }
       close();
-      saveComments();
+      addComment(el, fields);
     }
     save.addEventListener('click', keep);
     cancel.addEventListener('click', close);
-    area.addEventListener('keydown', function (event) {
+    box.addEventListener('keydown', function (event) {
       if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) keep();
       else if (event.key === 'Escape') { event.stopPropagation(); close(); }
     });
     tools.appendChild(save);
     tools.appendChild(cancel);
     box.appendChild(area);
+    box.appendChild(chips);
     box.appendChild(tools);
     el.insertBefore(box, el.querySelector(':scope > .cbtn'));
     drawEdges();
@@ -462,8 +570,61 @@ export const CANVAS_SCRIPT = String.raw`
   Array.prototype.forEach.call(document.querySelectorAll('[data-file]'), function (el) {
     var button = make('button', 'cbtn', 'Comment');
     button.type = 'button';
-    button.addEventListener('click', function () { openEditor(el); });
+    button.addEventListener('click', function () { openEditor(el, ''); });
     el.appendChild(button);
+  });
+
+  // Selected words in one card open a small toolbar: comment on the words, mark them for removal, or give a label.
+  function selectionTarget() {
+    var sel = window.getSelection ? window.getSelection() : null;
+    if (!sel || sel.isCollapsed || !sel.rangeCount) return null;
+    var range = sel.getRangeAt(0);
+    var node = range.commonAncestorContainer;
+    if (node.nodeType !== 1) node = node.parentNode;
+    if (!node || !node.closest || node.closest('.comments, .editor, .cbtn')) return null;
+    var el = node.closest('[data-file]');
+    var quote = canvasClean(sel.toString(), 20000);
+    if (!el || !quote) return null;
+    return { el: el, quote: quote, rect: range.getBoundingClientRect() };
+  }
+
+  function checkSelection() {
+    var target = selectionTarget();
+    if (!target) { hidePop(); return; }
+    picked = target;
+    pop.hidden = false;
+    var top = target.rect.top - pop.offsetHeight - 6;
+    if (top < 4) top = target.rect.bottom + 6;
+    var left = Math.min(Math.max(4, target.rect.left), window.innerWidth - pop.offsetWidth - 4);
+    pop.style.top = Math.round(top) + 'px';
+    pop.style.left = Math.round(Math.max(4, left)) + 'px';
+  }
+
+  var pressing = false;
+  var selectionTimer = 0;
+  document.addEventListener('mousedown', function (event) { if (!event.target.closest('#pop')) pressing = true; });
+  document.addEventListener('mouseup', function () { pressing = false; setTimeout(checkSelection, 0); });
+  document.addEventListener('selectionchange', function () {
+    clearTimeout(selectionTimer);
+    if (!pressing) selectionTimer = setTimeout(checkSelection, 350);
+  });
+  // A press on the toolbar must not remove the selection.
+  pop.addEventListener('mousedown', function (event) { event.preventDefault(); });
+  pop.addEventListener('click', function (event) {
+    var button = event.target.closest('button');
+    var target = picked;
+    if (!button || !target) return;
+    dropSelection();
+    hidePop();
+    if (button.getAttribute('data-act') === 'comment') openEditor(target.el, target.quote);
+    else if (button.getAttribute('data-act') === 'remove') addComment(target.el, { quote: target.quote, remove: true });
+    else addComment(target.el, { quote: target.quote, label: button.getAttribute('data-label') });
+  });
+
+  generalBox.addEventListener('input', function () {
+    general = generalBox.value;
+    store.set('general', general);
+    document.getElementById('comment-count').textContent = String(total());
   });
 
   function copyFallback(text) {
@@ -478,16 +639,49 @@ export const CANVAS_SCRIPT = String.raw`
   }
 
   document.getElementById('copy-all').addEventListener('click', function () {
-    if (!comments.length) { toast('There are no comments yet.'); return; }
+    if (!total()) { toast('There are no comments yet.'); return; }
     var text = message();
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(function () { toast('Copied. Paste it into the ticket session.'); }, function () { copyFallback(text); });
     } else copyFallback(text);
   });
   document.getElementById('clear-all').addEventListener('click', function () {
-    if (comments.length && window.confirm('Delete all ' + comments.length + ' comments?')) { comments = []; saveComments(); }
+    if (total() && window.confirm('Delete all ' + total() + ' comments?')) {
+      comments = [];
+      general = '';
+      generalBox.value = '';
+      store.set('general', general);
+      saveComments();
+    }
   });
   document.getElementById('tray-toggle').addEventListener('click', function () { tray.hidden = !tray.hidden; });
+
+  // The canvas server (forge.mjs canvas <key> --serve) puts a token into the page. Only then can the page send.
+  if (data.token) {
+    sendButton.hidden = false;
+    document.getElementById('tray-hint').textContent = 'Select words on a card, or use the Comment button of a card. Then select Send to agent.';
+    sendButton.addEventListener('click', function () {
+      if (!total()) { toast('There are no comments yet.'); return; }
+      sendButton.disabled = true;
+      fetch('send', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Forge-Token': data.token }, body: JSON.stringify({ comments: comments, general: general }) })
+        .then(function (response) { if (!response.ok) throw new Error(response.status === 403 ? 'old' : 'refused'); return response.json(); })
+        .then(function () {
+          comments = [];
+          general = '';
+          generalBox.value = '';
+          store.set('general', general);
+          saveComments();
+          sendButton.hidden = true;
+          document.getElementById('tray-hint').textContent = 'Sent. The ticket session gives you a new link for more comments.';
+          toast('Sent to the session. The server stopped.');
+        })
+        .catch(function (error) {
+          sendButton.disabled = false;
+          // The comments stay in the browser, so the new link of the same ticket shows them again.
+          toast(error && error.message === 'old' ? 'This page is old. Open the new link from the session, or use Copy all.' : 'The session did not get the comments. Use Copy all.');
+        });
+    });
+  }
 
   // A link can name one part: canvas.html#zone-plan or canvas.html#plan-step-2.
   function fromHash() {

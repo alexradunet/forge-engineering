@@ -27,6 +27,9 @@ The ticket canvas is a local HTML page (`canvas.html` in the ticket folder, from
 - Give the user the `file://` link, and this step: in the Explorer, right-click `canvas.html` and select **Open in Integrated Browser**. The address bar of the integrated browser also accepts the `file://` link.
 - Tell the user one time to turn on `workbench.browser.autoReloadOnFileChange`. Then the page loads again after each `canvas` run.
 - The first **Copy all** on the page can ask for the clipboard permission of the site. The page also shows the text for a manual copy.
+- For comments, run `forge.mjs canvas <KEY> --serve` with the shell tool in `async` mode, and give the `http://127.0.0.1` link from its output. VS Code opens the link in the integrated browser. When the user selects **Send to agent**, the command prints the comment message and stops. Tell the user to write `sent` if the session does not continue. Then read the output of the command.
+- The link works only in a browser on the machine of the session. For a browser on another machine, run it with `--port <n>`, and tell the user to forward that port. Never use another address than `127.0.0.1`.
+- For a comment on one element of a page, the user can also use **Add Element to Chat** in the toolbar of the integrated browser. It is native, but it gives no ticket file and no section.
 - A code link on the page opens the file in VS Code (`vscode://file/...`).
 - Do not use the native canvas tools of VS Code for the ticket canvas. They run only in a Copilot harness session, and the page must be the same in each host.
 
