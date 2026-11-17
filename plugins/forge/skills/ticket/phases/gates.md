@@ -1,7 +1,7 @@
 # Review gates: procedure, approvals, and canvas
 
 This file is a part of the `ticket` skill: [SKILL.md](../SKILL.md) has the words (`<F>`, `<KEY>`, `<key>`), the data rules, the gate rules, and the list of the other parts.
-It has the cold read, the steps of each gate, the approval manifests, the Sendable? records, the approval form, and the canvas.
+It has the cold read, the steps of each gate, the approval manifests, the Sendable? steps for each write, the approval form, and the canvas.
 After a compaction of the session, read this file again before you use its steps.
 
 ### 🐟 Cold read
@@ -19,11 +19,13 @@ Run it one time for each review revision. Run a second cold read only after you 
 
 ### Procedure for each gate
 
+Sendable? does not use this procedure. It has its own steps (see Sendable? for each write).
+
 1. Write or update the gate document from its template. Run the cold read. Run `<F> lint` and remove its warnings for this document.
-2. Prepare the manifest (see Approval revisions). Set the gate to `status: in-review` in the README `gates` list, and `state: needs-me`. Record the manifest path. Update the Now card in the same edit. For Sendable?, set `doc` to the exact draft file of this write.
+2. Prepare the manifest (see Approval revisions). Set the gate to `status: in-review` in the README `gates` list, and `state: needs-me`. Record the manifest path. Update the Now card in the same edit.
 3. Set the 🟡 title (`host.title`, see Session title) before the form.
 4. Start the canvas server with `<F> canvas <KEY> --serve`, as the host table says (see Canvas, and the "Ticket canvas" part of the host file). Open the document next to the session with `host.open`, and give the links to the document and to the canvas. Tell the user: add comments in the editor (`host.comments`), on the canvas, or in the chat.
-5. Get the form text: run `<F> diff <key> <gate>` first, then `<F> snapshot <key> <gate>`. `diff` compares the document with the snapshot of the last review. `snapshot` saves the document as the user sees it now. For Sendable?, show the exact send text instead.
+5. Get the form text: run `<F> diff <key> <gate>` first, then `<F> snapshot <key> <gate>`. `diff` compares the document with the snapshot of the last review. `snapshot` saves the document as the user sees it now.
 6. Show the approval form (below) with `host.ask`. Do not start the blocked step.
 7. Act on the answer:
    - GO: record the approval (step 9), then start the next workflow step.
@@ -49,7 +51,7 @@ Run it one time for each review revision. Run a second cold read only after you 
 
 ### Approval revisions
 
-An approval covers exact file revisions. Use a new ticket-relative JSON manifest for each review revision and each Sendable? write, for example `approvals/planned-002.json`. Never overwrite an old manifest.
+An approval covers exact file revisions. Use a new ticket-relative JSON manifest for each review revision, for example `approvals/planned-002.json`. Never overwrite an old manifest.
 
 ```json
 {
@@ -69,24 +71,23 @@ An approval covers exact file revisions. Use a new ticket-relative JSON manifest
 - A change to a covered file makes the gate stale. `plan.md` has no second copy: after approval, do not edit it. To change the plan, edit `plan.md`, set Planned? to `in-review`, and stop the implementation until the new GO. `approvals/snapshots/` keeps the revision of each review.
 - Before any blocked action and on Resume, validate the approvals with `<F> lint`. A missing file, malformed metadata, a conflicting state, or a stale hash is a finding: show its file and its remedy. Block only the affected action. Read-only work stays possible.
 
-### Per-write Sendable? records
+### Sendable? for each write
 
-Each external write has its own frozen draft, manifest, and approval record.
+Each external write has its own draft and its own "yes". The "yes" is the answer of the user to the prompt of the host, not a record in the ticket.
 
-- The draft is `outbox/<target>.draft.md`, from [templates/outbox.draft.md](../templates/outbox.draft.md). This is true in each phase, also for a write that the user asks for directly. `<F> lint` accepts no other name for the `doc` of Sendable?. Send only the text between the `send` markers.
+1. Write the draft `outbox/<target>.draft.md` from [templates/outbox.draft.md](../templates/outbox.draft.md). Do this in each phase, also for a write that the user asks for directly. Run a full pass of the `writing` skill (outbound mode) on the text between the `send` markers.
+2. In the README, set Sendable? to `status: in-review`, and set its `doc` to the draft. Set `state: needs-me`. `<F> lint` accepts no other name for the `doc` of Sendable?.
+3. Open the draft with `host.open`. In chat, show the send text, the draft link, the target, and the exact command.
+4. Get the "yes" as the `host.write` row of the host says:
+   - With the gate guard, run the command. The guard makes the host ask the user, and the answer of the user is the "yes".
+   - When the row says so, and for a write through an MCP tool or a script, ask with `host.ask` first. Run the command only after an explicit "yes" for this one write.
+5. When the guard or the host denies the command (for example a mode with no prompt), do not run it in another form. Give the user the exact command, and ask the user to tell you when it ran.
+6. After the write, add a `log` entry to `journal.md`: the command, the target, the draft, and the returned id or link. Set Sendable? to `status: todo`, and set `state` for the next step. Do not change the draft after the write.
+7. A second write needs its own "yes", also for the same text. A retry after a failure is a second write.
 
-- The Sendable? manifest lists the exact draft, plus the exact `command` and `target` strings, so its hash binds the operation and the text:
-
-  ```json
-  "command": "<exact command>",
-  "target": "<exact target>"
-  ```
-
-- After explicit GO, create `outbox/<name>.approval.json` from [templates/outbox.approval.json](../templates/outbox.approval.json): `version: 1`, `doc`, `status: approved`, `approval_manifest`, `approval_hash`, `approval_date`, and the same `target` and `command`.
-- Before the write, check the sidecar against the manifest. A changed command, target, or draft needs a new manifest and a new approval.
-- After the write, change only the sidecar: `status: sent`, and `result` with the returned id or URL. Never write a status, a date, or a link into an approved draft.
-- A second write needs a new approval and a new record, also for the same text. A missing sidecar is not evidence that a write occurred.
-- The README Sendable? `doc` names the exact draft of the current write, never the sidecar.
+- A write has no manifest and no approval record. `<F> gate-approve` refuses Sendable?.
+- An older ticket, and a write that a ticket sent before Forge 7.4, keep their `outbox/<name>.approval.json` sidecar. `<F> lint` still checks it. Do not change or delete it.
+- Send only the text between the `send` markers. Pass long text through a file in the system temp folder (see [tools.md](../../../context/tools.md)).
 
 ### ✅ Approval form
 

@@ -11,7 +11,7 @@ Why now: <what QA can now test, and the one thing to watch>
 
 Target: tracker comment on <KEY>, <work item URL>, before the ticket moves to QA. Readers: QA testers.
 
-Need from you: GO on Sendable?. Then I send exactly the text between the markers. To move the ticket to QA is a separate question.
+Need from you: your "yes" for this one write, in the prompt of the host or in chat. Then I send exactly the text between the markers. To move the ticket to QA is a separate question.
 
 ## Message
 

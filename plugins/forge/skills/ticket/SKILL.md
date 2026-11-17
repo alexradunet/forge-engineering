@@ -23,7 +23,7 @@ This file is short, so that it stays whole in the context. The steps of each pha
 | When | Read |
 |---|---|
 | Start: a new work item, research, colleague questions, spikes, interview, scope | [phases/start.md](phases/start.md) |
-| A gate opens, comments arrive, an approval, a manifest, a Sendable? write, or the canvas (Cold read, Procedure, Approval revisions, Approval form, Canvas) | [phases/gates.md](phases/gates.md) |
+| A gate opens, comments arrive, an approval, a manifest, a Sendable? write, or the canvas (Cold read, Procedure, Approval revisions, Sendable? for each write, Approval form, Canvas) | [phases/gates.md](phases/gates.md) |
 | A README change (Frontmatter, the Now card, People), the Session title, the Artifacts panel, the Ticket overview | [phases/state.md](phases/state.md) |
 | Worktrees: at Start, before the first commit, at Implement, and before a proof run | [phases/worktrees.md](phases/worktrees.md) |
 | Investigate, the Diagnosis stop, and Plan | [phases/investigate-plan.md](phases/investigate-plan.md) |
@@ -124,7 +124,7 @@ The folder name is `<key>`, for example `app-123`. A file starts to exist when i
   close.md      Learned?: what you now know, and the wiki changes
   canvas.html   generated view of all files above (never edit, never hash)
   evidence/     sanitized tool outputs, the work item snapshot, spike results
-  outbox/       drafts of external writes, and one approval sidecar for each sent write
+  outbox/       drafts of external writes (a write sent before Forge 7.4 also has an approval sidecar)
   approvals/    revision manifests, history.md, and snapshots/ of each review
 ```
 
@@ -153,7 +153,7 @@ These core rules always win over a policy section or a rule page: no merge, ask 
 |---|---|---|
 | Scoped? | `story.md` | investigation work on the agreed scope |
 | Planned? | `plan.md` | implementation |
-| Sendable? | the exact `outbox/` draft | each tracker, document, or change request text write |
+| Sendable? | the exact `outbox/` draft | each external write: the "yes" is the answer to the host prompt, not a form |
 | Shippable? | `review.md` | push or change request creation |
 | Learned? | `close.md` | canonical wiki writes and the archive move |
 
@@ -162,13 +162,13 @@ Open colleague questions do not block a gate.
 
 Rules:
 
-- Approval comes only from the user: an `approve` answer in the approval form, or `approve <gate>` in chat in the current conversation.
+- Approval comes only from the user: an `approve` answer in the approval form, or `approve <gate>` in chat in the current conversation. For Sendable?, it is the answer to the host prompt or to `host.ask` (see `host.write`).
 - Comments, resolved threads, canvas comments, and "looks good" notes do not approve a gate.
 - Lessons and self-checks do not approve a gate or prove understanding.
 - Never answer the approval form for the user, and never approve in auto mode. No session approves a gate for another session.
 - A required gate blocks its step. A change to an approved document reopens its gate.
 - Native plan approval of the host does not replace a ticket gate.
-- The Forge gate guard (a preToolUse hook) checks Scoped?, Planned?, and Shippable? before a push or a new change request in the ticket worktree. It is a net, not the rule: each gate applies also where the hook does not run.
+- The Forge gate guard (a preToolUse hook) checks Scoped?, Planned?, and Shippable? before a push or a new change request in the ticket worktree. Before each external write, it makes the host ask the user: that answer is the Sendable? "yes". It is a net, not the rule: each gate applies also where the hook does not run.
 
 The steps of a gate are in [phases/gates.md](phases/gates.md): the cold read, the manifest, the approval form, the comments, and `<F> gate-approve`.
 

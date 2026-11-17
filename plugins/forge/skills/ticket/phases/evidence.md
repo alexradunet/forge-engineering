@@ -49,7 +49,7 @@ Read the `## QA handover` policy section first. It can set the comment format, t
 1. Write `outbox/qa-handover.draft.md` from [templates/qa-handover.md](../templates/qa-handover.md). The tracker comment is the text between the `send` markers. Draft it from `proof.md`, `plan.md`, `review.md`, and `map.md`. Do not invent results. Link the evidence files only in "Why this wording", because QA cannot open the wiki.
 2. The comment has these parts, in this order, in plain words for a tester: what changed (with the toggle), how we self-tested, the self-QA on a deployed environment (one row for each check of `proof.md`, and the accepted gaps), how to test it (preconditions, numbered steps with exact inputs, the expected result, one control case, clean-up, shortcuts), and the regression areas and known limits.
 3. Write for QA: no code paths unless QA needs them, no customer environment or customer names, no secrets, no credentials, and no links that only developers can open. Use the same words as the work item.
-4. Run Sendable? for the draft. After GO, send the comment with `tracker.comment`.
+4. Run the Sendable? steps for the draft. Send the comment with `tracker.comment` only after the "yes" for this write.
 5. Do not transition the work item yourself. Ask the user whether to move it to QA, and show the target status first. After a yes, use `tracker.transition`. Send the comment before the transition, so that QA finds it.
-6. Record the comment id or link and the time as a `log` entry in `journal.md`, and in the per-write Sendable? record. Set that record to `sent`, without changing the approved draft bytes.
+6. Record the comment id or link and the time as a `log` entry in `journal.md` (Sendable? step 6). Do not change the draft.
 7. If QA finds a problem later, add a `problem` entry to `journal.md` and, when it changes the test guidance, send a short follow-up comment (same Sendable? rule).

@@ -11,7 +11,7 @@ Why now: <why this message goes out>
 
 Target: <work item | change request #<n> description | wiki or docs page | colleague>, <link>. Readers: <audience>.
 
-Need from you: GO on Sendable?. Then I send exactly the text between the markers.
+Need from you: your "yes" for this one write, in the prompt of the host or in chat. Then I send exactly the text between the markers.
 
 ## Message
 

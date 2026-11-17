@@ -220,6 +220,30 @@ test('per-write sidecars bind the exact command, target and draft without changi
   assert.ok(codes(validateTicket(ticket, f.file)).includes('approval-manifest'));
 });
 
+test('full-v3: a write needs only its outbox draft, and old sent sidecars still pass lint', (t) => {
+  // GH-2: the "yes" for a write is the prompt of the host that the gate guard asks for, so a new write has no record.
+  const f = fixture(t);
+  f.put('outbox\\comment.draft.md', '---\nstatus: draft\n---\nDraft');
+  const gates = v2Gates().map((gate) => (gate.name === 'Sendable?' ? { ...gate, doc: 'outbox/comment.draft.md', status: 'in-review' } : gate));
+  const ticket = parseTicket(yamlTicket({ workflow: 'full-v3', gates }));
+  f.put('README.md', yamlTicket({ workflow: 'full-v3', gates }));
+  assert.equal(checkAction(ticket, f.file, 'write', { draft: 'outbox/comment.draft.md' }).allowed, true, 'No Sendable? approval is needed.');
+  assert.deepEqual(codes(checkAction(ticket, f.file, 'write', { draft: 'outbox/missing.draft.md' }).findings), ['write-draft']);
+  assert.deepEqual(codes(checkAction(ticket, f.file, 'write', { draft: 'notes.md' }).findings), ['write-draft']);
+  assert.deepEqual(codes(checkAction(ticket, f.file, 'write').findings), ['write-draft']);
+  assert.deepEqual(validateTicket(ticket, f.file), [], 'A Sendable? row in review with a draft and no manifest is valid.');
+  // An open ticket that sent a write before 7.4.0 keeps its manifest and sidecar, and lint still checks them.
+  const old = { ...record(f, 'Sendable?', ['outbox\\comment.draft.md'], { command: 'synthetic comment', target: 'synthetic item' }), doc: 'outbox\\comment.draft.md' };
+  const recordData = {
+    version: 1, doc: old.doc, status: 'sent', approval_manifest: old.manifest, approval_hash: old.hash,
+    approval_date: old.date, command: 'synthetic comment', target: 'synthetic item', result: 'synthetic result 1',
+  };
+  const sidecar = f.put('outbox\\comment.approval.json', JSON.stringify(recordData));
+  assert.deepEqual(validateTicket(ticket, f.file), []);
+  writeFileSync(sidecar, JSON.stringify({ ...recordData, command: 'different command' }));
+  assert.ok(codes(validateTicket(ticket, f.file)).includes('approval-manifest'), 'A changed old sidecar is still a finding.');
+});
+
 test('links and malformed draft metadata block repairs without touching external bytes', (t) => {
   const f = fixture(t);
   const outside = fixture(t);

@@ -36,12 +36,13 @@ A config file can name an MCP server for a capability that has no good CLI. Then
 
 ## External writes
 
-A write capability changes something outside the workspace. Before each one:
+A write capability changes something outside the workspace: `tracker.comment`, `tracker.transition`, `tracker.link`, `repo.open-change`, `repo.update-change`, `repo.reply`, and `ci.trigger`. Before each one:
 
-1. Draft the text as `outbox/<target>.draft.md` in the ticket folder, from the template `<plugin>/skills/ticket/templates/outbox.draft.md`. Send only the text between its `send` markers. Run a full pass of the `writing` skill (outbound mode) on it. Then run the Sendable? gate (the `ticket` skill). Its hashed manifest binds this exact draft plus exact `command` and `target`; sidecar values must match. README gate `doc` names the draft, never its sidecar. Any command or target change requires fresh explicit approval.
-2. Show the exact command, the target, and the text. Wait for an explicit "yes" for this one write.
-3. Pass long text through a file in the system temp folder: `forge-<key>-body.md`. Delete the file after the write.
-4. After GO, create `outbox/<name>.approval.json` outside the hashed set with `version: 1`, exact `doc`, `status: approved`, `approval_manifest`, `approval_hash`, `approval_date`, exact `target`, and exact `command`. After sending, set sidecar `status: sent` and `result` to the returned URL/id, and record it in the ticket journal. Never stamp metadata into the approved draft or reuse one approval for another write.
+1. Draft the text as `outbox/<target>.draft.md` in the ticket folder, from the template `<plugin>/skills/ticket/templates/outbox.draft.md`. Send only the text between its `send` markers. Run a full pass of the `writing` skill (outbound mode) on it. A write with no text (for example a close) needs no draft.
+2. Run the Sendable? steps of the `ticket` skill: show the text, the draft link, the target, and the exact command in chat.
+3. Get an explicit "yes" for this one write, as the `host.write` row of the host says. With the gate guard, the prompt of the host is the "yes". Without it, ask with `host.ask` first.
+4. Pass long text through a file in the system temp folder: `forge-<key>-body.md`. Delete the file after the write.
+5. After the write, add a `log` entry to the ticket journal with the command, the target, and the returned id or link.
 
 The "Never, with any tool" list of the session context applies to each write: no merge, no close without approval, no approval of your own change request, no CI runs in bulk, and no tokens.
 
@@ -50,10 +51,13 @@ The "Never, with any tool" list of the session context applies to each write: no
 The Forge preToolUse hook reads each shell command before it runs. For a `git push` or the change request command of `repo.open-change`
 in a ticket worktree, it checks the gates of the ticket: Scoped?, Planned?, and Shippable? (an older ticket: the gates of its own workflow).
 
+For a command of a write capability in a ticket worktree, it answers `ask`: the host asks the user, and that answer is the "yes" for this one write.
+
 - When an approval is missing or stale, the hook stops the command and names each finding. Open the gate (the `ticket` skill, Review gates), and wait for the answer of the user.
+- When the session runs in a mode with no prompt (Claude Code `bypassPermissions`), the hook denies a write instead of asking. Give the user the exact command to run.
 - Do not run the command in another form, from another folder, or in a script. Only the user can run it without the gate.
-- `policy.gateGuard` selects the mode: `deny` (default), `ask` (the host asks the user), or `off`.
-- The hook reads only the words of the command. The written rules stay in force for each write that it cannot see.
+- `policy.gateGuard` selects the mode for a push and a new change request: `deny` (default), `ask` (the host asks the user), or `off`. `off` also stops the ask for a write.
+- The hook reads only the words of the command. It does not see a write through an MCP tool, a script, or an API call with fields and no method option. The written rules stay in force for each write that it cannot see.
 
 ## Manual step
 

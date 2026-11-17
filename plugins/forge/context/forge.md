@@ -35,7 +35,7 @@ When the row says that the host cannot do the step, give the user the manual ste
 
 - Before the first call of a tracker, a repository host, or a CI tool, and before each external write, read `<plugin>/context/tools.md`: the steps of a **capability** (for example `tracker.comment`), the tool order (CLI first), the write steps, and the manual step.
 - Never call a tracker, repository host, or CI tool that the config does not name.
-- Before each external write, run the Sendable? gate of the `ticket` skill, and wait for an explicit "yes" for this one write.
+- Before each external write, run the Sendable? steps of the `ticket` skill. Get an explicit "yes" for this one write, as the `host.write` row says.
 - When the Forge gate guard stops a command, open the gate that it names. Do not run the command in another form.
 
 Never, with any tool:
