@@ -176,6 +176,15 @@ Forge 8.0.0 removes the older ticket layouts: `skills/ticket/legacy/`, the `migr
 - No hard check failed. The notes are the same as in the runs for Forge 7.5.0.
 - The runs do not show the new stop for a ticket with an older layout. No case has such a ticket.
 
+### Forge 8.1.0: the wiki page (2026-11-18)
+
+Forge 8.1.0 adds the wiki page, and the `board` skill now names the link of the wiki page and the closed tickets. The rules and the hooks did not change.
+
+- `npm run eval` ran for `board-question`, the case that the skill text can affect. Claude Code 2.1.316, Claude Sonnet 5.5, Linux. 2 runs, 0.16 USD.
+- Result: 2 of 2 runs passed each hard check. The `board` skill loaded, the `ticket` skill did not load, the answer named the person, and the ticket README did not change. `forge.mjs board --json` ran in each run.
+- The runs used the change on top of Forge 7.6.0, before it went on top of Forge 8.0.0. Forge 8.0.0 changed no file of the `board` skill, the hooks, or the session context, so the case was not run again.
+- The runs do not measure the wiki page: the case asks a question about an open ticket, and the fixture has no closed ticket.
+
 ### Comparison: the cold read
 
 A comparison case runs only with `--case`. `--variant <name>` gives the session a copy of the plugin with one rule changed (`tests/evals/variants.mjs`), so two sets of runs differ only in that rule.

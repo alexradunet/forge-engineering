@@ -399,7 +399,11 @@ export function main(argv = process.argv.slice(2)) {
         // The pages of the same board: raw/board.html and the canvas of each ticket.
         views = writeViews(where.wiki.path, { links: args.links, today: args.today, dryRun: args.dryRun });
       } catch (err) { throw new ForgeError(err.message, 'board'); }
-      const page = { file: views.page.file, url: pathToFileURL(views.page.file).href, written: views.page.written, canvases: views.canvases.written.length, failed: views.canvases.failed };
+      const page = {
+        file: views.page.file, url: pathToFileURL(views.page.file).href, written: views.page.written, canvases: views.canvases.written.length, failed: views.canvases.failed,
+        // The wiki page: each canonical page of the wiki, and the summary pages of the closed tickets.
+        wiki: { file: views.wiki.file, url: pathToFileURL(views.wiki.file).href, written: views.wiki.written, pages: views.wiki.pages, closed: views.wiki.closed },
+      };
       if (args.json) console.log(JSON.stringify({ ...board, page }, null, 2));
       else {
         console.log(board.groups.map((group) => `${group.emoji} ${group.label} ${group.tickets.length}`).join(' · '));
@@ -407,6 +411,7 @@ export function main(argv = process.argv.slice(2)) {
         for (const error of page.failed) console.log(`  no canvas ${error.folder}: ${error.message}`);
         console.log(`${board.written ? 'wrote' : !board.changed ? 'unchanged' : 'would write'}: ${board.file}`);
         console.log(`  open  ${page.url}`);
+        console.log(`  wiki  ${page.wiki.url}`);
       }
     } else if (cmd === 'worktree') {
       if (args._.length !== 2 || !args.summary) throw new ForgeError('Usage: forge.mjs worktree <KEY> --summary "<goal>" [--base <ref>] [--create] [--json].', 'bad-args');
@@ -465,6 +470,7 @@ export function main(argv = process.argv.slice(2)) {
           console.log(`${result.key}: wrote ${result.file}`);
           console.log(`  open  ${pathToFileURL(result.file).href}`);
           console.log(`  board ${pathToFileURL(views.page.file).href}`);
+          console.log(`  wiki  ${pathToFileURL(views.wiki.file).href}`);
           if (result.missing.length) console.log(`  not written yet: ${result.missing.join(', ')}`);
         }
       } catch (err) { throw new ForgeError(err.message, 'canvas'); }

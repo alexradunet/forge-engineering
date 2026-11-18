@@ -68,6 +68,22 @@ A session has one of 4 live states (class `lv-<state>`, variable `--st`). They u
 
 The page is read-only for a session. It has no control that sends text or an answer to a session.
 
+## Wiki page
+
+The wiki page (`raw/wiki.html`) shows each canonical page of the wiki: each Markdown file outside `raw/`, `archive/`, `forge/`, and `.git`. `forge.mjs lint` checks the same files.
+One file holds all pages. The address of a page is the path of its Markdown file after the `#` of the link, for example `wiki.html#tooling/build.md`.
+
+- The list at the left has one group for each folder. The pages at the top of the wiki come first, and the folder `tickets/` has the name **Closed tickets**.
+- A page shows its title, its status, its date, its text, and its sources. The status (`verified`, `decided`, or `needs-check`) uses the color of a ticket state, so the page has no token of its own.
+- **Used by** lists the open tickets and the other pages that name the page. The index and the log are not in that list.
+- A link to another page of the wiki changes only the page in view. A web address opens a new tab. A relative link to a file that is not a page stays as text.
+
+A closed ticket has no folder on the board. Its summary page (`tickets/<key>.md`) is in the wiki, so the board lists the closed tickets below the lanes, and each row opens the summary page on the wiki page.
+The archive folder of a ticket stays on its machine, and no page shows it.
+
+On a canvas, a link to a wiki page opens the wiki page. The path of a wiki page in the text of a ticket document is also a link, for example `tooling/build.md`.
+The **Wiki** menu of the bar lists each wiki page that the ticket names.
+
 ## Components
 
 | Component | Where in the code | Rules |
@@ -90,6 +106,10 @@ The page is read-only for a session. It has no control that sends text or an ans
 | Live line | `.live` with `lv-<state>` (`liveLine()` in `ui.mjs`) | One session: the state and its time, the tool that runs now, the count of subagents that run, and the text of a wait. It is on a board card and at the top of the Live panel |
 | Other sessions | `#live-other`, `.lrow` (board) | The sessions without a ticket card: the host, the title or the folder name, and the live line |
 | Live panel | `#live`, `.lv-tree` (canvas) | The sessions of this ticket: the live line, the prompt, the tool calls and the subagents as a tree, and the last text. It stands at the left of the board, and the board keeps the other space. On a narrow page it floats above the board |
+| Wiki menu | `.refs`, `#wiki-refs` (canvas) | The wiki pages that the ticket names, and the link to all pages. It closes at a click outside of it, and at `Esc` |
+| Page list | `#tree` (wiki) | One group for each folder of the wiki, with a count. The filter hides pages, and it reads the text of each page |
+| Wiki page text | `.wpage`, `.md`, `.more` (wiki) | One page: the folder and the file name, the title, the status and the date, the text, the sources, and the uses |
+| Closed tickets | `#lane-closed` (board) | A closed list at the end of the board: the key, the title, and the date of each summary page |
 | Toast | `#toast` | One line that tells the result of a step. It goes away after 4 seconds |
 | Empty text | `.empty` | One sentence that says what is missing. It never shows an empty frame |
 | Footer | `#foot` | When the page was made, and that the page is a view. The canvas has its zoom tools there |
@@ -100,7 +120,7 @@ The board page:
 
 ```text
 +--------------------------------------------------------------------------+
-| Forge board  [Filter /]  (Needs me 2) (Blocked 1) ...   [Go to a ticket] |
+| Forge board  [Filter /]  (Needs me 2) (Blocked 1)  Wiki [Go to a ticket] |
 +--------------------------------------------------------------------------+
 | Needs me 2                                             full width, first |
 |   [ticket card] [ticket card]                                            |
@@ -109,6 +129,7 @@ The board page:
 |   [card]           [card]         [card]           [card]     side       |
 |                                   [card]                                 |
 | > Done 2                                       a closed list at the end  |
+| > Closed tickets 3              their summary pages on the wiki page     |
 | People waits (table)      Read errors (list)                             |
 +--------------------------------------------------------------------------+
 ```
@@ -117,7 +138,7 @@ The ticket canvas:
 
 ```text
 +--------------------------------------------------------------------------+
-| Board / [KEY v]  Title  (state) phase              < >  [Comments 0] ?   |
+| Board / [KEY v]  Title  (state) phase     < >  [Wiki 3] [Comments 0] ?   |
 | (Scoped) (Planned waits for you) (Shippable) ...  Next ...               |
 | View [Now: Planned] [Must read] [+ Good to know] [All]     Story Plan .. |
 +--------------------------------------------------------------------------+
@@ -149,6 +170,24 @@ A canvas of the live server has the Live panel at the left:
 +----------------------+---------------------------------------------------+
 ```
 
+The wiki page:
+
+```text
++--------------------------------------------------------------------------+
+| Board / Wiki  [Filter /]                          [Go to a ticket] ?     |
++----------------------+---------------------------------------------------+
+| WIKI 2               | tooling / build.md                                |
+|  Wiki index          | Build                                             |
+|  Wiki log            | (verified) updated 2026-11-10  Open the file      |
+| DECISIONS 2          |                                                   |
+|  ...                 | The text of the page, with links to other pages   |
+| CLOSED TICKETS 3     |                                                   |
+|  APP-2: Old fix      | SOURCES   the sources of the page                 |
+| TOOLING 2            | USED BY   APP-9 (ticket, active)                  |
+|  Build               |           APP-2: Old fix (closed ticket)          |
++----------------------+---------------------------------------------------+
+```
+
 ## Navigation
 
 The unit of the navigation is the ticket. One ticket has one session, and the session title starts with the ticket key.
@@ -165,6 +204,12 @@ A board card has the link **Worktree**, which opens the worktree folder of the t
 | Canvas | The next view | The view buttons in the bar | `v` |
 | Canvas | The text of a folded card | The title strip | `Tab` to the strip, then `Enter` |
 | Canvas of the live server | The Live panel | **Live** in the bar | `l` |
+| Each page | The wiki page | **Wiki** in the bar | `w` |
+| Canvas | A wiki page that the ticket names | The **Wiki** menu of the bar, or a link in a card | None |
+| Board | The summary page of a closed ticket | The row in **Closed tickets** | `j` and `k`, then `Enter` |
+| Wiki | Another page | The list at the left, or a link in the text | `j` and `k` |
+| Wiki | A page by its words | The filter | `/`, then `Enter` |
+| Wiki | A ticket that names the page | **Used by** below the text | None |
 
 The order of the tickets is the order of the board: the state lanes, and the key in each lane.
 So `]` on a ticket that waits for the user goes to the next ticket that waits for the user.
@@ -176,6 +221,9 @@ The links have two forms:
 | File page | `../../board.html` | `../<folder>/canvas.html` | `forge.mjs board` writes each page. `forge.mjs canvas <KEY>` writes its page, the board page, and each canvas that is missing |
 | Served page | `/board?t=<token>` | `/ticket/<folder>/?t=<token>` | `forge.mjs canvas <KEY> --serve` reads the files again for each page |
 | Page of the live server | `/board?t=<token>` | `/ticket/<folder>/?t=<token>` | `forge.mjs live` reads the files again for each page. Each ticket has the same route, and no page can send |
+
+The wiki page is next to the board page: `wiki.html` in a file page, and `/wiki?t=<token>` on a served page.
+The switcher of each page also lists the closed tickets, after the tickets of the board.
 
 ## UX cases
 
@@ -208,6 +256,12 @@ The links have two forms:
 | The live server does not answer, or it stopped | The page keeps the last state. The footer of the board and the hint of the Live panel say that the server does not answer, and the page asks again with longer waits |
 | The page is not in view (another tab) | The page stops its requests, and it asks again when the user comes back |
 | The user comments on a canvas of the live server | That page has no **Send to agent**. The Comments panel says to use **Copy all** |
+| The user reads a ticket and wants the background | A link to a wiki page in a card opens that page on the wiki page. The **Wiki** menu of the canvas lists each wiki page that the ticket names |
+| The user reads a wiki page and wants its tickets | **Used by** names each open ticket and each closed ticket that names the page |
+| The user wants an old ticket | The board lists the closed tickets at its end, and the switcher (`t`) finds one by its key or its words. Each one opens its summary page in the wiki |
+| The user looks for a fact in the wiki | The filter of the wiki page reads the title, the path, and the text of each page |
+| A link names a wiki page that is gone | The wiki page says that it has no such page, and it shows the first page |
+| The wiki has no page yet | The wiki page says so, and the board has no list of closed tickets |
 | The page is old (a file page) | The footer gives the time. The next `forge.mjs board` or `forge.mjs canvas <KEY>` run writes it again, and VS Code can load it again (`workbench.browser.autoReloadOnFileChange`). A page that did not change is not written again |
 | The ticket has only a README, or a document is missing | A card says which document is missing. No frame is empty |
 | An older ticket (not `full-v3`) | The canvas shows its files as columns. The bar, the links, and the comments are the same. It has no tiers and no views: each card is open |
@@ -224,6 +278,8 @@ The links have two forms:
 - Escape each ticket text with `esc()`. Only `linkTarget()` makes a link target from ticket text.
 - The text of a session (a title, a prompt, a command, a last message) is not trusted. Put it into the page with `make()`, which sets `textContent`. Never make HTML from it.
 - Change the live event (`live-event.mjs`), the live state (`live.mjs`), and the live parts of the pages together (`tests/live.test.mjs`, `tests/live-serve.test.mjs`).
+- Change the wiki model (`wiki.mjs`), the wiki page (`wiki-page.mjs`), and the wiki links of the board and the canvas together (`tests/wiki-page.test.mjs`).
+- The text of a wiki page goes through `markdown()`, which escapes each character. The script of the wiki page makes no HTML.
 - Change a ticket template and the canvas together (`tests/canvas.test.mjs`). Give each new template section a tier in `TIERS`.
 - Look at each change in a browser, in the light and the dark theme, at a width of 620 px and of 1500 px.
 
@@ -237,3 +293,7 @@ The links have two forms:
 - A `claude -p` run stops its background hooks when it ends, so its last text can be missing.
 - Two subagents of one type that start at the same time can show below the wrong call, until the result of each call comes.
 - The live server learns of a session at its first event. A session that started before the server shows after its next prompt or tool call.
+- The wiki page shows a Mermaid block as code, because the page loads no library. Its Markdown has no italic text and no images.
+- One file holds all pages of the wiki. The model stops at 3,000 pages, and it leaves out a page with more than 512 KB.
+- A link to a heading of a wiki page opens the page at its top.
+- The wiki page shows no file of `raw/` and `archive/`, so the working folder of a closed ticket has no page.

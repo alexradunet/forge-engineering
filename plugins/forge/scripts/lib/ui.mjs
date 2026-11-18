@@ -1,4 +1,4 @@
-// The design system of the forge pages: the board page (board-page.mjs) and the ticket canvas (canvas-page.mjs).
+// The design system of the forge pages: the board page (board-page.mjs), the ticket canvas (canvas-page.mjs), and the wiki page (wiki-page.mjs).
 // It holds one set of tokens (color, type, space, radius, shadow), the shared components, the links between
 // the pages, and the shared browser functions. Each page puts the style and the script inline,
 // so a page needs no network and no other file. docs/design-system.md gives the rules.
@@ -16,14 +16,18 @@ export function gateLine(item) {
 }
 
 /**
- * The links between the pages of one wiki, for a page at `from` ('board', or the folder of a ticket).
- * A file page uses relative links: raw/board.html and raw/tickets/<folder>/canvas.html.
+ * The links between the pages of one wiki, for a page at `from` ('board', 'wiki', or the folder of a ticket).
+ * A file page uses relative links: raw/board.html, raw/wiki.html, and raw/tickets/<folder>/canvas.html.
  * A served page (token) uses the routes of the canvas server. `home` is the ticket of that server.
  * `broken` names the folders without a canvas: their link goes to the README.
+ * `closed` (buildWiki in wiki.mjs) gives the closed tickets: each one has a summary page in the wiki.
  */
-export function buildNav(board, { from = 'board', token = '', home = '', broken = [] } = {}) {
+export function buildNav(board, { from = 'board', token = '', home = '', broken = [], closed = [] } = {}) {
   const seg = encodeURIComponent;
-  const up = from === 'board' ? 'tickets/' : '../';
+  const hash = (relative) => relative.split('/').map(seg).join('/');
+  const top = from === 'board' || from === 'wiki';
+  const up = top ? 'tickets/' : '../';
+  const wiki = from === 'wiki' ? '' : token ? `/wiki?t=${token}` : top ? 'wiki.html' : '../../wiki.html';
   const file = (folder, name) => (token
     ? `/ticket/${seg(folder)}/${name.split('/').map(seg).join('/')}?t=${token}`
     : `${up}${seg(folder)}/${name.split('/').map(seg).join('/')}`);
@@ -37,8 +41,12 @@ export function buildNav(board, { from = 'board', token = '', home = '', broken 
   })));
   const at = tickets.findIndex((item) => item.folder === from);
   return {
-    board: from === 'board' ? '' : token ? `/board?t=${token}` : '../../board.html',
-    current: from === 'board' ? '' : from,
+    board: from === 'board' ? '' : token ? `/board?t=${token}` : top ? 'board.html' : '../../board.html',
+    wiki,
+    // One page of the wiki page, by the path of its Markdown file.
+    page: (relative) => `${wiki}#${hash(relative)}`,
+    closed: closed.map((item) => ({ key: item.key, title: item.title, updated: item.updated, path: item.path, href: `${wiki}#${hash(item.path)}` })),
+    current: top ? '' : from,
     home, tickets, file,
     prev: at > 0 ? tickets[at - 1] : null,
     next: at >= 0 && at < tickets.length - 1 ? tickets[at + 1] : null,
@@ -48,14 +56,15 @@ export function buildNav(board, { from = 'board', token = '', home = '', broken 
 /** The part of the links that the page script needs. */
 export function navData(nav) {
   if (!nav) return null;
-  return { board: nav.board, prev: nav.prev?.href ?? '', next: nav.next?.href ?? '' };
+  return { board: nav.board, wiki: nav.wiki, prev: nav.prev?.href ?? '', next: nav.next?.href ?? '' };
 }
 
-/** The ticket switcher: one dialog with a filter and each ticket of the board, in board order. */
+/** The ticket switcher: one dialog with a filter, each ticket of the board in board order, and then the closed tickets of the wiki. */
 export function switcherHtml(nav) {
   if (!nav) return '';
   const rows = [];
   if (nav.board) rows.push(`<li><a href="${esc(nav.board)}" data-nav data-text="board all tickets"><span class="key">Board</span><span class="what">All tickets</span><small><kbd>b</kbd></small></a></li>`);
+  if (nav.wiki) rows.push(`<li><a href="${esc(nav.wiki)}" data-nav data-text="wiki all pages"><span class="key">Wiki</span><span class="what">All pages</span><small><kbd>w</kbd></small></a></li>`);
   let state = '';
   for (const item of nav.tickets) {
     if (item.state !== state) { state = item.state; rows.push(`<li class="group">${item.emoji ?? ''} ${esc(item.label)}</li>`); }
@@ -63,10 +72,16 @@ export function switcherHtml(nav) {
     rows.push(`<li><a href="${esc(item.href)}" data-nav data-text="${esc(text)}"${item.folder === nav.current ? ' aria-current="page"' : ''}>`
       + `<span class="key">${esc(item.key)}</span><span class="what">${esc(item.title)}</span><small>${esc(item.gate || item.phase)}</small></a></li>`);
   }
+  // A closed ticket has no canvas: its link goes to its summary page in the wiki. A link inside the wiki page changes only the page that shows.
+  if (nav.closed?.length) rows.push('<li class="group">Closed</li>');
+  for (const item of nav.closed ?? []) {
+    rows.push(`<li><a href="${esc(item.href)}"${item.href.startsWith('#') ? '' : ' data-nav'} data-text="${esc([item.key, item.title, 'closed'].join(' ').toLowerCase())}">`
+      + `<span class="key">${esc(item.key)}</span><span class="what">${esc(item.title)}</span><small>${esc(item.updated ? `closed ${item.updated}` : 'closed')}</small></a></li>`);
+  }
   return '<dialog id="switcher" aria-label="Go to a ticket">'
     + '<input type="search" id="switch-q" placeholder="Go to a ticket: type a key or some words" autocomplete="off" spellcheck="false" aria-label="Filter the tickets">'
     + `<ul id="switch-list">${rows.join('')}</ul>`
-    + `<p class="none" id="switch-none" hidden>${nav.tickets.length ? 'No ticket has these words.' : 'No tickets yet.'}</p>`
+    + `<p class="none" id="switch-none" hidden>${nav.tickets.length || nav.closed?.length ? 'No ticket has these words.' : 'No tickets yet.'}</p>`
     + '<footer><span><kbd>↑</kbd> <kbd>↓</kbd> move</span><span><kbd>Enter</kbd> open</span><span><kbd>Esc</kbd> close</span></footer></dialog>';
 }
 
@@ -147,6 +162,20 @@ code { font: var(--t-sm)/1.4 var(--mono); background: color-mix(in srgb, var(--m
 .lv-now code { background: transparent; padding: 0; }
 .lv-agents, .lv-note { color: var(--muted); }
 .lv-needs-you .lv-note { color: var(--ink); }
+
+.refs { position: relative; }
+.refs > summary { display: inline-block; list-style: none; padding: 2px 10px; background: var(--card); border: 1px solid var(--line); border-radius: var(--r-1); cursor: pointer; white-space: nowrap; }
+.refs > summary::-webkit-details-marker { display: none; }
+.refs > summary:hover, .refs[open] > summary { border-color: var(--accent); }
+.refs > summary span { font-weight: 600; }
+.refs > ul { position: absolute; right: 0; top: calc(100% + 6px); z-index: 6; width: 380px; max-width: calc(100vw - 24px); max-height: 60vh; overflow: auto; list-style: none; margin: 0; padding: 6px; background: var(--rail); border: 1px solid var(--line); border-radius: var(--r-2); box-shadow: var(--sh-2); }
+.refs a { display: block; padding: 5px 10px; color: inherit; text-decoration: none; border-radius: var(--r-1); }
+.refs a:hover { background: color-mix(in srgb, var(--muted) 12%, transparent); }
+.refs .what { display: block; overflow-wrap: anywhere; }
+.refs small { display: block; font: var(--t-xs)/1.4 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+.refs .none { padding: 5px 10px; color: var(--muted); }
+.refs .all { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--line); }
+.refs .all a { color: var(--accent); }
 
 #rail { background: var(--rail); border-bottom: 1px solid var(--line); z-index: 3; }
 .bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-2); padding: var(--s-2) var(--s-4); }
@@ -380,6 +409,15 @@ export const UI_SCRIPT = String.raw`
     if (byId('switch-open')) byId('switch-open').addEventListener('click', openSwitcher);
   }
 
+  // A menu of the bar (the wiki pages of a ticket) closes at a click outside of it, and at Esc.
+  document.addEventListener('click', function (event) {
+    each(document.querySelectorAll('details.refs[open]'), function (menu) { if (!menu.contains(event.target)) menu.open = false; });
+  });
+  document.addEventListener('keydown', function (event) {
+    if (event.key !== 'Escape') return;
+    each(document.querySelectorAll('details.refs[open]'), function (menu) { menu.open = false; });
+  });
+
   var help = byId('help');
   function openHelp() { if (help && !help.open) help.showModal(); }
   if (help) {
@@ -392,6 +430,7 @@ export const UI_SCRIPT = String.raw`
     if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || typing(event) || modalOpen()) return;
     if (event.key === 't') openSwitcher();
     else if (event.key === 'b' && nav.board) go(nav.board);
+    else if (event.key === 'w' && nav.wiki) go(nav.wiki);
     else if (event.key === '[' && nav.prev) go(nav.prev);
     else if (event.key === ']' && nav.next) go(nav.next);
     else if (event.key === '?') openHelp();

@@ -10,6 +10,7 @@ import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { BOARD_SCRIPT } from '../plugins/forge/scripts/lib/board-page.mjs';
+import { WIKI_SCRIPT } from '../plugins/forge/scripts/lib/wiki-page.mjs';
 import { CANVAS_SCRIPT, canvasLine, canvasMessage } from '../plugins/forge/scripts/lib/canvas-page.mjs';
 import { checkRequest, defaultPort, readSend } from '../plugins/forge/scripts/lib/canvas-serve.mjs';
 import { buildCanvas, renderCanvas } from '../plugins/forge/scripts/lib/canvas.mjs';
@@ -289,6 +290,15 @@ test('with the wiki, the server shows the board and each other ticket, and only 
   assert.match(board.text, new RegExp(`<a class="open" href="/\\?t=${token}#zone-plan" data-nav`), 'the ticket of the server stays at the root');
   assert.match(board.text, new RegExp(`<a class="open" href="/ticket/app-10/\\?t=${token}" data-nav`));
   assert.equal((await get('/board')).status, 403);
+  // The wiki page of the same wiki. A board without closed tickets and a wiki without pages still have the link.
+  assert.match(run.stdout, new RegExp(`\\n  wiki  http://127\\.0\\.0\\.1:${port}/wiki\\?t=${token}\\n`));
+  const wikiPage = await get(`/wiki?t=${token}`);
+  assert.equal(wikiPage.status, 200);
+  assert.ok(wikiPage.headers['content-security-policy'].includes(`script-src ${hash(WIKI_SCRIPT)};`), 'the policy names the script of the wiki page');
+  assert.equal(/<script>([\s\S]*)<\/script>/.exec(wikiPage.text)[1], WIKI_SCRIPT);
+  assert.match(board.text, new RegExp(`<a class="quiet" href="/wiki\\?t=${token}" data-nav`));
+  assert.match(home.text, new RegExp(`<li class="all"><a href="/wiki\\?t=${token}" data-nav>All wiki pages</a>`));
+  assert.equal((await get('/wiki')).status, 403);
 
   const page = await get(`/ticket/app-10/?t=${token}`);
   assert.equal(page.status, 200);

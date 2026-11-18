@@ -389,7 +389,7 @@ A question that names a key does not start or resume that ticket.
 | "Refresh" | Reads the tracker, the change requests, and CI (read-only), writes `raw/sync/`, then fixes titles and state groups |
 | "Fix the session titles" | Renames stale ticket session titles and, in VS Code, moves the sessions to their state groups |
 
-The board does not edit code, ticket documents, or wiki pages. It writes only `raw/board.md`, `raw/sync/`, and the pages (`raw/board.html` and the `canvas.html` of each ticket).
+The board does not edit code, ticket documents, or wiki pages. It writes only `raw/board.md`, `raw/sync/`, and the pages (`raw/board.html`, `raw/wiki.html`, and the `canvas.html` of each ticket).
 It never approves a gate and never answers a question of a session for you,
 because an approval covers the exact revision that the ticket session shows.
 It never merges, pushes, or writes to the tracker.
@@ -398,6 +398,18 @@ See the [board skill](plugins/forge/skills/board/SKILL.md).
 
 Forge 6.5 had a **Forge Master** custom agent for this. Forge 6.6 removes it: VS Code ignored the agent body
 (baseline click-check 14), and a persistent overview session added no function that a skill cannot give.
+
+## 📖 Wiki page
+
+`forge.mjs board` also writes `raw/wiki.html`: one page for the wiki of the repository. The board page and each ticket canvas have a link to it (key `w`).
+
+- The page lists each wiki page by folder, and a filter finds a page by the words of its text.
+- A page shows its status, its date, its sources, and **Used by**: the open tickets and the other pages that name it.
+- On a ticket canvas, a link to a wiki page opens that page on the wiki page. The **Wiki** menu of the canvas lists each wiki page that the ticket names.
+- The board lists the closed tickets. Each one opens its summary page (`tickets/<key>.md`), not its archive folder.
+- The canvas server and the live server show the same page at `/wiki`.
+
+The page is a view. It shows no file of `raw/` and `archive/`, and it changes no wiki page.
 
 ## 📡 Live view
 

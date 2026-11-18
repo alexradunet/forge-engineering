@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { BOARD_SCRIPT } from '../plugins/forge/scripts/lib/board-page.mjs';
 import { CANVAS_SCRIPT } from '../plugins/forge/scripts/lib/canvas-page.mjs';
 import { liveFile, liveStatus, serveLive } from '../plugins/forge/scripts/lib/live-serve.mjs';
+import { WIKI_SCRIPT } from '../plugins/forge/scripts/lib/wiki-page.mjs';
 
 const cli = fileURLToPath(new URL('../plugins/forge/scripts/forge.mjs', import.meta.url));
 const reporter = fileURLToPath(new URL('../plugins/forge/scripts/live-hook.mjs', import.meta.url));
@@ -34,6 +35,9 @@ function wiki(t) {
   ticket('APP-2', 'done');
   put('raw/tickets/app-9/story.md', '---\ntype: story\n---\n# Story APP-9\n\nProblem: retries stop after 3 s.\n');
   put('raw/tickets/app-9/page.html', '<p>not a ticket file</p>\n');
+  put('tooling/build.md', '---\ntitle: Build\nupdated: 2026-11-10\nstatus: verified\n---\n# Build\n\nThe build uses npm.\n');
+  put('tickets/app-1.md', '---\ntitle: "APP-1: First fix"\nupdated: 2026-11-01\nstatus: verified\n---\n# APP-1: First fix\n\nSee [build](../tooling/build.md).\n');
+  put('raw/tickets/app-9/plan.md', '---\ntype: plan\n---\n# Plan APP-9\n\nCause: see [the build page](../../../tooling/build.md).\n');
   return { root, wiki: path.join(root, 'wiki'), env: { ...process.env, FORGE_DATA_DIR: path.join(root, 'data') } };
 }
 
@@ -189,7 +193,20 @@ test('the pages of the live server: the board and each canvas with the live part
 
   const file = await request(s.port, { url: `/ticket/app-9/story.md?t=${s.page}` });
   assert.deepEqual([file.status, file.headers['content-type'], file.headers['content-security-policy']], [200, 'text/plain; charset=utf-8', "default-src 'none'; sandbox"]);
-  for (const url of ['/ticket/app-9/page.html', '/ticket/app-9/..%2Fapp-2%2FREADME.md', '/ticket/nope/', '/ticket/..%2F..%2Fx/', '/board.html', '/README.md']) {
+  // The wiki page: each canonical page, and the closed tickets. The board and the canvas have the links to it.
+  const wikiPage = await request(s.port, { url: `/wiki?t=${s.page}` });
+  assert.equal(wikiPage.status, 200);
+  assert.equal(wikiPage.headers['content-security-policy'], `default-src 'none'; script-src 'sha256-${hash(WIKI_SCRIPT)}'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'`);
+  assert.equal(/<script>([\s\S]*)<\/script>/.exec(wikiPage.text)[1], WIKI_SCRIPT);
+  assert.match(wikiPage.text, /The build uses npm\./);
+  assert.ok(wikiPage.text.includes(`<a href="/ticket/app-9/?t=${s.page}" data-nav><span class="key">APP-9</span>`), 'a page names the open ticket that uses it');
+  assert.ok(wikiPage.text.includes(`href="/board?t=${s.page}"`) && !wikiPage.text.includes('"live"'));
+  assert.ok(board.text.includes(`<a class="quiet" href="/wiki?t=${s.page}" data-nav`));
+  assert.ok(board.text.includes(`<a class="open" href="/wiki?t=${s.page}#tickets/app-1.md" data-nav title="First fix">`), 'a closed ticket opens its summary page');
+  assert.ok(canvas.text.includes(`<a href="/wiki?t=${s.page}#tooling/build.md" data-nav>the build page</a>`), 'a link of a ticket document opens the wiki page');
+  assert.ok(canvas.text.includes('id="wiki-refs"'));
+  assert.equal((await request(s.port, { url: '/wiki' })).status, 403);
+  for (const url of ['/ticket/app-9/page.html', '/ticket/app-9/..%2Fapp-2%2FREADME.md', '/ticket/nope/', '/ticket/..%2F..%2Fx/', '/board.html', '/README.md', '/wiki/', '/wiki/tooling/build.md', '/tooling/build.md']) {
     assert.equal((await request(s.port, { url: `${url}?t=${s.page}` })).status, 404, url);
   }
 });

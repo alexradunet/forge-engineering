@@ -1,5 +1,5 @@
 // The board page: <wiki>/raw/board.html. One page for all tickets of the wiki: one lane for each state,
-// the tickets that wait for the user first, and a link from each ticket to its canvas.
+// the tickets that wait for the user first, a link from each ticket to its canvas, and the closed tickets with a link to their summary page in the wiki.
 // It shows the model of board.mjs (the same data as raw/board.md). It loads nothing from a network, and it is never a source.
 // The style and the components come from ui.mjs. The script uses no template literals: it sits in one.
 import path from 'node:path';
@@ -94,6 +94,15 @@ function waitsHtml(board) {
     + `<table><thead><tr><th>Ticket</th><th>Person</th><th>Role</th><th>Ask</th><th>Since</th><th>Working days</th></tr></thead><tbody>${waits.map(row).join('')}</tbody></table></section>`;
 }
 
+// A closed ticket has no folder on the board: its summary page is in the wiki (tickets/<key>.md), and the wiki page shows it.
+function closedHtml(nav) {
+  if (!nav.closed?.length) return '';
+  const row = (item) => `<li class="trow" data-state="closed" data-text="${esc([item.key, item.title, 'closed'].join(' ').toLowerCase())}"><span class="key">${esc(item.key)}</span>`
+    + `<a class="open" href="${esc(item.href)}" data-nav title="${esc(item.title)}">${esc(item.title)}</a><span class="age">${esc(item.updated)}</span></li>`;
+  return `<details class="lane plain st-done" id="lane-closed" data-state="closed"><summary><h2>Closed tickets <span class="count">${nav.closed.length}</span> <small>their summary pages in the wiki</small></h2></summary>`
+    + `<ul class="rows">${nav.closed.map(row).join('')}</ul></details>`;
+}
+
 function errorsHtml(board) {
   if (!board.errors.length) return '';
   return `<section class="lane plain" id="errors"><h2>Read errors <span class="count">${board.errors.length}</span></h2>`
@@ -109,6 +118,7 @@ const HELP = [
   [['Enter'], 'Open the canvas of the ticket'],
   'Go',
   [['t'], 'Go to a ticket by its key or its words'],
+  [['w'], 'Go to the wiki of the repository'],
   [['?'], 'Show this list'],
   [['Esc'], 'Close a dialog, or remove the filter text'],
 ];
@@ -116,6 +126,7 @@ const HELP = [
 /**
  * The self-contained HTML page of a board model. With serve.token, the links use the routes of the server of the page.
  * serve.live is the address of the session states on the live server (live-serve.mjs): then the page shows what each session does now.
+ * nav.closed (buildNav in ui.mjs) gives the closed tickets of the wiki.
  */
 export function renderBoardPage(board, { links = 'vscode', nav = null, serve = null, wiki = '' } = {}) {
   if (!LINK_MODES.includes(links)) throw new Error(`Unknown link mode: ${links}. Use ${LINK_MODES.join(' or ')}.`);
@@ -132,7 +143,7 @@ export function renderBoardPage(board, { links = 'vscode', nav = null, serve = n
   const side = board.groups.filter((group) => !['needs-me', 'done'].includes(group.state)).map((group) => laneHtml(group, board, ctx)).join('');
   const lanes = board.total
     ? `${lane('needs-me')}${side ? `<div class="side">${side}</div>` : ''}${lane('done')}`
-    : '<section class="lane"><p class="empty">No tickets yet. Give a work item key to a session, and its ticket shows here.</p></section>';
+    : `<section class="lane"><p class="empty">${ctx.nav.closed?.length ? 'No open ticket.' : 'No tickets yet.'} Give a work item key to a session, and its ticket shows here.</p></section>`;
   const data = JSON.stringify({ generated: board.generated, total: board.total, ...(token ? { token } : {}), ...(live ? { live } : {}), nav: navData(ctx.nav) }).replace(/</g, '\\u003c');
   return [
     '<!doctype html>', '<html lang="en">', '<head>', '<meta charset="utf-8">',
@@ -142,9 +153,9 @@ export function renderBoardPage(board, { links = 'vscode', nav = null, serve = n
     '<header id="rail" class="bar"><h1>Forge board</h1>'
       + '<label class="search"><span class="sr">Filter the tickets</span><input type="search" id="filter" placeholder="Filter the tickets" autocomplete="off" spellcheck="false"><kbd>/</kbd></label>'
       + `<div class="chips" role="group" aria-label="States">${chips}</div>`
-      + `<div class="tools"><button type="button" id="switch-open" title="Go to a ticket (t)">Go to a ticket</button>${TOOLS_HTML}</div></header>`,
+      + `<div class="tools">${ctx.nav.wiki ? `<a class="quiet" href="${esc(ctx.nav.wiki)}" data-nav title="The wiki of the repository (w)">Wiki</a>` : ''}<button type="button" id="switch-open" title="Go to a ticket (t)">Go to a ticket</button>${TOOLS_HTML}</div></header>`,
     '<main id="lanes"><p class="banner" id="showing" hidden><span id="showing-text"></span> <button type="button" id="show-all">Show all</button></p>',
-    lanes, live ? LIVE_HTML : '', waitsHtml(board), errorsHtml(board), '</main>',
+    lanes, live ? LIVE_HTML : '', waitsHtml(board), closedHtml(ctx.nav), errorsHtml(board), '</main>',
     `<footer id="foot">${live ? '<p class="note" id="live-note">Live view: no answer yet</p>' : ''}<p>Generated ${esc(board.generated)} by <code>forge.mjs board</code> from the ticket README files. This page is a view: change the ticket files, not this page.</p></footer>`,
     switcherHtml(ctx.nav), helpHtml(HELP),
     '<div id="toast" role="status" hidden></div>',
@@ -251,9 +262,13 @@ ${UI_SCRIPT}
   var filter = byId('filter');
   var chips = Array.prototype.slice.call(document.querySelectorAll('.chip'));
   var items = Array.prototype.slice.call(document.querySelectorAll('.tcard, .trow'));
-  var done = document.querySelector('details.lane');
-  var doneOpen = false;
-  try { doneOpen = localStorage.getItem('forge-board:done') === 'open'; } catch (error) { doneOpen = false; }
+  // The lists that open and close: the Done lane and the closed tickets. The browser keeps the choice of the user for each one.
+  var folds = Array.prototype.slice.call(document.querySelectorAll('details.lane')).map(function (lane) {
+    var name = 'forge-board:' + lane.getAttribute('data-state');
+    var open = false;
+    try { open = localStorage.getItem(name) === 'open'; } catch (error) { open = false; }
+    return { lane: lane, name: name, open: open };
+  });
   var forced = false;
 
   function pressed() {
@@ -275,11 +290,9 @@ ${UI_SCRIPT}
     each(document.querySelectorAll('.lane[data-state]'), function (lane) {
       lane.hidden = active && !lane.querySelector('.tcard:not([hidden]), .trow:not([hidden])');
     });
-    if (done) {
-      forced = true;
-      done.open = active ? !done.hidden : doneOpen;
-      forced = false;
-    }
+    forced = true;
+    folds.forEach(function (fold) { fold.lane.open = active ? !fold.lane.hidden : fold.open; });
+    forced = false;
     byId('showing').hidden = !active;
     byId('showing-text').textContent = shown ? 'The filter shows ' + shown + ' of ' + items.length + ' tickets.' : 'No ticket agrees with the filter.';
   }
@@ -306,10 +319,12 @@ ${UI_SCRIPT}
   });
   chips.forEach(function (chip) { chip.addEventListener('click', function () { toggleChip(chip); }); });
   byId('show-all').addEventListener('click', showAll);
-  if (done) done.addEventListener('toggle', function () {
-    if (forced || !byId('showing').hidden) return;
-    doneOpen = done.open;
-    try { localStorage.setItem('forge-board:done', doneOpen ? 'open' : 'closed'); } catch (error) { /* The storage is off: the lane still opens. */ }
+  folds.forEach(function (fold) {
+    fold.lane.addEventListener('toggle', function () {
+      if (forced || !byId('showing').hidden) return;
+      fold.open = fold.lane.open;
+      try { localStorage.setItem(fold.name, fold.open ? 'open' : 'closed'); } catch (error) { /* The storage is off: the list still opens. */ }
+    });
   });
 
   function step(by) {

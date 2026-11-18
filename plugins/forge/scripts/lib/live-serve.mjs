@@ -1,4 +1,4 @@
-// The live server: `forge.mjs live`. It shows the board page and the ticket canvases on this machine only (127.0.0.1),
+// The live server: `forge.mjs live`. It shows the board page, the wiki page, and the ticket canvases on this machine only (127.0.0.1),
 // with the live state of the agent sessions: the session hooks (live-hook.mjs) send their events to POST /event,
 // and a page reads the state from GET /live (the server holds the answer until the state changes).
 // It is read-only for a session: it has no route that sends text or an answer to a session, and no Send to agent.
@@ -19,6 +19,8 @@ import { LIVE_FILE, MAX_EVENT, checkEvent } from './live-event.mjs';
 import { createLive, detail, prune, reduce, summary } from './live.mjs';
 import { ticketRoot } from './tickets.mjs';
 import { buildNav } from './ui.mjs';
+import { WIKI_SCRIPT, renderWikiPage } from './wiki-page.mjs';
+import { buildWiki, wikiLinks } from './wiki.mjs';
 
 /** The server stops after this time without an event. */
 export const IDLE_MS = 8 * 60 * 60 * 1000;
@@ -30,6 +32,7 @@ const SWEEP_MS = 30 * 1000;
 const FLUSH_MS = 40;
 const PAGE_POLICY = policy(CANVAS_SCRIPT);
 const BOARD_POLICY = policy(BOARD_SCRIPT);
+const WIKI_POLICY = policy(WIKI_SCRIPT);
 const OLD_LINK = 'This link is old or not complete. Run "forge.mjs live --status" for the link of the live server.\n';
 
 export function liveFile(env = process.env) {
@@ -157,9 +160,17 @@ export async function serveLive(wiki, { links = 'vscode', port, idleMs = IDLE_MS
       }
       // Each load reads the ticket files again, so a page shows the current tickets.
       const board = buildBoard(wiki);
+      // The wiki model, for a page only: a request for a file of a ticket does not read the wiki.
+      let pages = null;
+      const model = () => (pages ??= buildWiki(wiki, { board }));
       if (url.pathname === '/board') {
-        const page = renderBoardPage(board, { links, wiki, serve: { token: pageToken, live: `/live?t=${pageToken}` }, nav: buildNav(board, { token: pageToken }) });
+        const page = renderBoardPage(board, { links, wiki, serve: { token: pageToken, live: `/live?t=${pageToken}` }, nav: buildNav(board, { token: pageToken, closed: model().closed }) });
         send(res, 200, 'text/html; charset=utf-8', page, { 'Content-Security-Policy': BOARD_POLICY });
+        return;
+      }
+      if (url.pathname === '/wiki') {
+        const page = renderWikiPage(model(), { links, serve: { token: pageToken }, nav: buildNav(board, { from: 'wiki', token: pageToken, closed: model().closed }) });
+        send(res, 200, 'text/html; charset=utf-8', page, { 'Content-Security-Policy': WIKI_POLICY });
         return;
       }
       const match = /^\/ticket\/([^/]+)(\/.*)?$/.exec(url.pathname);
@@ -175,8 +186,9 @@ export async function serveLive(wiki, { links = 'vscode', port, idleMs = IDLE_MS
       }
       if (match[2] === '/') {
         const page = renderCanvas(buildCanvas(dir), {
-          links, nav: buildNav(board, { from: name, token: pageToken }),
+          links, nav: buildNav(board, { from: name, token: pageToken, closed: model().closed }),
           serve: { token: pageToken, live: `/live?t=${pageToken}&ticket=${encodeURIComponent(name)}` },
+          wiki: wikiLinks(model(), { from: name, token: pageToken, dir }),
         });
         send(res, 200, 'text/html; charset=utf-8', page, { 'Content-Security-Policy': PAGE_POLICY });
         return;

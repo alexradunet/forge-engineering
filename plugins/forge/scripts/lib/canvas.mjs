@@ -291,17 +291,39 @@ function withToken(href, ctx) {
 }
 
 function inline(text, ctx) {
-  const codes = [];
-  let out = String(text).replace(/`([^`\n]+)`/g, (_, code) => { codes.push(code); return `${codes.length - 1}`; });
-  out = esc(out);
-  out = out.replace(/\[([^\]]+)\]\((&lt;.*?&gt;|[^)\s]+)\)/g, (all, label, target) => {
-    const href = withToken(linkTarget(unesc(target), ctx.links), ctx);
-    if (!href) return label;
-    return `<a href="${esc(href)}"${/^https?:/i.test(href) ? ' target="_blank" rel="noopener noreferrer"' : ''}>${label}</a>`;
+  // A finished piece of HTML waits behind a mark, so that a later rule does not change it.
+  const kept = [];
+  const keep = (html) => { kept.push(html); return `${kept.length - 1}`; };
+  const wiki = ctx.wiki ?? null;
+  const nav = wiki && !wiki.inPage ? ' data-nav' : '';
+  // The source cannot hold a mark of its own.
+  let out = String(text).replace(/[\uE000\uE001]/g, '').replace(/`([^`\n]+)`/g, (_, code) => {
+    const html = `<code>${esc(code)}</code>`;
+    const href = wiki && /\.md$/i.test(code) ? wiki.page(code) : '';
+    return keep(href ? `<a href="${esc(href)}"${nav}>${html}</a>` : html);
   });
-  out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  out = esc(out);
+  const strong = (value) => value.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  out = out.replace(/\[([^\]]+)\]\((&lt;.*?&gt;|[^)\s]+)\)/g, (all, label, target) => {
+    // A link to a page of the wiki opens the wiki page, so that the user stays in the forge pages.
+    const page = wiki ? wiki.link(unesc(target)) : '';
+    const href = page || withToken(linkTarget(unesc(target), ctx.links), ctx);
+    // On the wiki page (ctx.plain), a relative link to a file that is not a page has no target: its words stay as text.
+    if (!href || (ctx.plain && !page && !/^[a-z][a-z0-9+.-]*:/i.test(href))) return label;
+    return keep(`<a href="${esc(href)}"${page ? nav : ''}${/^https?:/i.test(href) ? ' target="_blank" rel="noopener noreferrer"' : ''}>${strong(label)}</a>`);
+  });
+  // The path of a wiki page in the text is a link to that page.
+  if (wiki) {
+    out = out.replace(/(^|[\s(])((?:[\w.-]+\/)+[\w.-]+\.md)(?![\w\/-])/g, (all, lead, relative) => {
+      const href = wiki.page(relative);
+      return href ? `${lead}${keep(`<a href="${esc(href)}"${nav}>${relative}</a>`)}` : all;
+    });
+  }
+  out = strong(out);
   out = out.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, (all, lead, url) => `${lead}<a href="${url.replace(/"/g, '%22')}" target="_blank" rel="noopener noreferrer">${url}</a>`);
-  return out.replace(/(\d+)/g, (_, index) => `<code>${esc(codes[Number(index)])}</code>`);
+  // A kept piece can hold the mark of another piece: the code in the label of a link.
+  const restore = (value) => value.replace(/(\d+)/g, (_, index) => restore(kept[Number(index)] ?? ''));
+  return restore(out);
 }
 
 const ITEM = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/;
@@ -358,8 +380,9 @@ export function markdown(text, ctx = { links: 'vscode' }) {
       out.push(`<table><thead><tr>${head.map((cell) => `<th>${inline(cell, ctx)}</th>`).join('')}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map((cell) => `<td>${inline(cell, ctx)}</td>`).join('')}</tr>`).join('')}</tbody></table>`);
       continue;
     }
-    const heading = /^#{1,6}\s+(.*)$/.exec(line);
-    if (heading) { flush(); out.push(`<h4>${inline(heading[1], ctx)}</h4>`); i++; continue; }
+    const heading = /^(#{1,6})\s+(.*)$/.exec(line);
+    // A card has one heading size. A wiki page (ctx.headings) keeps the levels, below the title of the page.
+    if (heading) { flush(); const tag = ctx.headings ? `h${Math.min(6, heading[1].length + ctx.headings)}` : 'h4'; out.push(`<${tag}>${inline(heading[2], ctx)}</${tag}>`); i++; continue; }
     if (/^\s*>/.test(line)) {
       flush();
       const quote = [];
@@ -456,8 +479,13 @@ function zoneHtml(zone, ctx, width = 0) {
   return `<section class="zone z-${esc(zone.id)}${now}" id="zone-${esc(zone.id)}" data-zone="${esc(zone.id)}"${width ? ` style="width:${width}px"` : ''}>${parts.join('')}</section>`;
 }
 
-function railHtml(model, nav, live = false) {
+function railHtml(model, nav, live = false, wiki = null) {
   const { ticket } = model;
+  // The wiki pages that the documents of the ticket name, and the link to the wiki page.
+  const refs = !wiki ? '' : `<details class="refs" id="wiki-refs"><summary title="The wiki pages that this ticket names. The key w opens the wiki">Wiki${wiki.refs.length ? ` <span>${wiki.refs.length}</span>` : ''}</summary><ul>`
+    + wiki.refs.map((ref) => `<li><a href="${esc(ref.href)}" data-nav><span class="what">${esc(ref.title)}</span><small>${esc(ref.path)}</small></a></li>`).join('')
+    + (wiki.refs.length ? '' : '<li class="none">This ticket names no wiki page.</li>')
+    + `<li class="all"><a href="${esc(wiki.home)}" data-nav>All wiki pages</a></li></ul></details>`;
   const gates = model.gates.filter((gate) => gate.name !== 'Sendable?' || gate.status === 'in-review').map((gate) => {
     const note = gate.status === 'approved' && gate.date ? `approved ${gate.date}` : GATE_TEXT[gate.status] ?? gate.status;
     // The mark says "approved" and "not open". Only a gate that needs attention shows its words.
@@ -487,6 +515,7 @@ function railHtml(model, nav, live = false) {
     + `<span class="pill st-${esc(ticket.state)}"><span aria-hidden="true">${ticket.emoji ?? ''}</span> ${esc(STATE_LABEL[ticket.state] ?? ticket.state)}</span><span class="phase">${esc(ticket.phase)}</span>`
     + `<div class="tools">${nav ? hop(nav.prev, 'prev', '‹', '[') + hop(nav.next, 'next', '›', ']') : ''}`
     + (live ? '<button type="button" id="live-toggle" class="lv-idle" aria-pressed="false" title="What the session of this ticket does now (l)"><span class="lv-state">Live</span></button>' : '')
+    + refs
     + `<button type="button" id="tray-toggle" title="Your comments on this ticket">Comments <span id="comment-count">0</span></button>${TOOLS_HTML}</div></div>`
     + `<div class="sub"><ol class="gates" aria-label="Gates">${gates}</ol>`
     + `<div class="next" title="${esc(`Next: ${ticket.next}${ticket.waitingOn ? `. Waiting on: ${ticket.waitingOn}` : ''}`)}"><span>Next</span> ${esc(ticket.next)}${ticket.waitingOn ? ` <span>· Waiting on</span> ${esc(ticket.waitingOn)}` : ''} ${changes}</div>`
@@ -528,12 +557,13 @@ const LIVE_HTML = '<aside id="live" aria-label="Live" hidden><h2>Live <button ty
  * serve.home is the key of the ticket of that server, when this page shows another ticket: then the page cannot send.
  * serve.live is the address of the session states on the live server (live-serve.mjs): then the page has the Live panel, and it cannot send.
  * nav (buildNav in ui.mjs) adds the links to the board page and to the other tickets.
+ * wiki (wikiLinks in wiki.mjs) makes each link to a wiki page open the wiki page, and adds the Wiki menu of the bar.
  */
-export function renderCanvas(model, { links = 'vscode', serve = null, nav = null } = {}) {
+export function renderCanvas(model, { links = 'vscode', serve = null, nav = null, wiki = null } = {}) {
   if (!LINK_MODES.includes(links)) throw new Error(`Unknown link mode: ${links}. Use ${LINK_MODES.join(' or ')}.`);
   const token = serve?.token ?? '';
   if (token && !/^[0-9a-f]{32}$/.test(token)) throw new Error('The canvas token must have 32 hexadecimal characters.');
-  const ctx = { links, token, gates: model.gates, focus: model.focus ?? '' };
+  const ctx = { links, token, gates: model.gates, focus: model.focus ?? '', wiki };
   const { ticket } = model;
   const zone = (id) => model.zones.find((item) => item.id === id);
   // The code map sets the width of the middle column: each lane needs room for its components and its arrows.
@@ -550,7 +580,7 @@ export function renderCanvas(model, { links = 'vscode', serve = null, nav = null
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
     `<title>${esc(ticket.key)} · ${esc(ticket.short || ticket.title)}</title>`,
     `<style>${CANVAS_STYLE}</style>`, '</head>', `<body class="layout-${model.layout}">`,
-    railHtml(model, nav, Boolean(live)),
+    railHtml(model, nav, Boolean(live), wiki),
     `<div id="stage"><main id="viewport"><div id="board">${board}</div></main>`,
     '<div id="pop" role="toolbar" aria-label="Selected words" hidden><button type="button" data-act="comment">Comment</button><button type="button" data-act="remove">Remove</button>'
       + '<button type="button" data-label="unclear">unclear</button><button type="button" data-label="wrong">wrong</button><button type="button" data-label="too much">too much</button></div>',
@@ -562,7 +592,8 @@ export function renderCanvas(model, { links = 'vscode', serve = null, nav = null
     `<footer id="foot">${note}<p>Generated ${esc(model.generated)} UTC by <code>forge.mjs canvas</code> from the ticket files. This page is a view: change the Markdown files, not this page. Press <kbd>?</kbd> for the keys.</p>`
       + '<div class="zoomer" role="group" aria-label="Zoom"><button type="button" class="quiet icon" id="zoom-out" title="Zoom out (-)" aria-label="Zoom out">−</button><output id="zoom-level">100%</output>'
       + '<button type="button" class="quiet icon" id="zoom-in" title="Zoom in (+)" aria-label="Zoom in">+</button><button type="button" class="quiet" id="zoom-fit" title="Show the whole ticket (0)">Fit</button></div></footer>',
-    switcherHtml(nav), helpHtml(live ? [...HELP, 'Live', [['l'], 'Show or hide the Live panel: what the session of this ticket does now']] : HELP),
+    switcherHtml(nav), helpHtml([...(wiki ? HELP.flatMap((row) => (row[1] === 'Go to the board of all tickets' ? [row, [['w'], 'Go to the wiki of the repository']] : [row])) : HELP),
+      ...(live ? ['Live', [['l'], 'Show or hide the Live panel: what the session of this ticket does now']] : [])]),
     '<div id="toast" role="status" hidden></div>',
     `<script type="application/json" id="canvas-data">${data}</script>`,
     `<script>${CANVAS_SCRIPT}</script>`, '</body>', '</html>', '',
@@ -573,7 +604,7 @@ export function renderCanvas(model, { links = 'vscode', serve = null, nav = null
  * Builds the model and writes <ticket>/canvas.html. With `keep`, a page that differs only in its time is not written again,
  * so a browser with the page open does not load it again.
  */
-export function writeCanvas(dir, { links = 'vscode', now, nav = null, model = null, keep = false } = {}) {
+export function writeCanvas(dir, { links = 'vscode', now, nav = null, model = null, keep = false, wiki = null } = {}) {
   model ??= buildCanvas(dir, { now });
   const file = path.join(dir, CANVAS_FILE);
   const present = existsSync(file);
@@ -582,8 +613,8 @@ export function writeCanvas(dir, { links = 'vscode', now, nav = null, model = nu
   if (keep && present) {
     const old = readFileSync(file, 'utf8');
     const stamp = /"generated":"([^"]*)"/.exec(old)?.[1];
-    if (stamp && renderCanvas({ ...model, generated: stamp }, { links, nav }) === old) written = false;
+    if (stamp && renderCanvas({ ...model, generated: stamp }, { links, nav, wiki }) === old) written = false;
   }
-  if (written) writeFileSync(file, renderCanvas(model, { links, nav }));
+  if (written) writeFileSync(file, renderCanvas(model, { links, nav, wiki }));
   return { key: model.ticket.key, file, written, layout: model.layout, zones: model.zones.map((zone) => zone.id), missing: model.missing, model };
 }

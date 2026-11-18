@@ -1,7 +1,7 @@
 // The canvas server: `forge.mjs canvas <key> --serve`. It shows the ticket canvas on this machine only (127.0.0.1),
 // and it stops when the user sends the comments from the page. Then it prints the comment message for the session.
-// With the wiki, it also shows the board page (/board) and the canvas of each other ticket (/ticket/<folder>/),
-// so the user can go from ticket to ticket. Only the page of its own ticket can send comments.
+// With the wiki, it also shows the board page (/board), the wiki page (/wiki), and the canvas of each other ticket (/ticket/<folder>/),
+// so the user can go from ticket to ticket and to the wiki. Only the page of its own ticket can send comments.
 // It writes no file except the pages (canvas.html, board.html), it has no CORS header, and each request needs the token of this run.
 import http from 'node:http';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
@@ -15,6 +15,8 @@ import { CANVAS_SCRIPT, canvasMessage } from './canvas-page.mjs';
 import { ticketRoot } from './tickets.mjs';
 import { buildNav } from './ui.mjs';
 import { writeViews } from './views.mjs';
+import { WIKI_SCRIPT, renderWikiPage } from './wiki-page.mjs';
+import { buildWiki, wikiLinks } from './wiki.mjs';
 
 export const SERVE_HOST = '127.0.0.1';
 const PORT_BASE = 41000;
@@ -35,6 +37,7 @@ export const BASE_HEADERS = { 'Cache-Control': 'no-store', 'Referrer-Policy': 'n
 export const policy = (script) => `default-src 'none'; script-src 'sha256-${createHash('sha256').update(script).digest('base64')}'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'`;
 const PAGE_POLICY = policy(CANVAS_SCRIPT);
 const BOARD_POLICY = policy(BOARD_SCRIPT);
+const WIKI_POLICY = policy(WIKI_SCRIPT);
 const OLD_LINK = 'This link is old or not complete. Ask the ticket session for the new canvas link.\n';
 
 /** The first port that the server tries for a ticket. The same ticket gets the same port, so the browser keeps the view and the comments. */
@@ -188,14 +191,25 @@ export async function serveCanvas(dir, { links = 'vscode', port, limitMs = LIMIT
       }
       // Each load reads the ticket files again, so a page shows the current tickets.
       const board = linked ? buildBoard(wiki) : null;
+      // The wiki model, for a page only: a request for a file of a ticket does not read the wiki.
+      let pages = null;
+      const model = () => (pages ??= buildWiki(wiki, { board }));
       if (url.pathname === '/') {
-        const page = renderCanvas(buildCanvas(dir), { links, serve: { token }, nav: board && buildNav(board, { from: folder, token, home: folder }) });
+        const page = renderCanvas(buildCanvas(dir), {
+          links, serve: { token }, nav: board && buildNav(board, { from: folder, token, home: folder, closed: model().closed }),
+          wiki: board && wikiLinks(model(), { from: folder, token, dir }),
+        });
         send(res, 200, 'text/html; charset=utf-8', page, { 'Content-Security-Policy': PAGE_POLICY });
         return;
       }
       if (board && url.pathname === '/board') {
-        const page = renderBoardPage(board, { links, wiki, serve: { token }, nav: buildNav(board, { token, home: folder }) });
+        const page = renderBoardPage(board, { links, wiki, serve: { token }, nav: buildNav(board, { token, home: folder, closed: model().closed }) });
         send(res, 200, 'text/html; charset=utf-8', page, { 'Content-Security-Policy': BOARD_POLICY });
+        return;
+      }
+      if (board && url.pathname === '/wiki') {
+        const page = renderWikiPage(model(), { links, serve: { token }, nav: buildNav(board, { from: 'wiki', token, home: folder, closed: model().closed }) });
+        send(res, 200, 'text/html; charset=utf-8', page, { 'Content-Security-Policy': WIKI_POLICY });
         return;
       }
       const other = board ? /^\/ticket\/([^/]+)(\/.*)?$/.exec(url.pathname) : null;
@@ -212,7 +226,10 @@ export async function serveCanvas(dir, { links = 'vscode', port, limitMs = LIMIT
           return;
         }
         if (other[2] === '/') {
-          const page = renderCanvas(buildCanvas(there), { links, serve: { token, home: key }, nav: buildNav(board, { from: name, token, home: folder }) });
+          const page = renderCanvas(buildCanvas(there), {
+            links, serve: { token, home: key }, nav: buildNav(board, { from: name, token, home: folder, closed: model().closed }),
+            wiki: wikiLinks(model(), { from: name, token, dir: there }),
+          });
           send(res, 200, 'text/html; charset=utf-8', page, { 'Content-Security-Policy': PAGE_POLICY });
           return;
         }
@@ -238,7 +255,7 @@ export async function serveCanvas(dir, { links = 'vscode', port, limitMs = LIMIT
   signals.once('SIGTERM', onTerm);
   const timer = setTimeout(() => finish({ code: 3 }), limitMs);
   out.write(`${key}: serving http://${SERVE_HOST}:${bound}/?t=${token}\n  file  ${pathToFileURL(written.file).href}\n`
-    + (linked ? `  board http://${SERVE_HOST}:${bound}/board?t=${token}\n` : '')
+    + (linked ? `  board http://${SERVE_HOST}:${bound}/board?t=${token}\n  wiki  http://${SERVE_HOST}:${bound}/wiki?t=${token}\n` : '')
     + (written.missing.length ? `  not written yet: ${written.missing.join(', ')}\n` : ''));
 
   const result = await ended;

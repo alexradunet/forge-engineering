@@ -174,7 +174,8 @@ test('the canvas with the links has the board link, the switcher, and the previo
   assert.match(html, /<a class="quiet icon" href="\.\.\/app-9\/canvas\.html" data-nav rel="prev" title="Previous ticket: APP-9 \(\[\)"/);
   assert.match(html, /<a class="quiet icon" href="\.\.\/app-11\/canvas\.html" data-nav rel="next" title="Next ticket: APP-11 \(\]\)"/);
   assert.match(html, /<a href="\.\.\/app-10\/canvas\.html" data-nav data-text="[^"]*" aria-current="page">/);
-  assert.match(html, /"nav":\{"board":"\.\.\/\.\.\/board\.html","prev":"\.\.\/app-9\/canvas\.html","next":"\.\.\/app-11\/canvas\.html"\}/);
+  // Forge 8.1 adds the link to the wiki page (tests/wiki-page.test.mjs).
+  assert.match(html, /"nav":\{"board":"\.\.\/\.\.\/board\.html","wiki":"\.\.\/\.\.\/wiki\.html","prev":"\.\.\/app-9\/canvas\.html","next":"\.\.\/app-11\/canvas\.html"\}/);
   assert.match(html, /<span class="pill st-blocked"><span aria-hidden="true">🔴<\/span> Blocked<\/span>/);
   assert.equal(html.match(/<script\b/g).length, 2);
   // A served page of another ticket names the ticket of the server, and then it cannot send.
@@ -229,7 +230,7 @@ test('forge.mjs board writes the pages, and forge.mjs canvas writes the board pa
   const run = (...args) => spawnSync(process.execPath, [cli, ...args, '--cwd', cwd, '--wiki', w.root], { encoding: 'utf8' });
   const one = run('canvas', 'APP-10');
   assert.equal(one.status, 0, one.stderr);
-  assert.match(one.stdout, /APP-10: wrote .*canvas\.html\n {2}open {2}file:\/\/\S+canvas\.html\n {2}board file:\/\/\S+board\.html\n/);
+  assert.match(one.stdout, /APP-10: wrote .*canvas\.html\n {2}open {2}file:\/\/\S+canvas\.html\n {2}board file:\/\/\S+board\.html\n {2}wiki {2}file:\/\/\S+wiki\.html\n/);
   for (const key of ['app-9', 'app-10', 'app-11', 'app-2']) assert.ok(existsSync(path.join(w.root, 'raw', 'tickets', key, 'canvas.html')), key);
   assert.ok(existsSync(path.join(w.root, 'raw', 'board.html')));
 
@@ -243,7 +244,7 @@ test('forge.mjs board writes the pages, and forge.mjs canvas writes the board pa
   assert.deepEqual(report.page.failed, []);
   assert.deepEqual(report.groups[0].tickets[0].gates, [{ name: 'Scoped?', status: 'approved', doc: 'story.md' }, { name: 'Planned?', status: 'in-review', doc: 'plan.md' }]);
   const human = run('board', '--today', TODAY, '--links', 'file');
-  assert.match(human.stdout, /board\.md\n {2}open {2}file:\/\/\S+board\.html\n$/);
+  assert.match(human.stdout, /board\.md\n {2}open {2}file:\/\/\S+board\.html\n {2}wiki {2}file:\/\/\S+wiki\.html\n$/);
   assert.doesNotMatch(readFileSync(path.join(w.root, 'raw', 'board.html'), 'utf8'), /vscode:/);
   const bad = run('board', '--links', 'web');
   assert.equal(bad.status, 1);

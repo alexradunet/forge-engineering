@@ -49,7 +49,7 @@ so your memory of a VS Code feature can be old.
 - The ticket canvas (`scripts/lib/canvas.mjs`) reads the section names and the line shapes of the `full-v3` templates.
   Change a template and the canvas together (`tests/canvas.test.mjs`). The page loads nothing from a network.
   In serve mode (`scripts/lib/canvas-serve.mjs`), the page sends the comments only to the forge server on `127.0.0.1` (`tests/canvas-serve.test.mjs`).
-- The board page (`scripts/lib/board-page.mjs`) and the ticket canvas share one design system: `scripts/lib/ui.mjs` and [docs/design-system.md](docs/design-system.md).
+- The board page (`scripts/lib/board-page.mjs`), the wiki page (`scripts/lib/wiki-page.mjs`), and the ticket canvas share one design system: `scripts/lib/ui.mjs` and [docs/design-system.md](docs/design-system.md).
   Change a token or a shared component and the document together (`tests/board-page.test.mjs`). Look at each page change in a browser, in the light and the dark theme.
 - Change the version in `plugins/forge/plugin.json`, `.github/plugin/marketplace.json`, and `.claude-plugin/marketplace.json` together (`tests/packaging.test.mjs`).
 - Never commit a wiki `raw/` file, a credential, or a personal path.
