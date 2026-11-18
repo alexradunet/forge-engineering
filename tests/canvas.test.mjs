@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { buildCanvas, linkTarget, markdown, numberedItems, renderCanvas, tableRow, writeCanvas } from '../plugins/forge/scripts/lib/canvas.mjs';
+import { TIERS, buildCanvas, focusGate, linkTarget, markdown, numberedItems, renderCanvas, tableRow, writeCanvas } from '../plugins/forge/scripts/lib/canvas.mjs';
 
 const cli = fileURLToPath(new URL('../plugins/forge/scripts/forge.mjs', import.meta.url));
 const cwd = fileURLToPath(new URL('..', import.meta.url));
@@ -216,4 +216,76 @@ test('the templates of the ticket skill give a canvas with every part', (t) => {
   assert.equal(zone('story').questions.length, 1);
   assert.equal(zone('journal').cards.length, 5);
   assert.ok(zone('close').cards.length >= 3);
+});
+
+test('each card has a tier and a gate, an exception moves a card up, and the focus is the gate that waits', (t) => {
+  const f = wiki(t);
+  fill(f);
+  const model = buildCanvas(f.dir);
+  assert.equal(model.focus, 'Scoped?');
+  assert.equal(model.focusZone, 'story');
+  const [story, code, plan, review, journal] = model.zones;
+  assert.deepEqual(story.cards.map((card) => [card.section, card.tier, card.gate]), [['Summary', 'must', 'Scoped?'], ['Scope', 'must', 'Scoped?']]);
+  assert.deepEqual(story.questions.map((card) => card.tier), ['must']);
+  assert.deepEqual(story.people.map((person) => person.tier), ['good']);
+  assert.deepEqual([code.graph.tier, code.graph.gate, code.cards[0].tier, code.more[0].tier], ['must', 'Planned?', 'must', 'ai']);
+  assert.deepEqual(plan.hypotheses.map((card) => [card.tier, card.alert]), [['good', false], ['good', false]]);
+  assert.deepEqual(plan.steps.map((card) => card.tier), ['good', 'good', 'good']);
+  assert.deepEqual(plan.more.map((card) => [card.section, card.tier]), [['Risks', 'must']]);
+  // Only the failed check is an exception. A check that is open or not proven is not.
+  assert.deepEqual(review.checks.map((card) => [card.tier, card.alert, card.gate]), [['good', false, 'Learned?'], ['must', true, 'Learned?'], ['good', false, 'Learned?'], ['good', false, 'Learned?']]);
+  assert.deepEqual(journal.cards.map((card) => card.tier), ['ai', 'ai', 'ai', 'ai', 'ai']);
+  assert.equal(story.cards[0].words, 12);
+
+  f.put('plan.md', readFileSync(path.join(f.dir, 'plan.md'), 'utf8').replace('- H2 rejected', '- H3 open: the queue is full\n- H2 rejected'));
+  f.put('journal.md', readFileSync(path.join(f.dir, 'journal.md'), 'utf8') + '\n## 2026-11-14 problem: the job stops\n\nCause: a lock.\n');
+  const next = buildCanvas(f.dir);
+  assert.deepEqual(next.zones[2].hypotheses.map((card) => [card.state, card.tier, card.alert]), [['supported', 'good', false], ['open', 'must', true], ['rejected', 'good', false]]);
+  assert.deepEqual([next.zones[4].cards[0].state, next.zones[4].cards[0].tier, next.zones[4].cards[0].alert], ['problem', 'must', true]);
+
+  const gate = (name, status) => ({ name, status });
+  assert.equal(focusGate([]), '');
+  assert.equal(focusGate([gate('Scoped?', 'approved'), gate('Planned?', 'todo'), gate('Sendable?', 'in-review'), gate('Shippable?', 'in-review')]), 'Shippable?');
+  assert.equal(focusGate([gate('Scoped?', 'approved'), gate('Planned?', 'skipped'), gate('Sendable?', 'todo'), gate('Shippable?', 'todo'), gate('Learned?', 'todo')]), 'Shippable?');
+  assert.equal(focusGate([gate('Scoped?', 'approved'), gate('Sendable?', 'todo'), gate('Learned?', 'approved')]), '');
+});
+
+test('the page has the views and the fold data of each card, and an older ticket has none', (t) => {
+  const f = wiki(t);
+  fill(f);
+  const html = renderCanvas(buildCanvas(f.dir));
+  assert.deepEqual([...html.matchAll(/<button type="button" data-view="([a-z]+)" aria-pressed="false" title="[^"]+">([^<]+)<\/button>/g)].map((match) => [match[1], match[2]]),
+    [['focus', 'Now: Scoped'], ['must', 'Must read'], ['good', '+ Good to know'], ['all', 'All']]);
+  assert.match(html, /"focus":"Scoped\?","focusZone":"story"/);
+  assert.match(html, /<section class="zone z-story z-now" id="zone-story"/);
+  assert.match(html, /<section class="zone z-plan" id="zone-plan"/);
+  assert.match(html, /<h2>Story <span class="zgate g-in-review" title="Scoped\? waits for you"><span aria-hidden="true">🟡<\/span> waits for you<\/span> /);
+  assert.match(html, /id="story-scope" data-file="story\.md" data-section="Scope" data-title="Scope" data-tier="must" data-gate="Scoped\?" data-words="\d+"><h3><span class="meta" title="Must read">must · \d+ w<\/span>Scope<\/h3>/);
+  assert.match(html, /id="code-graph" data-title="Components and flow" data-tier="must" data-gate="Planned\?" data-words="\d+"><h3><span class="meta" title="Must read">must · 4 components<\/span>/);
+  assert.match(html, /id="proof-check-1" [^>]*data-tier="good" data-gate="Learned\?" data-words="4" data-bundle="verified checks">/);
+  assert.match(html, /id="journal-1" [^>]*data-tier="ai" data-gate="" data-words="\d+" data-bundle="journal entries">/);
+  assert.match(html, /id="person-ana" [^>]*data-tier="good" data-gate="" data-words="\d+">/);
+  // A card without text is only its title, so it has no tier and it never folds.
+  assert.match(html, /id="proof-check-2" data-file="proof\.md" data-section="Checks" data-title="[^"]+"><h3>/);
+  assert.match(html, /id="plan-step-3" data-file="plan\.md" data-section="Steps" data-title="3\. Remove the old key"><h3>/);
+
+  // After the last gate, the page has no view of one gate.
+  f.put('README.md', readFileSync(path.join(f.dir, 'README.md'), 'utf8').replaceAll('status: in-review', 'status: approved, date: 2026-11-12'));
+  const done = renderCanvas(buildCanvas(f.dir));
+  assert.doesNotMatch(done, /<button[^>]*data-view="focus"|"focus":|class="zone [^"]*z-now/);
+  assert.match(done, /data-view="must"/);
+
+  const old = wiki(t, { workflow: 'full-v2' });
+  old.put('scope.md', '# Scope (APP-9): Retry\n\n## 1 min\n\nRetries stop.\n');
+  assert.doesNotMatch(renderCanvas(buildCanvas(old.dir)), /data-view=|data-tier=|class="views"|class="zgate/);
+});
+
+test('each section of a template has one tier, and each tier entry is a section of its template', () => {
+  for (const [name, tiers] of Object.entries(TIERS)) {
+    const listed = [...tiers.must, ...tiers.good, ...tiers.ai];
+    assert.equal(new Set(listed).size, listed.length, `${name}: a section has two tiers`);
+    if (name === 'journal.md') { assert.deepEqual(tiers, { must: [], good: [], ai: ['*'] }); continue; }
+    const headings = [...readFileSync(path.join(templates, name), 'utf8').matchAll(/^## (.+?)\r?$/gm)].map((match) => match[1].toLowerCase());
+    assert.deepEqual([...listed].sort(), ['summary', ...headings].sort(), name);
+  }
 });

@@ -129,6 +129,14 @@ The canvas is one HTML page that shows the whole ticket on one board: the gate r
   - When a message starts with `Canvas comments for` and names the key of another ticket, change no document. Tell the user to paste the message into the session of that ticket.
 - The page is a view. Never edit it, never list it in a manifest, and never take a fact or an approval from it.
 - The canvas reads the section names and the line shapes of the templates. Keep them, or a card stays empty.
+- The canvas opens with the cards that the user must read for the gate that waits: the summary of each document, and the `must` sections of the document of that gate. Each other card is folded to its title. So put each fact that the user needs for the gate decision into the summary or into one of these sections:
+  - `story.md`: Problem, Scope, Done when, Facts, Preserve, and Open questions.
+  - `map.md`: Components and Flow.
+  - `plan.md`: the step titles, Risks, and Decisions. The text below a step title is folded.
+  - `review.md`: Changes, Findings, and Not checked.
+  - `proof.md`: Accepted gaps. A failed check is also open.
+  - `close.md`: What you now know.
+- The canvas also opens an open hypothesis of the Diagnosis and a `problem` entry of the journal. The other sections are "good to know" or working notes: the user opens them only on demand, so do not rely on them for a decision.
 - On the canvas, the user can comment on a card or on selected words, mark text with **Remove**, give a label (`unclear`, `wrong`, `too much`), and write one comment on the whole ticket. The comments come as one message. That message starts with `Canvas comments for <KEY>:`. Handle it as review comments (gate Procedure, step 8).
 - The code map on the canvas comes from `map.md`: one lane for each **Layer** of the **Components** table, one arrow for each **Flow** line, and a mark for each **Change** value. Keep `map.md` to the slice of the code that this ticket needs: 6 to 20 components.
 

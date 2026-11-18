@@ -63,6 +63,9 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 .next a { margin-left: var(--s-2); font-size: var(--t-sm); }
 #rail nav { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; }
 #rail nav button[aria-current="true"] { color: var(--ink); font-weight: 600; background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.views { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; }
+.views span { margin-right: var(--s-1); font-size: var(--t-sm); color: var(--muted); }
+.views button { padding: 0 10px; font-size: var(--t-sm); }
 #comment-count { font-weight: 600; }
 #tray-toggle.has { border-color: var(--amber); background: color-mix(in srgb, var(--amber) 14%, var(--card)); }
 
@@ -77,7 +80,12 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 .column { display: flex; flex-direction: column; gap: 56px; }
 .zone { width: 560px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-3); padding: 18px 20px 22px; cursor: default; }
 .z-code, .z-plan { width: 1180px; }
-.zone > .card, .zone > .row, .zone > .graph { max-width: 100%; }
+.zone > .card, .zone > .row, .zone > .unit { max-width: 100%; }
+.zgate { margin-left: 8px; font-size: var(--t-sm); font-weight: 400; color: var(--muted); white-space: nowrap; }
+.zgate.g-approved { color: var(--green); }
+.zgate.g-in-review { color: var(--ink); font-weight: 600; }
+.zgate.g-blocked { color: var(--red); }
+body.view-focus .zone.z-now { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .zone > h2 { margin: 0 0 14px; font-size: var(--t-2xl); line-height: 1.2; cursor: pointer; transform-origin: 0 100%; }
 .src { margin-left: 8px; font-size: var(--t-sm); font-weight: 400; color: var(--muted); }
 h4.group { margin: 18px 0 8px; font-size: var(--t-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); }
@@ -141,9 +149,32 @@ svg.labels text.on { display: block; }
 .edge-list { margin: 8px 0 0; padding-left: 20px; font-size: var(--t-sm); color: var(--muted); }
 .graph.drawn + .edge-list { display: none; }
 
-.cbtn { position: absolute; right: 8px; bottom: 6px; padding: 0 8px; font-size: var(--t-xs); opacity: 0; }
-.card:hover > .cbtn, .node:hover > .cbtn, .cbtn:focus-visible { opacity: 1; }
-@media (hover: none) { .cbtn { position: static; display: block; margin: 8px 0 0 auto; opacity: 0.8; } }
+.ctools { position: absolute; right: 8px; bottom: 6px; display: flex; gap: 4px; opacity: 0; }
+.ctools button { padding: 0 8px; font-size: var(--t-xs); }
+.card:hover > .ctools, .node:hover > .ctools, .unit:hover > .ctools, .ctools:focus-within { opacity: 1; }
+.unit > .ctools { right: 0; top: 0; bottom: auto; }
+@media (hover: none) { .ctools { position: static; justify-content: flex-end; margin: 8px 0 0; opacity: 0.8; } }
+
+/* A folded card is a title strip: one line with the title, the tier, and the size. A step keeps its place on the path. */
+.unit { position: relative; }
+.unit > h3 { margin: 18px 0 8px; font-size: var(--t-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); }
+.meta { display: none; float: right; margin-left: 8px; font-size: var(--t-xs); font-weight: 400; color: var(--muted); white-space: nowrap; }
+.folded { cursor: pointer; }
+.folded > .body, .folded > .comments, .folded > .editor, .folded > .ctools, .folded > .graph, .folded > .edge-list, .tucked { display: none; }
+.folded:not(.k-step) { margin: 0 0 2px; padding: 3px 10px; border-radius: 3px; background: transparent; border-top-color: transparent; border-right-color: transparent; border-bottom-color: transparent; }
+.folded:not(.k-step) > h3 { margin: 0; font-size: var(--t-sm); font-weight: 500; line-height: 1.5; text-transform: none; letter-spacing: 0; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.folded > h3::before, .bundle::before { content: "\25B8"; margin-right: 6px; color: var(--muted); }
+.folded:not(.k-step) > h3 > .meta, .bundle > .meta { display: inline; }
+.folded:not(.k-step):hover, .bundle:hover { background: color-mix(in srgb, var(--muted) 12%, transparent); }
+.folded:hover > h3 { color: var(--ink); }
+.folded:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.k-step.folded > h3 { margin: 0; }
+.row:not(.path) > .folded { order: 1; margin: 0; }
+/* In a wide part, an open card of a row takes the free width, so a card to read has lines of a normal length. */
+.z-code .row:not(.path) > .card:not(.folded), .z-plan .row:not(.path) > .card:not(.folded) { flex: 1 1 272px; max-width: 560px; }
+.row > .bundle { order: 2; margin: 0; }
+.bundle { display: block; width: 100%; margin: 0 0 2px; padding: 3px 10px; text-align: left; font-size: var(--t-sm); font-weight: 500; line-height: 1.5; color: var(--muted); background: transparent; border: 1px dashed var(--line); }
+.zone > .bundle { margin-top: 10px; }
 .has-comments { box-shadow: 0 0 0 2px var(--amber); }
 .comments { list-style: none; margin: 10px 0 0; padding: 0; }
 .comments li { display: flex; gap: 8px; align-items: flex-start; margin: 0 0 6px; padding: 6px 8px; border-left: 3px solid var(--amber); background: color-mix(in srgb, var(--amber) 12%, transparent); border-radius: 0 6px 6px 0; }
@@ -158,12 +189,17 @@ svg.labels text.on { display: block; }
 #pop { position: fixed; z-index: 6; display: flex; gap: 4px; padding: 4px; background: var(--rail); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--sh-2); }
 
 /* The far view is a map: each card shows its title in a large size and its state as a tint. */
-.far svg.labels, .far .card > h3, .far .node > h3, .far .card > .body, .far .node > .body, .far h4.group, .far .src, .far .lane > h4, .far .cbtn, .far .comments, .far .editor, .far .row.path > .card + .card::before { visibility: hidden; }
+.far svg.labels, .far .card > h3, .far .node > h3, .far .card > .body, .far .node > .body, .far h4.group, .far .src, .far .lane > h4, .far .ctools, .far .unit > h3, .far .bundle, .far .zgate, .far .comments, .far .editor, .far .row.path > .card + .card::before { visibility: hidden; }
 .far .card, .far .node { overflow: hidden; }
 .far .card::after, .far .node::after { content: attr(data-title); position: absolute; left: 12px; top: 9px; width: calc((100% - 22px) / var(--s)); max-height: calc((100% - 12px) / var(--s)); overflow: hidden; transform: scale(var(--s)); transform-origin: 0 0; font-size: 15px; font-weight: 600; line-height: 1.25; overflow-wrap: break-word; }
 /* Whole lines only: a line that does not fit is not shown in part. */
 @supports (height: round(down, 10px, 1lh)) { .far .card::after, .far .node::after { max-height: max(1lh, round(down, calc((100% - 12px) / var(--s)), 1lh)); } }
 .far .node::after { font-size: 13px; }
+/* On the map, a title strip is a thin line without words: the cards to read stand out. */
+.far .folded:not(.k-step)::after { content: none; }
+/* A folded step has the height of one line. On the map it needs the height of one line of the large title. */
+.far .k-step.folded { min-height: 76px; }
+.far .folded:not(.k-step) { border-top-color: var(--line); border-right-color: var(--line); border-bottom-color: var(--line); }
 .far .s-done, .far .s-verified, .far .s-supported, .far .node.c-done { background: color-mix(in srgb, var(--green) 16%, var(--card)); }
 .far .s-failed, .far .k-entry.s-problem { background: color-mix(in srgb, var(--red) 16%, var(--card)); }
 .far .k-question, .far .node.c-planned, .far .s-to-contact, .far .s-drafted, .far .s-follow-up, .far .s-reply-in { background: color-mix(in srgb, var(--amber) 16%, var(--card)); }
@@ -286,7 +322,7 @@ ${UI_SCRIPT}
   var drag = null;
   viewport.addEventListener('pointerdown', function (event) {
     var far = document.body.classList.contains('far');
-    var blocked = event.target.closest(far ? 'button, a, textarea' : '.card, .node, button, a, textarea');
+    var blocked = event.target.closest(far ? 'button, a, textarea' : '.card, .node, .folded, button, a, textarea');
     if (event.button === 1 || (event.button === 0 && !blocked)) {
       drag = { x: event.clientX - view.x, y: event.clientY - view.y, moved: false };
       viewport.setPointerCapture(event.pointerId);
@@ -330,6 +366,7 @@ ${UI_SCRIPT}
     else if (event.key === 'ArrowUp') { view.y += 90; apply(false); }
     else if (event.key === 'ArrowDown') { view.y -= 90; apply(false); }
     else if (event.key === 'Escape') { if (pop.hidden) tray.hidden = true; else hidePop(); }
+    else if (event.key === 'v' && viewButtons.length) setView(viewButtons[(viewNames().indexOf(fold.view) + 1) % viewButtons.length].getAttribute('data-view'));
     else return;
     event.preventDefault();
   });
@@ -348,6 +385,8 @@ ${UI_SCRIPT}
   function drawEdges() {
     var ns = 'http://www.w3.org/2000/svg';
     Array.prototype.forEach.call(document.querySelectorAll('.graph'), function (graph, graphIndex) {
+      // A folded graph has no size. The next call draws it, after the user opens it.
+      if (!graph.offsetWidth) return;
       var svg = graph.querySelector('svg.edges');
       var labels = graph.querySelector('svg.labels');
       while (labels.firstChild) labels.removeChild(labels.firstChild);
@@ -440,6 +479,115 @@ ${UI_SCRIPT}
     });
   });
 
+  // The views. A card has a tier: must read, good to know, or AI artifact (data-tier, see TIERS in canvas.mjs).
+  // A view opens the cards of its tiers and folds the other cards to a title strip. The user can open or fold each card.
+  // The browser keeps the view and these choices for the gate in focus: a new gate starts with its own view again.
+  var viewButtons = document.querySelectorAll('[data-view]');
+  function viewNames() { return Array.prototype.map.call(viewButtons, function (button) { return button.getAttribute('data-view'); }); }
+  function firstFold() { return { view: data.focus ? 'focus' : 'must', gate: data.focus || '', cards: {}, bundles: {} }; }
+  var fold = store.get('fold', null);
+  if (!fold || fold.gate !== (data.focus || '') || viewNames().indexOf(fold.view) < 0 || !fold.cards || typeof fold.cards !== 'object' || !fold.bundles || typeof fold.bundles !== 'object') fold = firstFold();
+
+  function openByView(el) {
+    var tier = el.getAttribute('data-tier');
+    if (fold.view === 'all') return true;
+    if (fold.view === 'good') return tier !== 'ai';
+    if (fold.view === 'must') return tier === 'must';
+    // The gate in focus: its cards to read, each exception, and the summary of each part.
+    return el.classList.contains('k-summary') || (tier === 'must' && (el.getAttribute('data-gate') === data.focus || el.hasAttribute('data-alert')));
+  }
+
+  function layoutFolds() {
+    if (!viewButtons.length) return;
+    each(document.querySelectorAll('.bundle'), function (el) { el.parentNode.removeChild(el); });
+    each(document.querySelectorAll('[data-tier]'), function (el) {
+      var open = Object.prototype.hasOwnProperty.call(fold.cards, el.id) ? !!fold.cards[el.id] : openByView(el);
+      el.classList.toggle('folded', !open);
+      el.classList.remove('tucked');
+      if (open) { el.removeAttribute('tabindex'); el.removeAttribute('role'); el.removeAttribute('aria-expanded'); }
+      else { el.setAttribute('tabindex', '0'); el.setAttribute('role', 'button'); el.setAttribute('aria-expanded', 'false'); }
+    });
+    each(document.querySelectorAll('.zone'), function (zone) {
+      // A part that is not of the gate in focus shows its cards to read as strips, and the other cards as one line.
+      var away = fold.view === 'focus' && !zone.classList.contains('z-now');
+      var groups = {}, names = [];
+      each(zone.querySelectorAll('.folded'), function (el) {
+        if (el.classList.contains('k-step')) return;
+        var name = away && el.getAttribute('data-tier') !== 'must' ? 'more' : el.getAttribute('data-bundle') || '';
+        if (!name || fold.bundles[zone.id + ':' + name]) return;
+        if (!groups[name]) { groups[name] = []; names.push(name); }
+        groups[name].push(el);
+      });
+      names.forEach(function (name) {
+        var list = groups[name], words = 0;
+        if (list.length < 2) return;
+        list.forEach(function (el) { el.classList.add('tucked'); words += Number(el.getAttribute('data-words')) || 0; });
+        var button = make('button', 'bundle', list.length + ' ' + name);
+        button.type = 'button';
+        button.title = 'Show these ' + list.length + ' cards as title strips';
+        button.setAttribute('data-bundle-key', zone.id + ':' + name);
+        button.appendChild(make('span', 'meta', words + ' w'));
+        // The line comes after the cards of its group: at the end of the row of the cards, or of the part.
+        (name === 'more' ? zone : list[0].parentNode).appendChild(button);
+      });
+      // A group title shows only with a card.
+      each(zone.querySelectorAll('.row'), function (row) {
+        var shown = !!row.querySelector(':scope > :not(.tucked)');
+        var title = row.previousElementSibling;
+        row.hidden = !shown;
+        if (title && title.classList.contains('group')) title.hidden = !shown;
+      });
+    });
+    each(viewButtons, function (button) { button.setAttribute('aria-pressed', button.getAttribute('data-view') === fold.view ? 'true' : 'false'); });
+    viewNames().forEach(function (name) { document.body.classList.toggle('view-' + name, name === fold.view); });
+    drawEdges();
+    if (!zoneTimer) zoneTimer = requestAnimationFrame(markZone);
+  }
+
+  function setOpen(el, open) {
+    fold.cards[el.id] = open;
+    store.set('fold', fold);
+    layoutFolds();
+  }
+
+  // Opens a folded card, and the folded graph of a component. A link and a comment can name a card that is folded.
+  function reveal(el) {
+    var changed = false;
+    for (var unit = el.closest('[data-tier]'); unit; unit = unit.parentNode.closest('[data-tier]')) {
+      if (unit.classList.contains('folded')) { fold.cards[unit.id] = true; changed = true; }
+    }
+    if (changed) { store.set('fold', fold); layoutFolds(); }
+  }
+
+  // A view button starts its view again: the choices for single cards go.
+  function setView(name) {
+    var current = document.querySelector('[data-goto][aria-current="true"]');
+    fold = firstFold();
+    fold.view = name;
+    store.set('fold', fold);
+    layoutFolds();
+    var target = name === 'focus' ? byId('zone-' + data.focusZone) : current ? byId(current.getAttribute('data-goto')) : null;
+    if (target) goTo(target, true); else fitAll(true);
+  }
+  each(viewButtons, function (button) { button.addEventListener('click', function () { setView(button.getAttribute('data-view')); }); });
+
+  board.addEventListener('click', function (event) {
+    if (document.body.classList.contains('far')) return;
+    var bundle = event.target.closest('.bundle');
+    if (bundle) { fold.bundles[bundle.getAttribute('data-bundle-key')] = true; store.set('fold', fold); layoutFolds(); return; }
+    if (event.target.closest('a, button')) return;
+    var el = event.target.closest('.folded');
+    if (el) setOpen(el, true);
+  });
+  board.addEventListener('keydown', function (event) {
+    var el = event.target;
+    if ((event.key !== 'Enter' && event.key !== ' ') || !el.classList || !el.classList.contains('folded')) return;
+    event.preventDefault();
+    setOpen(el, true);
+    var button = el.querySelector(':scope > .ctools > .fbtn');
+    if (button) button.focus();
+  });
+
   // Comments stay in this browser until the user sends them or copies them into the ticket session.
   var LABELS = ['unclear', 'wrong', 'too much'];
   var comments = store.get('comments', []);
@@ -492,7 +640,7 @@ ${UI_SCRIPT}
         item.appendChild(remove);
         list.appendChild(item);
       });
-      el.insertBefore(list, el.querySelector(':scope > .editor') || el.querySelector(':scope > .cbtn'));
+      el.insertBefore(list, el.querySelector(':scope > .editor') || el.querySelector(':scope > .ctools'));
     });
     showTotal();
     var trayList = document.getElementById('tray-list');
@@ -504,7 +652,7 @@ ${UI_SCRIPT}
       item.appendChild(make('small', '', line.where));
       if (line.quote) item.appendChild(make('q', '', shortQuote(line.quote)));
       item.appendChild(document.createTextNode(line.say));
-      item.addEventListener('click', function () { var el = document.getElementById(comment.id); if (el) goTo(el, true); });
+      item.addEventListener('click', function () { var el = document.getElementById(comment.id); if (el) { reveal(el); goTo(el, true); } });
       trayList.appendChild(item);
     });
     drawEdges();
@@ -575,16 +723,28 @@ ${UI_SCRIPT}
     box.appendChild(area);
     box.appendChild(chips);
     box.appendChild(tools);
-    el.insertBefore(box, el.querySelector(':scope > .cbtn'));
+    el.insertBefore(box, el.querySelector(':scope > .ctools'));
     drawEdges();
     area.focus();
   }
 
-  Array.prototype.forEach.call(document.querySelectorAll('[data-file]'), function (el) {
-    var button = make('button', 'cbtn', 'Comment');
-    button.type = 'button';
-    button.addEventListener('click', function () { openEditor(el, ''); });
-    el.appendChild(button);
+  // The tools of a card show with the pointer on the card: Fold for a card with a tier, and Comment for a part of a ticket file.
+  Array.prototype.forEach.call(document.querySelectorAll('[data-file], [data-tier]'), function (el) {
+    var tools = make('div', 'ctools');
+    if (el.hasAttribute('data-tier') && viewButtons.length) {
+      var foldButton = make('button', 'fbtn', 'Fold');
+      foldButton.type = 'button';
+      foldButton.title = 'Show only the title of this card';
+      foldButton.addEventListener('click', function () { setOpen(el, false); el.focus(); });
+      tools.appendChild(foldButton);
+    }
+    if (el.hasAttribute('data-file')) {
+      var button = make('button', 'cbtn', 'Comment');
+      button.type = 'button';
+      button.addEventListener('click', function () { openEditor(el, ''); });
+      tools.appendChild(button);
+    }
+    el.appendChild(tools);
   });
 
   // Selected words in one card open a small toolbar: comment on the words, mark them for removal, or give a label.
@@ -594,7 +754,7 @@ ${UI_SCRIPT}
     var range = sel.getRangeAt(0);
     var node = range.commonAncestorContainer;
     if (node.nodeType !== 1) node = node.parentNode;
-    if (!node || !node.closest || node.closest('.comments, .editor, .cbtn')) return null;
+    if (!node || !node.closest || node.closest('.comments, .editor, .ctools, .folded')) return null;
     var el = node.closest('[data-file]');
     var quote = canvasClean(sel.toString(), 20000);
     if (!el || !quote) return null;
@@ -706,16 +866,24 @@ ${UI_SCRIPT}
     try { id = decodeURIComponent(location.hash.slice(1)); } catch (error) { id = ''; }
     var el = id ? document.getElementById(id) : null;
     if (!el) return false;
+    reveal(el);
     goTo(el, false);
     var graph = el.classList.contains('node') ? el.closest('.graph') : null;
     if (graph) { graph.setAttribute('data-focus', el.id); focusNode(graph, el.id); }
     return true;
   }
 
+  // A saved position can be from a board with other open cards. When no part of the board is in view, show the whole board.
+  function inSight() {
+    var width = board.offsetWidth * view.k, height = board.offsetHeight * view.k;
+    return view.x < viewport.clientWidth - 60 && view.x + width > 60 && view.y < viewport.clientHeight - 60 && view.y + height > 60;
+  }
+
+  layoutFolds();
   renderComments();
   var saved = store.get('view', null);
   if (fromHash()) { /* The link sets the view. */ }
-  else if (saved && isFinite(saved.x) && isFinite(saved.y) && saved.k >= MIN && saved.k <= MAX) { view = { x: saved.x, y: saved.y, k: saved.k }; apply(false); }
+  else if (saved && isFinite(saved.x) && isFinite(saved.y) && saved.k >= MIN && saved.k <= MAX) { view = { x: saved.x, y: saved.y, k: saved.k }; if (inSight()) apply(false); else fitAll(false); }
   else fitAll(false);
   window.addEventListener('hashchange', fromHash);
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(drawEdges);

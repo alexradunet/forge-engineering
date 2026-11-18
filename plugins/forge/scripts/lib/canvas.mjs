@@ -23,6 +23,48 @@ const LANE_GAP = 84;
 const LEGACY_DOCS = ['scope.md', 'context.md', 'briefing.md', 'interview.md', 'investigation.md', 'plan.draft.md', 'map.md',
   'review.md', 'evidence-testing.md', 'close.draft.md', 'decisions.md', 'log.md'];
 
+/**
+ * How much the user must read of each section of a full-v3 document. A view of the page opens the cards of its tiers
+ * and folds the other cards to a title strip.
+ * `must`: the user decides a gate with it. `good`: it helps to know. `ai`: a working note of the agent.
+ * Each section of a template has one entry here (tests/canvas.test.mjs). A section without an entry is `good`.
+ */
+export const TIERS = {
+  'story.md': { must: ['summary', 'problem', 'scope', 'done when', 'facts', 'preserve', 'open questions'], good: ['answers'], ai: ['history', 'related work', 'sources not available'] },
+  'map.md': { must: ['summary', 'components', 'flow'], good: [], ai: ['data, toggles, jobs', 'tests', 'terms'] },
+  'plan.md': { must: ['summary', 'risks', 'decisions'], good: ['diagnosis', 'steps', 'tests', 'checks', 'assumptions'], ai: ['details'] },
+  'review.md': { must: ['summary', 'changes', 'findings', 'not checked'], good: ['before and after', 'tests run'], ai: [] },
+  'proof.md': { must: ['accepted gaps'], good: ['summary', 'checks', 'regression'], ai: ['automated test'] },
+  'close.md': { must: ['summary', 'what you now know'], good: ['ticket summary'], ai: ['wiki changes'] },
+  'journal.md': { must: [], good: [], ai: ['*'] },
+};
+// The gate at which the user reads a document. The proof comes after Shippable?, so the user reads it before Learned?.
+const DOC_GATE = { 'story.md': 'Scoped?', 'map.md': 'Planned?', 'plan.md': 'Planned?', 'review.md': 'Shippable?', 'proof.md': 'Learned?', 'close.md': 'Learned?' };
+const ZONE_GATES = { story: ['Scoped?'], code: ['Planned?'], plan: ['Planned?'], review: ['Shippable?', 'Learned?'], close: ['Learned?'], journal: [] };
+const GATE_ZONE = { 'Scoped?': 'story', 'Planned?': 'plan', 'Shippable?': 'review', 'Learned?': 'close' };
+
+const countWords = (text) => (String(text ?? '').match(/\S+/g) ?? []).length;
+
+function tierOf(file, name) {
+  const rows = TIERS[file];
+  return ['must', 'ai'].find((tier) => rows?.[tier].includes(name.toLowerCase()) || rows?.[tier].includes('*')) ?? 'good';
+}
+
+// An exception moves a card up to `must`: a failed check, an open hypothesis, and a problem in the journal.
+function grade(card) {
+  const alert = (card.kind === 'check' && card.state === 'failed') || (card.kind === 'hypothesis' && card.state === 'open') || (card.kind === 'entry' && card.state === 'problem');
+  return {
+    ...card, tier: alert ? 'must' : tierOf(card.file, card.kind === 'summary' ? 'summary' : card.section), alert,
+    gate: DOC_GATE[card.file] ?? '', words: countWords(card.markdown),
+  };
+}
+
+/** The gate that the user reads for now: the first gate in review, else the first gate that is not approved. '' after the last gate. */
+export function focusGate(gates) {
+  const own = gates.filter((gate) => Object.hasOwn(GATE_ZONE, gate.name));
+  return (own.find((gate) => gate.status === 'in-review') ?? own.find((gate) => !['approved', 'skipped'].includes(gate.status)))?.name ?? '';
+}
+
 const unesc = (value) => value.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
 const slug = (value) => String(value ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '') || 'x';
 const plain = (value) => String(value ?? '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[`*]/g, '').replace(/\s+/g, ' ').trim();
@@ -124,7 +166,7 @@ function codeGraph(map) {
     edges.push({ from: ends[0], to: ends[1], label: plain(match[3] ?? '') });
   }
   const lanes = [...new Set(nodes.map((node) => node.layer))];
-  return { nodes, edges, lanes };
+  return { nodes, edges, lanes, tier: tierOf('map.md', 'components'), gate: DOC_GATE['map.md'], words: nodes.reduce((sum, node) => sum + countWords(node.role), 0) };
 }
 
 function v3Zones(dir, ticket) {
@@ -194,6 +236,12 @@ function v3Zones(dir, ticket) {
       file: 'journal.md', section: entry.title, markdown: entry.markdown,
     })),
   });
+  for (const zone of zones) {
+    zone.gates = ZONE_GATES[zone.id] ?? [];
+    for (const list of ['cards', 'questions', 'hypotheses', 'steps', 'checks', 'more']) if (zone[list]) zone[list] = zone[list].map(grade);
+    // A person card comes from the README. It helps to know who waits, at each gate.
+    if (zone.people) zone.people = zone.people.map((person) => ({ ...person, tier: 'good', gate: '', words: countWords([person.role, person.ask].filter(Boolean).join(' ')) }));
+  }
   return { zones, missing };
 }
 
@@ -217,6 +265,9 @@ export function buildCanvas(dir, { now = new Date() } = {}) {
   const ticket = parseTicket(readFileSync(file, 'utf8'));
   const layout = ticket.workflow === 'full-v3' ? 'board' : 'columns';
   const { zones, missing } = layout === 'board' ? v3Zones(dir, ticket) : legacyZones(dir, ticket);
+  // Only the board layout has tiers, so only it has views and a gate in focus.
+  const focus = layout === 'board' ? focusGate(ticket.gates) : '';
+  const focusZone = (zones.find((zone) => zone.id === GATE_ZONE[focus]) ?? zones.find((zone) => zone.gates?.includes(focus)))?.id ?? '';
   return {
     version: 1,
     generated: now.toISOString().slice(0, 16).replace('T', ' '),
@@ -227,7 +278,7 @@ export function buildCanvas(dir, { now = new Date() } = {}) {
     },
     gates: ticket.gates.map((gate) => ({ name: gate.name, status: gate.status, doc: gate.doc ?? '', date: gate.date ?? '', reviews: gate.name === 'Sendable?' ? 0 : listSnapshots(dir, gate.name).length })),
     changes: ticket.changes.map((change) => ({ url: change.url, label: change.label ?? '', state: change.state })),
-    zones, missing,
+    focus, focusZone, zones, missing,
   };
 }
 
@@ -346,14 +397,29 @@ export function markdown(text, ctx = { links: 'vscode' }) {
 const GATE_MARK = { approved: '✔', 'in-review': '🟡', todo: '○', blocked: '🔴', skipped: '–' };
 const STEP_TEXT = { planned: 'planned', done: 'done', verified: 'verified' };
 const CHECK_TEXT = { verified: '🟢 verified', failed: '🔴 failed', gap: '⚪ not proven', open: 'open' };
+const TIER_TEXT = { must: 'Must read', good: 'Good to know', ai: 'AI artifact: a working note of the agent' };
 const PERSON_TEXT = { 'to-contact': 'to contact', drafted: 'draft ready', waiting: 'waiting', 'follow-up': 'follow up', 'reply-in': 'reply in', done: 'done' };
+
+// The attributes that the views of the page read. A card without text has no tier: it is its title, so it never folds.
+// In a view that folds them, the cards with the same `bundle` name show as one line.
+function foldAttrs(item, bundle = '') {
+  if (!item.tier || !item.words) return '';
+  return ` data-tier="${item.tier}" data-gate="${esc(item.gate)}" data-words="${item.words}"${item.alert ? ' data-alert' : ''}${bundle ? ` data-bundle="${bundle}"` : ''}`;
+}
+
+// The end of a title strip: the tier and the size of the folded card.
+function metaHtml(item, size = `${item.words} w`) {
+  if (!item.tier || !item.words) return '';
+  return `<span class="meta" title="${TIER_TEXT[item.tier]}">${item.tier} · ${esc(size)}</span>`;
+}
 
 function cardHtml(card, ctx, extra = '') {
   const state = card.state ? ` s-${esc(card.state)}` : '';
   const badge = card.kind === 'step' ? `<span class="badge">${STEP_TEXT[card.state]}</span>`
     : card.kind === 'check' ? `<span class="badge">${CHECK_TEXT[card.state]}</span>` : '';
-  return `<article class="card k-${esc(card.kind)}${state}" id="${esc(card.id)}" data-file="${esc(card.file)}" data-section="${esc(card.section)}" data-title="${esc(card.title)}">`
-    + `<h3>${badge}${esc(card.title)}</h3><div class="body">${markdown(card.markdown, ctx)}${extra}</div></article>`;
+  const bundle = card.alert ? '' : card.kind === 'check' && card.state === 'verified' ? 'verified checks' : card.kind === 'entry' ? 'journal entries' : '';
+  return `<article class="card k-${esc(card.kind)}${state}" id="${esc(card.id)}" data-file="${esc(card.file)}" data-section="${esc(card.section)}" data-title="${esc(card.title)}"${foldAttrs(card, bundle)}>`
+    + `<h3>${badge}${metaHtml(card)}${esc(card.title)}</h3><div class="body">${markdown(card.markdown, ctx)}${extra}</div></article>`;
 }
 
 function graphHtml(graph, ctx) {
@@ -366,14 +432,18 @@ function graphHtml(graph, ctx) {
     )).join('');
     return `<div class="lane"><h4>${esc(lane)}</h4>${nodes}</div>`;
   }).join('');
-  return `<div class="graph" data-edges="${esc(JSON.stringify(graph.edges))}"><svg class="edges" aria-hidden="true"></svg><div class="lanes">${lanes}</div><svg class="labels" aria-hidden="true"></svg></div>`
-    + `<ul class="edge-list">${graph.edges.map((edge) => `<li>${esc(graph.nodes.find((node) => node.id === edge.from)?.name)} → ${esc(graph.nodes.find((node) => node.id === edge.to)?.name)}${edge.label ? `: ${esc(edge.label)}` : ''}</li>`).join('')}</ul>`;
+  // The graph folds as one unit. A component is a part of it, so a component has no tier.
+  const unit = { ...graph, words: graph.words || graph.nodes.length };
+  return `<div class="unit k-graph" id="code-graph" data-title="Components and flow"${foldAttrs(unit)}>`
+    + `<h3>${metaHtml(unit, `${graph.nodes.length} ${graph.nodes.length === 1 ? 'component' : 'components'}`)}Components and flow</h3>`
+    + `<div class="graph" data-edges="${esc(JSON.stringify(graph.edges))}"><svg class="edges" aria-hidden="true"></svg><div class="lanes">${lanes}</div><svg class="labels" aria-hidden="true"></svg></div>`
+    + `<ul class="edge-list">${graph.edges.map((edge) => `<li>${esc(graph.nodes.find((node) => node.id === edge.from)?.name)} → ${esc(graph.nodes.find((node) => node.id === edge.to)?.name)}${edge.label ? `: ${esc(edge.label)}` : ''}</li>`).join('')}</ul></div>`;
 }
 
 function peopleHtml(zone) {
   const people = (zone.people ?? []).map((person) => (
-    `<article class="card k-person s-${esc(person.status)}" id="person-${esc(slug(person.name))}" data-file="README.md" data-section="people" data-title="${esc(person.name)}">`
-    + `<h3><span class="badge">${PERSON_TEXT[person.status] ?? esc(person.status)}</span>${esc(person.name)}</h3>`
+    `<article class="card k-person s-${esc(person.status)}" id="person-${esc(slug(person.name))}" data-file="README.md" data-section="people" data-title="${esc(person.name)}"${foldAttrs(person)}>`
+    + `<h3><span class="badge">${PERSON_TEXT[person.status] ?? esc(person.status)}</span>${metaHtml(person)}${esc(person.name)}</h3>`
     + `<div class="body"><p>${esc([person.role, person.ask].filter(Boolean).join(': '))}</p>${person.since ? `<p class="file">since ${esc(person.since)}</p>` : ''}</div></article>`
   )).join('');
   return people ? `<h4 class="group">People</h4><div class="row">${people}</div>` : '';
@@ -381,7 +451,11 @@ function peopleHtml(zone) {
 
 function zoneHtml(zone, ctx, width = 0) {
   const files = zone.files.map((name) => `<a class="src" href="${esc(withToken(name, ctx))}">${esc(name)}</a>`).join(' ');
-  const parts = [`<h2>${esc(zone.title)} ${files}</h2>`];
+  // The part that holds the document of a gate shows the status of that gate.
+  const gate = (ctx.gates ?? []).find((item) => GATE_ZONE[item.name] === zone.id);
+  const chip = gate ? ` <span class="zgate g-${esc(gate.status)}" title="${esc(`${gate.name} ${GATE_TEXT[gate.status] ?? gate.status}`)}"><span aria-hidden="true">${GATE_MARK[gate.status] ?? ''}</span> ${esc(GATE_TEXT[gate.status] ?? gate.status)}</span>` : '';
+  const now = ctx.focus && zone.gates?.includes(ctx.focus) ? ' z-now' : '';
+  const parts = [`<h2>${esc(zone.title)}${chip} ${files}</h2>`];
   if (!zone.present) parts.push(`<p class="empty">No ${esc(zone.files.join(' or '))} yet.</p>`);
   const column = (cards) => cards.map((card) => cardHtml(card, ctx)).join('');
   const row = (label, cards, cls = '') => (cards?.length ? `<h4 class="group">${label}</h4><div class="row ${cls}">${cards.map((card) => cardHtml(card, ctx)).join('')}</div>` : '');
@@ -396,7 +470,7 @@ function zoneHtml(zone, ctx, width = 0) {
     if (zone.questions?.length) parts.push(row('Open questions', zone.questions));
     parts.push(peopleHtml(zone));
   }
-  return `<section class="zone z-${esc(zone.id)}" id="zone-${esc(zone.id)}" data-zone="${esc(zone.id)}"${width ? ` style="width:${width}px"` : ''}>${parts.join('')}</section>`;
+  return `<section class="zone z-${esc(zone.id)}${now}" id="zone-${esc(zone.id)}" data-zone="${esc(zone.id)}"${width ? ` style="width:${width}px"` : ''}>${parts.join('')}</section>`;
 }
 
 function railHtml(model, nav) {
@@ -407,6 +481,14 @@ function railHtml(model, nav) {
     const quiet = ['approved', 'todo'].includes(gate.status);
     return `<li class="g-${esc(gate.status)}"${quiet ? ` title="${esc(`${gate.name} ${note}`)}"` : ''}><span class="mark">${GATE_MARK[gate.status] ?? ''}</span> ${esc(gate.name.replace(/\?$/, ''))} <small${quiet ? ' class="sr"' : ''}>${esc(note)}</small></li>`;
   }).join('');
+  // The views: the first view opens the cards that the user must read for the gate in focus.
+  const view = (name, label, title) => `<button type="button" data-view="${name}" aria-pressed="false" title="${esc(title)}">${esc(label)}</button>`;
+  const focusGate = model.gates.find((gate) => gate.name === model.focus);
+  const views = model.layout !== 'board' ? '' : `<div class="views" role="group" aria-label="View"><span>View</span>`
+    + (focusGate ? view('focus', `Now: ${focusGate.name.replace(/\?$/, '')}`, `The cards that you must read for ${focusGate.name}, which ${focusGate.status === 'in-review' ? 'waits for you' : 'is the next gate'}. The other parts show their summary (v)`) : '')
+    + view('must', 'Must read', 'The cards that you must read and understand, of each part (v)')
+    + view('good', '+ Good to know', 'Also the cards that help. The working notes of the agent stay folded (v)')
+    + view('all', 'All', 'Each card (v)') + '</div>';
   const zones = model.zones.map((zone, index) => `<button type="button" class="quiet" data-goto="zone-${esc(zone.id)}" title="Key ${index + 1}">${esc(zone.title)}</button>`).join('');
   const changes = model.changes.map((change) => `<a href="${esc(linkTarget(change.url))}" target="_blank" rel="noopener noreferrer">${esc(change.label || 'change')} ${esc(change.state)}</a>`).join(' ');
   // With the links of the wiki, the key opens the ticket switcher. Without them, the page stands alone.
@@ -424,7 +506,7 @@ function railHtml(model, nav) {
     + `<button type="button" id="tray-toggle" title="Your comments on this ticket">Comments <span id="comment-count">0</span></button>${TOOLS_HTML}</div></div>`
     + `<div class="sub"><ol class="gates" aria-label="Gates">${gates}</ol>`
     + `<div class="next" title="${esc(`Next: ${ticket.next}${ticket.waitingOn ? `. Waiting on: ${ticket.waitingOn}` : ''}`)}"><span>Next</span> ${esc(ticket.next)}${ticket.waitingOn ? ` <span>· Waiting on</span> ${esc(ticket.waitingOn)}` : ''} ${changes}</div>`
-    + `<nav aria-label="Parts of the ticket">${zones}</nav></div>`
+    + `${views}<nav aria-label="Parts of the ticket">${zones}</nav></div>`
     + `</header>`;
 }
 
@@ -436,6 +518,10 @@ const HELP = [
   [['1', '…', '9'], 'Go to a part: the story, the code map, the plan, and so on'],
   [['+', '-'], 'Zoom in or out'],
   [['←', '↑', '↓', '→'], 'Move the board'],
+  'Views',
+  [['v'], 'Go to the next view: the gate in focus, must read, good to know, all'],
+  [['Click'], 'On a title strip: open the card. The Fold button of a card folds it again'],
+  [['Enter'], 'On a title strip that has the focus: open the card'],
   'Read and comment',
   [['Double-click'], 'On a card title: show the card at a size that you can read'],
   [['Click'], 'On a component of the code map: show its arrows'],
@@ -458,7 +544,7 @@ export function renderCanvas(model, { links = 'vscode', serve = null, nav = null
   if (!LINK_MODES.includes(links)) throw new Error(`Unknown link mode: ${links}. Use ${LINK_MODES.join(' or ')}.`);
   const token = serve?.token ?? '';
   if (token && !/^[0-9a-f]{32}$/.test(token)) throw new Error('The canvas token must have 32 hexadecimal characters.');
-  const ctx = { links, token };
+  const ctx = { links, token, gates: model.gates, focus: model.focus ?? '' };
   const { ticket } = model;
   const zone = (id) => model.zones.find((item) => item.id === id);
   let board;
@@ -476,7 +562,7 @@ export function renderCanvas(model, { links = 'vscode', serve = null, nav = null
     ? `<p class="note">This ticket uses the ${esc(ticket.workflow)} layout. The canvas shows its files as columns.</p>`
     : model.missing.length ? `<p class="note">Not written yet: ${esc(model.missing.join(', '))}.</p>` : '';
   const home = token && serve.home && serve.home !== ticket.key ? String(serve.home) : '';
-  const data = JSON.stringify({ key: ticket.key, generated: model.generated, ...(token ? { token } : {}), ...(home ? { home } : {}), ...(nav ? { nav: navData(nav) } : {}) }).replace(/</g, '\\u003c');
+  const data = JSON.stringify({ key: ticket.key, generated: model.generated, ...(model.focus ? { focus: model.focus, focusZone: model.focusZone } : {}), ...(token ? { token } : {}), ...(home ? { home } : {}), ...(nav ? { nav: navData(nav) } : {}) }).replace(/</g, '\\u003c');
   return [
     '<!doctype html>', '<html lang="en">', '<head>', '<meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1">',

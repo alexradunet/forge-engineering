@@ -64,6 +64,9 @@ One state has one emoji, one label, and one color on each page (class `st-<state
 | Gate steps | `.gates` (canvas), `.dots` (board) | One step for each required gate, in order. Only a gate that needs attention shows words. The other gates show a mark, and their words are in the tooltip |
 | Ticket card | `.tcard` (board) | Key and age, title, gate line, next step, who it waits on, tags, then small links. The whole card opens the canvas |
 | Document card | `.card`, `.node` (canvas) | A title and the text of one section. A left border shows a state |
+| View switch | `.views` (canvas) | One button for each view, with `aria-pressed`: the gate in focus (**Now**), **Must read**, **+ Good to know**, and **All**. A view button starts its view again |
+| Title strip | `.folded` (canvas) | A folded card: one line with a mark, the title, the tier (`must`, `good`, `ai`), and the count of words. It keeps the place and the state border of its card. A click or `Enter` opens it, and **Fold** on the open card folds it again. A folded plan step keeps its frame on the path |
+| Bundle line | `.bundle` (canvas) | One line for 2 or more folded cards of one kind, with their count and their words. A click shows their title strips |
 | Tag | `.tag`, `.badge` | One short fact. `ok`, `bad`, and `wait` give it a state color |
 | Switcher | `#switcher` | One dialog with a filter and each ticket in board order. See Navigation |
 | Help | `#help` | The keys and the mouse steps of the page. The footer names the `?` key |
@@ -96,11 +99,14 @@ The ticket canvas:
 ```text
 +--------------------------------------------------------------------------+
 | Board / [KEY v]  Title  (state) phase              < >  [Comments 0] ?   |
-| (Scoped) (Planned waits for you) (Shippable) ...  Next ...   Story Plan  |
+| (Scoped) (Planned waits for you) (Shippable) ...  Next ...               |
+| View [Now: Planned] [Must read] [+ Good to know] [All]     Story Plan .. |
 +--------------------------------------------------------------------------+
 |                                                                          |
 |   Story         Code map                       Review and proof          |
-|                 Plan                           Journal                   |
+|    [summary]     [summary] [components]         [summary]                |
+|    > Scope      Plan  (waits for you)           > Changes                |
+|    > 3 more      [summary] [steps] [Risks]      > 9 more                 |
 |                                    the board: move, zoom, read, comment  |
 +--------------------------------------------------------------------------+
 | Generated ... This page is a view.                        - 100% + Fit   |
@@ -120,6 +126,8 @@ A board card has the link **Worktree**, which opens the worktree folder of the t
 | Canvas | The board | **Board** in the bar | `b` |
 | Canvas | The previous or the next ticket of the board | The arrows in the bar | `[` and `]` |
 | Canvas | A part of the ticket | The part name in the bar | `1` to `9` |
+| Canvas | The next view | The view buttons in the bar | `v` |
+| Canvas | The text of a folded card | The title strip | `Tab` to the strip, then `Enter` |
 
 The order of the tickets is the order of the board: the state lanes, and the key in each lane.
 So `]` on a ticket that waits for the user goes to the next ticket that waits for the user.
@@ -142,27 +150,32 @@ The links have two forms:
 | An open ticket has no update for 7 days or more | The age is amber and bold, and its tooltip gives the days |
 | A person does not answer for more than 3 working days | A tag on the card, and the **People waits** table |
 | A ticket folder cannot be read | The **Read errors** list. A ticket that cannot give a canvas has a link to its README |
-| The user wants the whole ticket at a glance | The far view (zoom below 50%): each card shows its title in a large size, and a tint shows its state |
+| The ticket has more text than the user can read at one gate | Each card has a tier: must read, good to know, or AI artifact (a working note of the agent). The table `TIERS` in `canvas.mjs` gives the tier of each template section. A view opens the cards of its tiers, and each other card is a title strip |
+| A ticket waits at a gate, and the user opens its canvas | The view **Now** is first: the cards to read of the gate in focus are open, and the border of its parts has the accent color. Each other part shows its summary, its cards to read as title strips, and one line for the other cards. Without a gate in review, the focus is the next gate. After the last gate, the page opens with **Must read** |
+| A card holds an exception | A failed check, an open hypothesis, and a problem in the journal are cards to read, and each view shows them open |
+| The user wants one more card, or one card less | A click on a title strip opens the card, and **Fold** on a card folds it. The browser keeps these choices for the gate in focus. A view button removes them |
+| A link or a comment names a folded card | The page opens the card, and the code map of a component, before it shows it |
+| The user wants the whole ticket at a glance | The far view (zoom below 50%): each card shows its title in a large size, and a tint shows its state. A title strip is a thin line without words, so the cards to read stand out |
 | The user wants to read one part | A part name, a number key, or a double-click on a title shows that part at a size to read. The bar marks the current part |
-| The user goes to another ticket and comes back | The browser keeps the view (position and zoom) and the comments of each ticket |
+| The user goes to another ticket and comes back | The browser keeps the position, the zoom, the view, the opened and the folded cards, and the comments of each ticket. A saved position that shows no part of the board gives the whole board |
 | The user comments on a ticket that is not the ticket of the server | That page has no **Send to agent**. The Comments panel says to use **Copy all** and to paste the message into the session of that ticket |
 | The canvas server stopped (after a Send, after an approval, or after 8 hours) | A served page asks its server before it goes to another page. Without an answer, the page stays, a toast says to ask the session for a new link, and the comments stay in the browser |
 | The link is old (a new server run has a new token) | The same as a stopped server. A direct load of the old link gets "This link is old" |
 | The page is old (a file page) | The footer gives the time. The next `forge.mjs board` or `forge.mjs canvas <KEY>` run writes it again, and VS Code can load it again (`workbench.browser.autoReloadOnFileChange`). A page that did not change is not written again |
 | The ticket has only a README, or a document is missing | A card says which document is missing. No frame is empty |
-| An older ticket (not `full-v3`) | The canvas shows its files as columns. The bar, the links, and the comments are the same |
+| An older ticket (not `full-v3`) | The canvas shows its files as columns. The bar, the links, and the comments are the same. It has no tiers and no views: each card is open |
 | A narrow window | The bar wraps, the lanes go below each other, and the cards take the full width |
 | A dark editor with a light system | The theme button |
 | No keyboard, or no mouse | Each step has a button and a key. A dialog keeps the focus, and `Esc` closes it. The focus ring uses `--accent` |
 | The system asks for less motion | The board moves without an animation (`prefers-reduced-motion`) |
-| The browser has no storage | The page works. It does not keep the view, the theme, or the comments after a load |
+| The browser has no storage | The page works. It does not keep the position, the view, the theme, or the comments after a load, and it opens in its first view |
 
 ## Rules for a change
 
 - Put a new token, a shared component, or a shared function in `ui.mjs`, and add it to this page. A token goes into the light and the dark theme.
 - A page script uses no template literal, and it requests only a relative link of its own server.
 - Escape each ticket text with `esc()`. Only `linkTarget()` makes a link target from ticket text.
-- Change a ticket template and the canvas together (`tests/canvas.test.mjs`).
+- Change a ticket template and the canvas together (`tests/canvas.test.mjs`). Give each new template section a tier in `TIERS`.
 - Look at each change in a browser, in the light and the dark theme, at a width of 620 px and of 1500 px.
 
 ## Known limits

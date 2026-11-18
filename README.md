@@ -263,6 +263,16 @@ The canvas and the [board page](#-ticket-overview) have links to each other, so 
 | Review and proof | The review sections and each Evidence Testing check with its result |
 | Journal | The newest entries |
 
+- Each card has one of 3 tiers. The page opens with the cards that you must read for the gate that waits for you (the view **Now**). Each other card is a title strip: one line with the title, the tier, and the count of words. The other parts show their summary.
+
+  | Tier | Cards |
+  |---|---|
+  | Must read (`must`): you decide a gate with it | Story: the summary, Problem, Scope, Done when, Facts, Preserve, and the open questions. Code map: the summary, and the components with the flow. Plan: the summary, the step titles, Risks, and Decisions. Review: the summary, Changes, Findings, and Not checked. Proof: Accepted gaps. Close: the summary, and What you now know |
+  | Good to know (`good`) | Story: Answers, and the people. Plan: Diagnosis, the text of each step, Tests, Checks, and Assumptions. Review: Before and after, and Tests run. Proof: the summary, Checks, and Regression. Close: Ticket summary |
+  | AI artifact (`ai`): a working note of the agent | Story: History, Related work, and Sources not available. Code map: Data, toggles, jobs, Tests, and Terms. Plan: Details. Proof: Automated test. Close: Wiki changes. Journal: each entry |
+
+- An exception is always a card to read: a failed check, an open hypothesis, and a problem in the journal.
+- The views **Must read**, **+ Good to know**, and **All** open more tiers, for each part (key `v`). A click on a title strip opens one card, and **Fold** on a card folds it again. A line such as `5 verified checks` or `3 more` shows the strips of its cards. The browser keeps the view and your choices until the next gate.
 - Scroll to move, hold Ctrl and scroll to zoom, and drag the background. Zoomed out, each card shows its title in a large size and its state as a tint. A click on a part name or a double-click on a card title zooms in to read.
 - Go to another ticket: **Board** opens the board page (key `b`), the ticket key opens a list of all tickets with a filter (key `t`), and the arrows go to the previous and the next ticket of the board (keys `[` and `]`). The browser keeps your view and your comments for each ticket.
 - The `?` key shows all keys. The theme button changes between the system theme, light, and dark.
