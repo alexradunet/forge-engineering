@@ -121,11 +121,11 @@ Setup offers the native wiki of the private repository, a separate private `<rep
 | `plugins/forge/context/` | The session rules, in a short form: `forge` (paths, ticket sessions, host verbs, the rules for external writes) and `style` (response style, "No AI tells", response shape, memory). The `sessionStart` hook gives them to each session. `tools.md` holds the steps that the agent reads before the first external call: capabilities, tool choice, external writes, the gate guard, and the manual step. `tests/context-budget.test.mjs` keeps the sizes. |
 | `plugins/forge/hosts/` | One verb table for each host: `vscode.md`, `copilot-cli.md`, `claude.md`. The hook adds the verb table of the current host to the context. The other parts of the file (the ticket canvas, the feature documentation) stay in the file, and the agent reads them at the step. |
 | `plugins/forge/com.github.copilot/hooks/` | `hooks.json`: the `sessionStart` hook. It gives each session the paths, the ticket context, the `forge` and `style` rules, and the approved company rules of `<wiki>/rules/`. The `preToolUse` hook is the gate guard (`forge.mjs hook pre-tool`, see Review gates). |
-| `plugins/forge/hooks/` | `hooks.json`: the same context for Claude Code (spike). `SessionStart` gives it in parts of at most 9,000 characters (2 parts for a session without company rules), `UserPromptSubmit` sets the ticket title, and `PreToolUse` is the gate guard. See `Claude Code host` in [vscode-baseline.md](docs/vscode-baseline.md) |
+| `plugins/forge/hooks/` | `hooks.json`: the same context for Claude Code (spike). `SessionStart` gives it in parts of at most 9,000 characters (2 parts for a session without company rules), `UserPromptSubmit` sets the ticket title, and `PreToolUse` is the gate guard. See `Claude Code host` in [vscode-baseline.md](docs/vscode-baseline.md) Forge 7.6 adds the live reporter (`scripts/live-hook.mjs`) as a background hook on the activity events of a session: see [Live view](#-live-view). |
 | `plugins/forge/automations/` | Automation templates: Forge maintenance and Prepare my daily |
 | `plugins/forge/skills/` | `ticket`, `agents`, `board`, `wiki`, `daily-recap`, `forge-setup`, `learning-mode`, `writing` |
 | `plugins/forge/templates/` | The profile: config (`config/`), rule pages (`rules/`), setup values (`profile.md`), and machine values with the list of the other profile files (`profile.json`) |
-| `plugins/forge/scripts/` | `forge.mjs` (setup, config, trust, lint, board, worktree, snapshot, diff, canvas, gate-approve, migrate, hook, wiki scripts), `cred.mjs` |
+| `plugins/forge/scripts/` | `forge.mjs` (setup, config, trust, lint, board, worktree, snapshot, diff, canvas, live, gate-approve, migrate, hook, wiki scripts), `cred.mjs`, `live-hook.mjs` (the reporter of the live view) |
 | `docs/` | [config.md](docs/config.md) (config format), [wiki.md](docs/wiki.md) (sharing and scripts), [evaluation.md](docs/evaluation.md) (behavioral runs: `npm run eval` gives the cases of `tests/evals/` to a real agent session), and [vscode-baseline.md](docs/vscode-baseline.md) (the VS Code features that forge uses) |
 | `AGENTS.md` | [Rules for agents that develop forge](AGENTS.md): docs-first checks, tests, and file format |
 
@@ -401,6 +401,30 @@ See the [board skill](plugins/forge/skills/board/SKILL.md).
 
 Forge 6.5 had a **Forge Master** custom agent for this. Forge 6.6 removes it: VS Code ignored the agent body
 (baseline click-check 14), and a persistent overview session added no function that a skill cannot give.
+
+## 📡 Live view
+
+`forge.mjs live` shows the board page and each ticket canvas on `http://127.0.0.1`, with what each agent session does now.
+Forge stays a plugin: it does not start a session, and it has no terminal. Your sessions run where you start them, for example in Orca or in a terminal.
+
+```mermaid
+flowchart LR
+  S[Claude Code session and its subagents] -->|hook in the background| R[live-hook.mjs]
+  R -->|one small event| L[forge.mjs live on 127.0.0.1]
+  L --> B[Board: one live line on each card]
+  L --> C[Canvas: the Live panel]
+```
+
+- A board card shows the state of its session (working, needs you, idle, or ended), the tool that runs now, and the count of subagents that run. A session without a ticket is in the list **Other sessions**.
+- The canvas has the **Live** panel (key `l`): the prompt, the tool calls, the subagents as a tree, and the last text of the turn.
+- A session shows on a ticket when it runs in the worktree of the ticket, or when its title starts with the ticket key.
+- The server is read-only for a session. It has no route that sends text or a permission answer to a session, and its pages have no **Send to agent**.
+- The reporter sends only short text: the prompt (at most 1,000 characters), the tool name with a short label (the first 80 characters of a command, a file path, or a search pattern), and the last message. It never sends a tool result or a file. It puts a mask on the value after a word such as `token` or `password`.
+- The events stay in the memory of the server. The server writes one file: its state file in the forge data folder, which only you can read. It holds the port and the tokens for the reporter.
+- When no live server runs, the reporter stops at once, and a session gets no delay and no message.
+- The server stops with Ctrl+C, or after 8 hours without an event. `forge.mjs live --status` prints the link of the server that runs.
+
+This version reports Claude Code sessions. Copilot CLI and VS Code sessions do not report yet: their hooks have no background option, so a reporter can slow each tool call (see the [baseline](docs/vscode-baseline.md)).
 
 ## ⏰ Automations
 

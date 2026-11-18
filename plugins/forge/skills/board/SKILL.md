@@ -86,12 +86,23 @@ When the user asks, and after each refresh:
    Use `host.groups`. Move only Forge ticket sessions. When the host has no groups, skip this step.
 4. Never archive, delete, or mark a session as done. Suggest it for a ✅ ticket, and wait for a "yes".
 
+## 📡 Live view
+
+When the user asks to see the sessions live ("live view", "show the board live", "what do the sessions do now"):
+
+1. Run `<F> live --status`. When a server runs, give its link.
+2. Otherwise start `<F> live` as a background command, in the same way as the canvas server in the host file. Give the link from its first line.
+3. Tell the user what the page shows: one live line for each session on the card of its ticket (working, needs you, idle, or ended), and the Live panel on each canvas.
+
+The live server is read-only for a session, and only Claude Code sessions report in this version.
+A "needs you" line is a report: never answer that prompt for the user.
+
 ## 🚫 Rules
 
 - The board steps write only `<wiki>/raw/sync/<KEY>.md` and, through `<F> board`, `<wiki>/raw/board.md` and the pages
   (`<wiki>/raw/board.html`, and `canvas.html` in each ticket folder). The pages are views: no approval lists them.
   The board steps change no code, no ticket document, no approval, and no wiki page.
-- In the terminal, the board steps run only `<F> board`, `<F> canvas <KEY>`, `<F> where`, read-only `git` commands, and the read-only
+- In the terminal, the board steps run only `<F> board`, `<F> canvas <KEY>`, `<F> live`, `<F> where`, read-only `git` commands, and the read-only
   tracker, change request, and CI commands of the refresh.
 - No external writes. Never comment on, move, or change a work item, a change request, or a CI job.
 - Never answer a session's question, trust prompt, or permission prompt for the user. Report it.

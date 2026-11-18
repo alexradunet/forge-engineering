@@ -113,11 +113,15 @@ const HELP = [
   [['Esc'], 'Close a dialog, or remove the filter text'],
 ];
 
-/** The self-contained HTML page of a board model. With serve.token, the links use the routes of the canvas server. */
+/**
+ * The self-contained HTML page of a board model. With serve.token, the links use the routes of the server of the page.
+ * serve.live is the address of the session states on the live server (live-serve.mjs): then the page shows what each session does now.
+ */
 export function renderBoardPage(board, { links = 'vscode', nav = null, serve = null, wiki = '' } = {}) {
   if (!LINK_MODES.includes(links)) throw new Error(`Unknown link mode: ${links}. Use ${LINK_MODES.join(' or ')}.`);
   const token = serve?.token ?? '';
   if (token && !/^[0-9a-f]{32}$/.test(token)) throw new Error('The canvas token must have 32 hexadecimal characters.');
+  const live = token && serve.live ? String(serve.live) : '';
   const ctx = { links, wiki, nav: nav ?? buildNav(board, { token }) };
   const chips = board.groups.map((group, index) => (
     `<button type="button" class="chip st-${esc(group.state)}" data-state="${esc(group.state)}" aria-pressed="false" title="Show only ${esc(group.label)} (${index + 1})"${group.tickets.length ? '' : ' disabled'}>`
@@ -129,7 +133,7 @@ export function renderBoardPage(board, { links = 'vscode', nav = null, serve = n
   const lanes = board.total
     ? `${lane('needs-me')}${side ? `<div class="side">${side}</div>` : ''}${lane('done')}`
     : '<section class="lane"><p class="empty">No tickets yet. Give a work item key to a session, and its ticket shows here.</p></section>';
-  const data = JSON.stringify({ generated: board.generated, total: board.total, ...(token ? { token } : {}), nav: navData(ctx.nav) }).replace(/</g, '\\u003c');
+  const data = JSON.stringify({ generated: board.generated, total: board.total, ...(token ? { token } : {}), ...(live ? { live } : {}), nav: navData(ctx.nav) }).replace(/</g, '\\u003c');
   return [
     '<!doctype html>', '<html lang="en">', '<head>', '<meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
@@ -140,14 +144,18 @@ export function renderBoardPage(board, { links = 'vscode', nav = null, serve = n
       + `<div class="chips" role="group" aria-label="States">${chips}</div>`
       + `<div class="tools"><button type="button" id="switch-open" title="Go to a ticket (t)">Go to a ticket</button>${TOOLS_HTML}</div></header>`,
     '<main id="lanes"><p class="banner" id="showing" hidden><span id="showing-text"></span> <button type="button" id="show-all">Show all</button></p>',
-    lanes, waitsHtml(board), errorsHtml(board), '</main>',
-    `<footer id="foot"><p>Generated ${esc(board.generated)} by <code>forge.mjs board</code> from the ticket README files. This page is a view: change the ticket files, not this page.</p></footer>`,
+    lanes, live ? LIVE_HTML : '', waitsHtml(board), errorsHtml(board), '</main>',
+    `<footer id="foot">${live ? '<p class="note" id="live-note">Live view: no answer yet</p>' : ''}<p>Generated ${esc(board.generated)} by <code>forge.mjs board</code> from the ticket README files. This page is a view: change the ticket files, not this page.</p></footer>`,
     switcherHtml(ctx.nav), helpHtml(HELP),
     '<div id="toast" role="status" hidden></div>',
     `<script type="application/json" id="board-data">${data}</script>`,
     `<script>${BOARD_SCRIPT}</script>`, '</body>', '</html>', '',
   ].join('\n');
 }
+
+// The sessions that have no ticket on the board. Only a page of the live server has this part, and its script fills it.
+const LIVE_HTML = '<section class="lane plain" id="live-other" hidden><h2>Other sessions <span class="count" id="live-count">0</span> <small>live, without a ticket on this board</small></h2>'
+  + '<ul class="rows" id="live-list"></ul></section>';
 
 export const BOARD_STYLE = String.raw`
 body { min-height: 100vh; display: flex; flex-direction: column; }
@@ -207,6 +215,12 @@ main { flex: 1; width: 100%; max-width: 1560px; margin: 0 auto; padding: var(--s
 .tcard footer { display: flex; flex-wrap: wrap; gap: 2px var(--s-3); margin-top: auto; padding-top: 4px; font-size: var(--t-xs); }
 .tcard footer a { position: relative; z-index: 1; color: var(--muted); }
 .tcard footer a:hover { color: var(--accent); }
+.tcard .live { position: relative; z-index: 1; pointer-events: none; }
+.lrow { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px var(--s-3); padding: 6px 14px; }
+.lrow + .lrow { border-top: 1px solid var(--line); }
+.lrow .what { flex: 1 1 220px; min-width: 0; overflow-wrap: anywhere; }
+.lrow .key { color: var(--muted); }
+.lrow .live { flex: 2 1 320px; }
 
 details.lane > summary { display: flex; align-items: center; gap: var(--s-2); list-style: none; cursor: pointer; }
 details.lane > summary::-webkit-details-marker { display: none; }
@@ -317,6 +331,30 @@ ${UI_SCRIPT}
     else return;
     event.preventDefault();
   });
+
+  // The live view: a session shows on the card of its ticket. A session without a card shows in the list of the other sessions.
+  function showLive(state, ok) {
+    each(document.querySelectorAll('.tcard > .live'), function (old) { old.parentNode.removeChild(old); });
+    var list = byId('live-list');
+    while (list.firstChild) list.removeChild(list.firstChild);
+    var sessions = state ? state.sessions : [];
+    var other = 0;
+    sessions.forEach(function (session) {
+      var card = session.ticket ? byId('ticket-' + session.ticket) : null;
+      if (card && card.classList.contains('tcard')) { card.insertBefore(liveLine(session), card.querySelector('.tags')); return; }
+      var row = make('li', 'lrow');
+      row.appendChild(make('span', 'key', card ? card.querySelector('.key').textContent : session.host));
+      row.appendChild(make('span', 'what', session.title || session.dir || 'A session without a title'));
+      row.appendChild(liveLine(session));
+      list.appendChild(row);
+      other += 1;
+    });
+    byId('live-other').hidden = !other;
+    byId('live-count').textContent = String(other);
+    byId('live-note').textContent = !ok ? 'Live view: the live server does not answer'
+      : sessions.length === 1 ? 'Live view: 1 session' : 'Live view: ' + sessions.length + ' sessions';
+  }
+  liveStart(showLive);
 
   applyFilter();
 })();

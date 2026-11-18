@@ -4,6 +4,7 @@ The forge pages are the board page (`raw/board.html`) and the ticket canvas (`ra
 They share one design system: the tokens, the components, the links between the pages, and the keys.
 The source is [`scripts/lib/ui.mjs`](../plugins/forge/scripts/lib/ui.mjs).
 `board-page.mjs` and `canvas-page.mjs` add only the parts of their own page.
+A page of the live server (`forge.mjs live`) also shows what the agent sessions do now: see Live view.
 `tests/board-page.test.mjs` keeps this page and the tokens in the code the same.
 
 ## Principles
@@ -52,6 +53,21 @@ One state has one emoji, one label, and one color on each page (class `st-<state
 | `waiting` | ⏳ Waiting | `--violet` | A person or a system outside must answer |
 | `done` | ✅ Done | `--faint` | Closed |
 
+## Live view
+
+Only a page of the live server (`forge.mjs live`) has the live parts. A file page and a page of the canvas server stay as they are.
+The session hooks send small events to that server, and the page asks the server for the state of the sessions.
+A session has one of 4 live states (class `lv-<state>`, variable `--st`). They use the colors of the ticket states, so the live view has no token of its own.
+
+| Live state | Words | Color | Meaning |
+|---|---|---|---|
+| `working` | working | `--accent` | The session runs a prompt. The mark moves, unless the system asks for less motion |
+| `needs-you` | needs you | `--amber` | The session waits for the user: a permission prompt or a question |
+| `idle` | idle | `--faint` | The turn ended, and the session waits for the next prompt |
+| `ended` | ended | `--faint` | The session ended. It goes away after 30 minutes |
+
+The page is read-only for a session. It has no control that sends text or an answer to a session.
+
 ## Components
 
 | Component | Where in the code | Rules |
@@ -71,6 +87,9 @@ One state has one emoji, one label, and one color on each page (class `st-<state
 | Switcher | `#switcher` | One dialog with a filter and each ticket in board order. See Navigation |
 | Help | `#help` | The keys and the mouse steps of the page. The footer names the `?` key |
 | Comments panel | `#tray` (canvas) | The comments of this ticket, the comment on the whole ticket, and Send or Copy |
+| Live line | `.live` with `lv-<state>` (`liveLine()` in `ui.mjs`) | One session: the state and its time, the tool that runs now, the count of subagents that run, and the text of a wait. It is on a board card and at the top of the Live panel |
+| Other sessions | `#live-other`, `.lrow` (board) | The sessions without a ticket card: the host, the title or the folder name, and the live line |
+| Live panel | `#live`, `.lv-tree` (canvas) | The sessions of this ticket: the live line, the prompt, the tool calls and the subagents as a tree, and the last text. It stands at the left of the board, and the board keeps the other space. On a narrow page it floats above the board |
 | Toast | `#toast` | One line that tells the result of a step. It goes away after 4 seconds |
 | Empty text | `.empty` | One sentence that says what is missing. It never shows an empty frame |
 | Footer | `#foot` | When the page was made, and that the page is a view. The canvas has its zoom tools there |
@@ -113,6 +132,23 @@ The ticket canvas:
 +--------------------------------------------------------------------------+
 ```
 
+A canvas of the live server has the Live panel at the left:
+
+```text
++----------------------+---------------------------------------------------+
+| Live              x  |                                                   |
+| KEY - title          |   Story         Code map          Review          |
+| (working 4 min)      |    [summary]     [summary]         [summary]      |
+|  now: Bash npm test  |                                                   |
+|  1 subagent runs     |                 Plan                              |
+| > the prompt         |                  [summary] [steps]                |
+| o Read  a.mjs        |                                                   |
+| o reviewer  running  |                                                   |
+| |  o Grep check      |                                                   |
+| o Bash  npm test 12s |                                                   |
++----------------------+---------------------------------------------------+
+```
+
 ## Navigation
 
 The unit of the navigation is the ticket. One ticket has one session, and the session title starts with the ticket key.
@@ -128,6 +164,7 @@ A board card has the link **Worktree**, which opens the worktree folder of the t
 | Canvas | A part of the ticket | The part name in the bar | `1` to `9` |
 | Canvas | The next view | The view buttons in the bar | `v` |
 | Canvas | The text of a folded card | The title strip | `Tab` to the strip, then `Enter` |
+| Canvas of the live server | The Live panel | **Live** in the bar | `l` |
 
 The order of the tickets is the order of the board: the state lanes, and the key in each lane.
 So `]` on a ticket that waits for the user goes to the next ticket that waits for the user.
@@ -138,6 +175,7 @@ The links have two forms:
 |---|---|---|---|
 | File page | `../../board.html` | `../<folder>/canvas.html` | `forge.mjs board` writes each page. `forge.mjs canvas <KEY>` writes its page, the board page, and each canvas that is missing |
 | Served page | `/board?t=<token>` | `/ticket/<folder>/?t=<token>` | `forge.mjs canvas <KEY> --serve` reads the files again for each page |
+| Page of the live server | `/board?t=<token>` | `/ticket/<folder>/?t=<token>` | `forge.mjs live` reads the files again for each page. Each ticket has the same route, and no page can send |
 
 ## UX cases
 
@@ -161,6 +199,15 @@ The links have two forms:
 | The user comments on a ticket that is not the ticket of the server | That page has no **Send to agent**. The Comments panel says to use **Copy all** and to paste the message into the session of that ticket |
 | The canvas server stopped (after a Send, after an approval, or after 8 hours) | A served page asks its server before it goes to another page. Without an answer, the page stays, a toast says to ask the session for a new link, and the comments stay in the browser |
 | The link is old (a new server run has a new token) | The same as a stopped server. A direct load of the old link gets "This link is old" |
+| A session works on a ticket | The board card shows the live line: "working", the time, the tool that runs now, and the count of subagents that run. The canvas shows the same line and the tree of the turn in the Live panel |
+| A session waits for the user | The live line is amber and says "needs you", with the text of the prompt of the host. The **Live** button of the canvas says "Live: needs you". The user answers in the session, not on the page |
+| A session has no ticket on the board | The board lists it under **Other sessions**, with its title or its folder name |
+| No session reports for a ticket | The Live panel says so, and it names the 2 ways that give a session its ticket: the worktree of the ticket, or the ticket key at the start of the title |
+| A session works for 10 minutes without an event | The live line says "working, quiet" and shows the time since the last event |
+| A turn has more than 200 tool calls | The Live panel shows the newest calls, and one line gives the count of the older calls |
+| The live server does not answer, or it stopped | The page keeps the last state. The footer of the board and the hint of the Live panel say that the server does not answer, and the page asks again with longer waits |
+| The page is not in view (another tab) | The page stops its requests, and it asks again when the user comes back |
+| The user comments on a canvas of the live server | That page has no **Send to agent**. The Comments panel says to use **Copy all** |
 | The page is old (a file page) | The footer gives the time. The next `forge.mjs board` or `forge.mjs canvas <KEY>` run writes it again, and VS Code can load it again (`workbench.browser.autoReloadOnFileChange`). A page that did not change is not written again |
 | The ticket has only a README, or a document is missing | A card says which document is missing. No frame is empty |
 | An older ticket (not `full-v3`) | The canvas shows its files as columns. The bar, the links, and the comments are the same. It has no tiers and no views: each card is open |
@@ -173,8 +220,10 @@ The links have two forms:
 ## Rules for a change
 
 - Put a new token, a shared component, or a shared function in `ui.mjs`, and add it to this page. A token goes into the light and the dark theme.
-- A page script uses no template literal, and it requests only a relative link of its own server.
+- A page script uses no template literal, and it requests only a link of its own server: a relative link, or `data.live` on a page of the live server.
 - Escape each ticket text with `esc()`. Only `linkTarget()` makes a link target from ticket text.
+- The text of a session (a title, a prompt, a command, a last message) is not trusted. Put it into the page with `make()`, which sets `textContent`. Never make HTML from it.
+- Change the live event (`live-event.mjs`), the live state (`live.mjs`), and the live parts of the pages together (`tests/live.test.mjs`, `tests/live-serve.test.mjs`).
 - Change a ticket template and the canvas together (`tests/canvas.test.mjs`). Give each new template section a tier in `TIERS`.
 - Look at each change in a browser, in the light and the dark theme, at a width of 620 px and of 1500 px.
 
@@ -183,3 +232,8 @@ The links have two forms:
 - The canvas has no pinch zoom on a touch screen.
 - The theme of the user applies after the page loaded, so a dark page can show light for a moment.
 - A file page shows the tickets of its last run. Only a served page reads the files on each load.
+- The live view shows Claude Code sessions only. The hooks of Copilot CLI and VS Code have no background option, so those hosts send no events yet.
+- The Live panel shows the last text at the end of a turn or of a subagent. It does not show the text while the model writes it.
+- A `claude -p` run stops its background hooks when it ends, so its last text can be missing.
+- Two subagents of one type that start at the same time can show below the wrong call, until the result of each call comes.
+- The live server learns of a session at its first event. A session that started before the server shows after its next prompt or tool call.

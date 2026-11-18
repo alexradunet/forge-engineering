@@ -32,6 +32,19 @@ The ticket canvas is a local HTML page (`canvas.html` in the ticket folder, from
 - The link works only in a browser on the machine of the session. For a browser on another machine, run it with `--port <n>`, and tell the user to forward that port. Never use another address than `127.0.0.1`.
 - A code link on the page opens the file in VS Code (`vscode://file/...`). When the user has no VS Code, run `forge.mjs canvas <KEY> --links file`.
 
+## Live view
+
+The live view shows the board page and each ticket canvas with what each Claude Code session does now (`forge.mjs live`).
+
+- Start it only when the user asks for it, for example "live view" or "show the sessions live". Run `forge.mjs live` with `Bash` and `run_in_background: true`. Read the link from its output, and give it to the user.
+- When the command says that a live server runs already, run `forge.mjs live --status` and give that link.
+- The server is read-only for a session: no page can send text or an answer to a session. The comments of a canvas go with **Copy all**, or with `forge.mjs canvas <KEY> --serve`.
+- A session shows on its ticket when it runs in the worktree of the ticket, or when its title starts with the ticket key. Each other session is in the list **Other sessions**.
+- A session shows after its next prompt or tool call. The hooks load at session start, so a session that started before an update of forge reports after a restart.
+- A "needs you" line is a report. Never answer that prompt for the user.
+- The rules of the canvas server apply: the link works only in a browser on the machine of the session, `--port <n>` gives a fixed port to forward, and the `Artifact` tool is never used.
+- The server stops after 8 hours without an event. To stop it before that, stop the background command.
+
 ## Claude Code features
 
 - Before you advise on a Claude Code feature, read its current documentation page. Claude Code changes often.

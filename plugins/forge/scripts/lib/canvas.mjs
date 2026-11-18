@@ -473,7 +473,7 @@ function zoneHtml(zone, ctx, width = 0) {
   return `<section class="zone z-${esc(zone.id)}${now}" id="zone-${esc(zone.id)}" data-zone="${esc(zone.id)}"${width ? ` style="width:${width}px"` : ''}>${parts.join('')}</section>`;
 }
 
-function railHtml(model, nav) {
+function railHtml(model, nav, live = false) {
   const { ticket } = model;
   const gates = model.gates.filter((gate) => gate.name !== 'Sendable?' || gate.status === 'in-review').map((gate) => {
     const note = gate.status === 'approved' && gate.date ? `approved ${gate.date}` : GATE_TEXT[gate.status] ?? gate.status;
@@ -503,6 +503,7 @@ function railHtml(model, nav) {
     + `<div class="bar">${where}<h1 title="${esc(ticket.title)}">${esc(ticket.short || ticket.title)}</h1>`
     + `<span class="pill st-${esc(ticket.state)}"><span aria-hidden="true">${ticket.emoji ?? ''}</span> ${esc(STATE_LABEL[ticket.state] ?? ticket.state)}</span><span class="phase">${esc(ticket.phase)}</span>`
     + `<div class="tools">${nav ? hop(nav.prev, 'prev', '‹', '[') + hop(nav.next, 'next', '›', ']') : ''}`
+    + (live ? '<button type="button" id="live-toggle" class="lv-idle" aria-pressed="false" title="What the session of this ticket does now (l)"><span class="lv-state">Live</span></button>' : '')
     + `<button type="button" id="tray-toggle" title="Your comments on this ticket">Comments <span id="comment-count">0</span></button>${TOOLS_HTML}</div></div>`
     + `<div class="sub"><ol class="gates" aria-label="Gates">${gates}</ol>`
     + `<div class="next" title="${esc(`Next: ${ticket.next}${ticket.waitingOn ? `. Waiting on: ${ticket.waitingOn}` : ''}`)}"><span>Next</span> ${esc(ticket.next)}${ticket.waitingOn ? ` <span>· Waiting on</span> ${esc(ticket.waitingOn)}` : ''} ${changes}</div>`
@@ -535,9 +536,14 @@ const HELP = [
   [['Esc'], 'Close a dialog, the toolbar of selected words, or the comments'],
 ];
 
+// The Live panel. Only a page of the live server has it, and the page script fills it.
+const LIVE_HTML = '<aside id="live" aria-label="Live" hidden><h2>Live <button type="button" class="quiet icon" id="live-close" title="Hide the Live panel (l)" aria-label="Hide the Live panel">×</button></h2>'
+  + '<p class="hint" id="live-hint">No answer from the live server yet.</p><div id="live-body"></div></aside>';
+
 /**
  * The self-contained HTML page of a canvas model. With serve.token, the page can send its comments to the canvas server.
  * serve.home is the key of the ticket of that server, when this page shows another ticket: then the page cannot send.
+ * serve.live is the address of the session states on the live server (live-serve.mjs): then the page has the Live panel, and it cannot send.
  * nav (buildNav in ui.mjs) adds the links to the board page and to the other tickets.
  */
 export function renderCanvas(model, { links = 'vscode', serve = null, nav = null } = {}) {
@@ -562,24 +568,26 @@ export function renderCanvas(model, { links = 'vscode', serve = null, nav = null
     ? `<p class="note">This ticket uses the ${esc(ticket.workflow)} layout. The canvas shows its files as columns.</p>`
     : model.missing.length ? `<p class="note">Not written yet: ${esc(model.missing.join(', '))}.</p>` : '';
   const home = token && serve.home && serve.home !== ticket.key ? String(serve.home) : '';
-  const data = JSON.stringify({ key: ticket.key, generated: model.generated, ...(model.focus ? { focus: model.focus, focusZone: model.focusZone } : {}), ...(token ? { token } : {}), ...(home ? { home } : {}), ...(nav ? { nav: navData(nav) } : {}) }).replace(/</g, '\\u003c');
+  const live = token && serve.live ? String(serve.live) : '';
+  const data = JSON.stringify({ key: ticket.key, generated: model.generated, ...(model.focus ? { focus: model.focus, focusZone: model.focusZone } : {}), ...(token ? { token } : {}), ...(home ? { home } : {}), ...(live ? { live } : {}), ...(nav ? { nav: navData(nav) } : {}) }).replace(/</g, '\\u003c');
   return [
     '<!doctype html>', '<html lang="en">', '<head>', '<meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
     `<title>${esc(ticket.key)} · ${esc(ticket.short || ticket.title)}</title>`,
     `<style>${CANVAS_STYLE}</style>`, '</head>', `<body class="layout-${model.layout}">`,
-    railHtml(model, nav),
+    railHtml(model, nav, Boolean(live)),
     `<div id="stage"><main id="viewport"><div id="board">${board}</div></main>`,
     '<div id="pop" role="toolbar" aria-label="Selected words" hidden><button type="button" data-act="comment">Comment</button><button type="button" data-act="remove">Remove</button>'
       + '<button type="button" data-label="unclear">unclear</button><button type="button" data-label="wrong">wrong</button><button type="button" data-label="too much">too much</button></div>',
     '<aside id="tray" hidden><h2>Comments</h2><p class="hint" id="tray-hint">Select words on a card, or use the Comment button of a card. Then copy the comments and paste them into the ticket session.</p><ol id="tray-list"></ol>'
       + '<label for="general">Whole ticket</label><textarea id="general" rows="3" placeholder="A comment on the whole ticket."></textarea>'
       + '<div class="tray-tools"><button type="button" id="send-all" hidden>Send to agent</button><button type="button" id="copy-all">Copy all</button><button type="button" id="clear-all">Delete all</button></div>'
-      + '<textarea id="copy-fallback" hidden readonly rows="6" aria-label="Comments to copy"></textarea></aside></div>',
+      + '<textarea id="copy-fallback" hidden readonly rows="6" aria-label="Comments to copy"></textarea></aside>'
+      + (live ? LIVE_HTML : '') + '</div>',
     `<footer id="foot">${note}<p>Generated ${esc(model.generated)} UTC by <code>forge.mjs canvas</code> from the ticket files. This page is a view: change the Markdown files, not this page. Press <kbd>?</kbd> for the keys.</p>`
       + '<div class="zoomer" role="group" aria-label="Zoom"><button type="button" class="quiet icon" id="zoom-out" title="Zoom out (-)" aria-label="Zoom out">−</button><output id="zoom-level">100%</output>'
       + '<button type="button" class="quiet icon" id="zoom-in" title="Zoom in (+)" aria-label="Zoom in">+</button><button type="button" class="quiet" id="zoom-fit" title="Show the whole ticket (0)">Fit</button></div></footer>',
-    switcherHtml(nav), helpHtml(HELP),
+    switcherHtml(nav), helpHtml(live ? [...HELP, 'Live', [['l'], 'Show or hide the Live panel: what the session of this ticket does now']] : HELP),
     '<div id="toast" role="status" hidden></div>',
     `<script type="application/json" id="canvas-data">${data}</script>`,
     `<script>${CANVAS_SCRIPT}</script>`, '</body>', '</html>', '',

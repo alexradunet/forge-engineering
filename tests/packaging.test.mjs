@@ -67,8 +67,9 @@ test('the Copilot hook runs the CLI and gives the full context with the end mark
 
 test('the Claude hooks ask for each context part and give each part under the Claude limit', (t) => {
   const root = scratch(t);
+  // Forge 7.6 adds one group to SessionStart and to PreToolUse: the live reporter (see the last test).
   const [start, ...more] = claudeHooks.hooks.SessionStart;
-  assert.equal(more.length, 0);
+  assert.equal(more.length, 1);
   assert.equal(start.matcher, 'startup|resume|clear|compact|fork');
   const parts = start.hooks.map((h) => h.args.at(h.args.indexOf('--part') + 1));
   assert.deepEqual(parts, Array.from({ length: CLAUDE_PARTS }, (_, i) => String(i + 1)), 'One hook for each part that hook.mjs makes.');
@@ -109,7 +110,8 @@ test('each host has the gate guard as a preToolUse hook for its shell tools, and
   assert.deepEqual(JSON.parse(first.stdout), {});
 
   const [group, ...moreClaude] = claudeHooks.hooks.PreToolUse;
-  assert.equal(moreClaude.length, 0);
+  assert.equal(moreClaude.length, 1);
+  assert.equal(moreClaude[0].matcher, '*', 'the live reporter gets each tool, and the gate guard stays on the shell tools');
   assert.equal(group.matcher, 'Bash|PowerShell');
   const [claude, ...moreHooks] = group.hooks;
   assert.equal(moreHooks.length, 0);
@@ -120,4 +122,40 @@ test('each host has the gate guard as a preToolUse hook for its shell tools, and
   const second = spawnSync(process.execPath, args, { input: event({ tool_name: 'Bash', tool_input: { command: 'git push' } }), encoding: 'utf8', env: hookEnv(root, { CLAUDECODE: '1' }), cwd: root });
   assert.equal(second.status, 0, second.stderr);
   assert.deepEqual(JSON.parse(second.stdout), {}, 'A push outside a ticket worktree is not a ticket step.');
+});
+
+test('the Claude hooks give the live reporter each activity event, and the reporter cannot change or hold a session', (t) => {
+  const root = scratch(t);
+  const REPORTER = ['${CLAUDE_PLUGIN_ROOT}/scripts/live-hook.mjs', '--host', 'claude'];
+  const found = [];
+  for (const [event, groups] of Object.entries(claudeHooks.hooks)) {
+    for (const group of groups) for (const hook of group.hooks) {
+      assert.equal(hook.type, 'command', `${event}: a reporter of type http holds the session until the server answers`);
+      if (hook.args.some((arg) => arg.includes('live-hook.mjs'))) found.push({ event, group, hook });
+    }
+  }
+  assert.deepEqual(found.map((item) => item.event), [
+    'SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'Notification', 'SubagentStart', 'SubagentStop', 'Stop', 'StopFailure', 'SessionEnd',
+  ]);
+  // A hook on these events can answer a permission prompt or hold the text of the session.
+  for (const event of ['PermissionRequest', 'PermissionDenied', 'MessageDisplay']) assert.equal(claudeHooks.hooks[event], undefined, event);
+  for (const { event, group, hook } of found) {
+    assert.equal(group.hooks.length, 1, `${event}: the reporter has its own group`);
+    assert.equal(hook.command, 'node');
+    assert.deepEqual(hook.args, REPORTER);
+    // An async hook runs in the background: its output has no effect on a decision. At SessionEnd the session waits a short time.
+    if (event === 'SessionEnd') assert.deepEqual([hook.async, hook.timeout], [undefined, 2]);
+    else assert.deepEqual([hook.async, hook.timeout], [true, undefined], event);
+  }
+  for (const event of ['PreToolUse', 'PostToolUse', 'PostToolUseFailure']) assert.equal(found.find((item) => item.event === event).group.matcher, '*');
+
+  // Without a live server (no state file in the data folder), the reporter prints nothing and exits with 0.
+  const args = REPORTER.map((a) => a.replaceAll('${CLAUDE_PLUGIN_ROOT}', pluginDir));
+  const input = JSON.stringify({ hook_event_name: 'PreToolUse', session_id: 'S1', cwd: root, tool_name: 'Bash', tool_input: { command: 'git push' } });
+  const result = spawnSync(process.execPath, args, { input, encoding: 'utf8', env: hookEnv(root, { CLAUDECODE: '1' }), cwd: root });
+  assert.deepEqual([result.status, result.stdout, result.stderr], [0, '', '']);
+  assert.ok(!existsSync(path.join(root, 'live.json')), 'the reporter writes no file');
+
+  // The Copilot hosts get the reporter in a later version: their hooks have no background option.
+  assert.doesNotMatch(JSON.stringify(copilotHooks), /live-hook/);
 });

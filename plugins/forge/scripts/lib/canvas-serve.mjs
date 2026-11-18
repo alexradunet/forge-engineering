@@ -30,9 +30,9 @@ const TYPES = {
   '.md': 'text/plain; charset=utf-8', '.txt': 'text/plain; charset=utf-8', '.log': 'text/plain; charset=utf-8', '.json': 'text/plain; charset=utf-8',
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp',
 };
-const BASE_HEADERS = { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff' };
+export const BASE_HEADERS = { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff' };
 // A page can run only its own script, and it can connect only to this server.
-const policy = (script) => `default-src 'none'; script-src 'sha256-${createHash('sha256').update(script).digest('base64')}'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'`;
+export const policy = (script) => `default-src 'none'; script-src 'sha256-${createHash('sha256').update(script).digest('base64')}'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'`;
 const PAGE_POLICY = policy(CANVAS_SCRIPT);
 const BOARD_POLICY = policy(BOARD_SCRIPT);
 const OLD_LINK = 'This link is old or not complete. Ask the ticket session for the new canvas link.\n';
@@ -88,8 +88,8 @@ export function readSend(body) {
   return { comments: items, general };
 }
 
-// A regular file inside the ticket folder with a listed type, or null.
-function ticketFile(dir, pathname) {
+/** A regular file inside the ticket folder with a listed type, or null. */
+export function ticketFile(dir, pathname) {
   let relative;
   try { relative = decodeURIComponent(pathname.slice(1)); } catch { return null; }
   const type = TYPES[path.extname(relative).toLowerCase()];
@@ -105,12 +105,13 @@ function ticketFile(dir, pathname) {
   } catch { return null; }
 }
 
-function readBody(req) {
+/** The text of a request body, or null when it has more than `max` bytes. */
+export function readBody(req, max = MAX_BODY) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
-    req.on('data', (chunk) => { size += chunk.length; if (size <= MAX_BODY) chunks.push(chunk); });
-    req.on('end', () => resolve(size > MAX_BODY ? null : Buffer.concat(chunks).toString('utf8')));
+    req.on('data', (chunk) => { size += chunk.length; if (size <= max) chunks.push(chunk); });
+    req.on('end', () => resolve(size > max ? null : Buffer.concat(chunks).toString('utf8')));
     req.on('error', reject);
   });
 }
@@ -125,10 +126,11 @@ function listen(server, port) {
   });
 }
 
-async function bind(server, key, port) {
+/** Listens on `port`, or on the stable port of `key` and the ports after it. `name` is the server name in the error text. */
+export async function bind(server, key, port, name = 'canvas') {
   if (port !== undefined) {
     try { return await listen(server, port); } catch (err) {
-      if (err.code === 'EADDRINUSE') throw new Error(`Port ${port} is in use. Give another --port, or stop the other canvas server.`);
+      if (err.code === 'EADDRINUSE') throw new Error(`Port ${port} is in use. Give another --port, or stop the other ${name} server.`);
       throw err;
     }
   }

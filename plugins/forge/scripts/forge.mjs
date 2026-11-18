@@ -22,6 +22,9 @@
 //           and raw/board.html, so the page has a link to the board and to each other ticket
 //   canvas  <key> --serve [--port <n>] [--links vscode|file]   show the canvas on http://127.0.0.1 until the user sends the comments
 //            from the page; then print the comment message and stop. Exit 0 after a Send, and not 0 when it stops without comments.
+//   live    [--port <n>] [--links vscode|file]   show the board and the canvases on http://127.0.0.1 with the live state of the agent sessions
+//            (the session hooks send their events to this server). Read-only for a session. It stops at a signal, or after 8 hours without an event.
+//   live --status   print the link of the live server that runs, or exit 1 when none runs
 //   gate-approve <key> <gate> --answer "<exact user answer>" [--method form|chat] [--manifest <path>] [--hash <sha>] [--dry-run] [--json]
 //            record an explicit approval of an in-review gate (not Sendable?); checks the manifest, then writes the README and approvals/history.md
 //   hook session-start [--host <host>]   read the hook event on stdin; print {"additionalContext"} with the Forge context, else {}
@@ -56,6 +59,7 @@ import { diffGate, gateName, renderDiff, saveSnapshot } from './lib/reading.mjs'
 import { LINK_MODES, buildCanvas } from './lib/canvas.mjs';
 import { writeViews } from './lib/views.mjs';
 import { serveCanvas } from './lib/canvas-serve.mjs';
+import { liveStatus, serveLive } from './lib/live-serve.mjs';
 import { loadProfile, pluginRoot } from './lib/profile.mjs';
 
 // A tracker that uses an MCP server (see mcpGateway) has no CLI.
@@ -159,6 +163,7 @@ export function parseArgs(argv) {
     else if (a === '--dry-run') out.dryRun = true;
     else if (a === '--create') out.create = true;
     else if (a === '--serve') out.serve = true;
+    else if (a === '--status') out.status = true;
     else if (['--summary', '--base', '--today', '--answer', '--method', '--manifest', '--hash', '--links', '--port'].includes(a)) {
       if (argv[i + 1] === undefined || argv[i + 1].startsWith('--')) throw new ForgeError(`${a} needs a value.`, 'bad-args');
       out[a.slice(2)] = argv[++i];
@@ -483,6 +488,25 @@ export function main(argv = process.argv.slice(2)) {
           if (result.missing.length) console.log(`  not written yet: ${result.missing.join(', ')}`);
         }
       } catch (err) { throw new ForgeError(err.message, 'canvas'); }
+    } else if (cmd === 'live') {
+      const port = args.port === undefined ? undefined : Number(args.port);
+      const badPort = args.port !== undefined && (!/^\d{1,5}$/.test(args.port) || (port !== 0 && (port < 1024 || port > 65535)));
+      if (args._.length !== 1 || args.json || (args.links !== undefined && !LINK_MODES.includes(args.links)) || badPort || (args.status && args.port !== undefined)) {
+        throw new ForgeError(`Usage: forge.mjs live [--port <n>] [--links ${LINK_MODES.join('|')}], or forge.mjs live --status. A port is 0, or 1024 to 65535.`, 'bad-args');
+      }
+      if (args.status) {
+        const running = liveStatus();
+        if (!running) { console.log('live: no server runs. Start it with: forge.mjs live'); return 1; }
+        console.log(`live: serving ${running.link}\n  state ${running.file}`);
+      } else {
+        const where = resolve(opts);
+        if (!where.wiki.exists) throw new ForgeError(`No wiki at ${where.wiki.path}. Run the forge-setup skill.`, 'no-wiki');
+        // The server runs after main() returns. The exit code comes when the server stops.
+        serveLive(where.wiki.path, { links: args.links, port }).then(
+          (code) => { process.exitCode = code; },
+          (err) => { console.error(`forge: ${err.message}`); process.exitCode = 1; },
+        );
+      }
     } else if (cmd === 'gate-approve') {
       if (args._.length !== 3 || !args.answer) throw new ForgeError('Usage: forge.mjs gate-approve <key> <gate> --answer "<exact user answer>" [--method form|chat] [--manifest <path>] [--hash <sha>] [--dry-run] [--json].', 'bad-args');
       const where = resolve(opts);
@@ -497,7 +521,7 @@ export function main(argv = process.argv.slice(2)) {
       if (args._[1] === 'approve') console.log(JSON.stringify(approve(where, args._.slice(2)), null, 2));
       else console.log(JSON.stringify(trustStatus(where), null, 2));
     } else {
-      console.error('Usage: node forge.mjs <where|config|doctor|lint|detect|init-wiki|bind|seed|migrate|board|worktree|snapshot|diff|canvas|gate-approve|hook|context|trust|run> [--wiki <dir>] [--cwd <dir>] [--json]');
+      console.error('Usage: node forge.mjs <where|config|doctor|lint|detect|init-wiki|bind|seed|migrate|board|worktree|snapshot|diff|canvas|live|gate-approve|hook|context|trust|run> [--wiki <dir>] [--cwd <dir>] [--json]');
       return 2;
     }
     return 0;

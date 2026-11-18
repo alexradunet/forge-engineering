@@ -5,19 +5,14 @@
 //   Linux:   Secret Service item, service "forge", account <name> (secret-tool)
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
+import { dataDir } from './data-dir.mjs';
 import { ForgeError } from './repo.mjs';
 
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
-/** The forge user data folder (outside every repo and outside the plugin). */
-export function dataDir(env = process.env, platform = process.platform) {
-  if (env.FORGE_DATA_DIR) return env.FORGE_DATA_DIR;
-  if (platform === 'win32') return path.join(env.LOCALAPPDATA ?? path.join(os.homedir(), 'AppData', 'Local'), 'forge');
-  if (platform === 'darwin') return path.join(os.homedir(), 'Library', 'Application Support', 'forge');
-  return path.join(env.XDG_DATA_HOME ?? path.join(os.homedir(), '.local', 'share'), 'forge');
-}
+// The forge user data folder (data-dir.mjs). This file gives it again, for the files that import it from here.
+export { dataDir };
 
 export function checkName(name) {
   if (typeof name !== 'string' || !NAME.test(name)) {

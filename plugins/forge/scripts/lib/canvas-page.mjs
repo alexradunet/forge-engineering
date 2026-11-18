@@ -220,6 +220,30 @@ svg.labels text.on { display: block; }
 .tray-tools { display: flex; flex-wrap: wrap; gap: 6px; }
 #send-all { color: var(--card); background: var(--accent); border-color: var(--accent); font-weight: 600; }
 #copy-fallback { margin-top: 8px; font: 13px/1.4 var(--mono); }
+#live-toggle { border-color: color-mix(in srgb, var(--st, var(--muted)) 60%, var(--line)); }
+#live { flex: none; order: -1; width: 400px; max-width: 45%; overflow: auto; padding: 14px 16px; background: var(--rail); border-right: 1px solid var(--line); }
+@media (max-width: 760px) { #live { position: absolute; left: var(--s-3); top: var(--s-3); z-index: 4; max-width: calc(100% - 24px); max-height: calc(100% - 24px); border: 1px solid var(--line); border-radius: var(--r-3); box-shadow: var(--sh-2); } }
+#live h2 { display: flex; justify-content: space-between; align-items: center; margin: 0 0 4px; font-size: 16px; }
+.lv-session + .lv-session { margin-top: var(--s-4); padding-top: var(--s-3); border-top: 1px solid var(--line); }
+.lv-session h3 { margin: 0 0 6px; font-size: var(--t-md); font-weight: 600; overflow-wrap: anywhere; }
+.lv-prompt { margin: var(--s-2) 0 0; padding-left: var(--s-2); color: var(--muted); border-left: 3px solid var(--line-2); overflow-wrap: anywhere; }
+.lv-tree { list-style: none; margin: 6px 0 0; padding: 0; font-size: var(--t-sm); }
+.lv-tree .lv-tree { margin: 2px 0 2px 7px; padding-left: 12px; border-left: 1px solid var(--line-2); }
+.lv-item { padding: 1px 0; overflow-wrap: anywhere; }
+.lv-item > .lv-name { font: 600 var(--t-sm)/1.4 var(--mono); }
+.lv-item > .lv-name::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 7px; background: var(--line-2); border-radius: 50%; }
+.lv-i-running > .lv-name::before { background: var(--accent); animation: lv-pulse 1.6s ease-in-out infinite; }
+.lv-i-failed > .lv-name::before { background: var(--red); }
+.lv-i-done > .lv-name { font-weight: 400; color: var(--muted); }
+.lv-k-agent > .lv-name { color: var(--violet); }
+.lv-label { margin: 0 6px; font-family: var(--mono); }
+.lv-i-done > .lv-label { color: var(--muted); }
+.lv-i-failed > .lv-age { color: var(--red); }
+.lv-text { display: block; margin: var(--s-2) 0 0; overflow-wrap: anywhere; }
+.lv-item > .lv-text { margin: 2px 0 2px 14px; color: var(--muted); }
+.lv-text::before, .lv-text::after { content: none; }
+.lv-more { margin: 4px 0 0; font-size: var(--t-xs); color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { .lv-i-running > .lv-name::before { animation: none; } }
 #foot { flex: none; align-items: center; }
 #foot p { min-width: 0; }
 `;
@@ -366,6 +390,7 @@ ${UI_SCRIPT}
     else if (event.key === 'ArrowUp') { view.y += 90; apply(false); }
     else if (event.key === 'ArrowDown') { view.y -= 90; apply(false); }
     else if (event.key === 'Escape') { if (pop.hidden) tray.hidden = true; else hidePop(); }
+    else if (event.key === 'l' && livePanel) toggleLive();
     else if (event.key === 'v' && viewButtons.length) setView(viewButtons[(viewNames().indexOf(fold.view) + 1) % viewButtons.length].getAttribute('data-view'));
     else return;
     event.preventDefault();
@@ -829,11 +854,81 @@ ${UI_SCRIPT}
   });
   document.getElementById('tray-toggle').addEventListener('click', function () { tray.hidden = !tray.hidden; });
 
+  // The Live panel: what the sessions of this ticket do now. Only a page of the live server (forge.mjs live) has it.
+  // Each text of a session goes into the page as text, never as HTML.
+  var livePanel = byId('live');
+  function toggleLive() {
+    livePanel.hidden = !livePanel.hidden;
+    byId('live-toggle').setAttribute('aria-pressed', livePanel.hidden ? 'false' : 'true');
+    store.set('live', livePanel.hidden ? 'closed' : 'open');
+  }
+  function liveRows(items, list, depth) {
+    items.forEach(function (item) {
+      var state = item.state === 'running' || item.state === 'failed' ? item.state : 'done';
+      var row = make('li', 'lv-item lv-i-' + state + (item.kind === 'agent' ? ' lv-k-agent' : ''));
+      row.appendChild(make('span', 'lv-name', item.name));
+      if (item.label) row.appendChild(make('span', 'lv-label', item.label));
+      if (state === 'running') row.appendChild(liveTime(item.start));
+      else if (state === 'failed') row.appendChild(make('span', 'lv-age', 'failed'));
+      else if (item.ms >= 1000) row.appendChild(make('span', 'lv-age', liveSpan(item.ms)));
+      if (item.kind === 'agent') {
+        if (item.items && item.items.length && depth < 6) {
+          var sub = make('ul', 'lv-tree');
+          liveRows(item.items, sub, depth + 1);
+          row.appendChild(sub);
+        }
+        if (item.text && state !== 'running') row.appendChild(make('q', 'lv-text', item.text));
+      }
+      list.appendChild(row);
+    });
+  }
+  function showLive(state, ok) {
+    var body = byId('live-body');
+    var hint = byId('live-hint');
+    var toggle = byId('live-toggle');
+    while (body.firstChild) body.removeChild(body.firstChild);
+    var details = state && state.detail ? state.detail : [];
+    var worst = 'idle';
+    details.forEach(function (one) {
+      var session = state.sessions.filter(function (item) { return item.id === one.id; })[0];
+      if (!session) return;
+      var name = liveState(session.state);
+      if (name === 'needs-you' || (name === 'working' && worst !== 'needs-you')) worst = name;
+      var part = make('section', 'lv-session');
+      part.appendChild(make('h3', '', session.title || session.dir || 'A session without a title'));
+      part.appendChild(liveLine(session));
+      if (one.prompt) part.appendChild(make('p', 'lv-prompt', one.prompt));
+      if (one.items.length) {
+        var list = make('ul', 'lv-tree');
+        liveRows(one.items, list, 1);
+        part.appendChild(list);
+      }
+      if (one.more) part.appendChild(make('p', 'lv-more', one.more + ' older calls do not show.'));
+      if (one.text) part.appendChild(make('q', 'lv-text', one.text));
+      body.appendChild(part);
+    });
+    hint.hidden = ok && body.childNodes.length > 0;
+    hint.textContent = !ok ? 'The live server does not answer. The panel shows the last state that it got.'
+      : 'No session reports for ' + data.key + ' now. A session shows here after its next prompt or tool call, when it runs in the worktree of the ticket or its title starts with the ticket key.';
+    toggle.className = 'lv-' + (body.childNodes.length ? worst : 'idle');
+    toggle.firstChild.textContent = body.childNodes.length ? 'Live: ' + LIVE_TEXT[worst] : 'Live';
+  }
+  if (livePanel) {
+    byId('live-toggle').addEventListener('click', toggleLive);
+    byId('live-close').addEventListener('click', toggleLive);
+    if (store.get('live', 'open') === 'open') toggleLive();
+    liveStart(showLive);
+  }
+
   // The canvas server (forge.mjs canvas <key> --serve) puts a token into the page. Only the page of its own ticket can send.
+  // A page of the live server cannot send: that server is read-only for a session.
+  if (data.token && data.live) {
+    document.getElementById('tray-hint').textContent = 'This page comes from the live server, so it cannot send. Use Copy all, and paste the comments into the session of ' + data.key + '.';
+  }
   if (data.token && data.home) {
     document.getElementById('tray-hint').textContent = 'This page comes from the session of ' + data.home + ', so it cannot send. Use Copy all, and paste the comments into the session of ' + data.key + '.';
   }
-  if (data.token && !data.home) {
+  if (data.token && !data.home && !data.live) {
     sendButton.hidden = false;
     document.getElementById('tray-hint').textContent = 'Select words on a card, or use the Comment button of a card. Then select Send to agent.';
     sendButton.addEventListener('click', function () {

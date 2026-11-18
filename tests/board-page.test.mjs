@@ -70,7 +70,10 @@ test('the design system gives each page the same tokens, both themes, and a scri
     assert.ok(!script.includes('\r') && !script.includes('`'), name);
     assert.doesNotMatch(script, /XMLHttpRequest|WebSocket|sendBeacon|EventSource|https?:\/\/(?!www\.w3\.org\/2000\/svg)/, name);
   }
-  assert.equal(BOARD_SCRIPT.match(/\bfetch\(/g).length, 1, 'the board page asks only for the next page of its own server');
+  // Forge 7.6 adds one request: a page of the live server asks that server for the state of the sessions.
+  assert.equal(BOARD_SCRIPT.match(/\bfetch\(/g).length, 2, 'the board page asks only its own server: for the next page, and for the live state');
+  for (const script of [BOARD_SCRIPT, CANVAS_SCRIPT]) assert.match(script, /fetch\(data\.live \+ '&v=' \+ live\.v, \{ cache: 'no-store'/);
+  assert.doesNotMatch(UI_SCRIPT, /innerHTML|insertAdjacentHTML|document\.write/, 'the text of a session goes into the page as text');
 });
 
 test('the links between the pages are relative in a file page and use the server routes in a served page', (t) => {

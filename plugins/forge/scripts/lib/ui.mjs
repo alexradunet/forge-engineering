@@ -132,6 +132,22 @@ code { font: var(--t-sm)/1.4 var(--mono); background: color-mix(in srgb, var(--m
 .st-done { --st: var(--faint); }
 .pill { display: inline-flex; align-items: center; gap: 5px; padding: 1px 10px; font-size: var(--t-sm); white-space: nowrap; color: var(--ink); background: color-mix(in srgb, var(--st, var(--muted)) 14%, var(--card)); border: 1px solid color-mix(in srgb, var(--st, var(--muted)) 60%, var(--line)); border-radius: var(--r-pill); }
 
+.lv-working { --st: var(--accent); }
+.lv-needs-you { --st: var(--amber); }
+.lv-idle, .lv-ended { --st: var(--faint); }
+.live { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--s-2); margin: 0; padding: 3px var(--s-2); font-size: var(--t-sm); background: color-mix(in srgb, var(--st, var(--muted)) 9%, var(--card)); border: 1px solid color-mix(in srgb, var(--st, var(--muted)) 45%, var(--line)); border-radius: var(--r-1); }
+.lv-state { font-weight: 600; white-space: nowrap; }
+.lv-state::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 6px; background: var(--st, var(--muted)); border-radius: 50%; }
+.lv-working .lv-state::before { animation: lv-pulse 1.6s ease-in-out infinite; }
+@keyframes lv-pulse { 50% { opacity: 0.3; } }
+@media (prefers-reduced-motion: reduce) { .lv-working .lv-state::before { animation: none; } }
+.lv-age { font-size: var(--t-xs); color: var(--muted); white-space: nowrap; }
+.lv-now, .lv-agents, .lv-note { flex: 1 1 100%; min-width: 0; overflow-wrap: anywhere; }
+.lv-now b { font: 600 var(--t-sm)/1.4 var(--mono); }
+.lv-now code { background: transparent; padding: 0; }
+.lv-agents, .lv-note { color: var(--muted); }
+.lv-needs-you .lv-note { color: var(--ink); }
+
 #rail { background: var(--rail); border-bottom: 1px solid var(--line); z-index: 3; }
 .bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-2); padding: var(--s-2) var(--s-4); }
 .bar h1 { flex: 0 1 auto; min-width: 0; margin: 0 var(--s-2) 0 0; font-size: var(--t-lg); font-weight: 600; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -229,6 +245,85 @@ export const UI_SCRIPT = String.raw`
     event.preventDefault();
     go(link.getAttribute('href'));
   });
+
+  // The live view. A page of the live server (forge.mjs live) has data.live: the address of the session states on that server.
+  // The server holds its answer until a state changes, and then the page asks again. Only a page in view asks.
+  var LIVE_TEXT = { working: 'working', 'needs-you': 'needs you', idle: 'idle', ended: 'ended' };
+  var live = { v: -1, wait: 1000, busy: false, timer: 0, stop: null, state: null, skew: 0, fails: 0, show: null };
+  function liveState(name) { return Object.prototype.hasOwnProperty.call(LIVE_TEXT, name) ? name : 'idle'; }
+  function liveSpan(ms) {
+    var s = Math.max(0, Math.round(ms / 1000));
+    return s < 60 ? s + ' s' : s < 3600 ? Math.floor(s / 60) + ' min' : Math.floor(s / 3600) + ' h ' + Math.floor(s % 3600 / 60) + ' min';
+  }
+  // The time since a moment of the server clock. The element counts on each second (liveTick).
+  function liveTime(from) {
+    var el = make('span', 'lv-age', liveSpan(Date.now() - live.skew - from));
+    el.setAttribute('data-from', String(from));
+    return el;
+  }
+  function liveTick() {
+    each(document.querySelectorAll('[data-from]'), function (el) { el.textContent = liveSpan(Date.now() - live.skew - Number(el.getAttribute('data-from'))); });
+  }
+  // One session: its state and the time in that state, the tool that runs now, the count of subagents, and the note of a wait.
+  function liveLine(session) {
+    var state = liveState(session.state);
+    var line = make('p', 'live lv-' + state);
+    line.appendChild(make('span', 'lv-state', LIVE_TEXT[state] + (session.quiet ? ', quiet' : '')));
+    line.appendChild(liveTime(session.quiet ? session.seen : session.since));
+    if (session.now) {
+      var now = make('span', 'lv-now', 'now: ');
+      now.appendChild(make('b', '', session.now.name));
+      if (session.now.label) { now.appendChild(document.createTextNode(' ')); now.appendChild(make('code', '', session.now.label)); }
+      now.appendChild(document.createTextNode(' '));
+      now.appendChild(liveTime(session.now.start));
+      line.appendChild(now);
+    }
+    if (session.agents) line.appendChild(make('span', 'lv-agents', session.agents === 1 ? '1 subagent runs' : session.agents + ' subagents run'));
+    if (session.note && state === 'needs-you') line.appendChild(make('span', 'lv-note', session.note));
+    return line;
+  }
+  function liveAsk() {
+    if (!data.live || !live.show || live.busy || offline || document.hidden) return;
+    live.busy = true;
+    live.stop = typeof AbortController === 'function' ? new AbortController() : null;
+    fetch(data.live + '&v=' + live.v, { cache: 'no-store', signal: live.stop ? live.stop.signal : undefined })
+      .then(function (response) {
+        if (response.status === 403) setOffline();
+        if (!response.ok) throw new Error('refused');
+        return response.json();
+      })
+      .then(function (state) {
+        live.busy = false;
+        live.wait = 1000;
+        live.fails = 0;
+        live.v = state.v;
+        live.state = state;
+        live.skew = Date.now() - state.now;
+        live.show(state, true);
+        liveAsk();
+      })
+      .catch(function () {
+        live.busy = false;
+        if (document.hidden && !offline) return;
+        // The server does not answer: the page keeps the last state, says so, and asks again later.
+        live.fails += 1;
+        if (offline || live.fails > 1) live.show(live.state, false);
+        if (offline) return;
+        clearTimeout(live.timer);
+        live.timer = setTimeout(liveAsk, live.wait);
+        live.wait = Math.min(live.wait * 2, 30000);
+      });
+  }
+  // show(state, ok) draws the sessions. state is null before the first answer, and ok is false when the server does not answer.
+  function liveStart(show) {
+    if (!data.live) return;
+    live.show = show;
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) { if (live.stop) live.stop.abort(); } else liveAsk();
+    });
+    setInterval(function () { if (!document.hidden) liveTick(); }, 1000);
+    liveAsk();
+  }
 
   // The ticket switcher: a filter, the arrow keys, and Enter.
   var switcher = byId('switcher');
