@@ -39,6 +39,7 @@ so your memory of a VS Code feature can be old.
 ## ✍️ Files
 
 - Use CRLF line endings, UTF-8 without a BOM, and a final newline.
+- `plugins/forge/vendor/` holds third-party files. Do not change a byte of them: they keep their own line endings, and `tests/wiki-page.test.mjs` checks the hash. The update steps are in `plugins/forge/vendor/mermaid/NOTICE.md`.
 - Write plugin text in ASD-STE100 Simplified Technical English (the `writing` skill).
   Do not use em dashes, en dashes, or a double hyphen in Markdown (`tests/writing.test.mjs`).
 - The plugin uses the Agent Plugins 1.0 layout:

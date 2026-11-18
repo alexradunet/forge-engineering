@@ -1,0 +1,2 @@
+# The third-party files keep their bytes, also on a machine that changes line endings: a test checks the hash.
+plugins/forge/vendor/** -text

@@ -1,7 +1,7 @@
 // The design system of the forge pages: the board page (board-page.mjs), the ticket canvas (canvas-page.mjs), and the wiki page (wiki-page.mjs).
 // It holds one set of tokens (color, type, space, radius, shadow), the shared components, the links between
 // the pages, and the shared browser functions. Each page puts the style and the script inline,
-// so a page needs no network and no other file. docs/design-system.md gives the rules.
+// so a page needs no network and no other file (the wiki page with a Mermaid block also needs the Mermaid file of forge). docs/design-system.md gives the rules.
 // The script text uses no template literals: it sits in one.
 
 export const esc = (value) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');

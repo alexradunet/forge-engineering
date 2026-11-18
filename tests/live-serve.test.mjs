@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { BOARD_SCRIPT } from '../plugins/forge/scripts/lib/board-page.mjs';
 import { CANVAS_SCRIPT } from '../plugins/forge/scripts/lib/canvas-page.mjs';
 import { liveFile, liveStatus, serveLive } from '../plugins/forge/scripts/lib/live-serve.mjs';
+import { MERMAID_INTEGRITY, MERMAID_ROUTE, mermaidPath } from '../plugins/forge/scripts/lib/mermaid.mjs';
 import { WIKI_SCRIPT } from '../plugins/forge/scripts/lib/wiki-page.mjs';
 
 const cli = fileURLToPath(new URL('../plugins/forge/scripts/forge.mjs', import.meta.url));
@@ -207,6 +208,25 @@ test('the pages of the live server: the board and each canvas with the live part
   assert.ok(canvas.text.includes('id="wiki-refs"'));
   assert.equal((await request(s.port, { url: '/wiki' })).status, 403);
   for (const url of ['/ticket/app-9/page.html', '/ticket/app-9/..%2Fapp-2%2FREADME.md', '/ticket/nope/', '/ticket/..%2F..%2Fx/', '/board.html', '/README.md', '/wiki/', '/wiki/tooling/build.md', '/tooling/build.md']) {
+    assert.equal((await request(s.port, { url: `${url}?t=${s.page}` })).status, 404, url);
+  }
+});
+
+test('the wiki page of a wiki with a Mermaid block can load the Mermaid file of this server, and no other script', async (t) => {
+  const s = await start(t);
+  // Without a diagram block, the policy names only the page script (the test of the pages checks the whole header).
+  mkdirSync(path.join(s.wiki, 'app'), { recursive: true });
+  writeFileSync(path.join(s.wiki, 'app', 'flow.md'), '---\ntitle: Flow\nupdated: 2026-11-10\nstatus: verified\n---\n# Flow\n\n```mermaid\nflowchart LR\n  A --> B\n```\n');
+  const page = await request(s.port, { url: `/wiki?t=${s.page}` });
+  assert.equal(page.headers['content-security-policy'], `default-src 'none'; script-src 'sha256-${hash(WIKI_SCRIPT)}' 'self'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'`);
+  assert.ok(page.text.includes(`"mermaid":{"src":"${MERMAID_ROUTE}?t=${s.page}","integrity":"${MERMAID_INTEGRITY}"}`));
+  const file = await request(s.port, { url: `${MERMAID_ROUTE}?t=${s.page}` });
+  assert.deepEqual([file.status, file.headers['content-type'], file.headers['x-content-type-options'], file.headers['cache-control']], [200, 'text/javascript; charset=utf-8', 'nosniff', 'private, max-age=86400']);
+  assert.equal(Number(file.headers['content-length']), readFileSync(mermaidPath()).length);
+  assert.equal(file.text, readFileSync(mermaidPath(), 'utf8'));
+  assert.equal((await request(s.port, { url: MERMAID_ROUTE })).status, 403, 'the file needs the page token');
+  assert.equal((await request(s.port, { url: `${MERMAID_ROUTE}?t=${s.event}` })).status, 403);
+  for (const url of ['/vendor/', '/vendor/LICENSE', '/vendor/NOTICE.md', '/vendor/../forge.mjs', '/vendor/mermaid.tiny.js/x']) {
     assert.equal((await request(s.port, { url: `${url}?t=${s.page}` })).status, 404, url);
   }
 });

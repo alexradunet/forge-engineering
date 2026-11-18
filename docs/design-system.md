@@ -12,7 +12,7 @@ A page of the live server (`forge.mjs live`) also shows what the agent sessions 
 1. Signal only. A color or an emoji shows a state. It is never decoration.
 2. A state has its emoji and its words. Color alone carries no fact, so the pages also work without color.
 3. The ticket that waits for the user comes first, on each page.
-4. A page is one file. It loads nothing from a network: no font, no image, no script from another place.
+4. A page is one file. It loads nothing from a network: no font, no image, no script from another place. The one exception is the Mermaid file of the wiki page, which comes from the folder or the server of the page.
 5. A page is a view. The Markdown files of the ticket are the source, and no approval comes from a page.
 6. The keyboard can do each step of the navigation. The mouse can do the same steps.
 7. The same part looks the same on each page: one bar, one switcher, one help dialog, one toast.
@@ -77,6 +77,7 @@ One file holds all pages. The address of a page is the path of its Markdown file
 - A page shows its title, its status, its date, its text, and its sources. The status (`verified`, `decided`, or `needs-check`) uses the color of a ticket state, so the page has no token of its own.
 - **Used by** lists the open tickets and the other pages that name the page. The index and the log are not in that list.
 - A link to another page of the wiki changes only the page in view. A web address opens a new tab. A relative link to a file that is not a page stays as text.
+- A Mermaid block becomes a drawing with the colors of the theme. The page loads the Mermaid file of Forge (`mermaid.tiny.js`) only when the wiki has such a block: from its own folder for a file page, and from its own server for a served page.
 
 A closed ticket has no folder on the board. Its summary page (`tickets/<key>.md`) is in the wiki, so the board lists the closed tickets below the lanes, and each row opens the summary page on the wiki page.
 The archive folder of a ticket stays on its machine, and no page shows it.
@@ -109,6 +110,7 @@ The **Wiki** menu of the bar lists each wiki page that the ticket names.
 | Wiki menu | `.refs`, `#wiki-refs` (canvas) | The wiki pages that the ticket names, and the link to all pages. It closes at a click outside of it, and at `Esc` |
 | Page list | `#tree` (wiki) | One group for each folder of the wiki, with a count. The filter hides pages, and it reads the text of each page |
 | Wiki page text | `.wpage`, `.md`, `.more` (wiki) | One page: the folder and the file name, the title, the status and the date, the text, the sources, and the uses |
+| Diagram | `.mermaid` (wiki) | The drawing of a Mermaid block, in a frame. The block keeps its text, and a block that Mermaid cannot draw stays as code |
 | Closed tickets | `#lane-closed` (board) | A closed list at the end of the board: the key, the title, and the date of each summary page |
 | Toast | `#toast` | One line that tells the result of a step. It goes away after 4 seconds |
 | Empty text | `.empty` | One sentence that says what is missing. It never shows an empty frame |
@@ -260,6 +262,8 @@ The switcher of each page also lists the closed tickets, after the tickets of th
 | The user reads a wiki page and wants its tickets | **Used by** names each open ticket and each closed ticket that names the page |
 | The user wants an old ticket | The board lists the closed tickets at its end, and the switcher (`t`) finds one by its key or its words. Each one opens its summary page in the wiki |
 | The user looks for a fact in the wiki | The filter of the wiki page reads the title, the path, and the text of each page |
+| A wiki page has a Mermaid block | The page draws the diagram when the page shows, and again after a theme change. A block with an error stays as code |
+| The Mermaid file is missing next to a file page | A toast says to run `forge.mjs board` again, and the blocks stay as code |
 | A link names a wiki page that is gone | The wiki page says that it has no such page, and it shows the first page |
 | The wiki has no page yet | The wiki page says so, and the board has no list of closed tickets |
 | The page is old (a file page) | The footer gives the time. The next `forge.mjs board` or `forge.mjs canvas <KEY>` run writes it again, and VS Code can load it again (`workbench.browser.autoReloadOnFileChange`). A page that did not change is not written again |
@@ -274,12 +278,13 @@ The switcher of each page also lists the closed tickets, after the tickets of th
 ## Rules for a change
 
 - Put a new token, a shared component, or a shared function in `ui.mjs`, and add it to this page. A token goes into the light and the dark theme.
-- A page script uses no template literal, and it requests only a link of its own server: a relative link, or `data.live` on a page of the live server.
+- A page script uses no template literal, and it requests only a link of its own server: a relative link, `data.live` on a page of the live server, or `data.mermaid` on the wiki page.
 - Escape each ticket text with `esc()`. Only `linkTarget()` makes a link target from ticket text.
 - The text of a session (a title, a prompt, a command, a last message) is not trusted. Put it into the page with `make()`, which sets `textContent`. Never make HTML from it.
 - Change the live event (`live-event.mjs`), the live state (`live.mjs`), and the live parts of the pages together (`tests/live.test.mjs`, `tests/live-serve.test.mjs`).
 - Change the wiki model (`wiki.mjs`), the wiki page (`wiki-page.mjs`), and the wiki links of the board and the canvas together (`tests/wiki-page.test.mjs`).
 - The text of a wiki page goes through `markdown()`, which escapes each character. The script of the wiki page makes no HTML.
+- Mermaid makes the HTML of a drawing, with its security level `strict`. Do not change a byte of `plugins/forge/vendor/mermaid/mermaid.tiny.js`: `tests/wiki-page.test.mjs` checks its hash, and `vendor/mermaid/NOTICE.md` gives the update steps.
 - Change a ticket template and the canvas together (`tests/canvas.test.mjs`). Give each new template section a tier in `TIERS`.
 - Look at each change in a browser, in the light and the dark theme, at a width of 620 px and of 1500 px.
 
@@ -293,7 +298,9 @@ The switcher of each page also lists the closed tickets, after the tickets of th
 - A `claude -p` run stops its background hooks when it ends, so its last text can be missing.
 - Two subagents of one type that start at the same time can show below the wrong call, until the result of each call comes.
 - The live server learns of a session at its first event. A session that started before the server shows after its next prompt or tool call.
-- The wiki page shows a Mermaid block as code, because the page loads no library. Its Markdown has no italic text and no images.
+- The Markdown of the wiki page has no italic text and no images.
+- The Mermaid build of Forge has no mindmap diagram, no architecture diagram, and no math. Only the wiki page draws a Mermaid block: a ticket canvas shows it as code.
+- A wiki with a Mermaid block needs the file `mermaid.tiny.js` (2.7 MB) next to `wiki.html`. `forge.mjs board` puts it there.
 - One file holds all pages of the wiki. The model stops at 3,000 pages, and it leaves out a page with more than 512 KB.
 - A link to a heading of a wiki page opens the page at its top.
 - The wiki page shows no file of `raw/` and `archive/`, so the working folder of a closed ticket has no page.

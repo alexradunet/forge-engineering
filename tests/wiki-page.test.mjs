@@ -1,12 +1,14 @@
 // The wiki page: the model of the canonical pages, the links from a ticket and from the board to the wiki, and the closed tickets.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { buildBoard } from '../plugins/forge/scripts/lib/board.mjs';
 import { renderBoardPage } from '../plugins/forge/scripts/lib/board-page.mjs';
 import { buildCanvas, markdown, renderCanvas } from '../plugins/forge/scripts/lib/canvas.mjs';
+import { MERMAID_FILE, MERMAID_INTEGRITY, MERMAID_ROUTE, MERMAID_SHA256, MERMAID_VERSION, copyMermaid, mermaidPath, needsMermaid, readMermaid } from '../plugins/forge/scripts/lib/mermaid.mjs';
 import { UI_SCRIPT, UI_STYLE, buildNav } from '../plugins/forge/scripts/lib/ui.mjs';
 import { writeViews } from '../plugins/forge/scripts/lib/views.mjs';
 import { WIKI_SCRIPT, WIKI_STYLE, renderWikiPage } from '../plugins/forge/scripts/lib/wiki-page.mjs';
@@ -226,4 +228,53 @@ test('writeViews writes the wiki page with the other pages, and it keeps a page 
   w.put('tooling/new.md', page('New page', 'Text.'));
   assert.equal(writeViews(w.root, { today: TODAY }).wiki.written, true);
   assert.equal(writeViews(w.root, { today: TODAY, dryRun: true }).wiki.written, false);
+});
+
+test('the Mermaid file of the plugin has the hash of the code, its license, and no request of its own', () => {
+  const bytes = readFileSync(mermaidPath());
+  assert.equal(createHash('sha256').update(bytes).digest('hex'), MERMAID_SHA256, 'a change of the file is a change of MERMAID_SHA256 and of the notice');
+  assert.equal(MERMAID_INTEGRITY, `sha256-${createHash('sha256').update(bytes).digest('base64')}`);
+  assert.deepEqual(readMermaid(), bytes);
+  const source = bytes.toString('utf8');
+  assert.ok(!source.includes('\r'), 'the file keeps the line ends of its package');
+  assert.doesNotMatch(source, /\bfetch\(|XMLHttpRequest|\bimport\(|new WebSocket|EventSource|sendBeacon|\beval\(|new Function\(/, 'the file asks no server, and it makes no code from text');
+  const folder = path.dirname(mermaidPath());
+  assert.match(readFileSync(path.join(folder, 'LICENSE'), 'utf8'), /The MIT License \(MIT\)/);
+  const notice = readFileSync(path.join(folder, 'NOTICE.md'), 'utf8');
+  for (const fact of [MERMAID_FILE, `@mermaid-js/tiny\` ${MERMAID_VERSION}`, MERMAID_SHA256, 'sha512-']) assert.ok(notice.includes(fact), `NOTICE.md: ${fact}`);
+});
+
+test('only a wiki with a Mermaid block loads the Mermaid file: from the folder of a file page, and from the server of a served page', (t) => {
+  const w = wiki(t);
+  const plain = renderWikiPage(buildWiki(w.root));
+  assert.ok(!needsMermaid(plain) && !plain.includes('"mermaid":{'), 'a wiki without a diagram has no link to the file');
+  const first = writeViews(w.root, { today: TODAY });
+  assert.equal(first.wiki.mermaid, null);
+  assert.ok(!existsSync(path.join(w.root, 'raw', MERMAID_FILE)));
+
+  w.put('app/flow.md', page('Flow', ['```mermaid', 'flowchart LR', '  A[One <b>] --> B', '```', '', '```js', 'const mermaid = 1;', '```'].join('\n')));
+  const model = buildWiki(w.root);
+  const html = renderWikiPage(model);
+  assert.match(html, /<pre data-lang="mermaid"><code>flowchart LR\n {2}A\[One &lt;b&gt;\] --&gt; B<\/code><\/pre>/, 'the block keeps its text, and the text is escaped');
+  assert.match(html, /"mermaid":\{"src":"mermaid\.tiny\.js"\}/);
+  assert.equal(html.match(/<script\b/g).length, 2, 'the page has no script tag for the file: the page script adds it when a page with a diagram shows');
+  const served = renderWikiPage(model, { serve: { token: TOKEN } });
+  assert.ok(served.includes(`"mermaid":{"src":"${MERMAID_ROUTE}?t=${TOKEN}","integrity":"${MERMAID_INTEGRITY}"}`), 'a served page also checks the hash of the file');
+  // The page script: one script element for data.mermaid, the strict level of Mermaid, and the block stays when Mermaid cannot draw it.
+  assert.match(WIKI_SCRIPT, /tag\.src = data\.mermaid\.src;\n\s+if \(data\.mermaid\.integrity\) tag\.integrity = data\.mermaid\.integrity;/);
+  assert.equal(WIKI_SCRIPT.match(/createElement\('script'\)/g).length, 1);
+  assert.match(WIKI_SCRIPT, /securityLevel: 'strict'/);
+  assert.match(WIKI_SCRIPT, /pre\.setAttribute\('data-drawn', ok \? theme : 'no'\);/);
+
+  // The file page gets the file next to it. The same file is not written again, and a changed file is replaced.
+  const copy = path.join(w.root, 'raw', MERMAID_FILE);
+  const second = writeViews(w.root, { today: TODAY });
+  assert.deepEqual(second.wiki.mermaid, { file: copy, written: true });
+  assert.deepEqual(readFileSync(copy), readFileSync(mermaidPath()));
+  assert.equal(writeViews(w.root, { today: TODAY }).wiki.mermaid.written, false);
+  writeFileSync(copy, 'changed');
+  assert.equal(copyMermaid(path.join(w.root, 'raw'), { dryRun: true }).written, false);
+  assert.equal(readFileSync(copy, 'utf8'), 'changed', 'a dry run writes nothing');
+  assert.equal(writeViews(w.root, { today: TODAY }).wiki.mermaid.written, true);
+  assert.deepEqual(readFileSync(copy), readFileSync(mermaidPath()));
 });

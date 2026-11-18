@@ -299,6 +299,9 @@ test('with the wiki, the server shows the board and each other ticket, and only 
   assert.match(board.text, new RegExp(`<a class="quiet" href="/wiki\\?t=${token}" data-nav`));
   assert.match(home.text, new RegExp(`<li class="all"><a href="/wiki\\?t=${token}" data-nav>All wiki pages</a>`));
   assert.equal((await get('/wiki')).status, 403);
+  const mermaid = await get(`/vendor/mermaid.tiny.js?t=${token}`);
+  assert.deepEqual([mermaid.status, mermaid.headers['content-type']], [200, 'text/javascript; charset=utf-8'], 'the Mermaid file for the wiki page');
+  assert.equal((await get('/vendor/mermaid.tiny.js')).status, 403);
 
   const page = await get(`/ticket/app-10/?t=${token}`);
   assert.equal(page.status, 200);

@@ -126,6 +126,7 @@ Setup offers the native wiki of the private repository, a separate private `<rep
 | `plugins/forge/skills/` | `ticket`, `agents`, `board`, `wiki`, `daily-recap`, `forge-setup`, `learning-mode`, `writing` |
 | `plugins/forge/templates/` | The profile: config (`config/`), rule pages (`rules/`), setup values (`profile.md`), and machine values with the list of the other profile files (`profile.json`) |
 | `plugins/forge/scripts/` | `forge.mjs` (setup, config, trust, lint, board, worktree, snapshot, diff, canvas, live, gate-approve, hook, wiki scripts), `cred.mjs`, `live-hook.mjs` (the reporter of the live view) |
+| `plugins/forge/vendor/mermaid/` | The only third-party program of the plugin: the small Mermaid build that draws the diagrams of the wiki page, with its license and a [notice](plugins/forge/vendor/mermaid/NOTICE.md) (version, hash, update steps) |
 | `docs/` | [config.md](docs/config.md) (config format), [wiki.md](docs/wiki.md) (sharing and scripts), [evaluation.md](docs/evaluation.md) (behavioral runs: `npm run eval` gives the cases of `tests/evals/` to a real agent session), and [vscode-baseline.md](docs/vscode-baseline.md) (the VS Code features that forge uses) |
 | `AGENTS.md` | [Rules for agents that develop forge](AGENTS.md): docs-first checks, tests, and file format |
 
@@ -407,6 +408,7 @@ Forge 6.5 had a **Forge Master** custom agent for this. Forge 6.6 removes it: VS
 - A page shows its status, its date, its sources, and **Used by**: the open tickets and the other pages that name it.
 - On a ticket canvas, a link to a wiki page opens that page on the wiki page. The **Wiki** menu of the canvas lists each wiki page that the ticket names.
 - The board lists the closed tickets. Each one opens its summary page (`tickets/<key>.md`), not its archive folder.
+- A Mermaid block of a wiki page shows as a drawing. Forge has the small Mermaid build for this (`plugins/forge/vendor/mermaid/`, MIT), and the page loads it from your disk or from the Forge server, never from a network.
 - The canvas server and the live server show the same page at `/wiki`.
 
 The page is a view. It shows no file of `raw/` and `archive/`, and it changes no wiki page.

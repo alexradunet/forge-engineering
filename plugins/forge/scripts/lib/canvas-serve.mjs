@@ -12,6 +12,7 @@ import { buildBoard } from './board.mjs';
 import { BOARD_SCRIPT, renderBoardPage } from './board-page.mjs';
 import { buildCanvas, renderCanvas, writeCanvas } from './canvas.mjs';
 import { CANVAS_SCRIPT, canvasMessage } from './canvas-page.mjs';
+import { MERMAID_ROUTE, needsMermaid, readMermaid } from './mermaid.mjs';
 import { ticketRoot } from './tickets.mjs';
 import { buildNav } from './ui.mjs';
 import { writeViews } from './views.mjs';
@@ -34,10 +35,16 @@ const TYPES = {
 };
 export const BASE_HEADERS = { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff' };
 // A page can run only its own script, and it can connect only to this server.
-export const policy = (script) => `default-src 'none'; script-src 'sha256-${createHash('sha256').update(script).digest('base64')}'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'`;
+// With `self`, the page can also load a script file of this server: the Mermaid file of the wiki page.
+export const policy = (script, self = false) => `default-src 'none'; script-src 'sha256-${createHash('sha256').update(script).digest('base64')}'${self ? " 'self'" : ''}; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'`;
+/** The answer for the Mermaid file of forge: the bytes and the headers. The browser can keep the file for one run of the server. */
+export function mermaidAnswer() {
+  return { body: readMermaid(), headers: { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'private, max-age=86400' } };
+}
 const PAGE_POLICY = policy(CANVAS_SCRIPT);
 const BOARD_POLICY = policy(BOARD_SCRIPT);
 const WIKI_POLICY = policy(WIKI_SCRIPT);
+const WIKI_POLICY_MERMAID = policy(WIKI_SCRIPT, true);
 const OLD_LINK = 'This link is old or not complete. Ask the ticket session for the new canvas link.\n';
 
 /** The first port that the server tries for a ticket. The same ticket gets the same port, so the browser keeps the view and the comments. */
@@ -209,7 +216,13 @@ export async function serveCanvas(dir, { links = 'vscode', port, limitMs = LIMIT
       }
       if (board && url.pathname === '/wiki') {
         const page = renderWikiPage(model(), { links, serve: { token }, nav: buildNav(board, { from: 'wiki', token, home: folder, closed: model().closed }) });
-        send(res, 200, 'text/html; charset=utf-8', page, { 'Content-Security-Policy': WIKI_POLICY });
+        send(res, 200, 'text/html; charset=utf-8', page, { 'Content-Security-Policy': needsMermaid(page) ? WIKI_POLICY_MERMAID : WIKI_POLICY });
+        return;
+      }
+      if (board && url.pathname === MERMAID_ROUTE) {
+        const file = mermaidAnswer();
+        res.writeHead(200, { ...BASE_HEADERS, ...file.headers, 'Content-Length': file.body.length });
+        res.end(file.body);
         return;
       }
       const other = board ? /^\/ticket\/([^/]+)(\/.*)?$/.exec(url.pathname) : null;

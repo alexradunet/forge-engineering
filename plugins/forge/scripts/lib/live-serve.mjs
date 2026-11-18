@@ -13,10 +13,11 @@ import { buildBoard } from './board.mjs';
 import { BOARD_SCRIPT, renderBoardPage } from './board-page.mjs';
 import { buildCanvas, renderCanvas } from './canvas.mjs';
 import { CANVAS_SCRIPT } from './canvas-page.mjs';
-import { BASE_HEADERS, SERVE_HOST, bind, checkRequest, policy, readBody, ticketFile } from './canvas-serve.mjs';
+import { BASE_HEADERS, SERVE_HOST, bind, checkRequest, mermaidAnswer, policy, readBody, ticketFile } from './canvas-serve.mjs';
 import { dataDir } from './data-dir.mjs';
 import { LIVE_FILE, MAX_EVENT, checkEvent } from './live-event.mjs';
 import { createLive, detail, prune, reduce, summary } from './live.mjs';
+import { MERMAID_ROUTE, needsMermaid } from './mermaid.mjs';
 import { ticketRoot } from './tickets.mjs';
 import { buildNav } from './ui.mjs';
 import { WIKI_SCRIPT, renderWikiPage } from './wiki-page.mjs';
@@ -33,6 +34,7 @@ const FLUSH_MS = 40;
 const PAGE_POLICY = policy(CANVAS_SCRIPT);
 const BOARD_POLICY = policy(BOARD_SCRIPT);
 const WIKI_POLICY = policy(WIKI_SCRIPT);
+const WIKI_POLICY_MERMAID = policy(WIKI_SCRIPT, true);
 const OLD_LINK = 'This link is old or not complete. Run "forge.mjs live --status" for the link of the live server.\n';
 
 export function liveFile(env = process.env) {
@@ -158,6 +160,12 @@ export async function serveLive(wiki, { links = 'vscode', port, idleMs = IDLE_MS
         send(res, 302, 'text/plain; charset=utf-8', 'See the new address.\n', { Location: `/board?t=${pageToken}` });
         return;
       }
+      if (url.pathname === MERMAID_ROUTE) {
+        const file = mermaidAnswer();
+        res.writeHead(200, { ...BASE_HEADERS, ...file.headers, 'Content-Length': file.body.length });
+        res.end(file.body);
+        return;
+      }
       // Each load reads the ticket files again, so a page shows the current tickets.
       const board = buildBoard(wiki);
       // The wiki model, for a page only: a request for a file of a ticket does not read the wiki.
@@ -170,7 +178,7 @@ export async function serveLive(wiki, { links = 'vscode', port, idleMs = IDLE_MS
       }
       if (url.pathname === '/wiki') {
         const page = renderWikiPage(model(), { links, serve: { token: pageToken }, nav: buildNav(board, { from: 'wiki', token: pageToken, closed: model().closed }) });
-        send(res, 200, 'text/html; charset=utf-8', page, { 'Content-Security-Policy': WIKI_POLICY });
+        send(res, 200, 'text/html; charset=utf-8', page, { 'Content-Security-Policy': needsMermaid(page) ? WIKI_POLICY_MERMAID : WIKI_POLICY });
         return;
       }
       const match = /^\/ticket\/([^/]+)(\/.*)?$/.exec(url.pathname);
