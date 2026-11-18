@@ -46,7 +46,7 @@ function fill(w) {
     '  - { name: Ana, role: reviewer, status: waiting, since: 2026-11-05, ask: "Log access" }',
   ] });
   w.ticket('APP-11', { state: 'active', short: 'Port the grid' });
-  w.ticket('APP-2', { state: 'done', phase: 'closed', short: 'Old fix', workflow: 'full-v2' });
+  w.ticket('APP-2', { state: 'done', phase: 'closed', short: 'Old fix' });
   w.put('raw/sync/APP-11.md', '---\nchecked: 2026-11-17T09:00\npr: "#12 open"\nci: red\ntracker: In Progress\n---\n');
 }
 

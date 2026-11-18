@@ -91,15 +91,13 @@ node "<plugin>/scripts/forge.mjs" lint [--wiki "<path>"] [--json] [--fix]
 ```
 
 Default lint is read-only. It checks ticket shape, workflow/gate agreement, approval
-revisions, and canonical wiki metadata. Only an explicit `workflow: full-v3`,
-`workflow: full-v2`, or `workflow: full-v1` marker selects a mandatory gate set. Existing S/M/L and trackless
-tickets retain their original process, including skips and recommended Diagnosed?.
+revisions, and canonical wiki metadata. Forge supports only `workflow: full-v3`. A ticket
+with another marker, no marker, or a `track` value is a read error.
 Missing or conflicting metadata is a finding, never permission to infer a state or
-migrate the ticket. For `full-v3` tickets, lint also warns when a gate document has no
+change the ticket. Lint also warns when a gate document has no
 summary under its title, when the summary has more than 150 words, when the document has
 more than 1,500 words, when a section has no content, or when the Now card does not agree
-with the README frontmatter. For `full-v2` tickets, it warns when a gate document level
-is over its word budget, the ⚡ 1 min card is missing, or the levels are in the wrong order.
+with the README frontmatter.
 
 Canonical checks cover `title`, `status`, `updated`, and `sources`; existing
 `index.md` and `log.md` instead require `title` and `type`. An absent `log.md`
@@ -135,8 +133,7 @@ workflow compliance or claim accuracy.
 
 `--fix` is explicit and has one safe repair: append a missing final newline to an
 unapproved `*.draft.md` with explicit `status: draft` metadata; the filename alone
-is insufficient. Check both direct gate references and combined manifests,
-including legacy Briefed? references, before editing. Preserve existing content and
+is insufficient. Check each manifest that lists the draft before editing. Preserve existing content and
 line endings; never modify approved content. Report each repair and append the
 file and change to that ticket's `repair-log.jsonl`, using `started` and `applied`
 rows with before/after hashes. A repeat fix pass makes no changes.
@@ -150,37 +147,14 @@ Approval manifests live outside their hashed document sets. README gates retain
 `doc`, user approval `date`, and `hash`, adding a ticket-relative `manifest` JSON path.
 `hash` is the full SHA-256 of raw manifest bytes. The manifest contains
 `version: 1`, `gate`, and `documents` entries with ticket-relative `path` and full
-lowercase raw-byte `sha256`. A `full-v3` gate lists its one document (`story.md`, `plan.md`,
-`review.md`, or `close.md`) and no plan copy. In a `full-v2` ticket, Planned? (and `full-v1` Designed?) also requires both
-byte-identical plan files and `approvedCopies: [{ "from": "plan.draft.md", "to": "plan.md" }]`;
-this field is allowed only for those two gates of the older workflows. One user GO approves the whole
-displayed revision set. Approval README/records and the manifest never hash themselves.
-`forge.mjs migrate` carries a Scoped? or Planned? approval only from two fresh `full-v1`
-approvals. Its manifest names both source manifests, and lint verifies them.
+lowercase raw-byte `sha256`. A gate lists its one document (`story.md`, `plan.md`,
+`review.md`, or `close.md`), the evidence files that the user must see, and no plan copy.
+One user GO approves the whole displayed revision set. Approval README/records and the manifest never hash themselves.
 
-From Forge 7.4, a `full-v3` write has no manifest and no sidecar. Its "yes" is the
-answer of the user to the host prompt that the gate guard asks for, and a `log`
-entry in `journal.md` records the sent write. The rest of this section applies to
-the older layouts, and to a write that a ticket sent before Forge 7.4.
+A write has no manifest and no sidecar. Its "yes" is the answer of the user to the
+host prompt that the gate guard asks for, and a `log` entry in `journal.md` records the sent write.
 
-Each Sendable? write also retains `outbox/<name>.approval.json` outside the hashed
-set: `version: 1`, exact draft `doc`, `status: approved` or `sent`,
-`approval_manifest`, full raw-manifest `approval_hash`, user `approval_date`, exact
-`target`, exact `command`, and `result` (returned id/URL when sent). The manifest
-must cover that exact draft and include exact `command` and `target` strings,
-binding the operation in its raw-byte hash. Both sidecar values must match the
-manifest exactly; operation drift requires a new manifest and explicit approval.
-The README gate's `doc` names the draft, never the sidecar. Create the
-sidecar only after GO; update delivery status there, never in the frozen draft.
-Keep old sidecars when README Sendable? moves to a later write.
-Validate sidecars when present; absence is not evidence of an external send and
-must not produce an inferred send history.
-Sidecar metadata parsing applies only to `*.approval.json` files inside `outbox/`,
-not arbitrary JSON files elsewhere in the ticket.
-
-Legacy single-document `doc` + `hash` records verify raw document bytes.
-Legacy combined Briefed? without a manifest is freshness-unverifiable and needs
-explicit review before the affected action. Report missing evidence on Resume
+An approved gate without a manifest is a finding. Report missing evidence on Resume
 without blocking unrelated read-only work. See the [complete approval contract](../plugins/forge/skills/ticket/SKILL.md#approval-revisions).
 
 Classify wiki sources before checking them:

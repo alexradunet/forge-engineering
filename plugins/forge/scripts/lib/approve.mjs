@@ -5,7 +5,7 @@ import { appendFileSync, existsSync, lstatSync, mkdirSync, readFileSync, rmSync,
 import path from 'node:path';
 import { parseTicket, validDate } from './ticket.mjs';
 import { checkGate, sha256 } from './validation.mjs';
-import { hashedDocuments, rewriteFrontmatter } from './migrate.mjs';
+import { hashedDocuments, rewriteFrontmatter } from './readme-write.mjs';
 
 export const HISTORY = 'approvals/history.md';
 const METHODS = ['form', 'chat'];

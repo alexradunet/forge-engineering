@@ -29,7 +29,7 @@ function git(cwd, ...args) {
   return result.stdout.trim();
 }
 
-function setup(t, { workflow = 'full-v2', worktree = '', branch = '' } = {}) {
+function setup(t, { workflow = 'full-v3', worktree = '', branch = '' } = {}) {
   const root = mkdtempSync(path.join(os.tmpdir(), 'forge-hook-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const app = path.join(root, 'app');
@@ -84,12 +84,11 @@ test('a session in the recorded ticket worktree gets the title, Resume, and the 
 });
 
 test('a New Worktree session on an agents/ branch is matched by key and told to rename the branch', (t) => {
-  const s = setup(t, { workflow: 'full-v1' });
+  const s = setup(t);
   const folder = path.join(`${s.app}.worktrees`, 'resume-ticket-app-7-workflow');
   git(s.app, 'worktree', 'add', '-q', '-b', 'agents/resume-ticket-app-7-workflow', folder);
   const text = run({ cwd: folder, prompt: 'continue' }).additionalContext;
   assert.match(text, /Forge ticket session: APP-7/);
-  assert.match(text, /migrate APP-7/);
   assert.match(text, /New Worktree folder on branch agents\/resume-ticket-app-7-workflow/);
   assert.match(text, /worktree APP-7 --summary/);
   assert.ok(text.includes(`node "${cli}" worktree`), 'Commands name the absolute forge.mjs path.');
@@ -346,7 +345,7 @@ test('forge.mjs context prints the context for a host without the hook, and the 
   }
 });
 
-test('a full-v3 ticket gets the plain Now card and Resume; an older ticket is sent to the legacy rules', (t) => {
+test('a full-v3 ticket gets the plain Now card and Resume', (t) => {
   const s = setup(t, { workflow: 'full-v3' });
   writeFileSync(s.readme, readFileSync(s.readme, 'utf8')
     .replace('## 📍 Now', '## Now').replace(/- \*\*(\w+):\*\*/g, '- $1:'));
@@ -358,12 +357,4 @@ test('a full-v3 ticket gets the plain Now card and Resume; an older ticket is se
   assert.match(v3, /Now card from the README:\n- State: 🟡 needs-me\n- Phase: plan\n- Next: Approve Planned\?/);
   assert.doesNotMatch(v3, /legacy/);
   assert.deepEqual(nowCard('# A\n\n## Now\n\n- State: ▶️ active\n- Waiting on: nobody\n\n## Files\n').fields, { state: '▶️ active', 'waiting on': 'nobody' });
-
-  for (const workflow of ['full-v2', 'full-v1']) {
-    const old = setup(t, { workflow });
-    const oldFolder = path.join(`${old.app}.worktrees`, 'app-7-doc-import');
-    git(old.app, 'worktree', 'add', '-q', '-b', 'APP-7-doc-import', oldFolder);
-    const text = ticketOf(run({ cwd: oldFolder, prompt: '' }).additionalContext);
-    assert.match(text, new RegExp(`uses the ${workflow} layout, so read legacy/rules\\.md in the folder of the ticket skill and follow Resume there`), workflow);
-  }
 });

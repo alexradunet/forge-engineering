@@ -188,9 +188,7 @@ setting. All research, scope interview, investigation, and review phases
 apply even to small fixes. A small fix has shorter documents, not fewer phases. The investigation comes before the plan steps, and
 Planned? approves both together in `plan.md`. `qaHandover: false` omits only QA handover, not
 Evidence Testing or a required gate. Sendable? applies to each external write in every
-phase. An older ticket keeps its own layout: a `full-v2` ticket finishes as `full-v2`, an open `full-v1` ticket moves to `full-v2` on resume (`forge.mjs migrate <key>`),
-and S/M/L and trackless tickets retain their original gates and recorded skips.
-No ticket moves to `full-v3`, and absence of `track` never selects a workflow. See the [ticket skill](../plugins/forge/skills/ticket/SKILL.md).
+phase. Forge 8 supports no other ticket layout: lint reports a ticket without `workflow: full-v3` as a read error. See the [ticket skill](../plugins/forge/skills/ticket/SKILL.md).
 
 ## ➕ Change a tool
 

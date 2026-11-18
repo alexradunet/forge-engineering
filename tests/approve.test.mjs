@@ -17,19 +17,19 @@ function fixture(t, { pending } = {}) {
   t.after(() => rmSync(wiki, { recursive: true, force: true }));
   const dir = path.join(wiki, 'raw', 'tickets', 'syn-3');
   mkdirSync(path.join(dir, 'approvals'), { recursive: true });
-  const docs = { 'scope.md': 'Scope\n', 'context.md': 'Context\n', 'interview.md': 'Interview\n' };
+  const docs = { 'story.md': 'Story\n' };
   for (const [name, bytes] of Object.entries(docs)) writeFileSync(path.join(dir, name), bytes);
   const manifest = JSON.stringify({ version: 1, gate: 'Scoped?', documents: Object.entries(docs).map(([name, bytes]) => ({ path: name, sha256: sha256(bytes) })) });
   writeFileSync(path.join(dir, 'approvals', 'scoped-001.json'), manifest);
   const readme = [
     '---', 'type: ticket', 'key: SYN-3', 'title: Synthetic approval ticket', 'short: Synthetic approval',
-    'workflow: full-v2', 'phase: start', 'state: needs-me', 'next: Approve the scope', 'waiting_on: ""', 'changes: []', 'people: []',
+    'workflow: full-v3', 'phase: start', 'state: needs-me', 'next: Approve the scope', 'waiting_on: ""', 'changes: []', 'people: []',
     'gates:',
-    `  - { name: Scoped?, doc: scope.md, need: required, status: in-review, manifest: approvals/scoped-001.json${pending ? `, hash: ${pending}` : ''} }`,
-    '  - { name: Planned?, doc: plan.draft.md, need: required, status: todo }',
+    `  - { name: Scoped?, doc: story.md, need: required, status: in-review, manifest: approvals/scoped-001.json${pending ? `, hash: ${pending}` : ''} }`,
+    '  - { name: Planned?, doc: plan.md, need: required, status: todo }',
     '  - { name: Sendable?, doc: outbox/, need: required, status: todo }',
     '  - { name: Shippable?, doc: review.md, need: required, status: todo }',
-    '  - { name: Learned?, doc: close.draft.md, need: required, status: todo }',
+    '  - { name: Learned?, doc: close.md, need: required, status: todo }',
     'updated: 2026-10-01', '---', '# 🎫 Ticket (SYN-3): Synthetic', '', '> 🔥 Keep the body bytes.', '',
   ].join('\r\n');
   writeFileSync(path.join(dir, 'README.md'), readme);
@@ -44,14 +44,14 @@ test('gate-approve records the exact answer and a gate that lint accepts', (t) =
   assert.equal(result.status, 0, result.stderr);
   assert.equal(JSON.parse(result.stdout).hash, digest);
   const text = readFileSync(path.join(dir, 'README.md'), 'utf8');
-  assert.match(text, new RegExp(`\\{ name: Scoped\\?, doc: scope\\.md, need: required, status: approved, date: 2026-10-02, manifest: approvals/scoped-001\\.json, hash: ${digest} \\}\\r\\n`));
+  assert.match(text, new RegExp(`\\{ name: Scoped\\?, doc: story\\.md, need: required, status: approved, date: 2026-10-02, manifest: approvals/scoped-001\\.json, hash: ${digest} \\}\\r\\n`));
   assert.match(text, /\r\nupdated: 2026-10-02\r\n[\s\S]*> 🔥 Keep the body bytes\.\r\n$/);
   const ticket = parseTicket(text);
   assert.equal(checkGate(ticket, path.join(dir, 'README.md'), 'Scoped?').allowed, true);
   const history = readFileSync(path.join(dir, 'approvals', 'history.md'), 'utf8');
   assert.match(history, /^# Approval history \(SYN-3\)\n\n## 2026-10-02 Scoped\? approved\n/);
   assert.match(history, new RegExp(`- Manifest: approvals/scoped-001\\.json sha256 ${digest}\\n`));
-  assert.match(history, /- Document: scope\.md sha256 [a-f0-9]{64}\n[\s\S]*- Method: chat\n- Answer of the user:\n\n> Approve Scoped\? Ship it\n$/);
+  assert.match(history, /- Document: story\.md sha256 [a-f0-9]{64}\n[\s\S]*- Method: chat\n- Answer of the user:\n\n> Approve Scoped\? Ship it\n$/);
 });
 
 test('gate-approve writes nothing when the review set changed, in a dry run, or for a wrong gate', (t) => {
@@ -62,8 +62,8 @@ test('gate-approve writes nothing when the review set changed, in a dry run, or 
 
   const clean = fixture(t);
   assert.throws(() => approveGate(clean.dir, { gate: 'Scoped?', answer: 'approve', hash: 'b'.repeat(64) }), /changed after the review: --hash/);
-  writeFileSync(path.join(clean.dir, 'context.md'), 'Context, edited after the review\n');
-  assert.throws(() => approveGate(clean.dir, { gate: 'Scoped?', answer: 'approve', hash: clean.digest }), /does not verify: Scoped\?: context\.md changed after review/);
+  writeFileSync(path.join(clean.dir, 'story.md'), 'Story, edited after the review\n');
+  assert.throws(() => approveGate(clean.dir, { gate: 'Scoped?', answer: 'approve', hash: clean.digest }), /does not verify: Scoped\?: story\.md changed after review/);
   assert.equal(readFileSync(path.join(clean.dir, 'README.md'), 'utf8'), clean.readme);
 
   const dry = fixture(t);

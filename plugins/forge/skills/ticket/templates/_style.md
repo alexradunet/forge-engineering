@@ -1,7 +1,6 @@
 # ✍️ Ticket document style
 
 A ticket document is plain. The reader sees the content, not the format.
-An older ticket (`full-v2`, `full-v1`, or no `workflow` marker) keeps the style in [legacy/templates/_style.md](../legacy/templates/_style.md).
 
 ## 📄 Documents
 

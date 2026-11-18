@@ -79,7 +79,7 @@ export function buildBoard(wikiPath, { today = new Date().toISOString().slice(0,
     if (sync?.error) errors.push({ folder: entry.folder, message: sync.error });
     tickets.push({
       key: ticket.key, folder: entry.folder, sessionTitle: sessionTitle(ticket), title: oneLine(ticket.title), short: oneLine(ticket.short),
-      state: ticket.state, emoji: STATE_EMOJI[ticket.state], phase: ticket.phase, workflow: ticket.workflow ?? 'legacy',
+      state: ticket.state, emoji: STATE_EMOJI[ticket.state], phase: ticket.phase, workflow: ticket.workflow,
       openGate: openGate(ticket), gates: ticket.gates.filter((gate) => gate.need === 'required').map((gate) => ({ name: gate.name, status: gate.status, doc: gate.doc ?? '' })), next: oneLine(ticket.next), waitingOn: oneLine(ticket.waitingOn),
       updated: ticket.updated, days: daysSince(ticket.updated, today), branch: ticket.branch, worktree: ticket.worktree,
       changes: ticket.changes.map((change) => ({ url: change.url, state: change.state, label: change.label ?? '' })),

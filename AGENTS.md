@@ -45,8 +45,7 @@ so your memory of a VS Code feature can be old.
   - `plugins/forge/skills/`: portable skills.
   - `plugins/forge/com.github.copilot/`: rules, hooks, and custom agents for VS Code.
   - `plugins/forge/automations/`: automation templates (`*.automation.md`).
-- `plugins/forge/skills/ticket/SKILL.md` and `templates/` are the `full-v3` layout of new tickets. `skills/ticket/legacy/` holds the rules and templates of older tickets:
-  change it only to correct a defect, because open tickets depend on it.
+- `plugins/forge/skills/ticket/SKILL.md` and `templates/` are the `full-v3` layout. It is the only ticket layout (Forge 8 removed the older layouts).
 - The ticket canvas (`scripts/lib/canvas.mjs`) reads the section names and the line shapes of the `full-v3` templates.
   Change a template and the canvas together (`tests/canvas.test.mjs`). The page loads nothing from a network.
   In serve mode (`scripts/lib/canvas-serve.mjs`), the page sends the comments only to the forge server on `127.0.0.1` (`tests/canvas-serve.test.mjs`).

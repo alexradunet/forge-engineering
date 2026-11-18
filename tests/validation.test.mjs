@@ -6,7 +6,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { parseTicket } from '../plugins/forge/scripts/lib/ticket.mjs';
-import { checkAction, checkGate, classifySource, FULL_GATES, FULL_V2_GATES, lint, sha256, validateTicket } from '../plugins/forge/scripts/lib/validation.mjs';
+import { checkAction, checkGate, classifySource, GATES, lint, sha256, validateTicket } from '../plugins/forge/scripts/lib/validation.mjs';
 
 const cli = fileURLToPath(new URL('../plugins/forge/scripts/forge.mjs', import.meta.url));
 const cwd = fileURLToPath(new URL('..', import.meta.url));
@@ -24,8 +24,8 @@ function fixture(t) {
   };
   return { wiki, dir, file: path.join(dir, 'README.md'), put };
 }
-function source({ workflow = 'full-v1', track, phase = 'start', state = 'active', gates } = {}) {
-  return `---\ntype: ticket\nkey: SYN-1\ntitle: Synthetic ticket\nphase: ${phase}\nstate: ${state}\nnext: Review evidence\n${workflow ? `workflow: ${workflow}\n` : ''}${track ? `track: ${track}\n` : ''}gates: ${JSON.stringify(gates ?? FULL_GATES.map((name) => ({ name, need: 'required', status: 'todo' })))}\n---\n# Synthetic\n`;
+function source({ workflow = 'full-v3', track, phase = 'start', state = 'active', gates } = {}) {
+  return `---\ntype: ticket\nkey: SYN-1\ntitle: Synthetic ticket\nphase: ${phase}\nstate: ${state}\nnext: Review evidence\n${workflow ? `workflow: ${workflow}\n` : ''}${track ? `track: ${track}\n` : ''}gates: ${JSON.stringify(gates ?? allGates())}\n---\n# Synthetic\n\n## Now\n\n- State: ${state}\n- Phase: ${phase}\n- Next: Review evidence\n`;
 }
 // The parser intentionally supports YAML, not JSON object keys.
 function yamlTicket(options) {
@@ -38,27 +38,20 @@ function record(f, name, documents, extra = {}) {
   f.put(manifest, bytes);
   return { name, need: 'required', status: 'approved', date: '2026-10-29', manifest, hash: sha256(bytes) };
 }
+const allGates = () => GATES.map((name) => ({ name, need: 'required', status: 'todo' }));
 const codes = (findings) => findings.map((item) => item.code);
-const v2Gates = () => FULL_V2_GATES.map((name) => ({ name, need: 'required', status: 'todo' }));
 
-test('full-v1 is explicit and never inferred from an absent track', () => {
-  assert.equal(parseTicket(yamlTicket()).workflow, 'full-v1');
-  assert.equal(parseTicket(yamlTicket()).track, null);
-  for (const track of [undefined, 'S', 'M', 'L']) {
-    const parsed = parseTicket(yamlTicket({ workflow: null, track }));
-    assert.equal(parsed.workflow, null);
-    assert.equal(parsed.track, track ?? 'Unspecified');
+test('full-v3 is the only workflow, and it is never inferred', () => {
+  assert.equal(parseTicket(yamlTicket()).workflow, 'full-v3');
+  for (const workflow of [null, 'full-v1', 'full-v2', 'full-v9']) {
+    assert.throws(() => parseTicket(yamlTicket({ workflow })), /Unsupported ticket workflow: .*Forge supports only workflow: full-v3\./, String(workflow));
   }
-  assert.throws(() => parseTicket(yamlTicket({ workflow: 'full-v9' })), /Unknown ticket workflow/);
   assert.throws(() => parseTicket(yamlTicket({ track: 'S' })), /must not select a track/);
-  assert.throws(() => parseTicket(yamlTicket({ workflow: 'full-v2', track: 'M', gates: v2Gates() })), /must not select a track/);
 });
 
-test('full-v2 has four review gates plus Sendable? and blocks phases until their merged approvals', (t) => {
+test('full-v3 has four review gates plus Sendable? and blocks phases until their approvals', (t) => {
   const f = fixture(t);
-  const ticket = parseTicket(yamlTicket({ workflow: 'full-v2', phase: 'implement', gates: v2Gates() }));
-  assert.equal(ticket.workflow, 'full-v2');
-  assert.equal(ticket.track, null);
+  const ticket = parseTicket(yamlTicket({ phase: 'implement', gates: allGates() }));
   const findings = validateTicket(ticket, f.file);
   assert.deepEqual(findings.filter((item) => item.code === 'phase-before-approval').map((item) => item.message),
     ['implement precedes Scoped? approval.', 'implement precedes Planned? approval.']);
@@ -66,49 +59,15 @@ test('full-v2 has four review gates plus Sendable? and blocks phases until their
   assert.equal(checkAction(ticket, f.file, 'investigate').allowed, false);
   assert.deepEqual(checkAction(ticket, f.file, 'implement').findings.map((item) => item.message), ['Scoped? is not approved.', 'Planned? is not approved.']);
 
-  const legacy = parseTicket(yamlTicket({ workflow: 'full-v2', gates: [...v2Gates(), { name: 'Diagnosed?', need: 'required', status: 'todo' }] }));
-  assert.ok(validateTicket(legacy, f.file).some((item) => item.code === 'workflow-gate' && item.message === 'Diagnosed? does not belong to full-v2.'));
-  const skipped = parseTicket(yamlTicket({ workflow: 'full-v2', gates: v2Gates().map((gate) => gate.name === 'Planned?' ? { ...gate, status: 'skipped' } : gate) }));
-  assert.ok(validateTicket(skipped, f.file).some((item) => item.code === 'workflow-gate' && item.message === 'Planned? is mandatory for full-v2.'));
-});
-
-test('full-v2 Scoped? and Planned? manifests list the merged document sets and the plan copy', (t) => {
-  const f = fixture(t);
-  for (const name of ['scope.md', 'context.md', 'interview.md', 'investigation.md']) f.put(name, `${name}\n`);
-  f.put('plan.draft.md', 'Plan\n');
-  f.put('plan.md', 'Plan\n');
-  const scoped = record(f, 'Scoped?', ['scope.md', 'context.md', 'interview.md']);
-  const planned = record(f, 'Planned?', ['investigation.md', 'plan.draft.md', 'plan.md'], { approvedCopies: [{ from: 'plan.draft.md', to: 'plan.md' }] });
-  const gates = v2Gates().map((gate) => gate.name === 'Scoped?' ? scoped : gate.name === 'Planned?' ? planned : gate);
-  const ticket = parseTicket(yamlTicket({ workflow: 'full-v2', phase: 'implement', gates }));
-  assert.deepEqual(validateTicket(ticket, f.file), []);
-  assert.equal(checkAction(ticket, f.file, 'implement').allowed, true);
-  f.put('plan.md', 'Changed plan\n');
-  assert.ok(codes(checkGate(ticket, f.file, 'Planned?').findings).includes('stale-approved-copy'));
-  f.put('plan.md', 'Plan\n');
-
-  const partial = record(f, 'Scoped?', ['scope.md']);
-  assert.match(checkGate(parseTicket(yamlTicket({ workflow: 'full-v2', gates: [partial] })), f.file, 'Scoped?').findings[0].message, /omits context\.md/);
-  const noCopy = record(f, 'Planned?', ['investigation.md', 'plan.draft.md']);
-  assert.match(checkGate(parseTicket(yamlTicket({ workflow: 'full-v2', gates: [noCopy] })), f.file, 'Planned?').findings[0].message, /must bind plan\.draft\.md/);
-});
-
-test('full workflow rejects skipped diagnosis and blocks planning until explicit approval', (t) => {
-  const f = fixture(t);
-  const gates = FULL_GATES.map((name) => ({ name, need: 'required', status: name === 'Diagnosed?' ? 'skipped' : 'todo' }));
-  const ticket = parseTicket(yamlTicket({ phase: 'plan', gates }));
-  const findings = validateTicket(ticket, f.file);
-  assert.ok(codes(findings).includes('workflow-gate'));
-  assert.ok(findings.some((item) => item.code === 'phase-before-approval' && item.message.includes('Diagnosed?')));
-  assert.equal(checkAction(ticket, f.file, 'plan').allowed, false);
-  assert.equal(checkGate(ticket, f.file, 'Diagnosed?').allowed, false);
+  const skipped = parseTicket(yamlTicket({ gates: allGates().map((gate) => gate.name === 'Planned?' ? { ...gate, status: 'skipped' } : gate) }));
+  assert.ok(validateTicket(skipped, f.file).some((item) => item.code === 'workflow-gate' && item.message === 'Planned? is mandatory for full-v3.'));
 });
 
 test('combined approval covers every listed revision with one user record', (t) => {
   const f = fixture(t);
-  f.put('context.md', 'Context\n');
+  f.put('story.md', 'Story\n');
   f.put('evidence\\history.md', 'History\n');
-  const gate = record(f, 'Understood?', ['context.md', 'evidence\\history.md']);
+  const gate = record(f, 'Scoped?', ['story.md', 'evidence\\history.md']);
   const ticket = parseTicket(yamlTicket({ gates: [gate] }));
   assert.equal(checkGate(ticket, f.file, gate.name).allowed, true);
   f.put('evidence\\history.md', 'Changed history\n');
@@ -120,15 +79,16 @@ test('combined approval covers every listed revision with one user record', (t) 
 
 test('manifest revision, exact document set, traversal, missing files and circular records are checked', (t) => {
   const f = fixture(t);
-  f.put('context.md', 'Context\n');
-  const good = record(f, 'Understood?', ['context.md']);
-  const check = (gate) => checkGate(parseTicket(yamlTicket({ gates: [gate] })), f.file, 'Understood?');
+  f.put('story.md', 'Story\n');
+  const good = record(f, 'Scoped?', ['story.md']);
+  const check = (gate) => checkGate(parseTicket(yamlTicket({ gates: [gate] })), f.file, 'Scoped?');
+  assert.equal(check(good).allowed, true);
   assert.equal(check({ ...good, hash: '0'.repeat(64) }).allowed, false);
   for (const documents of [
     [{ path: 'other.md', sha256: '0'.repeat(64) }],
     [{ path: '..\\outside.md', sha256: '0'.repeat(64) }],
     [{ path: 'README.md', sha256: '0'.repeat(64) }],
-    [{ path: 'context.md', sha256: '0'.repeat(64) }, { path: 'CONTEXT.md', sha256: '0'.repeat(64) }],
+    [{ path: 'story.md', sha256: '0'.repeat(64) }, { path: 'STORY.md', sha256: '0'.repeat(64) }],
   ]) {
     const bytes = JSON.stringify({ version: 1, gate: good.name, documents });
     f.put(good.manifest, bytes);
@@ -138,110 +98,18 @@ test('manifest revision, exact document set, traversal, missing files and circul
   assert.ok(codes(check(missing).findings).includes('approval-manifest'));
 });
 
-test('approved plan is byte-equivalent to the reviewed draft and cannot drift', (t) => {
-  const f = fixture(t);
-  f.put('plan.draft.md', 'Plan\r\n');
-  f.put('plan.md', 'Plan\r\n');
-  const gate = record(f, 'Designed?', ['plan.draft.md'], { approvedCopies: [{ from: 'plan.draft.md', to: 'plan.md' }] });
-  const ticket = parseTicket(yamlTicket({ gates: [gate] }));
-  assert.equal(checkGate(ticket, f.file, gate.name).allowed, true);
-  f.put('plan.md', 'Plan\n');
-  assert.ok(codes(checkGate(ticket, f.file, gate.name).findings).includes('stale-approved-copy'));
-});
-
-test('legacy single-document approvals remain valid; unverifiable combined Briefed records block only affected work', (t) => {
-  const f = fixture(t);
-  f.put('investigation.md', 'Evidence\n');
-  f.put('context.md', 'Context\n');
-  f.put('interview.md', 'Interview\n');
-  const diagnosis = { name: 'Diagnosed?', doc: 'investigation.md', need: 'recommended', status: 'approved', date: '2026-10-29', hash: sha256('Evidence\n') };
-  for (const track of [undefined, 'S', 'M', 'L']) {
-    const ticket = parseTicket(yamlTicket({ workflow: null, track, gates: [diagnosis] }));
-    assert.equal(checkGate(ticket, f.file, 'Diagnosed?').allowed, true);
-    assert.deepEqual(validateTicket(ticket, f.file), []);
-  }
-  const briefed = { name: 'Briefed?', doc: 'context.md', need: 'required', status: 'approved', date: '2026-10-29', hash: sha256('Context\n') };
-  let ticket = parseTicket(yamlTicket({ workflow: null, track: 'M', gates: [briefed] }));
-  assert.ok(codes(validateTicket(ticket, f.file)).includes('approval-evidence'));
-  assert.equal(checkAction(ticket, f.file, 'plan').allowed, false);
-  assert.equal(checkGate(ticket, f.file, 'Briefed?').allowed, false);
-  const combined = record(f, 'Briefed?', ['context.md', 'interview.md']);
-  ticket = parseTicket(yamlTicket({ workflow: null, track: 'M', gates: [combined] }));
-  assert.equal(checkGate(ticket, f.file, 'Briefed?').allowed, true);
-  f.put('interview.md', 'Changed\n');
-  assert.equal(checkGate(ticket, f.file, 'Briefed?').allowed, false);
-});
-
-test('legacy recorded recommended and original size skips do not acquire full-v1 gates', (t) => {
-  const f = fixture(t);
-  const gates = [{ name: 'Diagnosed?', need: 'recommended', status: 'skipped' }];
-  const ticket = parseTicket(yamlTicket({ workflow: null, track: 'M', phase: 'plan', gates }));
-  assert.deepEqual(validateTicket(ticket, f.file), []);
-  assert.equal(checkGate(ticket, f.file, 'Diagnosed?').allowed, true);
-  assert.equal(ticket.workflow, null);
-});
-
-test('original S skips, M combined briefing, L optional diagnosis and trackless records remain unchanged', (t) => {
-  const f = fixture(t);
-  const skips = ['Understood?', 'Agreed?', 'Diagnosed?'].map((name) => ({ name, need: 'required', status: 'skipped' }));
-  for (const track of ['S', 'M', undefined]) {
-    const ticket = parseTicket(yamlTicket({ workflow: null, track, gates: skips }));
-    assert.deepEqual(validateTicket(ticket, f.file), []);
-    assert.equal(checkGate(ticket, f.file, 'Understood?').allowed, true);
-    if (track === 'S') assert.equal(checkAction(ticket, f.file, 'plan').allowed, true);
-    if (track === 'M') assert.equal(checkAction(ticket, f.file, 'plan').allowed, false, 'Missing original Briefed? evidence blocks only planning.');
-  }
-  const l = parseTicket(yamlTicket({ workflow: null, track: 'L', gates: [{ name: 'Diagnosed?', need: 'recommended', status: 'skipped' }] }));
-  assert.deepEqual(validateTicket(l, f.file), []);
-  assert.equal(checkGate(l, f.file, 'Diagnosed?').allowed, true);
-});
-
-test('per-write sidecars bind the exact command, target and draft without changing approved bytes', (t) => {
-  const f = fixture(t);
-  const draft = f.put('outbox\\comment.draft.md', '---\nstatus: draft\n---\nDraft');
-  const gate = { ...record(f, 'Sendable?', ['outbox\\comment.draft.md'], { command: 'synthetic comment', target: 'synthetic item' }), doc: 'outbox\\comment.draft.md' };
-  const ticket = parseTicket(yamlTicket({ workflow: null, gates: [gate] }));
-  assert.equal(checkAction(ticket, f.file, 'write', { command: 'synthetic comment', target: 'synthetic item' }).allowed, true);
-  assert.equal(checkAction(ticket, f.file, 'write', { command: 'synthetic comment', target: 'different' }).allowed, false);
-  assert.equal(checkAction(ticket, f.file, 'write').allowed, false);
-  const recordData = {
-    version: 1, doc: gate.doc, status: 'sent', approval_manifest: gate.manifest,
-    approval_hash: gate.hash, approval_date: gate.date, command: 'synthetic comment',
-    target: 'synthetic item', result: 'synthetic result 1',
-  };
-  const sidecar = f.put('outbox\\comment.approval.json', JSON.stringify(recordData));
-  assert.deepEqual(validateTicket(ticket, f.file), []);
-  assert.equal(checkAction(ticket, f.file, 'write', { command: 'synthetic comment', target: 'synthetic item' }).allowed, false, 'A sent write consumes its approval.');
-  f.put('README.md', yamlTicket({ workflow: null, gates: [] }));
-  const before = readFileSync(draft);
-  assert.equal(lint({ wikiPath: f.wiki, fix: true }).repairs.length, 0, 'Historical per-write approval still protects the draft.');
-  assert.deepEqual(readFileSync(draft), before);
-  writeFileSync(sidecar, JSON.stringify({ ...recordData, command: 'different command' }));
-  assert.ok(codes(validateTicket(ticket, f.file)).includes('approval-manifest'));
-});
-
-test('full-v3: a write needs only its outbox draft, and old sent sidecars still pass lint', (t) => {
+test('full-v3: a write needs only its outbox draft', (t) => {
   // GH-2: the "yes" for a write is the prompt of the host that the gate guard asks for, so a new write has no record.
   const f = fixture(t);
   f.put('outbox\\comment.draft.md', '---\nstatus: draft\n---\nDraft');
-  const gates = v2Gates().map((gate) => (gate.name === 'Sendable?' ? { ...gate, doc: 'outbox/comment.draft.md', status: 'in-review' } : gate));
-  const ticket = parseTicket(yamlTicket({ workflow: 'full-v3', gates }));
-  f.put('README.md', yamlTicket({ workflow: 'full-v3', gates }));
+  const gates = allGates().map((gate) => (gate.name === 'Sendable?' ? { ...gate, doc: 'outbox/comment.draft.md', status: 'in-review' } : gate));
+  const ticket = parseTicket(yamlTicket({ gates }));
+  f.put('README.md', yamlTicket({ gates }));
   assert.equal(checkAction(ticket, f.file, 'write', { draft: 'outbox/comment.draft.md' }).allowed, true, 'No Sendable? approval is needed.');
   assert.deepEqual(codes(checkAction(ticket, f.file, 'write', { draft: 'outbox/missing.draft.md' }).findings), ['write-draft']);
   assert.deepEqual(codes(checkAction(ticket, f.file, 'write', { draft: 'notes.md' }).findings), ['write-draft']);
   assert.deepEqual(codes(checkAction(ticket, f.file, 'write').findings), ['write-draft']);
   assert.deepEqual(validateTicket(ticket, f.file), [], 'A Sendable? row in review with a draft and no manifest is valid.');
-  // An open ticket that sent a write before 7.4.0 keeps its manifest and sidecar, and lint still checks them.
-  const old = { ...record(f, 'Sendable?', ['outbox\\comment.draft.md'], { command: 'synthetic comment', target: 'synthetic item' }), doc: 'outbox\\comment.draft.md' };
-  const recordData = {
-    version: 1, doc: old.doc, status: 'sent', approval_manifest: old.manifest, approval_hash: old.hash,
-    approval_date: old.date, command: 'synthetic comment', target: 'synthetic item', result: 'synthetic result 1',
-  };
-  const sidecar = f.put('outbox\\comment.approval.json', JSON.stringify(recordData));
-  assert.deepEqual(validateTicket(ticket, f.file), []);
-  writeFileSync(sidecar, JSON.stringify({ ...recordData, command: 'different command' }));
-  assert.ok(codes(validateTicket(ticket, f.file)).includes('approval-manifest'), 'A changed old sidecar is still a finding.');
 });
 
 test('links and malformed draft metadata block repairs without touching external bytes', (t) => {
@@ -261,8 +129,8 @@ test('links and malformed draft metadata block repairs without touching external
 
 test('calendar errors, missing gate documents and conflicting full states produce findings', (t) => {
   const f = fixture(t);
-  assert.throws(() => parseTicket(yamlTicket({ gates: [{ name: 'Designed?', need: 'required', status: 'approved', date: '2026-02-30' }] })), /needs a date/);
-  const ticket = parseTicket(yamlTicket({ state: 'done', gates: [{ name: 'Designed?', need: 'required', status: 'in-review', doc: 'missing.md' }] }));
+  assert.throws(() => parseTicket(yamlTicket({ gates: [{ name: 'Planned?', need: 'required', status: 'approved', date: '2026-02-30' }] })), /needs a date/);
+  const ticket = parseTicket(yamlTicket({ state: 'done', gates: [{ name: 'Planned?', need: 'required', status: 'in-review', doc: 'missing.md' }] }));
   const findings = validateTicket(ticket, f.file);
   assert.ok(codes(findings).includes('gate-document'));
   assert.ok(codes(findings).includes('state-conflict'));
@@ -285,20 +153,20 @@ test('read-only lint keeps valid files visible beside invalid tickets and change
 
 test('comments, hashes and repairs cannot approve gates or resolve duplicate states', (t) => {
   const f = fixture(t);
-  f.put('investigation.md', 'Evidence\n');
-  const unapproved = { name: 'Diagnosed?', need: 'required', status: 'todo', doc: 'investigation.md', note: 'user approved in a comment', hash: sha256('Evidence\n') };
+  f.put('plan.md', 'Plan\n');
+  const unapproved = { name: 'Planned?', need: 'required', status: 'todo', doc: 'plan.md', note: 'user approved in a comment', hash: sha256('Plan\n') };
   let ticket = parseTicket(yamlTicket({ gates: [unapproved] }));
-  assert.equal(checkGate(ticket, f.file, 'Diagnosed?').allowed, false);
-  const approved = record(f, 'Diagnosed?', ['investigation.md']);
+  assert.equal(checkGate(ticket, f.file, 'Planned?').allowed, false);
+  const approved = record(f, 'Planned?', ['plan.md']);
   ticket = parseTicket(yamlTicket({ gates: [approved, unapproved] }));
-  assert.equal(checkGate(ticket, f.file, 'Diagnosed?').allowed, false);
+  assert.equal(checkGate(ticket, f.file, 'Planned?').allowed, false);
   assert.ok(codes(validateTicket(ticket, f.file)).includes('duplicate-gate'));
   f.put('README.md', yamlTicket({ gates: [unapproved] }));
   f.put('plan.draft.md', '---\nstatus: draft\n---\nPlan');
   const before = readFileSync(f.file);
   lint({ wikiPath: f.wiki, fix: true });
   assert.deepEqual(readFileSync(f.file), before);
-  assert.equal(checkGate(parseTicket(before.toString('utf8')), f.file, 'Diagnosed?').allowed, false);
+  assert.equal(checkGate(parseTicket(before.toString('utf8')), f.file, 'Planned?').allowed, false);
 });
 
 test('explicit repair appends only the existing line ending, logs hashes and is idempotent', (t) => {
@@ -338,16 +206,17 @@ test('repairs never change direct, combined, stale, malformed or self-declared a
     const f = fixture(t);
     const file = f.put('close.draft.md', '---\nstatus: draft\n---\nClose');
     let gate;
+    // direct: an approval without a manifest. It is a finding, so the draft stays protected.
     if (mode === 'direct') gate = { name: 'Learned?', doc: 'close.draft.md', need: 'required', status: 'approved', date: '2026-10-29', hash: sha256(readFileSync(file)) };
     else if (mode === 'self-approved') { f.put('close.draft.md', '---\nstatus: approved\n---\nClose'); }
     else if (mode === 'conflicting-stamp') { f.put('close.draft.md', '---\nstatus: draft\napproved: 2026-10-29\n---\nClose'); }
     else {
-      f.put('context.md', 'Context\n');
-      gate = record(f, 'Understood?', ['context.md', 'close.draft.md']);
+      f.put('close.md', 'Close\n');
+      gate = record(f, 'Learned?', ['close.md', 'close.draft.md']);
       if (mode === 'stale') gate.hash = '0'.repeat(64);
       if (mode === 'malformed') f.put(gate.manifest, '{broken');
     }
-    f.put('README.md', yamlTicket({ workflow: null, gates: gate ? [gate] : [] }));
+    f.put('README.md', yamlTicket({ gates: gate ? [gate] : [] }));
     const before = readFileSync(file);
     const report = lint({ wikiPath: f.wiki, fix: true });
     assert.equal(report.repairs.length, 0, mode);
@@ -401,8 +270,8 @@ test('full-v3 gates approve one document each, with no plan copy, and a changed 
   for (const name of ['story.md', 'plan.md', 'review.md', 'close.md', 'evidence/query.md']) f.put(name, `${name}\n`);
   const scoped = record(f, 'Scoped?', ['story.md']);
   const planned = record(f, 'Planned?', ['plan.md', 'evidence/query.md']);
-  const gates = v2Gates().map((gate) => gate.name === 'Scoped?' ? scoped : gate.name === 'Planned?' ? planned : gate);
-  const ticket = parseTicket(yamlTicket({ workflow: 'full-v3', phase: 'implement', gates }));
+  const gates = allGates().map((gate) => gate.name === 'Scoped?' ? scoped : gate.name === 'Planned?' ? planned : gate);
+  const ticket = parseTicket(yamlTicket({ phase: 'implement', gates }));
   assert.equal(ticket.workflow, 'full-v3');
   assert.deepEqual(validateTicket(ticket, f.file), []);
   assert.equal(checkAction(ticket, f.file, 'implement').allowed, true);
@@ -416,25 +285,21 @@ test('full-v3 gates approve one document each, with no plan copy, and a changed 
 
   for (const name of ['scope.md', 'context.md', 'interview.md', 'plan.draft.md']) f.put(name, `${name}\n`);
   const oldSet = record(f, 'Scoped?', ['scope.md', 'context.md', 'interview.md']);
-  assert.match(checkGate(parseTicket(yamlTicket({ workflow: 'full-v3', gates: [oldSet] })), f.file, 'Scoped?').findings[0].message, /omits story\.md/);
+  assert.match(checkGate(parseTicket(yamlTicket({ gates: [oldSet] })), f.file, 'Scoped?').findings[0].message, /omits story\.md/);
   const copy = record(f, 'Planned?', ['plan.md', 'plan.draft.md'], { approvedCopies: [{ from: 'plan.draft.md', to: 'plan.md' }] });
-  assert.match(checkGate(parseTicket(yamlTicket({ workflow: 'full-v3', gates: [copy] })), f.file, 'Planned?').findings[0].message, /no approved copy/);
-  const foreign = parseTicket(yamlTicket({ workflow: 'full-v3', gates: [...v2Gates(), { name: 'Designed?', need: 'required', status: 'todo' }] }));
+  assert.match(checkGate(parseTicket(yamlTicket({ gates: [copy] })), f.file, 'Planned?').findings[0].message, /no approved copy/);
+  const foreign = parseTicket(yamlTicket({ gates: [...allGates(), { name: 'Designed?', need: 'required', status: 'todo' }] }));
   assert.ok(validateTicket(foreign, f.file).some((item) => item.code === 'workflow-gate' && item.message === 'Designed? does not belong to full-v3.'));
 });
 
-test('a closed full-v3 ticket needs proof.md, and migrate leaves full-v3 as it is', (t) => {
+test('a closed full-v3 ticket needs proof.md', (t) => {
   const f = fixture(t);
   for (const name of ['story.md', 'plan.md', 'review.md', 'close.md']) f.put(name, `${name}\n`);
   const docs = { 'Scoped?': 'story.md', 'Planned?': 'plan.md', 'Shippable?': 'review.md', 'Learned?': 'close.md' };
-  const gates = v2Gates().map((gate) => docs[gate.name] ? record(f, gate.name, [docs[gate.name]]) : gate);
-  const ticket = parseTicket(yamlTicket({ workflow: 'full-v3', phase: 'closed', state: 'done', gates }));
+  const gates = allGates().map((gate) => docs[gate.name] ? record(f, gate.name, [docs[gate.name]]) : gate);
+  const ticket = parseTicket(yamlTicket({ phase: 'closed', state: 'done', gates }));
   assert.deepEqual(codes(validateTicket(ticket, f.file)), ['missing-evidence']);
   assert.match(validateTicket(ticket, f.file)[0].message, /proof\.md/);
   f.put('proof.md', 'Proof\n');
   assert.deepEqual(validateTicket(ticket, f.file), []);
-  f.put('README.md', yamlTicket({ workflow: 'full-v3', gates: v2Gates() }));
-  const moved = spawnSync(process.execPath, [cli, 'migrate', 'SYN-1', '--json', '--cwd', cwd, '--wiki', f.wiki], { encoding: 'utf8' });
-  assert.equal(JSON.parse(moved.stdout).status, 'already', moved.stderr);
-  assert.match(readFileSync(f.file, 'utf8'), /workflow: full-v3/);
 });

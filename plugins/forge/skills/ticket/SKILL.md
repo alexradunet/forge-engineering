@@ -1,6 +1,6 @@
 ---
 name: ticket
-description: Ticket workspace for the work items of one repository, from the tracker of the forge config (for example Jira or GitHub Issues). Every new ticket follows the full-v3 workflow (research, scope, investigation, plan, implementation, evidence, and learning) with four review gates, a small set of plain documents, and a ticket canvas in the browser. Older tickets (full-v2, full-v1, S/M/L) keep their own layout and rules. Keeps working artifacts in <wiki>/raw/tickets/<key>, shared by agent sessions (VS Code Agents window, Copilot CLI, Claude Code), and distills them into canonical wiki pages at close. Use when the user pastes a work item key or URL, or asks to "start ticket APP-123", "work on APP-123", "resume APP-123", "where are we on the ticket", "record this finding", "save the plan to the ticket", "show the canvas", "show the code map", "close the ticket", or "archive the ticket".
+description: Ticket workspace for the work items of one repository, from the tracker of the forge config (for example Jira or GitHub Issues). Every new ticket follows the full-v3 workflow (research, scope, investigation, plan, implementation, evidence, and learning) with four review gates, a small set of plain documents, and a ticket canvas in the browser. Keeps working artifacts in <wiki>/raw/tickets/<key>, shared by agent sessions (VS Code Agents window, Copilot CLI, Claude Code), and distills them into canonical wiki pages at close. Use when the user pastes a work item key or URL, or asks to "start ticket APP-123", "work on APP-123", "resume APP-123", "where are we on the ticket", "record this finding", "save the plan to the ticket", "show the canvas", "show the code map", "close the ticket", or "archive the ticket".
 ---
 
 # 🎫 Ticket workspace
@@ -37,15 +37,10 @@ This file is short, so that it stays whole in the context. The steps of each pha
 
 ## 🕰️ Older tickets
 
-Read the `workflow` marker of the ticket README before any other step.
+Forge supports only `workflow: full-v3`. Read the `workflow` marker of the ticket README before any other step.
 
-| Marker | Rules |
-|---|---|
-| `workflow: full-v3` | This file |
-| `workflow: full-v2`, `workflow: full-v1`, or no marker | [legacy/rules.md](legacy/rules.md) and its templates. Do not apply the steps of this file. |
-
-- An older ticket finishes in its own layout. Never move it to `full-v3`, never add or change its `workflow` marker, and never copy the new templates over its files.
-- Never infer a workflow from the file layout, the size, or the phase.
+- When the marker is not `full-v3`, or the README has no marker, stop. Tell the user that Forge 8 does not support this ticket layout.
+- Never add or change a `workflow` marker, and never copy the templates over the files of such a ticket.
 - Every new ticket uses `full-v3`.
 
 ## ⚙️ Config, words, and policy
@@ -124,7 +119,7 @@ The folder name is `<key>`, for example `app-123`. A file starts to exist when i
   close.md      Learned?: what you now know, and the wiki changes
   canvas.html   generated view of all files above (never edit, never hash)
   evidence/     sanitized tool outputs, the work item snapshot, spike results
-  outbox/       drafts of external writes (a write sent before Forge 7.4 also has an approval sidecar)
+  outbox/       drafts of external writes
   approvals/    revision manifests, history.md, and snapshots/ of each review
 ```
 
@@ -175,7 +170,7 @@ The steps of a gate are in [phases/gates.md](phases/gates.md): the cold read, th
 ## 🔁 Resume
 
 1. Set the title (`host.title`) first, before any other tool call or question (see Session title). Use the README `state` and `short`.
-2. Read `README.md`. When its `workflow` is not `full-v3`, stop here and follow [legacy/rules.md](legacy/rules.md). Missing frontmatter or contradictory metadata needs an explicit finding and user-directed repair, not template replacement or inferred state.
+2. Read `README.md`. When its `workflow` is not `full-v3`, stop here (see Older tickets). Missing frontmatter or contradictory metadata needs an explicit finding and user-directed repair, not template replacement or inferred state.
 3. Read the last entries of `journal.md`.
 4. Read the `## Resume` policy section, for example credential checks.
 5. Validate the approvals with `<F> lint --wiki "<wiki>" --json`. Default lint is read-only. Never run `--fix` implicitly.

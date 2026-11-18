@@ -1,17 +1,7 @@
-// Layered reading levels in gate documents, review snapshots, and the section-level diff between two revisions.
+// The summary of gate documents, review snapshots, and the section-level diff between two revisions.
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
-// Cumulative word budgets at about 230 words a minute. The 1-minute card must fit the approval form.
-export const LEVELS = [
-  { key: '1', heading: '⚡ 1 min', budget: 150 },
-  { key: '5', heading: '☕ 5 min', budget: 1150 },
-  { key: '10', heading: '📖 10 min', budget: 2300 },
-  { key: '15', heading: '🔬 15 min', budget: 3450 },
-];
-export const APPENDIX = '📂 Appendix';
-export const LAYERED_DOCS = ['scope.md', 'plan.draft.md', 'review.md', 'close.draft.md'];
-export const GATE_PRIMARY = { 'Scoped?': 'scope.md', 'Planned?': 'plan.draft.md', 'Shippable?': 'review.md', 'Learned?': 'close.draft.md' };
 // full-v3: one document for each gate. It has a summary under the title, then only the sections with content.
 export const V3_PRIMARY = { 'Scoped?': 'story.md', 'Planned?': 'plan.md', 'Shippable?': 'review.md', 'Learned?': 'close.md' };
 export const V3_DOCS = Object.values(V3_PRIMARY);
@@ -53,31 +43,6 @@ export function countWords(text) {
   return (prose.match(/[\p{L}\p{N}]+(?:['’.-][\p{L}\p{N}]+)*/gu) ?? []).length;
 }
 
-/** The reading levels of a document: each level with its own and cumulative word count, plus order problems. */
-export function readingLevels(text) {
-  const all = sections(text);
-  const position = (heading) => all.findIndex((item) => item.heading === heading || item.heading.startsWith(`${heading} `) || item.heading.startsWith(`${heading}:`));
-  let cumulative = 0;
-  const levels = [];
-  for (const level of LEVELS) {
-    const at = position(level.heading);
-    if (at === -1) continue;
-    const words = countWords(all[at].text);
-    cumulative += words;
-    levels.push({ ...level, line: all[at].line, at, words, cumulative, over: cumulative > level.budget });
-  }
-  const appendix = position(APPENDIX);
-  const ordered = levels.every((level, index) => index === 0 || level.at > levels[index - 1].at)
-    && (appendix === -1 || levels.every((level) => level.at < appendix));
-  return { quick: levels.find((level) => level.key === '1') ?? null, levels, ordered };
-}
-
-/** The text of the 1-minute card, for the approval form. */
-export function quickCard(text) {
-  const card = sections(text).find((item) => item.heading === LEVELS[0].heading || item.heading.startsWith(`${LEVELS[0].heading} `));
-  return card?.text ?? '';
-}
-
 /** The summary of a full-v3 gate document: the text between the title and the first "## " heading. */
 export function summaryBlock(text) {
   const top = sections(text)[0];
@@ -97,7 +62,7 @@ export function summaryCheck(text) {
 
 export function gateName(value) {
   const wanted = String(value ?? '').trim().replace(/\?$/, '').toLowerCase();
-  const names = [...Object.keys(GATE_PRIMARY), 'Understood?', 'Agreed?', 'Diagnosed?', 'Designed?', 'Briefed?'];
+  const names = Object.keys(V3_PRIMARY);
   const match = names.find((name) => name.slice(0, -1).toLowerCase() === wanted);
   if (!match) throw new Error(`Unknown gate: ${value}. Use one of: ${names.join(', ')}.`);
   return match;
@@ -121,7 +86,7 @@ export function listSnapshots(ticketDir, gate) {
 
 /** The primary document of a gate: the README record's doc, else the default of the workflow. */
 export function gateDocument(ticketDir, ticket, gate) {
-  const doc = ticket.gates.find((item) => item.name === gate)?.doc || (ticket.workflow === 'full-v3' ? V3_PRIMARY : GATE_PRIMARY)[gate];
+  const doc = ticket.gates.find((item) => item.name === gate)?.doc || V3_PRIMARY[gate];
   if (!doc || doc.endsWith('/')) throw new Error(`${gate} has no single document to snapshot.`);
   const file = path.join(ticketDir, ...doc.split('/'));
   if (!existsSync(file)) throw new Error(`${doc} does not exist yet.`);
@@ -187,30 +152,25 @@ export function sectionDiff(before, after) {
   return out;
 }
 
-/** The diff of a gate document against its latest review snapshot, with the current ⚡ card. */
+/** The diff of a gate document against its latest review snapshot, with the current summary. */
 export function diffGate(ticketDir, ticket, gate) {
   const { doc, file } = gateDocument(ticketDir, ticket, gate);
   const text = readFileSync(file, 'utf8');
-  // full-v3 documents have a summary under the title. Older documents have the ⚡ 1 min card.
-  const layout = ticket.workflow === 'full-v3' ? 'summary' : 'levels';
-  const card = layout === 'summary' ? summaryBlock(text) : quickCard(text);
+  const layout = 'summary';
+  const card = summaryBlock(text);
   const latest = listSnapshots(ticketDir, gate).at(-1);
   if (!latest) return { gate, doc, layout, card, snapshot: null, changed: null, sections: [] };
   const list = sectionDiff(readFileSync(latest.file, 'utf8'), text);
   return { gate, doc, layout, card, snapshot: latest.rel, n: latest.n, changed: list.some((item) => item.status !== 'same'), sections: list };
 }
 
-/** The approval form text: the summary (or the ⚡ card) on a first review, else only the changes since the last review. */
+/** The approval form text: the summary on a first review, else only the changes since the last review. */
 export function renderDiff(result) {
-  const plain = result.layout === 'summary';
   if (!result.snapshot) {
-    return plain
-      ? [`Summary of ${result.doc} (first review):`, result.card || `(no summary: write at most ${SUMMARY_BUDGET} words under the title before you ask for approval)`].join('\n')
-      : [`⚡ ${result.doc} (first review):`, result.card || '(no ⚡ 1 min card: add one before you ask for approval)'].join('\n');
+    return [`Summary of ${result.doc} (first review):`, result.card || `(no summary: write at most ${SUMMARY_BUDGET} words under the title before you ask for approval)`].join('\n');
   }
-  const mark = plain ? '' : '🔀 ';
-  if (!result.changed) return `${mark}${result.doc} has not changed since your last review (${result.snapshot}).`;
-  const lines = [`${mark}Changed since your last review (${result.doc} vs ${result.snapshot}):`];
+  if (!result.changed) return `${result.doc} has not changed since your last review (${result.snapshot}).`;
+  const lines = [`Changed since your last review (${result.doc} vs ${result.snapshot}):`];
   let budget = MAX_DIFF_LINES;
   for (const item of result.sections.filter((entry) => entry.status !== 'same')) {
     const plus = item.lines.filter((line) => line.startsWith('+')).length;

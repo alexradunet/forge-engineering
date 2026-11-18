@@ -125,7 +125,7 @@ Setup offers the native wiki of the private repository, a separate private `<rep
 | `plugins/forge/automations/` | Automation templates: Forge maintenance and Prepare my daily |
 | `plugins/forge/skills/` | `ticket`, `agents`, `board`, `wiki`, `daily-recap`, `forge-setup`, `learning-mode`, `writing` |
 | `plugins/forge/templates/` | The profile: config (`config/`), rule pages (`rules/`), setup values (`profile.md`), and machine values with the list of the other profile files (`profile.json`) |
-| `plugins/forge/scripts/` | `forge.mjs` (setup, config, trust, lint, board, worktree, snapshot, diff, canvas, live, gate-approve, migrate, hook, wiki scripts), `cred.mjs`, `live-hook.mjs` (the reporter of the live view) |
+| `plugins/forge/scripts/` | `forge.mjs` (setup, config, trust, lint, board, worktree, snapshot, diff, canvas, live, gate-approve, hook, wiki scripts), `cred.mjs`, `live-hook.mjs` (the reporter of the live view) |
 | `docs/` | [config.md](docs/config.md) (config format), [wiki.md](docs/wiki.md) (sharing and scripts), [evaluation.md](docs/evaluation.md) (behavioral runs: `npm run eval` gives the cases of `tests/evals/` to a real agent session), and [vscode-baseline.md](docs/vscode-baseline.md) (the VS Code features that forge uses) |
 | `AGENTS.md` | [Rules for agents that develop forge](AGENTS.md): docs-first checks, tests, and file format |
 
@@ -133,7 +133,7 @@ Setup offers the native wiki of the private repository, a separate private `<rep
 
 | Skill | Use |
 |---|---|
-| `ticket` | One folder per work item in `<wiki>/raw/tickets/<key>`, full research and investigation, review gates, code map, ticket canvas, evidence, outbox. `SKILL.md` is short, and the steps of each phase are in `phases/`. The rules of older tickets are in `legacy/`. |
+| `ticket` | One folder per work item in `<wiki>/raw/tickets/<key>`, full research and investigation, review gates, code map, ticket canvas, evidence, outbox. `SKILL.md` is short, and the steps of each phase are in `phases/`. |
 | `agents` | Implementer sessions in worktrees, reviewer subagents, the cold read of gate documents, hand-off, session status |
 | `board` | "Show the board" in any session: ticket status, refresh, session titles and state groups |
 | `wiki` | Query, record, and lint the repository wiki |
@@ -207,12 +207,10 @@ The guard reads the words of a shell command, so it is a net and not a wall: the
 
 ### 🕰️ Older tickets
 
-A ticket with `workflow: full-v2`, `workflow: full-v1`, S/M/L, or no marker finishes in its own layout.
-Its rules and templates are in [`skills/ticket/legacy/`](plugins/forge/skills/ticket/legacy/rules.md), and the session hook tells the agent to read them.
-Forge never moves a ticket to `full-v3`. An open `full-v1` ticket still moves to `full-v2` on resume with `forge.mjs migrate <key>`:
-approved and current Understood? and Agreed? approvals become Scoped?, and Diagnosed? and Designed? become Planned?.
-Migration never creates an approval. Missing `track` never identifies a workflow. Resume reports missing or stale
-approval evidence and blocks only the affected action, not unrelated read-only work.
+Forge 8 supports only `workflow: full-v3`. It removed the rules, the templates, and the `migrate` command of the older layouts
+(`full-v2`, `full-v1`, S/M/L, and tickets with no marker). `forge.mjs lint` reports a ticket with another layout as a read error.
+Finish or archive such a ticket with Forge 7.6 before you update.
+Resume reports missing or stale approval evidence and blocks only the affected action, not unrelated read-only work.
 See the [ticket workflow contract](plugins/forge/skills/ticket/SKILL.md#-workflow).
 
 Before edits, builds, or fixtures, Forge checks the actual worktree and resolves its baseline.
@@ -367,14 +365,13 @@ The same command writes the board page, `<wiki>/raw/board.html`, and the canvas 
 - The page loads nothing from a network, and it is in `raw/`, so it is never committed. [design-system.md](docs/design-system.md) gives the tokens, the components, and the UX cases of both pages.
 `forge.mjs board --json` gives the same data to agents. Ticket README files remain the source of truth.
 
-The reader supports the [ticket template](plugins/forge/skills/ticket/templates/README.md) and the templates of older tickets:
+The reader supports the [ticket template](plugins/forge/skills/ticket/templates/README.md):
 scalar fields, comments, quoted strings, folded text (`>`), literal text (`|`), and flat object lists
 for `gates`, `changes`, and `people`. Text blocks support strip (`-`) and keep (`+`) chomping.
 Lists can use inline arrays, inline objects, or indented fields.
 YAML anchors, tags, and explicit block indentation indicators are not supported;
 lint reports them as read errors. Existing tickets need no rewrite for supported YAML forms.
-Existing trackless tickets remain visible without an inferred workflow or size. Recorded S/M/L labels
-are legacy context only. An unknown track value still produces a read error.
+A ticket without `workflow: full-v3`, or with a `track` value, produces a read error.
 CLI validation and the board use the shared parser in
 [`scripts/lib/ticket.mjs`](plugins/forge/scripts/lib/ticket.mjs).
 
@@ -466,7 +463,7 @@ preserving all other bytes and line-ending style. Direct and combined approval
 references protect drafts from repair. Each repair is reported and appended to the
 ticket's `repair-log.jsonl` with `started`/`applied` rows and before/after hashes;
 a second pass changes nothing. It never repairs stale
-approvals, migrates workflows, deletes pages, or publishes content.
+approvals, changes a workflow, deletes pages, or publishes content.
 See [validation and source limits](docs/wiki.md#local-validation-and-source-limits).
 
 ## 📚 Shared wiki

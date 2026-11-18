@@ -35,7 +35,6 @@ Find the mode of the text. Then apply its row.
 
 A ticket document has no bold labels. Its fixed parts are the section names and the plain line labels of the ticket templates, for example `Need from you:`, `Files:`, and `A -> B:` in the flow of `map.md`.
 Forge lint and the ticket canvas find the content by these names. Do not change them.
-An older ticket (`full-v2`, `full-v1`, or no `workflow` marker) keeps the emoji titles and the bold labels of [its own style](../ticket/legacy/templates/_style.md).
 
 ## ⚖️ Precedence
 

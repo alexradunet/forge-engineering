@@ -19,9 +19,6 @@ const JOURNAL_ENTRIES = 8;
 const WIDE_ZONE = 1180;
 const LANE_WIDTH = 210;
 const LANE_GAP = 84;
-// The documents of an older ticket, in reading order. The canvas shows them as plain columns.
-const LEGACY_DOCS = ['scope.md', 'context.md', 'briefing.md', 'interview.md', 'investigation.md', 'plan.draft.md', 'map.md',
-  'review.md', 'evidence-testing.md', 'close.draft.md', 'decisions.md', 'log.md'];
 
 /**
  * How much the user must read of each section of a full-v3 document. A view of the page opens the cards of its tiers
@@ -245,28 +242,14 @@ function v3Zones(dir, ticket) {
   return { zones, missing };
 }
 
-// An older ticket has other files and section names. The canvas shows each file as one column of its sections.
-function legacyZones(dir, ticket) {
-  const zones = [];
-  for (const name of LEGACY_DOCS) {
-    const doc = readDoc(dir, name);
-    if (!doc) continue;
-    const id = slug(name.replace(/\.md$/, ''));
-    zones.push({ id, title: doc.title.replace(/\s*\(.*$/, ''), files: [name], present: true, cards: [...summaryCard(doc, id), ...sectionCards(doc, id)] });
-  }
-  if (zones.length) zones[0].people = ticket.people.map((person) => ({ ...person }));
-  return { zones, missing: [] };
-}
-
 /** The canvas model of one ticket folder. */
 export function buildCanvas(dir, { now = new Date() } = {}) {
   const file = path.join(dir, 'README.md');
   if (lstatSync(file).isSymbolicLink()) throw new Error('README.md must not be a link.');
   const ticket = parseTicket(readFileSync(file, 'utf8'));
-  const layout = ticket.workflow === 'full-v3' ? 'board' : 'columns';
-  const { zones, missing } = layout === 'board' ? v3Zones(dir, ticket) : legacyZones(dir, ticket);
-  // Only the board layout has tiers, so only it has views and a gate in focus.
-  const focus = layout === 'board' ? focusGate(ticket.gates) : '';
+  const layout = 'board';
+  const { zones, missing } = v3Zones(dir, ticket);
+  const focus = focusGate(ticket.gates);
   const focusZone = (zones.find((zone) => zone.id === GATE_ZONE[focus]) ?? zones.find((zone) => zone.gates?.includes(focus)))?.id ?? '';
   return {
     version: 1,
@@ -274,7 +257,7 @@ export function buildCanvas(dir, { now = new Date() } = {}) {
     layout,
     ticket: {
       key: ticket.key, title: ticket.title, short: ticket.short, state: ticket.state, emoji: STATE_EMOJI[ticket.state], phase: ticket.phase,
-      workflow: ticket.workflow ?? 'legacy', next: ticket.next, waitingOn: ticket.waitingOn, updated: ticket.updated, item: ticket.item, branch: ticket.branch,
+      workflow: ticket.workflow, next: ticket.next, waitingOn: ticket.waitingOn, updated: ticket.updated, item: ticket.item, branch: ticket.branch,
     },
     gates: ticket.gates.map((gate) => ({ name: gate.name, status: gate.status, doc: gate.doc ?? '', date: gate.date ?? '', reviews: gate.name === 'Sendable?' ? 0 : listSnapshots(dir, gate.name).length })),
     changes: ticket.changes.map((change) => ({ url: change.url, label: change.label ?? '', state: change.state })),
@@ -484,7 +467,7 @@ function railHtml(model, nav, live = false) {
   // The views: the first view opens the cards that the user must read for the gate in focus.
   const view = (name, label, title) => `<button type="button" data-view="${name}" aria-pressed="false" title="${esc(title)}">${esc(label)}</button>`;
   const focusGate = model.gates.find((gate) => gate.name === model.focus);
-  const views = model.layout !== 'board' ? '' : `<div class="views" role="group" aria-label="View"><span>View</span>`
+  const views = `<div class="views" role="group" aria-label="View"><span>View</span>`
     + (focusGate ? view('focus', `Now: ${focusGate.name.replace(/\?$/, '')}`, `The cards that you must read for ${focusGate.name}, which ${focusGate.status === 'in-review' ? 'waits for you' : 'is the next gate'}. The other parts show their summary (v)`) : '')
     + view('must', 'Must read', 'The cards that you must read and understand, of each part (v)')
     + view('good', '+ Good to know', 'Also the cards that help. The working notes of the agent stay folded (v)')
@@ -553,20 +536,12 @@ export function renderCanvas(model, { links = 'vscode', serve = null, nav = null
   const ctx = { links, token, gates: model.gates, focus: model.focus ?? '' };
   const { ticket } = model;
   const zone = (id) => model.zones.find((item) => item.id === id);
-  let board;
-  if (model.layout === 'board') {
-    // The code map sets the width of the middle column: each lane needs room for its components and its arrows.
-    const lanes = zone('code')?.graph.lanes.length ?? 0;
-    const wide = Math.max(WIDE_ZONE, 42 + lanes * LANE_WIDTH + Math.max(0, lanes - 1) * LANE_GAP);
-    const column = (...ids) => `<div class="column">${ids.map(zone).filter(Boolean).map((item) => zoneHtml(item, ctx, ['code', 'plan'].includes(item.id) ? wide : 0)).join('')}</div>`;
-    board = column('story') + column('code', 'plan') + column('review', 'close', 'journal');
-  } else {
-    board = model.zones.map((item) => `<div class="column">${zoneHtml(item, ctx)}</div>`).join('')
-      || `<section class="zone"><h2>No documents yet</h2><p class="empty">This ticket has only its <a href="${esc(withToken('README.md', ctx))}">README.md</a>.</p></section>`;
-  }
-  const note = model.layout === 'columns'
-    ? `<p class="note">This ticket uses the ${esc(ticket.workflow)} layout. The canvas shows its files as columns.</p>`
-    : model.missing.length ? `<p class="note">Not written yet: ${esc(model.missing.join(', '))}.</p>` : '';
+  // The code map sets the width of the middle column: each lane needs room for its components and its arrows.
+  const lanes = zone('code')?.graph.lanes.length ?? 0;
+  const wide = Math.max(WIDE_ZONE, 42 + lanes * LANE_WIDTH + Math.max(0, lanes - 1) * LANE_GAP);
+  const column = (...ids) => `<div class="column">${ids.map(zone).filter(Boolean).map((item) => zoneHtml(item, ctx, ['code', 'plan'].includes(item.id) ? wide : 0)).join('')}</div>`;
+  const board = column('story') + column('code', 'plan') + column('review', 'close', 'journal');
+  const note = model.missing.length ? `<p class="note">Not written yet: ${esc(model.missing.join(', '))}.</p>` : '';
   const home = token && serve.home && serve.home !== ticket.key ? String(serve.home) : '';
   const live = token && serve.live ? String(serve.live) : '';
   const data = JSON.stringify({ key: ticket.key, generated: model.generated, ...(model.focus ? { focus: model.focus, focusZone: model.focusZone } : {}), ...(token ? { token } : {}), ...(home ? { home } : {}), ...(live ? { live } : {}), ...(nav ? { nav: navData(nav) } : {}) }).replace(/</g, '\\u003c');

@@ -226,13 +226,6 @@ test('a ticket README that cannot be read does not stop the command', (t) => {
   assert.equal(run(s.worktree, 'git push'), null);
 });
 
-test('an older ticket keeps the gates of its own workflow', (t) => {
-  const s = setup(t, { workflow: 'full-v2' });
-  const verdict = run(s.worktree, 'git push');
-  assert.equal(verdict.decision, 'deny');
-  assert.match(verdict.reason, /Scoped\? is not approved\./);
-});
-
 test('a trusted config adds the change request command, and policy.gateGuard selects deny, ask, or off', (t) => {
   const s = setup(t);
   trustConfig(s);

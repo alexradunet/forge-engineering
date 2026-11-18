@@ -86,7 +86,6 @@ Each external write has its own draft and its own "yes". The "yes" is the answer
 7. A second write needs its own "yes", also for the same text. A retry after a failure is a second write.
 
 - A write has no manifest and no approval record. `<F> gate-approve` refuses Sendable?.
-- An older ticket, and a write that a ticket sent before Forge 7.4, keep their `outbox/<name>.approval.json` sidecar. `<F> lint` still checks it. Do not change or delete it.
 - Send only the text between the `send` markers. Pass long text through a file in the system temp folder (see [tools.md](../../../context/tools.md)).
 
 ### ✅ Approval form

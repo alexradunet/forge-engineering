@@ -168,15 +168,14 @@ editorial checks separately; do not claim that the CLI proves them:
 Only explicit `--fix` enables repair. Its sole allowlisted edit is a missing final
 newline in an unapproved `*.draft.md` with explicit `status: draft` metadata,
 preserving all other bytes and line-ending
-style. Protect direct and combined approval references, including legacy Briefed?.
+style. Protect the documents of each approval manifest.
 Report repairs and append `started` and `applied` rows with before/after hashes to
 the ticket's `repair-log.jsonl`; a second pass is
 unchanged. Never infer workflow/state, grant approval, edit approved content,
 auto-migrate headerless index/log metadata, delete pages, or publish.
 
-Only an explicit `workflow: full-v3`, `full-v2`, or `full-v1` marker selects the
-mandatory gates. Existing S/M/L and trackless tickets retain original gates and skips. Validate revision evidence,
-not retroactive compliance with a new workflow. Missing/stale evidence blocks the
+Forge supports only `workflow: full-v3`. A ticket with another marker or no marker
+is an `invalid-input` finding. Validate revision evidence. Missing/stale evidence blocks the
 affected action, not read-only resume. See the ticket skill's Approval revisions
 and [CLI contract](../../../../docs/wiki.md#local-validation-and-source-limits).
 The shared `checkAction` API validates prerequisites; the CLI has lint only and

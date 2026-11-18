@@ -37,7 +37,7 @@ flowchart LR
 
 ## 🛠️ Implementer session
 
-1. Check the gate first. For a ticket, validate fresh plan-gate revision evidence before starting implementation. For `workflow: full-v3`, that is Planned?: verify the manifest, its raw-byte SHA-256, and every covered document (`plan.md` and the listed evidence). An older ticket keeps its own gates and checks ([legacy/rules.md](../ticket/legacy/rules.md)): Planned? for `full-v2` and Diagnosed? plus Designed? for `full-v1`, each with byte-identical `plan.draft.md` and `plan.md` and `approvedCopies: [{ "from": "plan.draft.md", "to": "plan.md" }]`. A migrated Planned? (with `migratedFrom`) also needs both unchanged source manifests. Do not infer a workflow from missing `track`. Verify legacy single-document hashes against raw document bytes. Unverifiable approval blocks implementation, not read-only resume.
+1. Check the gate first. For a ticket, validate fresh plan-gate revision evidence before starting implementation. For `workflow: full-v3`, that is Planned?: verify the manifest, its raw-byte SHA-256, and every covered document (`plan.md` and the listed evidence). Unverifiable approval blocks implementation, not read-only resume.
 2. Select the execution worktree with the checks below. Continue here when it is suitable. Do not start another implementer merely because the ticket reached Implement. `<F>` means `node "<plugin>/scripts/forge.mjs"`, where `<plugin>` is the folder two levels above this skill. `<F> worktree <KEY> --summary "<short>"` gives the ticket branch, the folder, and the suggested action (see "Worktrees" in the `ticket` skill).
 3. Only when another session is needed, start it with `host.spawn`:
    - title: `<KEY> - ▶️ - <short>` (for example `APP-123 - ▶️ - Implement outbox retry on timeout`). The session keeps it current. See "Session title" in the `ticket` skill.
@@ -46,7 +46,7 @@ flowchart LR
    - relationship: a nested session for work on the current ticket. An independent session only for an unrelated task.
 4. Write a self-contained `prompt`:
    - the goal, and the paths to the approved `plan.md` and to `map.md` (the code map of the area)
-   - the ticket's explicit workflow marker or original legacy process, README, and approval manifest/record paths; revalidate the exact approved revisions before editing, and stop if stale or unverifiable
+   - the ticket's workflow marker (`full-v3`), README, and approval manifest/record paths; revalidate the exact approved revisions before editing, and stop if stale or unverifiable
    - the branch name from `repo.branchPattern`, as `<F> worktree` prints it (see "Worktrees" in the `ticket` skill). In a **New Worktree** session on an `agents/...` branch, rename the branch with `git branch -m <branch>` before the first commit.
    - the selected worktree, repository identity, branch, resolved baseline SHA, and whether the task requires an exact HEAD or resumes existing implementation. Verify these before edits, builds, or fixtures. Continue in that worktree; do not delegate again merely to obtain isolation.
    - the scope, and what is out of scope
@@ -133,13 +133,13 @@ Required before every change request, including a draft. It is a second, hostile
    - the repository path, and how to see the change (`git status`, `git diff`, untracked files)
    - the goal and the acceptance criteria
    - what was changed and why, and the decisions the user already made
-   - where the evidence is (ticket folder: `story.md`, `plan.md`, `map.md`, `evidence/`; in an older ticket `context.md` in place of `story.md`)
+   - where the evidence is (ticket folder: `story.md`, `plan.md`, `map.md`, `evidence/`)
    - specific attack questions: missed places, wrong assumptions, SDK or API behavior, tests that pass without the fix, flaky or order-dependent tests, side effects beyond the goal (EOL, BOM, accidental edits), CI and build risks
 4. Tell it: read-only, no edits, no commits, no style comments, rank findings by severity with file, line, and evidence.
 5. Run it in the background. Do not poll. Continue with independent work, or wait for the notification.
 6. Verify each finding yourself. Reject a finding with evidence, or fix it and add a test where it applies.
-7. Record the result in **Findings** of `review.md` (model, findings, what you fixed or rejected) and as a `check` entry in `journal.md`. An older ticket uses the checklist of its `review.md` and `log.md`.
-8. If the review changes the code, run the affected tests again. If it changes the approved scope, reopen Scoped?; if it changes the approved plan, reopen Planned? (`full-v1`: Designed?).
+7. Record the result in **Findings** of `review.md` (model, findings, what you fixed or rejected) and as a `check` entry in `journal.md`.
+8. If the review changes the code, run the affected tests again. If it changes the approved scope, reopen Scoped?; if it changes the approved plan, reopen Planned?.
 
 Never create a change request until step 7 is done.
 

@@ -1,6 +1,6 @@
 export const STATES = ['needs-me', 'go', 'active', 'waiting', 'blocked', 'done'];
 export const STATE_EMOJI = { 'needs-me': '🟡', go: '🟢', active: '▶️', waiting: '⏳', blocked: '🔴', done: '✅' };
-export const WORKFLOWS = ['full-v1', 'full-v2', 'full-v3'];
+export const WORKFLOWS = ['full-v3'];
 export const PHASES = ['start', 'investigate', 'plan', 'implement', 'review', 'closed'];
 const GATE_STATUSES = ['todo', 'in-review', 'approved', 'skipped', 'blocked'];
 export const PEOPLE_STATUSES = ['to-contact', 'drafted', 'waiting', 'follow-up', 'reply-in', 'done'];
@@ -164,10 +164,11 @@ export function parseTicket(text) {
   }
   if (!STATES.includes(data.state)) throw new Error(`Unknown ticket state: ${data.state}`);
   if (!PHASES.includes(data.phase)) throw new Error(`Unknown ticket phase: ${data.phase}`);
-  if (data.track != null && !['S', 'M', 'L'].includes(data.track)) throw new Error(`Unknown ticket track: ${data.track}`);
-  if (data.workflow != null && !WORKFLOWS.includes(data.workflow)) throw new Error(`Unknown ticket workflow: ${data.workflow}`);
-  if (data.workflow != null && data.track != null) throw new Error(`${data.workflow} tickets must not select a track.`);
-  if (data.workflow != null && data.type !== 'ticket') throw new Error(`${data.workflow} metadata needs type: ticket.`);
+  if (!WORKFLOWS.includes(data.workflow)) {
+    throw new Error(`Unsupported ticket workflow: ${data.workflow ?? 'no workflow marker'}. Forge supports only workflow: full-v3.`);
+  }
+  if (data.track != null) throw new Error(`${data.workflow} tickets must not select a track.`);
+  if (data.type !== 'ticket') throw new Error(`${data.workflow} metadata needs type: ticket.`);
   for (const gate of data.gates ?? []) {
     if (!gate || typeof gate !== 'object' || Array.isArray(gate)
       || typeof gate.name !== 'string' || !GATE_STATUSES.includes(gate.status)) throw new Error('Invalid gate name or status.');
@@ -194,8 +195,7 @@ export function parseTicket(text) {
   const summary = heroMatch ? heroMatch[1].trim() : '';
   return {
     key: data.key, title: data.title, short: data.short ?? '', phase: data.phase, state: data.state,
-    workflow: data.workflow ?? null,
-    track: data.workflow != null ? null : data.track ?? 'Unspecified', next: data.next, waitingOn: data.waiting_on ?? '',
+    workflow: data.workflow, next: data.next, waitingOn: data.waiting_on ?? '',
     branch: data.branch ?? '', worktree: data.worktree ?? '', updated: data.updated ?? '',
     item: data.item ?? '', summary, gates: data.gates ?? [], changes: data.changes ?? [], people,
   };

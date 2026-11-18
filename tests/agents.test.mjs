@@ -12,8 +12,6 @@ const PHASES = ['start', 'state', 'worktrees', 'gates', 'investigate-plan', 'imp
 const phase = (name) => read(`ticket/phases/${name}.md`);
 const ticket = [ticketCore, ...PHASES.map(phase)].join('\n');
 const plan = read('ticket/templates/plan.md');
-const legacy = read('ticket/legacy/rules.md');
-const legacyPlan = read('ticket/legacy/templates/plan.draft.md');
 const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
 
 test('agents discovery and handoff allow reuse of the current worktree', () => {
@@ -55,27 +53,23 @@ test('ticket start, resume, implementation, and plan template agree on worktree 
   assert.match(resume, /does not need another worktree when the current one is suitable/);
   assert.match(implement, /Continue in a suitable current worktree/);
   assert.match(ticket, /exact-commit proof requires HEAD equality, not just ancestry/);
-  // full-v3 documents hold no process text, so only the older plan template names the worktree rule.
-  assert.match(legacyPlan, /Reuse the current one when suitable/);
+  // full-v3 documents hold no process text.
   assert.doesNotMatch(plan, /worktree/);
   assert.match(readme, /reuses a suitable current worktree/);
   assert.match(readme, /Exact-commit proofs require HEAD equality/);
-  for (const text of [ticket, plan, legacy, legacyPlan]) {
+  for (const text of [ticket, plan]) {
     assert.doesNotMatch(text, /The `agents` skill creates a worktree session at Implement|After GO, the build starts in a new worktree/);
   }
 });
 
-test('the ticket skill is full-v3 only, and the older rules stay complete in legacy/', () => {
+test('the ticket skill is full-v3 only, and it has no rules of the removed layouts', () => {
   assert.match(ticket, /Every new ticket uses `full-v3`/);
-  assert.match(ticket, /\| `workflow: full-v2`, `workflow: full-v1`, or no marker \| \[legacy\/rules\.md\]\(legacy\/rules\.md\)/);
-  assert.match(ticket, /Never move it to `full-v3`/);
-  // The words of the older workflows belong to legacy/rules.md, not to the steps of new tickets.
+  assert.match(ticket, /Forge supports only `workflow: full-v3`/);
+  assert.ok(!existsSync(new URL('../plugins/forge/skills/ticket/legacy', import.meta.url)), 'Forge 8 removed legacy/.');
   assert.doesNotMatch(ticket, /Understood\?|Agreed\?|Diagnosed\?|Designed\?|Briefed\?|plan\.draft\.md|approvedCopies|track: [SML]/);
-  for (const text of ['workflow: full-v2', 'workflow: full-v1', 'track: M', 'Briefed?', 'approvedCopies', 'forge.mjs" context']) assert.ok(legacy.includes(text), text);
-  assert.match(legacy, /A ticket with `workflow: full-v3` uses \[SKILL\.md\]\(\.\.\/SKILL\.md\)/);
-  const parts = [[ticketCore, 'ticket/'], [legacy, 'ticket/legacy/'], ...PHASES.map((name) => [phase(name), 'ticket/phases/'])];
+  const parts = [[ticketCore, 'ticket/'], ...PHASES.map((name) => [phase(name), 'ticket/phases/'])];
   for (const [text, base] of parts) {
-    for (const [, target] of text.matchAll(/\]\(((?:templates|legacy|phases|\.\.)\/[^)#]+|[a-z-]+\.md)\)/g)) {
+    for (const [, target] of text.matchAll(/\]\(((?:templates|phases|\.\.)\/[^)#]+|[a-z-]+\.md)\)/g)) {
       assert.ok(existsSync(new URL(`../plugins/forge/skills/${base}${target}`, import.meta.url)), `${base}${target}`);
     }
   }

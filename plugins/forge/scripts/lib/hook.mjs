@@ -229,15 +229,11 @@ function ticketPart(event, where, forge, env, { host = 'vscode', promptOnly = fa
     const title = sessionTitle(ticket);
     const card = nowCard(readFileSync(file, 'utf8'));
     lines.push(
-      `Forge ticket session: ${ticket.key}, state ${STATE_EMOJI[ticket.state]} ${ticket.state}, phase ${ticket.phase}, workflow ${ticket.workflow ?? 'legacy'}.`,
+      `Forge ticket session: ${ticket.key}, state ${STATE_EMOJI[ticket.state]} ${ticket.state}, phase ${ticket.phase}, workflow ${ticket.workflow}.`,
       `README: ${file}`,
       titleLine(host, title),
-      // Only full-v3 uses the steps of SKILL.md. An older ticket keeps its own layout and rules.
-      ticket.workflow === 'full-v3'
-        ? '2. Load the ticket skill and follow Resume.'
-        : `2. Load the ticket skill. This ticket uses the ${ticket.workflow ?? 'legacy'} layout, so read legacy/rules.md in the folder of the ticket skill and follow Resume there, not the full-v3 steps of SKILL.md.`,
+      '2. Load the ticket skill and follow Resume.',
     );
-    if (ticket.workflow === 'full-v1') lines.push(`3. This ticket uses full-v1. Resume runs \`${forge} migrate ${ticket.key}\` first; report the result to the user.`);
     if (card?.text) lines.push('', 'Now card from the README:', card.text);
     else lines.push('', `Next: ${ticket.next}${ticket.waitingOn ? ` · Waiting on: ${ticket.waitingOn}` : ''}`);
     const recorded = ticket.worktree && here && samePath(ticket.worktree, here);

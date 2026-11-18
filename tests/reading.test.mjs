@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { countWords, diffGate, gateName, quickCard, readingLevels, renderDiff, saveSnapshot, sectionDiff, sections, summaryBlock, summaryCheck } from '../plugins/forge/scripts/lib/reading.mjs';
+import { countWords, diffGate, gateName, renderDiff, saveSnapshot, sectionDiff, sections, summaryBlock, summaryCheck } from '../plugins/forge/scripts/lib/reading.mjs';
 import { lint } from '../plugins/forge/scripts/lib/validation.mjs';
 import { parseTicket } from '../plugins/forge/scripts/lib/ticket.mjs';
 
@@ -22,12 +22,12 @@ function wiki(t) {
     mkdirSync(path.dirname(file), { recursive: true });
     writeFileSync(file, text);
   };
-  const readme = ({ state = 'needs-me', phase = 'start', next = 'Approve the scope', card = true, workflow = 'full-v2' } = {}) => put('README.md', [
-    '---', 'type: ticket', 'key: APP-5', 'title: Doc import error telemetry', `workflow: ${workflow}`, `phase: ${phase}`, `state: ${state}`,
+  const readme = ({ state = 'needs-me', phase = 'start', next = 'Approve the scope', card = true } = {}) => put('README.md', [
+    '---', 'type: ticket', 'key: APP-5', 'title: Doc import error telemetry', 'workflow: full-v3', `phase: ${phase}`, `state: ${state}`,
     `next: ${next}`, 'waiting_on: ""', 'changes: []', 'people: []', 'gates:',
-    '  - { name: Scoped?, doc: scope.md, need: required, status: in-review }', 'updated: 2026-10-01', '---',
-    '# APP-5', '', '> Doc import error telemetry', '',
-    ...(card ? ['## 📍 Now', '', '- **State:** 🟡 needs-me', '- **Phase:** start', '- **Next:** Approve the scope', '- **Waiting on:** you', ''] : []),
+    '  - { name: Scoped?, doc: story.md, need: required, status: in-review }', 'updated: 2026-10-01', '---',
+    '# APP-5: Doc import error telemetry', '',
+    ...(card ? ['## Now', '', '- State: 🟡 needs-me', '- Phase: start', '- Next: Approve the scope', '- Waiting on: you', ''] : []),
     '## Notes', '',
   ].join('\n'));
   const ticket = () => parseTicket(readFileSync(path.join(dir, 'README.md'), 'utf8'));
@@ -51,18 +51,6 @@ test('word counts skip code fences and link targets, and keep words with hyphens
   assert.equal(countWords('| Gate | Status |\n|---|---|\n| Scoped? | approved |'), 4);
 });
 
-test('reading levels are cumulative and report each level over its budget', () => {
-  const doc = ['## ⚡ 1 min', words(140), '## ☕ 5 min', words(1000), '## 📖 10 min', words(1200), '## 📂 Appendix', words(5000)].join('\n');
-  const reading = readingLevels(doc);
-  assert.deepEqual(reading.levels.map((level) => [level.key, level.words, level.cumulative, level.over]),
-    [['1', 140, 140, false], ['5', 1000, 1140, false], ['10', 1200, 2340, true]]);
-  assert.equal(reading.ordered, true);
-  assert.equal(quickCard(doc), words(140));
-  assert.equal(readingLevels(['## ☕ 5 min', 'x', '## ⚡ 1 min', 'y'].join('\n')).ordered, false);
-  assert.equal(readingLevels(['## 📂 Appendix', 'x', '## ⚡ 1 min', 'y'].join('\n')).ordered, false);
-  assert.equal(readingLevels('## Context\nNo levels').quick, null);
-});
-
 test('gate names accept a short form and refuse unknown gates', () => {
   assert.equal(gateName('scoped'), 'Scoped?');
   assert.equal(gateName('Planned?'), 'Planned?');
@@ -84,52 +72,31 @@ test('the section diff lists changed, added, and removed sections with line chan
 test('snapshots number each review, skip an unchanged doc, and the diff compares with the latest', (t) => {
   const w = wiki(t);
   w.readme();
-  assert.throws(() => saveSnapshot(w.dir, w.ticket(), 'Scoped?'), /scope\.md does not exist yet/);
-  w.put('scope.md', ['---', 'title: Scope', '---', '## ⚡ 1 min', 'Add telemetry to the import.', '## ☕ 5 min', 'Details.', ''].join('\n'));
+  assert.throws(() => saveSnapshot(w.dir, w.ticket(), 'Scoped?'), /story\.md does not exist yet/);
+  w.put('story.md', ['---', 'title: Story', '---', '# Story APP-5', 'Add telemetry to the import.', '## Scope', 'Details.', ''].join('\n'));
   const first = diffGate(w.dir, w.ticket(), 'Scoped?');
   assert.equal(first.snapshot, null);
-  assert.equal(renderDiff(first), '⚡ scope.md (first review):\nAdd telemetry to the import.');
-  assert.deepEqual(saveSnapshot(w.dir, w.ticket(), 'Scoped?'), { gate: 'Scoped?', doc: 'scope.md', snapshot: 'approvals/snapshots/scoped-1.md', n: 1, written: true });
+  assert.equal(renderDiff(first), 'Summary of story.md (first review):\nAdd telemetry to the import.');
+  assert.deepEqual(saveSnapshot(w.dir, w.ticket(), 'Scoped?'), { gate: 'Scoped?', doc: 'story.md', snapshot: 'approvals/snapshots/scoped-1.md', n: 1, written: true });
   assert.equal(saveSnapshot(w.dir, w.ticket(), 'Scoped?').written, false, 'An unchanged doc keeps the latest snapshot.');
   assert.match(renderDiff(diffGate(w.dir, w.ticket(), 'Scoped?')), /has not changed since your last review \(approvals\/snapshots\/scoped-1\.md\)/);
-  w.put('scope.md', ['---', 'title: Scope', '---', '## ⚡ 1 min', 'Add telemetry and an alert to the import.', '## ☕ 5 min', 'Details.', ''].join('\n'));
+  w.put('story.md', ['---', 'title: Story', '---', '# Story APP-5', 'Add telemetry and an alert to the import.', '## Scope', 'Details.', ''].join('\n'));
   const text = renderDiff(diffGate(w.dir, w.ticket(), 'Scoped?'));
-  assert.match(text, /^🔀 Changed since your last review \(scope\.md vs approvals\/snapshots\/scoped-1\.md\):/);
-  assert.match(text, /- ⚡ 1 min: changed \(\+1 \/ -1 lines\)/);
+  assert.match(text, /^Changed since your last review \(story\.md vs approvals\/snapshots\/scoped-1\.md\):/);
+  assert.match(text, /- \(top\): changed \(\+1 \/ -1 lines\)/);
   assert.match(text, /\+ Add telemetry and an alert to the import\./);
-  assert.ok(!text.includes('☕ 5 min'), 'Unchanged sections are not shown.');
+  assert.ok(!text.includes('Scope'), 'Unchanged sections are not shown.');
   assert.equal(saveSnapshot(w.dir, w.ticket(), 'Scoped?').snapshot, 'approvals/snapshots/scoped-2.md');
-});
-
-test('lint warns about a stale or missing Now card and about reading levels, for full-v2 tickets only', (t) => {
-  const w = wiki(t);
-  w.readme({ state: 'active', next: 'Investigate the parser' });
-  w.put('scope.md', ['## ☕ 5 min', words(10), '## ⚡ 1 min', words(10), ''].join('\n'));
-  w.put('plan.draft.md', ['## ⚡ 1 min', words(151), ''].join('\n'));
-  w.put('review.md', ['## Summary', 'No levels.', ''].join('\n'));
-  const codes = (report) => report.findings.filter((item) => item.severity === 'warning').map((item) => `${path.basename(item.file)}:${item.code}`).sort();
-  const report = lint({ wikiPath: w.root, repoPath: cwd });
-  assert.deepEqual(codes(report), ['README.md:now-card-stale', 'plan.draft.md:reading-over-budget', 'review.md:reading-quick-missing', 'scope.md:reading-order']);
-  const stale = report.findings.find((item) => item.code === 'now-card-stale');
-  assert.match(stale.message, /State should name active; Next should match the frontmatter next/);
-  assert.ok(!/Phase should/.test(stale.message));
-  assert.equal(stale.line, 20);
-  assert.ok(report.findings.every((item) => !['now-card-stale', 'reading-order', 'reading-over-budget', 'reading-quick-missing'].includes(item.code) || item.severity === 'warning'));
-
-  w.readme({ card: false });
-  assert.ok(codes(lint({ wikiPath: w.root, repoPath: cwd })).includes('README.md:now-card-missing'));
-  w.readme();
-  assert.ok(!codes(lint({ wikiPath: w.root, repoPath: cwd })).some((item) => item.startsWith('README.md:now-card')), 'A matching card gives no warning.');
 });
 
 test('the snapshot and diff commands print text or JSON and refuse bad arguments', (t) => {
   const w = wiki(t);
   w.readme();
-  w.put('scope.md', ['## ⚡ 1 min', 'Card text.', ''].join('\n'));
+  w.put('story.md', ['# Story APP-5', '', 'Card text.', ''].join('\n'));
   const base = ['--cwd', cwd, '--wiki', w.root];
   const diff = run('diff', 'app-5', 'scoped', ...base);
   assert.equal(diff.status, 0, diff.stderr);
-  assert.equal(diff.stdout.trim(), '⚡ scope.md (first review):\nCard text.');
+  assert.equal(diff.stdout.trim(), 'Summary of story.md (first review):\nCard text.');
   const saved = run('snapshot', 'APP-5', 'Scoped?', '--json', ...base);
   assert.equal(saved.status, 0, saved.stderr);
   assert.equal(JSON.parse(saved.stdout).snapshot, 'approvals/snapshots/scoped-1.md');
@@ -168,7 +135,6 @@ test('full-v3 lint checks the summary, the document budget, empty sections, and 
   const check = summaryCheck(readFileSync(path.join(w.dir, 'story.md'), 'utf8'));
   assert.deepEqual([check.words, check.over, check.total, check.totalOver], [151, true, 1551, true]);
 
-  // The reading levels of the older layout are not a full-v3 rule, and the old card heading still reads.
   w.put('story.md', ['# Story APP-5: Telemetry', '', 'Short summary.', '', '## Scope', '', 'In scope.', ''].join('\n'));
   readme(['## Now', '', '- State: ▶️ active', '- Phase: start', '- Next: Something else', '']);
   assert.deepEqual(warnings(), ['now-card-stale']);
@@ -179,8 +145,7 @@ test('full-v3 lint checks the summary, the document budget, empty sections, and 
 
 test('the full-v3 approval form text is the summary on a first review, then only the changes', (t) => {
   const w = wiki(t);
-  w.readme({ workflow: 'full-v3' });
-  w.put('README.md', readFileSync(path.join(w.dir, 'README.md'), 'utf8').replace('doc: scope.md', 'doc: story.md'));
+  w.readme();
   w.put('story.md', ['---', 'type: story', '---', '# Story APP-5: Telemetry', '', 'Problem: no telemetry.', '', 'Need from you: GO on Scoped?.', '', '## Scope', '', 'Old line', ''].join('\n'));
   const first = diffGate(w.dir, w.ticket(), 'Scoped?');
   assert.equal(first.layout, 'summary');

@@ -7,18 +7,7 @@ import { sha256 } from '../plugins/forge/scripts/lib/validation.mjs';
 const scenarios = JSON.parse(readFileSync(new URL('./fixtures/scenarios.json', import.meta.url), 'utf8'));
 const action = (name) => ({ kind: 'action', name });
 const source = (name) => ({ kind: 'source', name, status: 'available' });
-const APPROVAL_SETS = {
-  'full-v1': {
-    'Understood?': ['context.md', 'history.md'], 'Agreed?': ['interview.md'],
-    'Diagnosed?': ['investigation.md'], 'Designed?': ['plan.draft.md', 'plan.md'],
-    'Shippable?': ['review.md'], 'Learned?': ['close.draft.md'],
-  },
-  'full-v2': {
-    'Scoped?': ['scope.md', 'context.md', 'interview.md'], 'Planned?': ['investigation.md', 'plan.draft.md', 'plan.md'],
-    'Shippable?': ['review.md'], 'Learned?': ['close.draft.md'],
-  },
-  'full-v3': { 'Scoped?': ['story.md'], 'Planned?': ['plan.md'], 'Shippable?': ['review.md'], 'Learned?': ['close.md'] },
-};
+const APPROVAL_SETS = { 'Scoped?': ['story.md'], 'Planned?': ['plan.md'], 'Shippable?': ['review.md'], 'Learned?': ['close.md'] };
 function fixture(scenario) {
   const artifacts = Object.fromEntries((scenario.expectedArtifacts ?? []).map((artifact) => [artifact.path, (artifact.includes ?? ['Synthetic evidence']).join('\n') + '\n']));
   const trace = [];
@@ -30,9 +19,8 @@ function fixture(scenario) {
   };
   for (const [name] of Object.entries(artifacts)) revision(name);
   const approve = (gate, names) => trace.push({ kind: 'approval', gate, explicit: true, documents: names.map(revision) });
-  const approvals = APPROVAL_SETS[scenario.workflow] ?? {};
-  if (scenario.id === 'legacy-resume') approve('Briefed?', ['context.md', 'interview.md']);
-  else for (const [gate, names] of Object.entries(approvals)) {
+  const approvals = { ...APPROVAL_SETS, ...scenario.gateDocuments };
+  for (const [gate, names] of Object.entries(approvals)) {
     if (!scenario.gateAfterActions?.[gate]) approve(gate, names);
   }
   const requiredEvent = (expected) => ({ ...expected, ...(expected.status === 'unavailable' ? { gap: 'Synthetic source is unavailable; evidence gap recorded.' } : {}) });
@@ -73,7 +61,7 @@ for (const scenario of scenarios) {
 }
 
 test('small and large scenarios require the same full phase sequence', () => {
-  assert.deepEqual(scenarios[0].sequence, scenarios[1].sequence);
+  assert.ok(scenarios.every((entry) => entry.workflow === 'full-v3'), 'Forge supports only full-v3.');
   const v3 = scenarios.filter((entry) => entry.workflow === 'full-v3' && entry.id.endsWith('-full-research'));
   assert.equal(v3.length, 2);
   assert.deepEqual(v3[0].sequence, v3[1].sequence);
@@ -81,7 +69,7 @@ test('small and large scenarios require the same full phase sequence', () => {
 
 test('full-v3 approves one document for each gate, and a changed plan blocks the implementation', () => {
   const scenario = scenarios.find((entry) => entry.id === 'v3-small-fix-full-research');
-  for (const gate of Object.keys(APPROVAL_SETS['full-v3'])) {
+  for (const gate of Object.keys(APPROVAL_SETS)) {
     const { trace, artifacts } = fixture(scenario);
     const without = trace.filter((event) => !(event.kind === 'approval' && event.gate === gate));
     assert.equal(evaluate(scenario, without, artifacts).passed, false, gate);
@@ -94,43 +82,7 @@ test('full-v3 approves one document for each gate, and a changed plan blocks the
   const old = fixture(scenario);
   const swapped = old.trace.map((event) => event.kind === 'approval' && event.gate === 'Scoped?'
     ? { ...event, documents: ['scope.md', 'context.md', 'interview.md'].map((name) => ({ path: name, sha256: sha256('x') })) } : event);
-  assert.equal(evaluate(scenario, swapped, old.artifacts).passed, false, 'The full-v2 document set does not approve a full-v3 scope.');
-});
-
-test('every critical full-workflow gate has a failing missing-approval check', () => {
-  const v1 = {
-    id: 'full-v1-sequence', workflow: 'full-v1',
-    sequence: ['research', 'brief', 'interview', 'investigate', 'plan', 'implement', 'review', 'evidence', 'close'],
-    gateAfterActions: {
-      'Understood?': ['research'], 'Agreed?': ['brief', 'interview'], 'Diagnosed?': ['investigate'],
-      'Designed?': ['plan'], 'Shippable?': ['review'], 'Learned?': ['evidence'],
-    },
-  };
-  for (const scenario of [scenarios[0], v1]) {
-    assert.equal(evaluate(scenario, fixture(scenario).trace, fixture(scenario).artifacts).passed, true, scenario.workflow);
-    for (const gate of Object.keys(APPROVAL_SETS[scenario.workflow])) {
-      const { trace, artifacts } = fixture(scenario);
-      const without = trace.filter((event) => !(event.kind === 'approval' && event.gate === gate));
-      assert.equal(evaluate(scenario, without, artifacts).passed, false, `${scenario.workflow} ${gate}`);
-    }
-  }
-});
-
-test('full-v2 does not accept full-v1 gates in place of Scoped? and Planned?', () => {
-  const scenario = scenarios[0];
-  const { trace, artifacts } = fixture(scenario);
-  const swapped = trace.map((event) => event.kind === 'approval' && event.gate === 'Planned?' ? { ...event, gate: 'Designed?' } : event);
-  assert.equal(evaluate(scenario, swapped, artifacts).passed, false);
-});
-
-test('a Planned? approval needs a byte-identical plan copy', () => {
-  const scenario = scenarios[0];
-  const { trace, artifacts } = fixture(scenario);
-  const index = trace.findIndex((event) => event.kind === 'approval' && event.gate === 'Planned?');
-  const copy = { path: 'plan.md', sha256: sha256('Different\n') };
-  trace.splice(index, 1, { kind: 'artifact', ...copy }, { ...trace[index], documents: trace[index].documents.map((doc) => doc.path === 'plan.md' ? copy : doc) });
-  artifacts['plan.md'] = 'Different\n';
-  assert.equal(evaluate(scenario, trace, artifacts).passed, false);
+  assert.equal(evaluate(scenario, swapped, old.artifacts).passed, false, 'The document set of the removed full-v2 layout does not approve a full-v3 scope.');
 });
 
 test('an agreed scope change after diagnosis blocks planning until Scoped? is approved again', () => {
@@ -138,9 +90,9 @@ test('an agreed scope change after diagnosis blocks planning until Scoped? is ap
   const { trace, artifacts } = fixture(scenario);
   const relaxed = { ...scenario, forbiddenActions: [] };
   assert.equal(evaluate(relaxed, [...trace, action('plan')], artifacts).passed, false, 'The old scope approval no longer counts.');
-  artifacts['scope.md'] = 'Changed scope\n';
-  const rescoped = [...trace, { kind: 'artifact', path: 'scope.md', sha256: sha256(artifacts['scope.md']) }];
-  rescoped.push({ kind: 'approval', gate: 'Scoped?', explicit: true, documents: ['scope.md', 'context.md', 'interview.md'].map((path) => ({ path, sha256: sha256(artifacts[path] ?? 'Synthetic evidence\n') })) });
+  artifacts['story.md'] = 'Changed scope\n';
+  const rescoped = [...trace, { kind: 'artifact', path: 'story.md', sha256: sha256(artifacts['story.md']) }];
+  rescoped.push({ kind: 'approval', gate: 'Scoped?', explicit: true, documents: [{ path: 'story.md', sha256: sha256(artifacts['story.md']) }] });
   assert.equal(evaluate(relaxed, [...rescoped, action('plan')], artifacts).passed, true);
   const fresh = fixture(scenario);
   const declined = fresh.trace.map((event) => event.kind === 'decision' && event.subject === 'scope-change' ? { ...event, value: 'declined' } : event);
@@ -150,28 +102,15 @@ test('an agreed scope change after diagnosis blocks planning until Scoped? is ap
 test('a combined approval cannot omit linked revisions', () => {
   const scenario = scenarios.find((entry) => entry.id === 'combined-approval');
   const { trace, artifacts } = fixture(scenario);
-  const approval = trace.find((event) => event.kind === 'approval' && event.gate === 'Understood?');
-  approval.documents = approval.documents.filter((doc) => doc.path !== 'history.md');
+  const approval = trace.find((event) => event.kind === 'approval' && event.gate === 'Scoped?');
+  approval.documents = approval.documents.filter((doc) => doc.path !== 'evidence/history.md');
   assert.equal(evaluate(scenario, trace, artifacts).passed, false);
 });
-test('diagnosis approval cannot follow planning, be implicit, or refer to changed evidence', () => {
-  const scenario = scenarios.find((entry) => entry.id === 'mandatory-diagnosis');
-  for (const change of ['missing', 'late', 'implicit', 'stale']) {
-    const { trace, artifacts } = fixture(scenario);
-    const index = trace.findIndex((event) => event.kind === 'approval' && event.gate === 'Diagnosed?');
-    const [approval] = trace.splice(index, 1);
-    if (change === 'late') trace.push(approval);
-    if (change === 'implicit') trace.splice(index, 0, { ...approval, explicit: false });
-    if (change === 'stale') trace.splice(index, 0, approval, { kind: 'artifact', path: 'investigation.md', sha256: sha256('Changed\n') });
-    assert.equal(evaluate(scenario, trace, artifacts).passed, false, change);
-  }
-});
-
 test('combined approval goes stale if any listed document changes before the blocked action', () => {
   const scenario = scenarios.find((entry) => entry.id === 'combined-approval');
   const { trace, artifacts } = fixture(scenario);
-  trace.splice(trace.length - 1, 0, { kind: 'artifact', path: 'history.md', sha256: sha256('Changed\n') });
-  artifacts['history.md'] = 'Changed\n';
+  trace.splice(trace.length - 1, 0, { kind: 'artifact', path: 'evidence/history.md', sha256: sha256('Changed\n') });
+  artifacts['evidence/history.md'] = 'Changed\n';
   assert.equal(evaluate(scenario, trace, artifacts).passed, false);
 });
 
@@ -182,7 +121,7 @@ test('external tools need exact per-write approval and a refusal prevents a writ
     { kind: 'approval', gate: 'Sendable?', explicit: true, documents, command: 'synthetic comment', target: 'synthetic item' },
     { kind: 'tool', effect: 'external-write', command: 'synthetic comment', target: 'synthetic item' },
   ];
-  const scenario = { workflow: 'full-v1' };
+  const scenario = { workflow: 'full-v3' };
   assert.equal(evaluate(scenario, trace, {}).passed, true);
   assert.equal(evaluate(scenario, [...trace, trace[2]], {}).passed, false, 'Retry consumes new approval.');
   assert.equal(evaluate(scenario, [trace[0], trace[1], { ...trace[2], target: 'different item' }], {}).passed, false);
@@ -196,6 +135,6 @@ test('source gaps and declined learning have explicit negative trace checks', ()
   trace.find((event) => event.status === 'unavailable').gap = '';
   assert.equal(evaluate(unavailable, trace, artifacts).passed, false);
   ({ trace, artifacts } = fixture(scenarios.find((entry) => entry.id === 'declined-learning')));
-  assert.equal(evaluate({ workflow: 'full-v1' }, [...trace, action('create-learning')], artifacts).passed, false);
-  assert.equal(evaluate({ workflow: 'full-v1' }, [{ kind: 'decision', subject: 'learning', value: 'cancelled' }, action('create-learning')], {}).passed, false);
+  assert.equal(evaluate({ workflow: 'full-v3' }, [...trace, action('create-learning')], artifacts).passed, false);
+  assert.equal(evaluate({ workflow: 'full-v3' }, [{ kind: 'decision', subject: 'learning', value: 'cancelled' }, action('create-learning')], {}).passed, false);
 });

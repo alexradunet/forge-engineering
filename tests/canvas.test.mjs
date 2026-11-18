@@ -165,16 +165,7 @@ test('the page is one self-contained file with the rail, the board, and the copy
   assert.throws(() => renderCanvas(result.model, { links: 'web' }), /Unknown link mode/);
 });
 
-test('an older ticket gets its files as columns, and a ticket with only a README still gives a page', (t) => {
-  const old = wiki(t, { workflow: 'full-v2' });
-  old.put('scope.md', '---\ntype: scope\n---\n# 🎯 Scope (APP-9): Retry\n\n## ⚡ 1 min\n\n> 🔥 Retries stop.\n\n## ☕ 5 min\n\nMore.\n');
-  old.put('context.md', '# 🧭 Context (APP-9): Retry\n\n## 📊 At a glance\n\nFacts.\n');
-  const model = buildCanvas(old.dir);
-  assert.equal(model.layout, 'columns');
-  assert.deepEqual(model.zones.map((zone) => [zone.id, zone.title]), [['scope', '🎯 Scope'], ['context', '🧭 Context']]);
-  assert.deepEqual(model.zones[0].cards.map((card) => card.title), ['⚡ 1 min', '☕ 5 min']);
-  assert.match(renderCanvas(model), /This ticket uses the full-v2 layout/);
-
+test('a ticket with only a README still gives a page', (t) => {
   const fresh = wiki(t);
   const empty = buildCanvas(fresh.dir);
   assert.deepEqual(empty.missing, ['story.md', 'plan.md', 'review.md', 'proof.md', 'map.md', 'journal.md']);
@@ -250,7 +241,7 @@ test('each card has a tier and a gate, an exception moves a card up, and the foc
   assert.equal(focusGate([gate('Scoped?', 'approved'), gate('Sendable?', 'todo'), gate('Learned?', 'approved')]), '');
 });
 
-test('the page has the views and the fold data of each card, and an older ticket has none', (t) => {
+test('the page has the views and the fold data of each card', (t) => {
   const f = wiki(t);
   fill(f);
   const html = renderCanvas(buildCanvas(f.dir));
@@ -274,10 +265,6 @@ test('the page has the views and the fold data of each card, and an older ticket
   const done = renderCanvas(buildCanvas(f.dir));
   assert.doesNotMatch(done, /<button[^>]*data-view="focus"|"focus":|class="zone [^"]*z-now/);
   assert.match(done, /data-view="must"/);
-
-  const old = wiki(t, { workflow: 'full-v2' });
-  old.put('scope.md', '# Scope (APP-9): Retry\n\n## 1 min\n\nRetries stop.\n');
-  assert.doesNotMatch(renderCanvas(buildCanvas(old.dir)), /data-view=|data-tier=|class="views"|class="zgate/);
 });
 
 test('each section of a template has one tier, and each tier entry is a section of its template', () => {
