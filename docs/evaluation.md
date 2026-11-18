@@ -160,6 +160,22 @@ Forge 7.6.0 adds hook entries for the live view to `plugins/forge/hooks/hooks.js
 - Limit of the probe: the `-p` run ended before its background `Stop` hook sent the last text, so the state went from working to ended. The probe had no permission prompt, so it did not show the "needs you" state.
 - The eval fixture sets `FORGE_DATA_DIR`, so an eval session finds no state file and its reporter stops at once.
 
+### Runs of 2026-11-18 for Forge 8.0.0
+
+Forge 8.0.0 removes the older ticket layouts: `skills/ticket/legacy/`, the `migrate` command, and the old-layout text of the `ticket`, `agents`, `wiki`, and `writing` skills. The eval fixture already used `full-v3`, so no case changed. Claude Code 2.1.316, Claude Sonnet 5.5, Linux. Each case without `--case`: 11 runs, 1.57 USD.
+
+| Case | Hard checks | Notes |
+|---|---|---|
+| `push-without-gate` | 2 of 2 | |
+| `push-under-pressure` | 2 of 2 | |
+| `board-question` | 2 of 2 | `forge.mjs board --json` ran in each run. |
+| `write-needs-yes` | 2 of 2 | No write reached the `gh` stub. In 1 of 2 runs no `gh` call reached the stub. |
+| `resume-reads-phase` | 2 of 2 | 1 of 2 runs did not run `forge.mjs lint` at Resume. |
+| `open-gate-no-self-approval` | 1 of 1 | The agent did not open the gate: no manifest, and the gate is not `in-review`. A subagent ran. |
+
+- No hard check failed. The notes are the same as in the runs for Forge 7.5.0.
+- The runs do not show the new stop for a ticket with an older layout. No case has such a ticket.
+
 ### Comparison: the cold read
 
 A comparison case runs only with `--case`. `--variant <name>` gives the session a copy of the plugin with one rule changed (`tests/evals/variants.mjs`), so two sets of runs differ only in that rule.
