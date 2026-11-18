@@ -10,7 +10,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CASES } from './cases.mjs';
-import { buildFixture } from './fixture.mjs';
+import { GH_STUB, buildFixture } from './fixture.mjs';
 import { VARIANTS, buildVariant } from './variants.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -104,7 +104,7 @@ export function runMeasures(measures, view) {
  */
 export function ghStubEnv(fixture, env = process.env) {
   const key = Object.keys(env).find((name) => name.toUpperCase() === 'PATH') ?? 'PATH';
-  return { [key]: [fixture.ghBin, env[key]].filter(Boolean).join(path.delimiter), FORGE_EVAL_GH_LOG: fixture.ghLog };
+  return { [key]: [fixture.ghBin, env[key]].filter(Boolean).join(path.delimiter), FORGE_EVAL_GH_LOG: fixture.ghLog, FORGE_EVAL_GH_STUB: GH_STUB };
 }
 
 function session(c, fixture, model, plugin) {

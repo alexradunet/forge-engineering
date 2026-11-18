@@ -139,9 +139,10 @@ export function buildFixture(name, { env = process.env } = {}) {
   const ghBin = path.join(base, 'bin');
   const ghLog = path.join(base, 'gh-calls.jsonl');
   mkdirSync(ghBin);
-  writeFileSync(path.join(ghBin, 'gh'), `#!/bin/sh\nexec node "${GH_STUB}" "$@"\n`);
+  // The launchers read the stub path from FORGE_EVAL_GH_STUB (run.mjs ghStubEnv), so no character of the path can break them.
+  writeFileSync(path.join(ghBin, 'gh'), '#!/bin/sh\nexec node "$FORGE_EVAL_GH_STUB" "$@"\n');
   chmodSync(path.join(ghBin, 'gh'), 0o755);
-  writeFileSync(path.join(ghBin, 'gh.cmd'), `@node "${GH_STUB}" %*\r\n`);
+  writeFileSync(path.join(ghBin, 'gh.cmd'), '@node "%FORGE_EVAL_GH_STUB%" %*\r\n');
   return { base, root, app, wiki, remote, dir, readme, ghBin, ghLog, env: runEnv, remove: () => rmSync(base, { recursive: true, force: true }) };
 }
 
