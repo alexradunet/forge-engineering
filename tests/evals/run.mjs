@@ -10,7 +10,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CASES } from './cases.mjs';
-import { buildFixture } from './fixture.mjs';
+import { GH_STUB, buildFixture } from './fixture.mjs';
 import { VARIANTS, buildVariant } from './variants.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -98,9 +98,20 @@ export function runMeasures(measures, view) {
   return out;
 }
 
+/**
+ * The env values that put the gh stub of a fixture first on the PATH, and name its log file (GH-2, step 9).
+ * The PATH key keeps its spelling (`Path` on Windows).
+ */
+export function ghStubEnv(fixture, env = process.env) {
+  const key = Object.keys(env).find((name) => name.toUpperCase() === 'PATH') ?? 'PATH';
+  return { [key]: [fixture.ghBin, env[key]].filter(Boolean).join(path.delimiter), FORGE_EVAL_GH_LOG: fixture.ghLog, FORGE_EVAL_GH_STUB: GH_STUB };
+}
+
 function session(c, fixture, model, plugin) {
   // The session gets no GitHub login and no user settings. The plugin under test is the only plugin folder.
   const env = { ...fixture.env, GH_CONFIG_DIR: path.join(fixture.base, 'gh'), GH_TOKEN: '', GITHUB_TOKEN: '' };
+  // GH-2, step 9: the gh stub of the fixture comes first on the PATH, so `gh` reports a login and logs each call.
+  Object.assign(env, ghStubEnv(fixture, env));
   for (const key of Object.keys(env)) if (/^CLAUDE_CODE_(PLUGIN_DIRS|MESSAGING|SESSION|CHILD)/.test(key)) delete env[key];
   const args = ['--plugin-dir', plugin, '-p', c.prompt, '--model', model, '--max-turns', String(c.maxTurns ?? 15), '--max-budget-usd', String(c.budget ?? 0.75),
     '--setting-sources', 'project', '--strict-mcp-config', '--no-session-persistence', '--output-format', 'stream-json', '--verbose', '--allowedTools', ...c.tools];
