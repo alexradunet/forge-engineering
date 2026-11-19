@@ -2,19 +2,22 @@
 // with the live state of the agent sessions: the session hooks (live-hook.mjs) send their events to POST /event,
 // and a page reads the state from GET /live (the server holds the answer until the state changes).
 // It is read-only for a session: it has no route that sends text or an answer to a session, and no Send to agent.
-// The events stay in memory. The only file that it writes is its state file in the forge data folder (the port and the tokens,
-// for the reporter of the same user). It has no CORS header. A page needs the page token, and an event needs the event token.
+// The events stay in memory. The only file that it writes is its state file in the forge data folder (the port, the tokens, and the
+// folders of its repository, for the reporter of the same user). It has no CORS header. A page needs the page token, and an event needs the event token.
+// One server runs for each repository: the state file has the name of the Forge folder (a hash), and the reporter sends an event
+// to the server whose folders hold the folder of the session.
 import http from 'node:http';
 import net from 'node:net';
-import { randomBytes } from 'node:crypto';
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash, randomBytes } from 'node:crypto';
+import { mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { buildBoard } from './board.mjs';
 import { BOARD_SCRIPT, renderBoardPage } from './board-page.mjs';
 import { buildCanvas, renderCanvas } from './canvas.mjs';
 import { BASE_HEADERS, SERVE_HOST, bind, canvasPolicy, checkRequest, mermaidAnswer, policy, readBody, ticketFile } from './canvas-serve.mjs';
 import { dataDir } from './data-dir.mjs';
-import { LIVE_FILE, MAX_EVENT, checkEvent } from './live-event.mjs';
+import { homeOf } from './layout.mjs';
+import { LIVE_DIR, LIVE_FILE, MAX_EVENT, checkEvent } from './live-event.mjs';
 import { createLive, detail, prune, reduce, summary } from './live.mjs';
 import { MERMAID_ROUTE, needsMermaid } from './mermaid.mjs';
 import { ticketRoot } from './tickets.mjs';
@@ -33,23 +36,60 @@ const FLUSH_MS = 40;
 const BOARD_POLICY = policy(BOARD_SCRIPT);
 const WIKI_POLICY = policy(WIKI_SCRIPT);
 const WIKI_POLICY_MERMAID = policy(WIKI_SCRIPT, true);
-const OLD_LINK = 'This link is old or not complete. Run "forge.mjs live --status" for the link of the live server.\n';
+const OLD_LINK = 'This link is old or not complete. Run "forge.mjs open --status" for the link of the live server.\n';
 
-export function liveFile(env = process.env) {
-  return path.join(dataDir(env), LIVE_FILE);
+/** The folder of the state files: one file for the live server of each repository. */
+export function liveDir(env = process.env) {
+  return path.join(dataDir(env), LIVE_DIR);
+}
+
+/** The state file of the live server of one Forge folder. */
+export function liveFile(env = process.env, home = '') {
+  const folder = path.resolve(home);
+  const id = createHash('sha256').update(process.platform === 'win32' ? folder.toLowerCase() : folder).digest('hex').slice(0, 16);
+  return path.join(liveDir(env), `${id}.json`);
 }
 
 function alive(pid) {
   try { process.kill(pid, 0); return true; } catch (error) { return error.code === 'EPERM'; }
 }
 
-/** The live server of this user: { pid, port, link, file }, or null when none runs. */
-export function liveStatus(env = process.env) {
-  const file = liveFile(env);
+// The server of one state file, or null when the file is not there, is damaged, or names a process that is gone.
+function readState(file) {
   let state;
   try { state = JSON.parse(readFileSync(file, 'utf8')); } catch { return null; }
   if (!state || !Number.isInteger(state.pid) || !Number.isInteger(state.port) || !/^[0-9a-f]{32}$/.test(state.page ?? '') || !alive(state.pid)) return null;
-  return { pid: state.pid, port: state.port, link: `http://${SERVE_HOST}:${state.port}/board?t=${state.page}`, file };
+  const base = `http://${SERVE_HOST}:${state.port}`;
+  return {
+    pid: state.pid, port: state.port, link: `${base}/board?t=${state.page}`, wikiLink: `${base}/wiki?t=${state.page}`, file,
+    home: typeof state.home === 'string' ? state.home : '', repo: typeof state.repo === 'string' ? state.repo : '',
+  };
+}
+
+/** The live server of one Forge folder: { pid, port, link, wikiLink, file, home, repo }, or null when none runs. */
+export function liveStatus(env = process.env, home = '') {
+  return readState(liveFile(env, home));
+}
+
+/** Each live server of this user that runs, in the order of the Forge folders. */
+export function liveList(env = process.env) {
+  let names = [];
+  try { names = readdirSync(liveDir(env)).filter((name) => name.endsWith('.json')); } catch { return []; }
+  return names.map((name) => readState(path.join(liveDir(env), name))).filter(Boolean).sort((a, b) => (a.home < b.home ? -1 : a.home > b.home ? 1 : 0));
+}
+
+/**
+ * The folders of a repository, for the reporter: the main checkout, its worktrees folder, the Forge folder,
+ * and each ticket worktree that is outside of them. A session in one of these folders reports to the server of this repository.
+ */
+export function liveRoots(home, repo, tickets = []) {
+  const roots = [repo, repo ? `${repo}.worktrees` : '', home].filter(Boolean).map((folder) => path.resolve(folder));
+  const inside = (folder) => roots.some((root) => folder === root || folder.startsWith(root + path.sep));
+  for (const item of tickets) {
+    const folder = item.worktree ? path.resolve(item.worktree) : '';
+    if (folder && !inside(folder)) roots.push(folder);
+  }
+  return roots;
 }
 
 // True when a server accepts a connection on the port. A state file can stay after a crash, and a new process can get the old process id.
@@ -65,11 +105,13 @@ function answers(port) {
 
 /**
  * Serves the board and the canvases of one wiki with the live state of the sessions, until a signal or the idle limit.
+ * `repo` is the main checkout of the repository: with it, the sessions in the checkout and in its worktrees report to this server.
  * Gives the exit code: 130 or 143 after a signal, and 3 at the idle limit.
  */
-export async function serveLive(wiki, { links = 'vscode', port, idleMs = IDLE_MS, holdMs = HOLD_MS, out = process.stdout, err = process.stderr, signals = process, env = process.env } = {}) {
-  const running = liveStatus(env);
-  if (running && await answers(running.port)) throw new Error(`A live server runs already: ${running.link}. Stop it first (process ${running.pid}).`);
+export async function serveLive(wiki, { links = 'vscode', port, repo = '', idleMs = IDLE_MS, holdMs = HOLD_MS, out = process.stdout, err = process.stderr, signals = process, env = process.env } = {}) {
+  const home = homeOf(wiki);
+  const running = liveStatus(env, home);
+  if (running && await answers(running.port)) throw new Error(`A live server runs already for this repository: ${running.link}. Stop it first (forge.mjs open --stop, or process ${running.pid}).`);
   const pageToken = randomBytes(16).toString('hex');
   const eventToken = randomBytes(16).toString('hex');
   const live = createLive();
@@ -86,6 +128,8 @@ export async function serveLive(wiki, { links = 'vscode', port, idleMs = IDLE_MS
     let found = [];
     try { found = buildBoard(wiki).groups.flatMap((group) => group.tickets.map((item) => ({ key: item.key, folder: item.folder, worktree: item.worktree }))); } catch { found = []; }
     cache = { at: Date.now(), tickets: found };
+    // A new ticket worktree outside of the usual folders is a new root for the reporter.
+    if (bound && JSON.stringify(liveRoots(home, repo, found)) !== JSON.stringify(roots)) writeState(found);
     return found;
   };
 
@@ -111,6 +155,16 @@ export async function serveLive(wiki, { links = 'vscode', port, idleMs = IDLE_MS
     version += 1;
     flush ??= setTimeout(() => { flush = null; for (const waiter of [...waiters]) answer(waiter); }, FLUSH_MS);
   };
+
+  const file = liveFile(env, home);
+  let bound = 0;
+  let roots = [];
+  function writeState(found) {
+    roots = liveRoots(home, repo, found);
+    const temp = `${file}.${process.pid}.tmp`;
+    writeFileSync(temp, `${JSON.stringify({ v: 2, pid: process.pid, port: bound, token: eventToken, page: pageToken, wiki, home, repo, roots })}\n`, { mode: 0o600 });
+    renameSync(temp, file);
+  }
 
   let idle = null;
   const restIdle = () => { clearTimeout(idle); idle = setTimeout(() => finish({ code: 3 }), idleMs); };
@@ -208,13 +262,13 @@ export async function serveLive(wiki, { links = 'vscode', port, idleMs = IDLE_MS
     }
   });
 
-  const bound = await bind(server, 'forge-live', port, 'live');
-  // The state file gives the reporter the port and the event token. Only the user can read it.
-  const file = liveFile(env);
+  // Each repository gets its own stable port, so a browser keeps the address of a repository.
+  bound = await bind(server, `forge-live:${home}`, port, 'live');
+  // The state file gives the reporter the port, the event token, and the folders of this repository. Only the user can read it.
   mkdirSync(path.dirname(file), { recursive: true });
-  const temp = `${file}.${process.pid}.tmp`;
-  writeFileSync(temp, `${JSON.stringify({ v: 1, pid: process.pid, port: bound, token: eventToken, page: pageToken, wiki })}\n`, { mode: 0o600 });
-  renameSync(temp, file);
+  writeState(tickets());
+  // Until Forge 8.3 one server ran for a user. Its state file has no folders, so no reporter can use it.
+  rmSync(path.join(dataDir(env), LIVE_FILE), { force: true });
 
   // The signal handlers come before the first line: a reader of that line can stop the server at once.
   const onInt = () => finish({ code: 130 });
@@ -222,8 +276,9 @@ export async function serveLive(wiki, { links = 'vscode', port, idleMs = IDLE_MS
   signals.once('SIGINT', onInt);
   signals.once('SIGTERM', onTerm);
   restIdle();
-  const sweep = setInterval(() => { if (prune(live)) changed(); }, SWEEP_MS);
-  out.write(`live: serving http://${SERVE_HOST}:${bound}/board?t=${pageToken}\n  state ${file}\n`);
+  // The sweep also reads the board again, so the roots of the reporter stay current when no page is open.
+  const sweep = setInterval(() => { tickets(); if (prune(live)) changed(); }, SWEEP_MS);
+  out.write(`live: serving http://${SERVE_HOST}:${bound}/board?t=${pageToken}\n  wiki  http://${SERVE_HOST}:${bound}/wiki?t=${pageToken}\n  state ${file}\n`);
 
   const result = await ended;
   clearTimeout(idle);

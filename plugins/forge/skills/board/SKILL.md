@@ -91,10 +91,11 @@ When the user asks, and after each refresh:
 
 When the user asks to see the sessions live ("live view", "show the board live", "what do the sessions do now"):
 
-1. Run `<F> live --status`. When a server runs, give its link.
-2. Otherwise start `<F> live` as a background command, in the same way as the canvas server in the host file. Give the link from its first line.
+1. Run `<F> open --no-browser`. It starts the live server of this repository in the background when none runs, and it prints the links of the board and the wiki. Give the links.
+2. When the command says that the server did not start, start `<F> live` as a background command, in the same way as the canvas server in the host file. Give the link from its first line.
 3. Tell the user what the page shows: one live line for each session on the card of its ticket (working, needs you, idle, or ended), and the Live panel on each canvas.
 
+One server runs for each repository, and a session reports to the server of its repository. `<F> open --list` gives each server of the user, and `<F> open --stop` stops the server of this repository.
 The live server is read-only for a session, and only Claude Code sessions report in this version.
 A "needs you" line is a report: never answer that prompt for the user.
 
@@ -103,7 +104,7 @@ A "needs you" line is a report: never answer that prompt for the user.
 - The board steps write only `<wiki>/raw/sync/<KEY>.md` and, through `<F> board`, `<wiki>/raw/board.md` and the pages
   (`<wiki>/raw/board.html`, `<wiki>/raw/wiki.html`, and `canvas.html` in each ticket folder). The pages are views: no approval lists them.
   The board steps change no code, no ticket document, no approval, and no wiki page.
-- In the terminal, the board steps run only `<F> board`, `<F> canvas <KEY>`, `<F> live`, `<F> where`, read-only `git` commands, and the read-only
+- In the terminal, the board steps run only `<F> board`, `<F> canvas <KEY>`, `<F> live`, `<F> open`, `<F> where`, read-only `git` commands, and the read-only
   tracker, change request, and CI commands of the refresh.
 - No external writes. Never comment on, move, or change a work item, a change request, or a CI job.
 - Never answer a session's question, trust prompt, or permission prompt for the user. Report it.

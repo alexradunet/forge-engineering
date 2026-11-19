@@ -23,7 +23,11 @@
 //            from the page; then print the comment message and stop. Exit 0 after a Send, and not 0 when it stops without comments.
 //   live    [--port <n>] [--links vscode|file]   show the board and the canvases on http://127.0.0.1 with the live state of the agent sessions
 //            (the session hooks send their events to this server). Read-only for a session. It stops at a signal, or after 8 hours without an event.
-//   live --status   print the link of the live server that runs, or exit 1 when none runs
+//            One server runs for each repository, and a session reports to the server of its repository.
+//   live --status   print the link of the live server of this repository, or exit 1 when none runs
+//   open    [--no-browser] [--port <n>] [--links vscode|file]   the command for a person: start the live server of this repository in the background
+//            when none runs, print the links of the board and the wiki, and open the board in the browser
+//   open --status | --list | --stop   the server of this repository, each server of this user, or stop the server of this repository
 //   gate-approve <key> <gate> --answer "<exact user answer>" [--method form|chat] [--manifest <path>] [--hash <sha>] [--dry-run] [--json]
 //            record an explicit approval of an in-review gate (not Sendable?); checks the manifest, then writes the README and approvals/history.md
 //   hook session-start [--host <host>]   read the hook event on stdin; print {"additionalContext"} with the Forge context, else {}
@@ -57,7 +61,9 @@ import { diffGate, gateName, renderDiff, saveSnapshot } from './lib/reading.mjs'
 import { LINK_MODES, buildCanvas } from './lib/canvas.mjs';
 import { writeViews } from './lib/views.mjs';
 import { serveCanvas } from './lib/canvas-serve.mjs';
+import { homeOf } from './lib/layout.mjs';
 import { liveStatus, serveLive } from './lib/live-serve.mjs';
+import { listForge, openForge, stopForge } from './lib/open.mjs';
 import { loadProfile, pluginRoot } from './lib/profile.mjs';
 
 // A tracker that uses an MCP server (see mcpGateway) has no CLI.
@@ -162,6 +168,9 @@ export function parseArgs(argv) {
     else if (a === '--create') out.create = true;
     else if (a === '--serve') out.serve = true;
     else if (a === '--status') out.status = true;
+    else if (a === '--list') out.list = true;
+    else if (a === '--stop') out.stop = true;
+    else if (a === '--no-browser') out.noBrowser = true;
     else if (['--summary', '--base', '--today', '--answer', '--method', '--manifest', '--hash', '--links', '--port'].includes(a)) {
       if (argv[i + 1] === undefined || argv[i + 1].startsWith('--')) throw new ForgeError(`${a} needs a value.`, 'bad-args');
       out[a.slice(2)] = argv[++i];
@@ -480,19 +489,45 @@ export function main(argv = process.argv.slice(2)) {
       if (args._.length !== 1 || args.json || (args.links !== undefined && !LINK_MODES.includes(args.links)) || badPort || (args.status && args.port !== undefined)) {
         throw new ForgeError(`Usage: forge.mjs live [--port <n>] [--links ${LINK_MODES.join('|')}], or forge.mjs live --status. A port is 0, or 1024 to 65535.`, 'bad-args');
       }
+      const where = resolve(opts);
       if (args.status) {
-        const running = liveStatus();
-        if (!running) { console.log('live: no server runs. Start it with: forge.mjs live'); return 1; }
-        console.log(`live: serving ${running.link}\n  state ${running.file}`);
+        const running = liveStatus(process.env, homeOf(where.wiki.path));
+        if (!running) { console.log('live: no server runs for this repository. Start it with: forge.mjs open'); return 1; }
+        console.log(`live: serving ${running.link}\n  wiki  ${running.wikiLink}\n  state ${running.file}`);
       } else {
-        const where = resolve(opts);
         if (!where.wiki.exists) throw new ForgeError(`No wiki at ${where.wiki.path}. Run the forge-setup skill.`, 'no-wiki');
         // The server runs after main() returns. The exit code comes when the server stops.
-        serveLive(where.wiki.path, { links: args.links, port }).then(
+        serveLive(where.wiki.path, { links: args.links, port, repo: where.repo.path }).then(
           (code) => { process.exitCode = code; },
           (err) => { console.error(`forge: ${err.message}`); process.exitCode = 1; },
         );
       }
+    } else if (cmd === 'open') {
+      const port = args.port === undefined ? undefined : Number(args.port);
+      const badPort = args.port !== undefined && (!/^\d{1,5}$/.test(args.port) || (port !== 0 && (port < 1024 || port > 65535)));
+      const modes = [args.status, args.list, args.stop].filter(Boolean).length;
+      if (args._.length !== 1 || args.json || (args.links !== undefined && !LINK_MODES.includes(args.links)) || badPort || modes > 1 || (modes && (args.port !== undefined || args.links !== undefined))) {
+        throw new ForgeError(`Usage: forge.mjs open [--no-browser] [--port <n>] [--links ${LINK_MODES.join('|')}], or forge.mjs open --status | --list | --stop. A port is 0, or 1024 to 65535.`, 'bad-args');
+      }
+      if (args.list) {
+        // Each live server of this user: the list needs no repository.
+        const lines = listForge();
+        console.log(lines.length ? lines.join('\n') : 'forge: no live server runs.');
+        return 0;
+      }
+      const where = resolve(opts);
+      if (!where.wiki.exists) throw new ForgeError(`No wiki at ${where.wiki.path}. Run the forge-setup skill.`, 'no-wiki');
+      if (args.status) {
+        const running = liveStatus(process.env, homeOf(where.wiki.path));
+        if (!running) { console.log('forge: no server runs for this repository. Start it with: forge.mjs open'); return 1; }
+        console.log(`forge: serving ${running.link}\n  wiki   ${running.wikiLink}\n  folder ${running.home}`);
+        return 0;
+      }
+      // The answer comes after main() returns: the server needs a moment to start or to stop.
+      const work = args.stop
+        ? stopForge({ wiki: where.wiki.path }).then((result) => { console.log(result.stopped ? `forge: stopped the live server of this repository (process ${result.pid}).` : 'forge: no server runs for this repository.'); })
+        : openForge({ cli: fileURLToPath(import.meta.url), repo: where.repo.path, wiki: where.wiki.path, links: args.links, port, browser: !args.noBrowser }).then(() => {});
+      work.catch((err) => { console.error(`forge: ${err.message}`); process.exitCode = 1; });
     } else if (cmd === 'gate-approve') {
       if (args._.length !== 3 || !args.answer) throw new ForgeError('Usage: forge.mjs gate-approve <key> <gate> --answer "<exact user answer>" [--method form|chat] [--manifest <path>] [--hash <sha>] [--dry-run] [--json].', 'bad-args');
       const where = resolve(opts);
@@ -507,7 +542,7 @@ export function main(argv = process.argv.slice(2)) {
       if (args._[1] === 'approve') console.log(JSON.stringify(approve(where, args._.slice(2)), null, 2));
       else console.log(JSON.stringify(trustStatus(where), null, 2));
     } else {
-      console.error('Usage: node forge.mjs <where|config|doctor|lint|detect|init-wiki|bind|seed|board|worktree|snapshot|diff|canvas|live|gate-approve|hook|context|trust|run> [--wiki <dir>] [--cwd <dir>] [--json]');
+      console.error('Usage: node forge.mjs <where|config|doctor|lint|detect|init-wiki|bind|seed|board|worktree|snapshot|diff|canvas|live|open|gate-approve|hook|context|trust|run> [--wiki <dir>] [--cwd <dir>] [--json]');
       return 2;
     }
     return 0;

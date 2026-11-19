@@ -11,7 +11,9 @@ import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { BOARD_SCRIPT } from '../plugins/forge/scripts/lib/board-page.mjs';
 import { CANVAS_SCRIPT } from '../plugins/forge/scripts/lib/canvas-page.mjs';
-import { liveFile, liveStatus, serveLive } from '../plugins/forge/scripts/lib/live-serve.mjs';
+import { pickServer } from '../plugins/forge/scripts/lib/live-event.mjs';
+import { liveFile, liveList, liveRoots, liveStatus, serveLive } from '../plugins/forge/scripts/lib/live-serve.mjs';
+import { browserCommand, openBrowser } from '../plugins/forge/scripts/lib/open.mjs';
 import { MERMAID_INTEGRITY, MERMAID_ROUTE, mermaidPath } from '../plugins/forge/scripts/lib/mermaid.mjs';
 import { WIKI_SCRIPT } from '../plugins/forge/scripts/lib/wiki-page.mjs';
 
@@ -48,13 +50,13 @@ async function start(t, options = {}) {
   const signals = new EventEmitter();
   let text = '';
   let note = '';
-  const done = serveLive(f.wiki, { port: 0, env: f.env, signals, holdMs: 400, out: { write: (chunk) => { text += chunk; } }, err: { write: (chunk) => { note += chunk; } }, ...options });
+  const done = serveLive(f.wiki, { port: 0, repo: '/code/app', env: f.env, signals, holdMs: 400, out: { write: (chunk) => { text += chunk; } }, err: { write: (chunk) => { note += chunk; } }, ...options });
   let stopped = false;
   const stop = async (signal = 'SIGTERM') => { if (!stopped) { stopped = true; signals.emit(signal); } return done; };
   t.after(() => stop());
   for (let tries = 0; tries < 200 && !text.includes('\n'); tries++) await new Promise((resolve) => { setTimeout(resolve, 10); });
   const [, port, page] = /^live: serving http:\/\/127\.0\.0\.1:(\d+)\/board\?t=([0-9a-f]{32})\n/.exec(text);
-  const state = JSON.parse(readFileSync(liveFile(f.env), 'utf8'));
+  const state = JSON.parse(readFileSync(liveFile(f.env, f.wiki), 'utf8'));
   return { ...f, port: Number(port), page, event: state.token, state, stop, done, text: () => text, note: () => note };
 }
 
@@ -80,22 +82,28 @@ const live = async (s, query = '') => JSON.parse((await request(s.port, { url: `
 
 test('the server starts on 127.0.0.1 with two tokens and a state file that only the user can read', async (t) => {
   const s = await start(t);
-  assert.match(s.text(), /^live: serving http:\/\/127\.0\.0\.1:\d+\/board\?t=[0-9a-f]{32}\n {2}state .+live\.json\n$/);
-  assert.deepEqual(Object.keys(s.state).sort(), ['page', 'pid', 'port', 'token', 'v', 'wiki']);
+  assert.match(s.text(), /^live: serving http:\/\/127\.0\.0\.1:\d+\/board\?t=[0-9a-f]{32}\n {2}wiki {2}http:\/\/127\.0\.0\.1:\d+\/wiki\?t=[0-9a-f]{32}\n {2}state .+live[\\/][0-9a-f]{16}\.json\n$/);
+  // Forge 8.4: one state file for each repository, with the folders that the reporter compares with the folder of a session.
+  assert.deepEqual(Object.keys(s.state).sort(), ['home', 'page', 'pid', 'port', 'repo', 'roots', 'token', 'v', 'wiki']);
+  assert.deepEqual([s.state.v, s.state.home, s.state.repo, s.state.roots], [2, s.wiki, '/code/app', ['/code/app', '/code/app.worktrees', s.wiki]]);
   assert.equal(s.state.page, s.page);
   assert.notEqual(s.event, s.page, 'the token of a page cannot send an event');
   assert.equal(s.state.port, s.port);
-  if (process.platform !== 'win32') assert.equal(statSync(liveFile(s.env)).mode & 0o777, 0o600);
-  assert.deepEqual(liveStatus(s.env), { pid: process.pid, port: s.port, link: `http://127.0.0.1:${s.port}/board?t=${s.page}`, file: liveFile(s.env) });
-  const status = spawnSync(process.execPath, [cli, 'live', '--status'], { encoding: 'utf8', env: s.env, cwd });
+  if (process.platform !== 'win32') assert.equal(statSync(liveFile(s.env, s.wiki)).mode & 0o777, 0o600);
+  assert.deepEqual(liveStatus(s.env, s.wiki), {
+    pid: process.pid, port: s.port, link: `http://127.0.0.1:${s.port}/board?t=${s.page}`, wikiLink: `http://127.0.0.1:${s.port}/wiki?t=${s.page}`,
+    file: liveFile(s.env, s.wiki), home: s.wiki, repo: '/code/app',
+  });
+  assert.equal(liveStatus(s.env, path.join(s.root, 'other')), null, 'another repository has no server');
+  const status = spawnSync(process.execPath, [cli, 'live', '--status', '--cwd', cwd, '--wiki', s.wiki], { encoding: 'utf8', env: s.env });
   assert.equal(status.status, 0, status.stderr);
   assert.ok(status.stdout.startsWith(`live: serving http://127.0.0.1:${s.port}/board?t=${s.page}\n`));
 
   assert.equal(await s.stop(), 143);
-  assert.ok(!existsSync(liveFile(s.env)), 'the state file goes away with the server');
-  assert.equal(liveStatus(s.env), null);
+  assert.ok(!existsSync(liveFile(s.env, s.wiki)), 'the state file goes away with the server');
+  assert.equal(liveStatus(s.env, s.wiki), null);
   assert.match(s.note(), /the live server stopped/);
-  const none = spawnSync(process.execPath, [cli, 'live', '--status'], { encoding: 'utf8', env: s.env, cwd });
+  const none = spawnSync(process.execPath, [cli, 'live', '--status', '--cwd', cwd, '--wiki', s.wiki], { encoding: 'utf8', env: s.env });
   assert.equal(none.status, 1);
   assert.match(none.stdout, /no server runs/);
 });
@@ -238,16 +246,16 @@ test('the wiki page of a wiki with a Mermaid block can load the Mermaid file of 
   }
 });
 
-test('only one live server runs for a user, and it stops when no event comes for a long time', async (t) => {
+test('only one live server runs for a repository, and it stops when no event comes for a long time', async (t) => {
   const s = await start(t, { idleMs: 500 });
-  await assert.rejects(serveLive(s.wiki, { port: 0, env: { ...s.env }, signals: new EventEmitter(), out: { write() {} }, err: { write() {} } }), /A live server runs already: http:\/\/127\.0\.0\.1:\d+\/board/);
+  await assert.rejects(serveLive(s.wiki, { port: 0, env: { ...s.env }, signals: new EventEmitter(), out: { write() {} }, err: { write() {} } }), /A live server runs already for this repository: http:\/\/127\.0\.0\.1:\d+\/board/);
   await new Promise((resolve) => { setTimeout(resolve, 300); });
   assert.equal((await post(s, ev('prompt', { text: 'an event starts the time again' }))).status, 204);
   await new Promise((resolve) => { setTimeout(resolve, 300); });
-  assert.ok(existsSync(liveFile(s.env)), 'the server still runs');
+  assert.ok(existsSync(liveFile(s.env, s.wiki)), 'the server still runs');
   assert.equal(await s.done, 3);
   assert.match(s.note(), /no session sent an event/);
-  assert.ok(!existsSync(liveFile(s.env)));
+  assert.ok(!existsSync(liveFile(s.env, s.wiki)));
 });
 
 function report(env, input, args = ['--host', 'claude']) {
@@ -272,7 +280,7 @@ test('the reporter sends the event of a hook payload to the server, prints nothi
   assert.deepEqual(state.sessions.map((item) => [item.ticket, item.state, item.now?.label]), [['app-9', 'working', 'npm test']], 'the session folder is inside the worktree of the ticket');
   assert.doesNotMatch(JSON.stringify(state), /NEVER|transcript/);
   // The Copilot hosts give the event name as an argument.
-  assert.deepEqual(await report(s.env, JSON.stringify({ sessionId: 'C1', cwd: '/x', toolName: 'bash', toolArgs: '{"command":"ls"}' }), ['--host', 'copilot-cli', 'postToolUse']).then((r) => [r.code, r.out]), [0, '']);
+  assert.deepEqual(await report(s.env, JSON.stringify({ sessionId: 'C1', cwd: '/code/app/src', toolName: 'bash', toolArgs: '{"command":"ls"}' }), ['--host', 'copilot-cli', 'postToolUse']).then((r) => [r.code, r.out]), [0, '']);
   assert.deepEqual((await live(s)).sessions.map((item) => item.host), ['claude', 'copilot-cli']);
 
   // A payload that gives no event, and a server that is gone: no output, exit 0, and no long wait.
@@ -280,15 +288,109 @@ test('the reporter sends the event of a hook payload to the server, prints nothi
     assert.deepEqual(await report(s.env, input).then((r) => [r.code, r.out]), [0, ''], input);
   }
   assert.equal((await live(s)).sessions.length, 2);
+  // A session outside of the repository of each server sends nothing.
+  assert.deepEqual(await report(s.env, JSON.stringify({ hook_event_name: 'UserPromptSubmit', session_id: 'S8', cwd: '/code/other', prompt: 'x' })).then((r) => [r.code, r.out]), [0, '']);
+  assert.deepEqual(await report(s.env, JSON.stringify({ hook_event_name: 'UserPromptSubmit', session_id: 'S9', cwd: '/code/app.wiki', prompt: 'x' })).then((r) => [r.code, r.out]), [0, '']);
+  assert.equal((await live(s)).sessions.length, 2, 'a folder with the same first letters is not inside the repository');
   await s.stop();
   const none = await report(s.env, payload('Stop', {}));
   assert.deepEqual([none.code, none.out], [0, ''], 'no state file: the reporter stops at once');
-  mkdirSync(path.dirname(liveFile(s.env)), { recursive: true });
-  writeFileSync(liveFile(s.env), JSON.stringify({ v: 1, pid: 1, port: s.port, token: 'b'.repeat(32), page: 'c'.repeat(32) }));
+  mkdirSync(path.dirname(liveFile(s.env, s.wiki)), { recursive: true });
+  writeFileSync(liveFile(s.env, s.wiki), JSON.stringify({ v: 2, pid: 1, port: s.port, token: 'b'.repeat(32), page: 'c'.repeat(32), roots: ['/code/app.worktrees'] }));
   const gone = await report(s.env, payload('Stop', {}));
   assert.deepEqual([gone.code, gone.out], [0, ''], 'an old state file and no server');
-  writeFileSync(liveFile(s.env), '{"port":"x"}');
+  writeFileSync(liveFile(s.env, s.wiki), '{"port":"x"}');
   assert.deepEqual(await report(s.env, payload('Stop', {})).then((r) => [r.code, r.out]), [0, '']);
+});
+
+test('two repositories have their servers at the same time, and each session reports to the server of its repository', async (t) => {
+  const a = await start(t);
+  // The second server: another wiki and another repository, with the same data folder of the user.
+  const wikiB = path.join(a.root, 'other.wiki');
+  mkdirSync(wikiB, { recursive: true });
+  const signals = new EventEmitter();
+  let text = '';
+  const done = serveLive(wikiB, { port: 0, repo: '/code/other', env: a.env, signals, holdMs: 400, out: { write: (chunk) => { text += chunk; } }, err: { write() {} } });
+  t.after(async () => { signals.emit('SIGTERM'); await done; });
+  for (let tries = 0; tries < 200 && !text.includes('\n'); tries++) await new Promise((resolve) => { setTimeout(resolve, 10); });
+  const [, portB, pageB] = /^live: serving http:\/\/127\.0\.0\.1:(\d+)\/board\?t=([0-9a-f]{32})\n/.exec(text);
+  assert.notEqual(Number(portB), a.port);
+  assert.notEqual(liveFile(a.env, wikiB), liveFile(a.env, a.wiki));
+  assert.deepEqual(liveList(a.env).map((server) => [server.home, server.port]).sort(), [[a.wiki, a.port], [wikiB, Number(portB)]].sort());
+  const list = spawnSync(process.execPath, [cli, 'open', '--list'], { encoding: 'utf8', env: a.env, cwd: os.tmpdir() });
+  assert.equal(list.status, 0, list.stderr);
+  assert.ok(list.stdout.includes(`${a.wiki}\n  board http://127.0.0.1:${a.port}/board?t=${a.page}\n`) && list.stdout.includes(`${wikiB}\n  board http://127.0.0.1:${portB}/board?t=${pageB}\n`));
+
+  const prompt = (session, folder) => JSON.stringify({ hook_event_name: 'UserPromptSubmit', session_id: session, cwd: folder, prompt: 'go' });
+  for (const [session, folder] of [['A1', '/code/app'], ['B1', '/code/other/src'], ['B2', '/code/other.worktrees/X-1'], ['N1', '/code']]) {
+    assert.deepEqual(await report(a.env, prompt(session, folder)).then((r) => [r.code, r.out]), [0, ''], folder);
+  }
+  const sessionsB = JSON.parse((await request(Number(portB), { url: `/live?t=${pageB}` })).text).sessions.map((item) => item.dir).sort();
+  assert.deepEqual((await live(a)).sessions.map((item) => item.dir), ['app']);
+  assert.deepEqual(sessionsB, ['X-1', 'src'], 'a session in a worktree of the repository reports to the server of that repository');
+});
+
+test('the reporter selects the server with the longest folder that holds the folder of the session', () => {
+  const app = { port: 1, roots: ['/code/app', '/code/app.worktrees', '/code/app.forge'] };
+  const tool = { port: 2, roots: ['/code/app/tools/inner', '/odd/place/T-1'] };
+  assert.equal(pickServer([app, tool], '/code/app'), app);
+  assert.equal(pickServer([app, tool], '/code/app/src/x'), app);
+  assert.equal(pickServer([app, tool], '/code/app/tools/inner/src'), tool, 'the longest root wins');
+  assert.equal(pickServer([tool, app], '/code/app.worktrees/APP-9/'), app);
+  assert.equal(pickServer([app, tool], '/odd/place/T-1'), tool, 'a ticket worktree outside of the usual folders');
+  for (const folder of ['/code/application', '/code', '/', '', undefined, '/odd/place']) assert.equal(pickServer([app, tool], folder), null, String(folder));
+  assert.equal(pickServer([{ port: 3 }, { roots: 'x' }, null], '/code/app'), null, 'a state without folders gets no event');
+  // Windows: the other separator, and no difference between capital and small letters.
+  const win = { port: 4, roots: ['C:\\Code\\App', 'C:\\Code\\App.worktrees'] };
+  assert.equal(pickServer([win], 'c:\\code\\app\\src', true), win);
+  assert.equal(pickServer([win], 'c:\\code\\app\\src', false), null);
+  assert.deepEqual(liveRoots('/w/app.forge', '/w/app', [{ worktree: '/w/app.worktrees/A-1' }, { worktree: '/far/A-2' }, { worktree: '' }]), ['/w/app', '/w/app.worktrees', '/w/app.forge', '/far/A-2']);
+  assert.deepEqual(liveRoots('/w/app.wiki', ''), ['/w/app.wiki'], 'without the repository, only a session in the Forge folder reports');
+});
+
+test('forge.mjs open starts the server of a repository in the background, gives its links, and stops it', { skip: process.platform === 'win32' }, async (t) => {
+  const f = wiki(t);
+  const run = (...args) => spawnSync(process.execPath, [cli, 'open', ...args, '--cwd', cwd, '--wiki', f.wiki], { encoding: 'utf8', env: f.env, timeout: 20000 });
+  t.after(() => { run('--stop'); });
+  assert.deepEqual([run('--status').status, run('--status').stdout], [1, 'forge: no server runs for this repository. Start it with: forge.mjs open\n']);
+  const first = run('--no-browser', '--port', '0');
+  assert.equal(first.status, 0, first.stderr);
+  const [, port, page] = /^forge: serving http:\/\/127\.0\.0\.1:(\d+)\/board\?t=([0-9a-f]{32})\n {2}wiki {3}http:\/\/127\.0\.0\.1:\d+\/wiki\?t=[0-9a-f]{32}\n {2}folder .+\n {2}The server runs in the background\. To stop it: forge\.mjs open --stop\n$/.exec(first.stdout);
+  const board = await request(Number(port), { url: `/board?t=${page}` });
+  assert.equal(board.status, 200, 'the server runs on after the command ended');
+  // A second call starts no second server: it gives the same links.
+  const again = run('--no-browser');
+  assert.equal(again.status, 0, again.stderr);
+  assert.ok(again.stdout.startsWith(`forge: serving http://127.0.0.1:${port}/board?t=${page}\n`) && !again.stdout.includes('in the background'));
+  assert.ok(run('--status').stdout.startsWith(`forge: serving http://127.0.0.1:${port}/board?t=${page}\n`));
+  const stopped = run('--stop');
+  assert.deepEqual([stopped.status, /^forge: stopped the live server of this repository \(process \d+\)\.\n$/.test(stopped.stdout)], [0, true]);
+  assert.equal(liveStatus(f.env, f.wiki), null);
+  assert.equal(run('--stop').stdout, 'forge: no server runs for this repository.\n');
+  for (const args of [['extra'], ['--port', '80'], ['--json'], ['--links', 'web'], ['--status', '--stop'], ['--list', '--port', '0']]) {
+    const result = run(...args);
+    assert.equal(result.status, 1, args.join(' '));
+    assert.match(result.stderr, /Usage: forge\.mjs open/);
+  }
+});
+
+test('the browser command of each platform gets only the link, and a missing command is not an error', async () => {
+  const link = 'http://127.0.0.1:41000/board?t=' + 'a'.repeat(32);
+  assert.deepEqual(browserCommand(link, 'linux'), { command: 'xdg-open', args: [link] });
+  assert.deepEqual(browserCommand(link, 'darwin'), { command: 'open', args: [link] });
+  assert.deepEqual(browserCommand(link, 'win32'), { command: 'cmd', args: ['/c', 'start', '', link] });
+  const calls = [];
+  const fake = (state) => (command, args, options) => {
+    calls.push([command, args, options.detached, options.stdio]);
+    const child = new EventEmitter();
+    child.unref = () => {};
+    setImmediate(() => child.emit(state, new Error('ENOENT')));
+    return child;
+  };
+  assert.equal(await openBrowser(link, { platform: 'linux', spawnFn: fake('spawn') }), true);
+  assert.equal(await openBrowser(link, { platform: 'linux', spawnFn: fake('error') }), false);
+  assert.equal(await openBrowser(link, { platform: 'linux', spawnFn: () => { throw new Error('no'); } }), false);
+  assert.deepEqual(calls[0], ['xdg-open', [link], true, 'ignore']);
 });
 
 test('the live command refuses wrong arguments', () => {

@@ -55,7 +55,7 @@ One state has one emoji, one label, and one color on each page (class `st-<state
 
 ## Live view
 
-Only a page of the live server (`forge.mjs live`) has the live parts. A file page and a page of the canvas server stay as they are.
+Only a page of the live server (`forge.mjs live`, which `forge.mjs open` starts) has the live parts. A file page and a page of the canvas server stay as they are.
 The session hooks send small events to that server, and the page asks the server for the state of the sessions.
 A session has one of 4 live states (class `lv-<state>`, variable `--st`). They use the colors of the ticket states, so the live view has no token of its own.
 
@@ -106,7 +106,7 @@ A Mermaid block in a card of a canvas becomes a drawing, in the same way as on t
 | Help | `#help` | The keys and the mouse steps of the page. The footer names the `?` key |
 | Comments panel | `#tray` (canvas) | The comments of this ticket, the comment on the whole ticket, and Send or Copy |
 | Live line | `.live` with `lv-<state>` (`liveLine()` in `ui.mjs`) | One session: the state and its time, the tool that runs now, the count of subagents that run, and the text of a wait. It is on a board card and at the top of the Live panel |
-| Other sessions | `#live-other`, `.lrow` (board) | The sessions without a ticket card: the host, the title or the folder name, and the live line |
+| Other sessions | `#live-other`, `.lrow` (board) | The sessions of this repository without a ticket card: the host, the title or the folder name, and the live line |
 | Live panel | `#live`, `.lv-tree` (canvas) | The sessions of this ticket: the live line, the prompt, the tool calls and the subagents as a tree, and the last text. It stands at the left of the board, and the board keeps the other space. On a narrow page it floats above the board |
 | Wiki menu | `.refs`, `#wiki-refs` (canvas) | The wiki pages that the ticket names, and the link to all pages. It closes at a click outside of it, and at `Esc` |
 | Page list | `#tree` (wiki) | One group for each folder of the wiki, with a count. The filter hides pages, and it reads the text of each page |
@@ -252,7 +252,8 @@ The switcher of each page also lists the closed tickets, after the tickets of th
 | The link is old (a new server run has a new token) | The same as a stopped server. A direct load of the old link gets "This link is old" |
 | A session works on a ticket | The board card shows the live line: "working", the time, the tool that runs now, and the count of subagents that run. The canvas shows the same line and the tree of the turn in the Live panel |
 | A session waits for the user | The live line is amber and says "needs you", with the text of the prompt of the host. The **Live** button of the canvas says "Live: needs you". The user answers in the session, not on the page |
-| A session has no ticket on the board | The board lists it under **Other sessions**, with its title or its folder name |
+| A session of the repository has no ticket on the board | The board lists it under **Other sessions**, with its title or its folder name |
+| Two repositories are open | Each repository has its own server, port, and pages. A session shows only on the pages of its repository, and a session in another folder shows on no page |
 | No session reports for a ticket | The Live panel says so, and it names the 2 ways that give a session its ticket: the worktree of the ticket, or the ticket key at the start of the title |
 | A session works for 10 minutes without an event | The live line says "working, quiet" and shows the time since the last event |
 | A turn has more than 200 tool calls | The Live panel shows the newest calls, and one line gives the count of the older calls |

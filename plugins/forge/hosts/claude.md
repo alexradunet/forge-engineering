@@ -34,16 +34,17 @@ The ticket canvas is a local HTML page (`canvas.html` in the ticket folder, from
 
 ## Live view
 
-The live view shows the board page and each ticket canvas with what each Claude Code session does now (`forge.mjs live`).
+The live view shows the board page and each ticket canvas with what each Claude Code session does now (`forge.mjs open`).
 
-- Start it only when the user asks for it, for example "live view" or "show the sessions live". Run `forge.mjs live` with `Bash` and `run_in_background: true`. Read the link from its output, and give it to the user.
-- When the command says that a live server runs already, run `forge.mjs live --status` and give that link.
+- Start it only when the user asks for it, for example "live view" or "show the sessions live". Run `forge.mjs open --no-browser` with `Bash`. It starts the server of this repository as a process of its own and prints the links of the board and the wiki. Give them to the user.
+- A second run starts no second server: it prints the same links. One server runs for each repository, and `forge.mjs open --list` gives each one.
+- When the command says that the server did not start, run `forge.mjs live` with `Bash` and `run_in_background: true`, and read the link from its output.
 - The server is read-only for a session: no page can send text or an answer to a session. The comments of a canvas go with **Copy all**, or with `forge.mjs canvas <KEY> --serve`.
 - A session shows on its ticket when it runs in the worktree of the ticket, or when its title starts with the ticket key. Each other session is in the list **Other sessions**.
 - A session shows after its next prompt or tool call. The hooks load at session start, so a session that started before an update of forge reports after a restart.
 - A "needs you" line is a report. Never answer that prompt for the user.
 - The rules of the canvas server apply: the link works only in a browser on the machine of the session, `--port <n>` gives a fixed port to forward, and the `Artifact` tool is never used.
-- The server stops after 8 hours without an event. To stop it before that, stop the background command.
+- The server stops after 8 hours without an event. To stop it before that, run `forge.mjs open --stop`.
 
 ## Claude Code features
 

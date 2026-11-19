@@ -415,7 +415,8 @@ The page is a view. It shows no file of `raw/` and `archive/`, and it changes no
 
 ## 📡 Live view
 
-`forge.mjs live` shows the board page and each ticket canvas on `http://127.0.0.1`, with what each agent session does now.
+`forge.mjs open` starts the live server of a repository in the background, prints the links of the board and the wiki, and opens the board in your browser.
+The server (`forge.mjs live`) shows the board page and each ticket canvas on `http://127.0.0.1`, with what each agent session does now.
 Forge stays a plugin: it does not start a session, and it has no terminal. Your sessions run where you start them, for example in Orca or in a terminal.
 
 ```mermaid
@@ -426,14 +427,15 @@ flowchart LR
   L --> C[Canvas: the Live panel]
 ```
 
-- A board card shows the state of its session (working, needs you, idle, or ended), the tool that runs now, and the count of subagents that run. A session without a ticket is in the list **Other sessions**.
+- A board card shows the state of its session (working, needs you, idle, or ended), the tool that runs now, and the count of subagents that run. A session of the repository without a ticket is in the list **Other sessions**.
 - The canvas has the **Live** panel (key `l`): the prompt, the tool calls, the subagents as a tree, and the last text of the turn.
 - A session shows on a ticket when it runs in the worktree of the ticket, or when its title starts with the ticket key.
 - The server is read-only for a session. It has no route that sends text or a permission answer to a session, and its pages have no **Send to agent**.
 - The reporter sends only short text: the prompt (at most 1,000 characters), the tool name with a short label (the first 80 characters of a command, a file path, or a search pattern), and the last message. It never sends a tool result or a file. It puts a mask on the value after a word such as `token` or `password`.
 - The events stay in the memory of the server. The server writes one file: its state file in the forge data folder, which only you can read. It holds the port and the tokens for the reporter.
 - When no live server runs, the reporter stops at once, and a session gets no delay and no message.
-- The server stops with Ctrl+C, or after 8 hours without an event. `forge.mjs live --status` prints the link of the server that runs.
+- One server runs for each repository, each on its own port, so more than one repository can be open at the same time. A session reports to the server of its repository: its folder is in the main checkout, in `<repo>.worktrees`, in the wiki folder, or in the worktree of a ticket. A session in another folder reports to no server.
+- `forge.mjs open --status` prints the links of the server of this repository, `forge.mjs open --list` prints each server that runs, and `forge.mjs open --stop` stops the server of this repository. The server also stops after 8 hours without an event.
 
 This version reports Claude Code sessions. Copilot CLI and VS Code sessions do not report yet: their hooks have no background option, so a reporter can slow each tool call (see the [baseline](docs/vscode-baseline.md)).
 

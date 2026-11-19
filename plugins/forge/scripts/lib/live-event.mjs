@@ -7,7 +7,29 @@ export const EVENT_VERSION = 1;
 export const EVENTS = ['session-start', 'prompt', 'tool-start', 'tool-end', 'notify', 'agent-start', 'agent-stop', 'stop', 'session-end'];
 export const LIVE_HOSTS = ['claude', 'copilot-cli', 'vscode'];
 /** The name of the state file of the live server in the forge data folder. */
+// Until Forge 8.3 one server ran for a user, with this state file. A server start removes the file.
 export const LIVE_FILE = 'live.json';
+/** The folder of the state files in the forge data folder: one file for the live server of each repository. */
+export const LIVE_DIR = 'live';
+
+/**
+ * The live server for a session, from the state of each server that runs: the server with the longest root folder
+ * that holds the folder of the session. A session outside of each root has no server, so it sends no event.
+ */
+export function pickServer(states, cwd, win = false) {
+  const norm = (value) => { const text = String(value ?? '').replace(/\\/g, '/').replace(/\/+$/, ''); return win ? text.toLowerCase() : text; };
+  const here = norm(cwd);
+  let best = null;
+  let size = 0;
+  if (!here) return null;
+  for (const state of states) {
+    for (const root of Array.isArray(state?.roots) ? state.roots : []) {
+      const folder = norm(root);
+      if (folder && (here === folder || here.startsWith(folder + '/')) && folder.length > size) { best = state; size = folder.length; }
+    }
+  }
+  return best;
+}
 export const MAX_EVENT = 16 * 1024;
 const LIMIT = { session: 128, cwd: 1024, title: 200, agentId: 128, agentType: 120, toolId: 128, toolName: 80, label: 160, text: 1000, kind: 40 };
 
