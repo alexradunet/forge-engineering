@@ -12,8 +12,7 @@ import path from 'node:path';
 import { buildBoard } from './board.mjs';
 import { BOARD_SCRIPT, renderBoardPage } from './board-page.mjs';
 import { buildCanvas, renderCanvas } from './canvas.mjs';
-import { CANVAS_SCRIPT } from './canvas-page.mjs';
-import { BASE_HEADERS, SERVE_HOST, bind, checkRequest, mermaidAnswer, policy, readBody, ticketFile } from './canvas-serve.mjs';
+import { BASE_HEADERS, SERVE_HOST, bind, canvasPolicy, checkRequest, mermaidAnswer, policy, readBody, ticketFile } from './canvas-serve.mjs';
 import { dataDir } from './data-dir.mjs';
 import { LIVE_FILE, MAX_EVENT, checkEvent } from './live-event.mjs';
 import { createLive, detail, prune, reduce, summary } from './live.mjs';
@@ -31,7 +30,6 @@ const MAX_WAITERS = 16;
 const BOARD_CACHE_MS = 5000;
 const SWEEP_MS = 30 * 1000;
 const FLUSH_MS = 40;
-const PAGE_POLICY = policy(CANVAS_SCRIPT);
 const BOARD_POLICY = policy(BOARD_SCRIPT);
 const WIKI_POLICY = policy(WIKI_SCRIPT);
 const WIKI_POLICY_MERMAID = policy(WIKI_SCRIPT, true);
@@ -196,9 +194,9 @@ export async function serveLive(wiki, { links = 'vscode', port, idleMs = IDLE_MS
         const page = renderCanvas(buildCanvas(dir), {
           links, nav: buildNav(board, { from: name, token: pageToken, closed: model().closed }),
           serve: { token: pageToken, live: `/live?t=${pageToken}&ticket=${encodeURIComponent(name)}` },
-          wiki: wikiLinks(model(), { from: name, token: pageToken, dir }),
+          wiki: wikiLinks(model(), { from: name, token: pageToken, dir }), mermaid: true,
         });
-        send(res, 200, 'text/html; charset=utf-8', page, { 'Content-Security-Policy': PAGE_POLICY });
+        send(res, 200, 'text/html; charset=utf-8', page, { 'Content-Security-Policy': canvasPolicy(page) });
         return;
       }
       const file = ticketFile(dir, match[2]);

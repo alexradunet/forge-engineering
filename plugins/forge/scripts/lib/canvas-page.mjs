@@ -980,6 +980,10 @@ ${UI_SCRIPT}
   if (fromHash()) { /* The link sets the view. */ }
   else if (saved && isFinite(saved.x) && isFinite(saved.y) && saved.k >= MIN && saved.k <= MAX) { view = { x: saved.x, y: saved.y, k: saved.k }; if (inSight()) apply(false); else fitAll(false); }
   else fitAll(false);
+  // A Mermaid block of a card becomes a drawing (drawMermaid in ui.mjs). A drawing changes the size of its card,
+  // so the arrows of the code map get their places again. A first view without a saved place shows the whole board again.
+  var placed = !!location.hash || !!saved;
+  drawMermaid(function () { return board; }, function () { drawEdges(); if (!placed) { placed = true; fitAll(false); } });
   window.addEventListener('hashchange', fromHash);
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(drawEdges);
   window.addEventListener('load', drawEdges);

@@ -1,7 +1,7 @@
 // The design system of the forge pages: the board page (board-page.mjs), the ticket canvas (canvas-page.mjs), and the wiki page (wiki-page.mjs).
 // It holds one set of tokens (color, type, space, radius, shadow), the shared components, the links between
 // the pages, and the shared browser functions. Each page puts the style and the script inline,
-// so a page needs no network and no other file (the wiki page with a Mermaid block also needs the Mermaid file of forge). docs/design-system.md gives the rules.
+// so a page needs no network and no other file (a page with a Mermaid block also needs the Mermaid file of forge). docs/design-system.md gives the rules.
 // The script text uses no template literals: it sits in one.
 
 export const esc = (value) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -177,6 +177,10 @@ code { font: var(--t-sm)/1.4 var(--mono); background: color-mix(in srgb, var(--m
 .refs .all { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--line); }
 .refs .all a { color: var(--accent); }
 
+.mermaid { margin: 0 0 var(--s-3); padding: var(--s-3); overflow: auto; text-align: center; background: var(--card); border: 1px solid var(--line); border-radius: var(--r-2); }
+.mermaid svg { max-width: 100%; height: auto; }
+#mermaid-stage { position: fixed; left: 0; top: 0; z-index: -1; width: 960px; visibility: hidden; pointer-events: none; }
+
 #rail { background: var(--rail); border-bottom: 1px solid var(--line); z-index: 3; }
 .bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-2); padding: var(--s-2) var(--s-4); }
 .bar h1 { flex: 0 1 auto; min-width: 0; margin: 0 var(--s-2) 0 0; font-size: var(--t-lg); font-weight: 600; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -252,7 +256,79 @@ export const UI_SCRIPT = String.raw`
     try { localStorage.setItem('forge-ui:theme', name); } catch (error) { /* The storage is off: the theme stays for this page. */ }
     showTheme(name);
     toast('Theme: ' + name);
+    // A new theme gives the drawings the colors of that theme.
+    if (mermaidJob) drawMermaid(mermaidJob.pick, mermaidJob.after);
   });
+
+  // Mermaid: a diagram block (a code block with the name mermaid) becomes a drawing. The Mermaid file of forge (data.mermaid) comes from
+  // the folder or the server of the page. Mermaid draws in a stage outside of the page parts, so a hidden part and the zoom of a page
+  // do not change its measures. The block keeps its text: a block that Mermaid cannot draw stays as code.
+  // pick() gives the part of the page with the blocks to draw now, and after() runs when a set of drawings is in the page.
+  var mermaidState = '';
+  var mermaidBusy = false;
+  var mermaidJob = null;
+  function darkNow() {
+    var name = document.documentElement.getAttribute('data-theme');
+    return name === 'dark' || (!name && !!window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  }
+  function drawMermaid(pick, after) {
+    mermaidJob = { pick: pick, after: after };
+    var root = pick();
+    if (!data.mermaid || !root || mermaidState === 'failed' || mermaidState === 'loading' || mermaidBusy) return;
+    var theme = darkNow() ? 'dark' : 'light';
+    var blocks = Array.prototype.filter.call(root.querySelectorAll('pre[data-lang="mermaid"]'), function (pre) {
+      return pre.getAttribute('data-drawn') !== theme && pre.getAttribute('data-drawn') !== 'no';
+    });
+    if (!blocks.length) return;
+    if (!mermaidState) {
+      mermaidState = 'loading';
+      var tag = document.createElement('script');
+      tag.src = data.mermaid.src;
+      if (data.mermaid.integrity) tag.integrity = data.mermaid.integrity;
+      tag.onload = function () { mermaidState = window.mermaid ? 'ready' : 'failed'; drawMermaid(mermaidJob.pick, mermaidJob.after); };
+      tag.onerror = function () { mermaidState = 'failed'; toast('The page cannot load the Mermaid file. Run forge.mjs board again.'); };
+      document.head.appendChild(tag);
+      return;
+    }
+    // The drawing uses the tokens of the design system, so it has the colors of the page in each theme.
+    var style = getComputedStyle(document.documentElement);
+    var token = function (name) { return style.getPropertyValue(name).trim(); };
+    window.mermaid.initialize({
+      startOnLoad: false, securityLevel: 'strict', theme: 'base',
+      themeVariables: {
+        darkMode: theme === 'dark', background: token('--card'), fontFamily: token('--font'), fontSize: '14px',
+        primaryColor: token('--panel'), primaryTextColor: token('--ink'), primaryBorderColor: token('--line-2'),
+        secondaryColor: token('--bg'), tertiaryColor: token('--card'), lineColor: token('--muted'), textColor: token('--ink'),
+        edgeLabelBackground: token('--card'), noteBkgColor: token('--bg'), noteTextColor: token('--ink'), noteBorderColor: token('--line-2')
+      }
+    });
+    var stage = byId('mermaid-stage');
+    if (!stage) {
+      stage = make('div');
+      stage.id = 'mermaid-stage';
+      stage.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(stage);
+    }
+    var outs = blocks.map(function (pre) { return stage.appendChild(make('div', 'mermaid', pre.textContent)); });
+    mermaidBusy = true;
+    var done = function () {
+      mermaidBusy = false;
+      blocks.forEach(function (pre, index) {
+        var out = outs[index];
+        var ok = !!out.querySelector('svg') && !out.querySelector('.error-icon');
+        var old = pre.previousElementSibling;
+        if (old && old.classList.contains('mermaid')) old.parentNode.removeChild(old);
+        pre.setAttribute('data-drawn', ok ? theme : 'no');
+        pre.hidden = ok;
+        if (ok) pre.parentNode.insertBefore(out, pre);
+        else { stage.removeChild(out); pre.title = 'Mermaid cannot draw this block.'; }
+      });
+      if (mermaidJob.after) mermaidJob.after();
+      // The part in view or the theme can change while Mermaid draws.
+      drawMermaid(mermaidJob.pick, mermaidJob.after);
+    };
+    window.mermaid.run({ nodes: outs, suppressErrors: true }).then(done, done);
+  }
 
   // The links between the pages. A served page asks its server before it leaves,
   // so a stopped server does not replace the page and its comments with a browser error.

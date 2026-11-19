@@ -152,8 +152,6 @@ body { height: 100vh; display: flex; flex-direction: column; }
 .md li > ul, .md li > ol { margin: 3px 0 0; }
 .md pre { margin: 0 0 var(--s-3); padding: var(--s-3); overflow: auto; background: var(--card); border: 1px solid var(--line); border-radius: var(--r-2); }
 .md pre code { padding: 0; background: transparent; overflow-wrap: normal; }
-.md .mermaid { margin: 0 0 var(--s-3); padding: var(--s-3); overflow: auto; text-align: center; background: var(--card); border: 1px solid var(--line); border-radius: var(--r-2); }
-.md .mermaid svg { max-width: 100%; height: auto; }
 .md blockquote { margin: 0 0 var(--s-3); padding: 2px var(--s-3); color: var(--muted); border-left: 3px solid var(--line-2); }
 .md table { display: block; max-width: 100%; overflow: auto; margin: 0 0 var(--s-3); border-collapse: collapse; font-size: var(--t-sm); }
 .md th, .md td { padding: 4px 10px; text-align: left; vertical-align: top; border: 1px solid var(--line); }
@@ -204,71 +202,9 @@ ${UI_SCRIPT}
     if (pages[at]) document.title = pages[at].getAttribute('data-title') + ' · Forge wiki';
     main.scrollTop = 0;
     if (links[at] && !links[at].parentNode.hidden) links[at].scrollIntoView({ block: 'nearest' });
-    draw();
+    // Each page gets its drawings when it shows (drawMermaid in ui.mjs).
+    drawMermaid(function () { return pages[at]; });
   }
-
-  // Mermaid: a diagram block of the page in view becomes a drawing. The Mermaid file of forge (data.mermaid) comes from the folder
-  // or the server of this page. Mermaid needs a block in view to measure its text, so each page gets its drawings when it shows.
-  // The block keeps its text: a block that Mermaid cannot draw stays as code.
-  var mermaidState = '';
-  var drawing = false;
-  function darkNow() {
-    var name = document.documentElement.getAttribute('data-theme');
-    return name === 'dark' || (!name && !!window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
-  }
-  function draw() {
-    var page = pages[at];
-    if (!data.mermaid || !page || mermaidState === 'failed') return;
-    var theme = darkNow() ? 'dark' : 'light';
-    var blocks = Array.prototype.filter.call(page.querySelectorAll('pre[data-lang="mermaid"]'), function (pre) {
-      return pre.getAttribute('data-drawn') !== theme && pre.getAttribute('data-drawn') !== 'no';
-    });
-    if (!blocks.length || mermaidState === 'loading' || drawing) return;
-    if (!mermaidState) {
-      mermaidState = 'loading';
-      var tag = document.createElement('script');
-      tag.src = data.mermaid.src;
-      if (data.mermaid.integrity) tag.integrity = data.mermaid.integrity;
-      tag.onload = function () { mermaidState = window.mermaid ? 'ready' : 'failed'; draw(); };
-      tag.onerror = function () { mermaidState = 'failed'; toast('The page cannot load the Mermaid file. Run forge.mjs board again.'); };
-      document.head.appendChild(tag);
-      return;
-    }
-    // The drawing uses the tokens of the design system, so it has the colors of the page in each theme.
-    var style = getComputedStyle(document.documentElement);
-    var token = function (name) { return style.getPropertyValue(name).trim(); };
-    window.mermaid.initialize({
-      startOnLoad: false, securityLevel: 'strict', theme: 'base',
-      themeVariables: {
-        darkMode: theme === 'dark', background: token('--card'), fontFamily: token('--font'), fontSize: '14px',
-        primaryColor: token('--panel'), primaryTextColor: token('--ink'), primaryBorderColor: token('--line-2'),
-        secondaryColor: token('--bg'), tertiaryColor: token('--card'), lineColor: token('--muted'), textColor: token('--ink'),
-        edgeLabelBackground: token('--card'), noteBkgColor: token('--bg'), noteTextColor: token('--ink'), noteBorderColor: token('--line-2')
-      }
-    });
-    drawing = true;
-    var outs = blocks.map(function (pre) {
-      var old = pre.previousElementSibling;
-      if (old && old.classList.contains('mermaid')) old.parentNode.removeChild(old);
-      var out = make('div', 'mermaid', pre.textContent);
-      pre.parentNode.insertBefore(out, pre);
-      return out;
-    });
-    var done = function () {
-      drawing = false;
-      blocks.forEach(function (pre, index) {
-        var ok = !!outs[index].querySelector('svg') && !outs[index].querySelector('.error-icon');
-        pre.setAttribute('data-drawn', ok ? theme : 'no');
-        pre.hidden = ok;
-        if (!ok) { outs[index].parentNode.removeChild(outs[index]); pre.title = 'Mermaid cannot draw this block.'; }
-      });
-      // The page or the theme can change while Mermaid draws.
-      draw();
-    };
-    window.mermaid.run({ nodes: outs, suppressErrors: true }).then(done, done);
-  }
-  // A new theme gives the drawings of the page in view the colors of that theme.
-  if (byId('theme')) byId('theme').addEventListener('click', draw);
 
   // The filter reads the words of each page: its title, its path, and its text. It hides pages of the list. It never changes the order.
   function applyFilter() {

@@ -1,6 +1,6 @@
 # Third-party notice: Mermaid
 
-The wiki page of Forge draws a Mermaid block with the file `mermaid.tiny.js`. It is the only third-party program in the plugin.
+The wiki page and the ticket canvas of Forge draw a Mermaid block with the file `mermaid.tiny.js`. It is the only third-party program in the plugin.
 
 | Item | Value |
 |---|---|

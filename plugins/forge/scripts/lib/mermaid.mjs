@@ -1,6 +1,6 @@
-// The Mermaid file that the wiki page uses to draw a diagram block: plugins/forge/vendor/mermaid/mermaid.tiny.js.
+// The Mermaid file that the wiki page and the ticket canvas use to draw a diagram block: plugins/forge/vendor/mermaid/mermaid.tiny.js.
 // It is the only third-party program in the plugin (vendor/mermaid/NOTICE.md). A page loads it from its own folder
-// or from its own server, never from a network, and only when the wiki has a diagram block.
+// or from its own server, never from a network, and only when the page has a diagram block.
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';

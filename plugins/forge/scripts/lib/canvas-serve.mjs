@@ -42,6 +42,9 @@ export function mermaidAnswer() {
   return { body: readMermaid(), headers: { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'private, max-age=86400' } };
 }
 const PAGE_POLICY = policy(CANVAS_SCRIPT);
+const PAGE_POLICY_MERMAID = policy(CANVAS_SCRIPT, true);
+/** The policy of a canvas page: a page with a Mermaid block can also load the Mermaid file of its server. */
+export const canvasPolicy = (page) => (needsMermaid(page) ? PAGE_POLICY_MERMAID : PAGE_POLICY);
 const BOARD_POLICY = policy(BOARD_SCRIPT);
 const WIKI_POLICY = policy(WIKI_SCRIPT);
 const WIKI_POLICY_MERMAID = policy(WIKI_SCRIPT, true);
@@ -204,9 +207,9 @@ export async function serveCanvas(dir, { links = 'vscode', port, limitMs = LIMIT
       if (url.pathname === '/') {
         const page = renderCanvas(buildCanvas(dir), {
           links, serve: { token }, nav: board && buildNav(board, { from: folder, token, home: folder, closed: model().closed }),
-          wiki: board && wikiLinks(model(), { from: folder, token, dir }),
+          wiki: board && wikiLinks(model(), { from: folder, token, dir }), mermaid: true,
         });
-        send(res, 200, 'text/html; charset=utf-8', page, { 'Content-Security-Policy': PAGE_POLICY });
+        send(res, 200, 'text/html; charset=utf-8', page, { 'Content-Security-Policy': canvasPolicy(page) });
         return;
       }
       if (board && url.pathname === '/board') {
@@ -219,7 +222,7 @@ export async function serveCanvas(dir, { links = 'vscode', port, limitMs = LIMIT
         send(res, 200, 'text/html; charset=utf-8', page, { 'Content-Security-Policy': needsMermaid(page) ? WIKI_POLICY_MERMAID : WIKI_POLICY });
         return;
       }
-      if (board && url.pathname === MERMAID_ROUTE) {
+      if (url.pathname === MERMAID_ROUTE) {
         const file = mermaidAnswer();
         res.writeHead(200, { ...BASE_HEADERS, ...file.headers, 'Content-Length': file.body.length });
         res.end(file.body);
@@ -241,9 +244,9 @@ export async function serveCanvas(dir, { links = 'vscode', port, limitMs = LIMIT
         if (other[2] === '/') {
           const page = renderCanvas(buildCanvas(there), {
             links, serve: { token, home: key }, nav: buildNav(board, { from: name, token, home: folder, closed: model().closed }),
-            wiki: wikiLinks(model(), { from: name, token, dir: there }),
+            wiki: wikiLinks(model(), { from: name, token, dir: there }), mermaid: true,
           });
-          send(res, 200, 'text/html; charset=utf-8', page, { 'Content-Security-Policy': PAGE_POLICY });
+          send(res, 200, 'text/html; charset=utf-8', page, { 'Content-Security-Policy': canvasPolicy(page) });
           return;
         }
         const file = ticketFile(there, other[2]);

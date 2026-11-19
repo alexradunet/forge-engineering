@@ -225,6 +225,13 @@ test('the wiki page of a wiki with a Mermaid block can load the Mermaid file of 
   assert.equal(Number(file.headers['content-length']), readFileSync(mermaidPath()).length);
   assert.equal(file.text, readFileSync(mermaidPath(), 'utf8'));
   assert.equal((await request(s.port, { url: MERMAID_ROUTE })).status, 403, 'the file needs the page token');
+  // A canvas with a Mermaid block in a card gets the same file and the same policy. A canvas without one keeps the policy of the page script alone.
+  writeFileSync(path.join(s.wiki, 'raw', 'tickets', 'app-9', 'story.md'), '---\ntype: story\n---\n# Story APP-9\n\nProblem: retries stop.\n\n## Flow\n\n```mermaid\nflowchart LR\n  A --> B\n```\n');
+  const canvas = await request(s.port, { url: `/ticket/app-9/?t=${s.page}` });
+  assert.equal(canvas.headers['content-security-policy'], `default-src 'none'; script-src 'sha256-${hash(CANVAS_SCRIPT)}' 'self'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'`);
+  assert.ok(canvas.text.includes(`"mermaid":{"src":"${MERMAID_ROUTE}?t=${s.page}","integrity":"${MERMAID_INTEGRITY}"}`));
+  const other = await request(s.port, { url: `/ticket/app-2/?t=${s.page}` });
+  assert.ok(!other.headers['content-security-policy'].includes("' 'self'; style-src") && !other.text.includes('"mermaid":{'));
   assert.equal((await request(s.port, { url: `${MERMAID_ROUTE}?t=${s.event}` })).status, 403);
   for (const url of ['/vendor/', '/vendor/LICENSE', '/vendor/NOTICE.md', '/vendor/../forge.mjs', '/vendor/mermaid.tiny.js/x']) {
     assert.equal((await request(s.port, { url: `${url}?t=${s.page}` })).status, 404, url);

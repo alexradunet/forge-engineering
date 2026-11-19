@@ -56,12 +56,14 @@ export function writeViews(wikiPath, { links = 'vscode', today, now, focus = '',
   const broken = failed.map((item) => item.folder);
   const written = [];
   let focused = null;
+  let drawings = false;
   for (const [folder, model] of models) {
     const dir = path.join(ticketRoot(wikiPath), folder);
     if (dryRun) continue;
     try {
-      const result = writeCanvas(dir, { links, model, nav: buildNav(board, { from: folder, broken, closed }), wiki: wikiLinks(wiki, { from: folder, dir }), keep: folder !== focus });
+      const result = writeCanvas(dir, { links, model, nav: buildNav(board, { from: folder, broken, closed }), wiki: wikiLinks(wiki, { from: folder, dir }), mermaid: true, keep: folder !== focus });
       if (result.written) written.push(folder);
+      drawings ||= result.mermaid;
       if (folder === focus) focused = result;
     } catch (error) {
       if (folder === focus) throw error;
@@ -72,7 +74,7 @@ export function writeViews(wikiPath, { links = 'vscode', today, now, focus = '',
   const page = writePage(boardPageFile(wikiPath), renderBoardPage(board, { links, wiki: wikiPath, nav: buildNav(board, { broken: without, closed }) }), dryRun);
   const wikiText = renderWikiPage(wiki, { links, nav: buildNav(board, { from: 'wiki', broken: without, closed }) });
   const wikiPage = writePage(wikiPageFile(wikiPath), wikiText, dryRun);
-  // A wiki with a diagram block gets the Mermaid file of forge next to its page.
-  const mermaid = needsMermaid(wikiText) ? copyMermaid(path.dirname(wikiPage.file), { dryRun }) : null;
+  // A wiki page or a canvas with a diagram block gets the Mermaid file of forge in raw/, next to the board page.
+  const mermaid = needsMermaid(wikiText) || drawings ? copyMermaid(path.dirname(wikiPage.file), { dryRun }) : null;
   return { board, page, wiki: { ...wikiPage, pages: wiki.pages.length, closed: closed.length, errors: wiki.errors, mermaid }, canvases: { written, failed }, focus: focused };
 }

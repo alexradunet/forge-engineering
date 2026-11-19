@@ -6,6 +6,7 @@
 // With `nav` (ui.mjs), the page has the links to the board page and to the canvas of each other ticket.
 import { existsSync, lstatSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { MERMAID_FILE, MERMAID_INTEGRITY, MERMAID_ROUTE, needsMermaid } from './mermaid.mjs';
 import { STATE_EMOJI, parseTicket } from './ticket.mjs';
 import { STATE_LABEL } from './board.mjs';
 import { listSnapshots, sections, summaryBlock } from './reading.mjs';
@@ -558,8 +559,9 @@ const LIVE_HTML = '<aside id="live" aria-label="Live" hidden><h2>Live <button ty
  * serve.live is the address of the session states on the live server (live-serve.mjs): then the page has the Live panel, and it cannot send.
  * nav (buildNav in ui.mjs) adds the links to the board page and to the other tickets.
  * wiki (wikiLinks in wiki.mjs) makes each link to a wiki page open the wiki page, and adds the Wiki menu of the bar.
+ * mermaid lets the page draw its Mermaid blocks with the Mermaid file of forge (mermaid.mjs): the file is in raw/ for a file page, and on the server for a served page.
  */
-export function renderCanvas(model, { links = 'vscode', serve = null, nav = null, wiki = null } = {}) {
+export function renderCanvas(model, { links = 'vscode', serve = null, nav = null, wiki = null, mermaid = false } = {}) {
   if (!LINK_MODES.includes(links)) throw new Error(`Unknown link mode: ${links}. Use ${LINK_MODES.join(' or ')}.`);
   const token = serve?.token ?? '';
   if (token && !/^[0-9a-f]{32}$/.test(token)) throw new Error('The canvas token must have 32 hexadecimal characters.');
@@ -574,7 +576,8 @@ export function renderCanvas(model, { links = 'vscode', serve = null, nav = null
   const note = model.missing.length ? `<p class="note">Not written yet: ${esc(model.missing.join(', '))}.</p>` : '';
   const home = token && serve.home && serve.home !== ticket.key ? String(serve.home) : '';
   const live = token && serve.live ? String(serve.live) : '';
-  const data = JSON.stringify({ key: ticket.key, generated: model.generated, ...(model.focus ? { focus: model.focus, focusZone: model.focusZone } : {}), ...(token ? { token } : {}), ...(home ? { home } : {}), ...(live ? { live } : {}), ...(nav ? { nav: navData(nav) } : {}) }).replace(/</g, '\\u003c');
+  const draw = !mermaid || !needsMermaid(board) ? null : token ? { src: `${MERMAID_ROUTE}?t=${token}`, integrity: MERMAID_INTEGRITY } : { src: `../../${MERMAID_FILE}` };
+  const data = JSON.stringify({ key: ticket.key, generated: model.generated, ...(draw ? { mermaid: draw } : {}), ...(model.focus ? { focus: model.focus, focusZone: model.focusZone } : {}), ...(token ? { token } : {}), ...(home ? { home } : {}), ...(live ? { live } : {}), ...(nav ? { nav: navData(nav) } : {}) }).replace(/</g, '\\u003c');
   return [
     '<!doctype html>', '<html lang="en">', '<head>', '<meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
@@ -604,17 +607,19 @@ export function renderCanvas(model, { links = 'vscode', serve = null, nav = null
  * Builds the model and writes <ticket>/canvas.html. With `keep`, a page that differs only in its time is not written again,
  * so a browser with the page open does not load it again.
  */
-export function writeCanvas(dir, { links = 'vscode', now, nav = null, model = null, keep = false, wiki = null } = {}) {
+export function writeCanvas(dir, { links = 'vscode', now, nav = null, model = null, keep = false, wiki = null, mermaid = false } = {}) {
   model ??= buildCanvas(dir, { now });
   const file = path.join(dir, CANVAS_FILE);
   const present = existsSync(file);
   if (present && (lstatSync(file).isSymbolicLink() || !lstatSync(file).isFile())) throw new Error(`${CANVAS_FILE} must be a regular file, not a link.`);
   let written = true;
+  let text = '';
   if (keep && present) {
     const old = readFileSync(file, 'utf8');
     const stamp = /"generated":"([^"]*)"/.exec(old)?.[1];
-    if (stamp && renderCanvas({ ...model, generated: stamp }, { links, nav, wiki }) === old) written = false;
+    if (stamp && renderCanvas({ ...model, generated: stamp }, { links, nav, wiki, mermaid }) === old) { written = false; text = old; }
   }
-  if (written) writeFileSync(file, renderCanvas(model, { links, nav, wiki }));
-  return { key: model.ticket.key, file, written, layout: model.layout, zones: model.zones.map((zone) => zone.id), missing: model.missing, model };
+  if (written) { text = renderCanvas(model, { links, nav, wiki, mermaid }); writeFileSync(file, text); }
+  // `mermaid` is true when the page needs the Mermaid file next to the board page.
+  return { key: model.ticket.key, file, written, mermaid: mermaid && needsMermaid(text), layout: model.layout, zones: model.zones.map((zone) => zone.id), missing: model.missing, model };
 }

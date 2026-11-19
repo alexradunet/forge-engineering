@@ -8,6 +8,7 @@ import path from 'node:path';
 import { buildBoard } from '../plugins/forge/scripts/lib/board.mjs';
 import { renderBoardPage } from '../plugins/forge/scripts/lib/board-page.mjs';
 import { buildCanvas, markdown, renderCanvas } from '../plugins/forge/scripts/lib/canvas.mjs';
+import { CANVAS_SCRIPT } from '../plugins/forge/scripts/lib/canvas-page.mjs';
 import { MERMAID_FILE, MERMAID_INTEGRITY, MERMAID_ROUTE, MERMAID_SHA256, MERMAID_VERSION, copyMermaid, mermaidPath, needsMermaid, readMermaid } from '../plugins/forge/scripts/lib/mermaid.mjs';
 import { UI_SCRIPT, UI_STYLE, buildNav } from '../plugins/forge/scripts/lib/ui.mjs';
 import { writeViews } from '../plugins/forge/scripts/lib/views.mjs';
@@ -277,4 +278,28 @@ test('only a wiki with a Mermaid block loads the Mermaid file: from the folder o
   assert.equal(readFileSync(copy, 'utf8'), 'changed', 'a dry run writes nothing');
   assert.equal(writeViews(w.root, { today: TODAY }).wiki.mermaid.written, true);
   assert.deepEqual(readFileSync(copy), readFileSync(mermaidPath()));
+});
+
+test('a ticket canvas draws the Mermaid block of a card with the same file, and only when the caller gives the file', (t) => {
+  const w = wiki(t);
+  const dir = path.join(w.root, 'raw', 'tickets', 'app-9');
+  assert.doesNotMatch(renderCanvas(buildCanvas(dir), { mermaid: true }), /"mermaid":\{/, 'a canvas without a diagram block has no link to the file');
+  w.put('raw/tickets/app-9/story.md', ['---', 'type: story', '---', '# Story APP-9', '', 'Problem: retries stop.', '', '## Flow', '', '```mermaid', 'flowchart LR', '  A --> B', '```', ''].join('\n'));
+  const model = buildCanvas(dir);
+  assert.match(renderCanvas(model), /<pre data-lang="mermaid"><code>flowchart LR\n {2}A --&gt; B<\/code><\/pre>/);
+  assert.doesNotMatch(renderCanvas(model), /"mermaid":\{/, 'a canvas that stands alone has no Mermaid file: the block stays as code');
+  assert.match(renderCanvas(model, { mermaid: true }), /"mermaid":\{"src":"\.\.\/\.\.\/mermaid\.tiny\.js"\}/, 'the file is in raw/, two folders above the canvas');
+  const served = renderCanvas(model, { mermaid: true, serve: { token: TOKEN } });
+  assert.ok(served.includes(`"mermaid":{"src":"${MERMAID_ROUTE}?t=${TOKEN}","integrity":"${MERMAID_INTEGRITY}"}`));
+  assert.equal(served.match(/<script\b/g).length, 2);
+  // The drawing code is shared: one stage outside of the page parts, and the canvas places its arrows again after a draw.
+  for (const script of [WIKI_SCRIPT, CANVAS_SCRIPT]) assert.ok(script.includes(UI_SCRIPT) && UI_SCRIPT.includes("stage.id = 'mermaid-stage';"));
+  assert.match(CANVAS_SCRIPT, /drawMermaid\(function \(\) \{ return board; \}, function \(\) \{ drawEdges\(\);/);
+  assert.match(WIKI_SCRIPT, /drawMermaid\(function \(\) \{ return pages\[at\]; \}\);/);
+  assert.doesNotMatch(renderBoardPage(buildBoard(w.root, { today: TODAY }), { wiki: w.root }), /"mermaid":\{/, 'the board page has no diagram');
+  // The wiki of this test has no diagram, so the canvas alone makes writeViews copy the file.
+  const views = writeViews(w.root, { today: TODAY });
+  assert.deepEqual(views.wiki.mermaid, { file: path.join(w.root, 'raw', MERMAID_FILE), written: true });
+  assert.match(readFileSync(path.join(dir, 'canvas.html'), 'utf8'), /"mermaid":\{"src":"\.\.\/\.\.\/mermaid\.tiny\.js"\}/);
+  assert.deepEqual(writeViews(w.root, { today: TODAY }).canvases.written, [], 'the same ticket gives the same canvas');
 });
