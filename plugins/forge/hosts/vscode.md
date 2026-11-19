@@ -34,6 +34,7 @@ The ticket canvas is a local HTML page (`canvas.html` in the ticket folder, from
 - For a comment on one element of a page, the user can also use **Add Element to Chat** in the toolbar of the integrated browser. It is native, but it gives no ticket file and no section.
 - A code link on the page opens the file in VS Code (`vscode://file/...`).
 - Do not use the native canvas tools of VS Code for the ticket canvas. They run only in a Copilot harness session, and the page must be the same in each host.
+- The board page of the live server (`forge.mjs open`) has **Resume** for the sessions of Claude Code and of Copilot CLI in a terminal. A session of the Agents window is not in its session list.
 
 ## VS Code features
 

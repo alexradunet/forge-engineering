@@ -66,7 +66,9 @@ A session has one of 4 live states (class `lv-<state>`, variable `--st`). They u
 | `idle` | idle | `--faint` | The turn ended, and the session waits for the next prompt |
 | `ended` | ended | `--faint` | The session ended. It goes away after 30 minutes |
 
-The page is read-only for a session. It has no control that sends text or an answer to a session.
+A session of the session list (`<forge>/raw/sessions.jsonl`) that is not live shows as a closed session row. It has one of 2 states: `closed` (the list has the end of the session) and `no end seen` (the list has only the start, so the session can be open in a terminal). Both use `--faint`.
+
+A page sends no text and no answer to a session. Its one action for a session is **Resume**: the live server opens a terminal of the user with the command that continues the session.
 
 ## Wiki page
 
@@ -106,7 +108,9 @@ A Mermaid block in a card of a canvas becomes a drawing, in the same way as on t
 | Help | `#help` | The keys and the mouse steps of the page. The footer names the `?` key |
 | Comments panel | `#tray` (canvas) | The comments of this ticket, the comment on the whole ticket, and Send or Copy |
 | Live line | `.live` with `lv-<state>` (`liveLine()` in `ui.mjs`) | One session: the state and its time, the tool that runs now, the count of subagents that run, and the text of a wait. It is on a board card and at the top of the Live panel |
-| Other sessions | `#live-other`, `.lrow` (board) | The sessions of this repository without a ticket card: the host, the title or the folder name, and the live line |
+| Other sessions | `#live-other`, `.lrow` (board) | The sessions of this repository without a ticket card: the live sessions (`#live-list`), then the closed sessions (`#past-list`). Each row has the host, the title or the folder name, and its line |
+| Closed session row | `.live.past` (`pastLine()` in `ui.mjs`) | One session that is not live: `closed` or `no end seen`, the time since then, the harness, and the 2 buttons. It is on a board card that has no live session, in **Other sessions**, and in the Live panel (`#live-past`). A page draws these rows again only when their list changes, so a button keeps the focus |
+| Resume and Copy command | `button[data-resume]`, `button[data-copy]` in `.lv-acts` | **Resume** asks the live server to open a terminal (`data.resume`, with the id of the session only). For a session with no end seen, the first click gives a toast and the button becomes **Resume anyway**. **Copy command** puts the command of the session on the clipboard, with no request |
 | Live panel | `#live`, `.lv-tree` (canvas) | The sessions of this ticket: the live line, the prompt, the tool calls and the subagents as a tree, and the last text. It stands at the left of the board, and the board keeps the other space. On a narrow page it floats above the board |
 | Wiki menu | `.refs`, `#wiki-refs` (canvas) | The wiki pages that the ticket names, and the link to all pages. It closes at a click outside of it, and at `Esc` |
 | Page list | `#tree` (wiki) | One group for each folder of the wiki, with a count. The filter hides pages, and it reads the text of each page |
@@ -253,6 +257,11 @@ The switcher of each page also lists the closed tickets, after the tickets of th
 | A session works on a ticket | The board card shows the live line: "working", the time, the tool that runs now, and the count of subagents that run. The canvas shows the same line and the tree of the turn in the Live panel |
 | A session waits for the user | The live line is amber and says "needs you", with the text of the prompt of the host. The **Live** button of the canvas says "Live: needs you". The user answers in the session, not on the page |
 | A session of the repository has no ticket on the board | The board lists it under **Other sessions**, with its title or its folder name |
+| The user closed a session and wants it back | The card of its ticket, **Other sessions**, or the Live panel shows "closed" with the time. **Resume** opens a new tab or window of the terminal of the user in the folder of the session, with the resume command of the harness. A toast says that a terminal opened |
+| No terminal starts on the machine, or the live server stopped | The page puts the command on the clipboard, and a toast says to paste it into a terminal. **Copy command** does the same with no request. Without clipboard access, a dialog shows the command |
+| The session list has the start of a session and no end (a closed terminal window, an end hook without time, or a Copilot CLI session that runs) | The row says "no end seen". The first click on **Resume** gives a toast: the session can be open in a terminal. The button becomes **Resume anyway** |
+| The folder of a closed session is gone (a removed worktree) | The terminal opens in the main checkout, and the toast names that folder |
+| The user selects **Resume** two times, or the session is live again | The server opens one terminal: a second request for the same session in 15 seconds gets a refusal, and a live session has no closed row |
 | The user wants to open Forge from a terminal | `../<repo>.forge/forge open` starts the server of that repository when none runs, prints the links, and opens the board in the browser |
 | Two repositories are open | Each repository has its own server, port, and pages. A session shows only on the pages of its repository, and a session in another folder shows on no page |
 | No session reports for a ticket | The Live panel says so, and it names the 2 ways that give a session its ticket: the worktree of the ticket, or the ticket key at the start of the title |
@@ -281,10 +290,12 @@ The switcher of each page also lists the closed tickets, after the tickets of th
 ## Rules for a change
 
 - Put a new token, a shared component, or a shared function in `ui.mjs`, and add it to this page. A token goes into the light and the dark theme.
-- A page script uses no template literal, and it requests only a link of its own server: a relative link, `data.live` on a page of the live server, or `data.mermaid` on a page with a Mermaid block.
+- A page script uses no template literal, and it requests only a link of its own server: a relative link, `data.live` and `data.resume` on a page of the live server, or `data.mermaid` on a page with a Mermaid block.
 - Escape each ticket text with `esc()`. Only `linkTarget()` makes a link target from ticket text.
 - The text of a session (a title, a prompt, a command, a last message) is not trusted. Put it into the page with `make()`, which sets `textContent`. Never make HTML from it.
 - Change the live event (`live-event.mjs`), the live state (`live.mjs`), and the live parts of the pages together (`tests/live.test.mjs`, `tests/live-serve.test.mjs`).
+- **Resume** is the only control that starts something on the machine of the user. Its request holds only the id of a session. Do not add a control that gives text, a command, or a folder to the server.
+- Change the session list (`sessions.mjs`), the harness table (`harness.mjs`), the terminal table (`terminal.mjs`), and the closed session rows together (`tests/sessions.test.mjs`, `tests/terminal.test.mjs`).
 - Change the wiki model (`wiki.mjs`), the wiki page (`wiki-page.mjs`), and the wiki links of the board and the canvas together (`tests/wiki-page.test.mjs`).
 - The text of a wiki page goes through `markdown()`, which escapes each character. The script of the wiki page makes no HTML.
 - Mermaid makes the HTML of a drawing, with its security level `strict`. Do not change a byte of `plugins/forge/vendor/mermaid/mermaid.tiny.js`: `tests/wiki-page.test.mjs` checks its hash, and `vendor/mermaid/NOTICE.md` gives the update steps.
@@ -297,7 +308,9 @@ The switcher of each page also lists the closed tickets, after the tickets of th
 - The theme of the user applies after the page loaded, so a dark page can show light for a moment.
 - A file page shows the tickets of its last run. Only a served page reads the files on each load.
 - A ticket document that was written before the move to a Forge folder has links with the old depth. The canvas still opens the wiki page for such a link. A link with an absolute path to the old folder does not work after the move.
-- The live view shows Claude Code sessions only. The hooks of Copilot CLI and VS Code have no background option, so those hosts send no events yet.
+- The live activity comes from Claude Code sessions only. The hooks of Copilot CLI and VS Code have no background option, so those hosts send no events yet. A Copilot CLI session shows as a closed session row ("no end seen" while it runs), and a VS Code session does not show.
+- **Resume** opens a terminal on Windows and Linux. On macOS the page gives the command to copy. A terminal that starts and shows no window still counts as open, so each row also has **Copy command**.
+- A file page (`raw/board.html`) has no closed session rows: only the live server reads the session list.
 - The Live panel shows the last text at the end of a turn or of a subagent. It does not show the text while the model writes it.
 - A `claude -p` run stops its background hooks when it ends, so its last text can be missing.
 - Two subagents of one type that start at the same time can show below the wrong call, until the result of each call comes.

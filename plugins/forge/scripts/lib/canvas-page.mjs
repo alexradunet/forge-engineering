@@ -224,7 +224,7 @@ svg.labels text.on { display: block; }
 #live { flex: none; order: -1; width: 400px; max-width: 45%; overflow: auto; padding: 14px 16px; background: var(--rail); border-right: 1px solid var(--line); }
 @media (max-width: 760px) { #live { position: absolute; left: var(--s-3); top: var(--s-3); z-index: 4; max-width: calc(100% - 24px); max-height: calc(100% - 24px); border: 1px solid var(--line); border-radius: var(--r-3); box-shadow: var(--sh-2); } }
 #live h2 { display: flex; justify-content: space-between; align-items: center; margin: 0 0 4px; font-size: 16px; }
-.lv-session + .lv-session { margin-top: var(--s-4); padding-top: var(--s-3); border-top: 1px solid var(--line); }
+.lv-session + .lv-session, #live-body:not(:empty) + #live-past:not(:empty) { margin-top: var(--s-4); padding-top: var(--s-3); border-top: 1px solid var(--line); }
 .lv-session h3 { margin: 0 0 6px; font-size: var(--t-md); font-weight: 600; overflow-wrap: anywhere; }
 .lv-prompt { margin: var(--s-2) 0 0; padding-left: var(--s-2); color: var(--muted); border-left: 3px solid var(--line-2); overflow-wrap: anywhere; }
 .lv-tree { list-style: none; margin: 6px 0 0; padding: 0; font-size: var(--t-sm); }
@@ -882,6 +882,21 @@ ${UI_SCRIPT}
       list.appendChild(row);
     });
   }
+  // The sessions of this ticket that are not live, with the buttons Resume and Copy command. They change only when their list changes.
+  var pastShown = null;
+  function showPast(items) {
+    var mark = pastMark(items);
+    if (mark === pastShown) return;
+    pastShown = mark;
+    var box = byId('live-past');
+    while (box.firstChild) box.removeChild(box.firstChild);
+    items.forEach(function (item) {
+      var part = make('section', 'lv-session');
+      part.appendChild(make('h3', '', item.label || 'A session without a title'));
+      part.appendChild(pastLine(item));
+      box.appendChild(part);
+    });
+  }
   function showLive(state, ok) {
     var body = byId('live-body');
     var hint = byId('live-hint');
@@ -907,7 +922,9 @@ ${UI_SCRIPT}
       if (one.text) part.appendChild(make('q', 'lv-text', one.text));
       body.appendChild(part);
     });
-    hint.hidden = ok && body.childNodes.length > 0;
+    var past = state && state.past ? state.past : [];
+    showPast(past);
+    hint.hidden = ok && (body.childNodes.length > 0 || past.length > 0);
     hint.textContent = !ok ? 'The live server does not answer. The panel shows the last state that it got.'
       : 'No session reports for ' + data.key + ' now. A session shows here after its next prompt or tool call, when it runs in the worktree of the ticket or its title starts with the ticket key.';
     toggle.className = 'lv-' + (body.childNodes.length ? worst : 'idle');
@@ -921,7 +938,7 @@ ${UI_SCRIPT}
   }
 
   // The canvas server (forge.mjs canvas <key> --serve) puts a token into the page. Only the page of its own ticket can send.
-  // A page of the live server cannot send: that server is read-only for a session.
+  // A page of the live server cannot send: that server gives no text to a session.
   if (data.token && data.live) {
     document.getElementById('tray-hint').textContent = 'This page comes from the live server, so it cannot send. Use Copy all, and paste the comments into the session of ' + data.key + '.';
   }

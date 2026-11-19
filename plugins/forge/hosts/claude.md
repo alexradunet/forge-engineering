@@ -39,7 +39,10 @@ The live view shows the board page and each ticket canvas with what each Claude 
 - Start it only when the user asks for it, for example "live view" or "show the sessions live". Run `forge.mjs open --no-browser` with `Bash`. It starts the server of this repository as a process of its own and prints the links of the board and the wiki. Give them to the user.
 - A second run starts no second server: it prints the same links. One server runs for each repository, and `forge.mjs open --list` gives each one.
 - When the command says that the server did not start, run `forge.mjs live` with `Bash` and `run_in_background: true`, and read the link from its output.
-- The server is read-only for a session: no page can send text or an answer to a session. The comments of a canvas go with **Copy all**, or with `forge.mjs canvas <KEY> --serve`.
+- No page can send text or an answer to a session. The comments of a canvas go with **Copy all**, or with `forge.mjs canvas <KEY> --serve`.
+- A session that is not live shows as "closed" or "no end seen", with the buttons **Resume** and **Copy command**. **Resume** opens a terminal of the user with `claude --resume <id>` in the folder of the session.
+- **Resume** is a button for the user. Never send a request to the `/resume` route, and never start or continue a session for the user without a "yes".
+- The Forge hooks write the session list `<forge>/raw/sessions.jsonl` at the start and at the end of a session. Do not change that file.
 - A session shows on its ticket when it runs in the worktree of the ticket, or when its title starts with the ticket key. Each other session is in the list **Other sessions**.
 - A session shows after its next prompt or tool call. The hooks load at session start, so a session that started before an update of forge reports after a restart.
 - A "needs you" line is a report. Never answer that prompt for the user.

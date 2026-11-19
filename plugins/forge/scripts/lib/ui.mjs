@@ -162,6 +162,10 @@ code { font: var(--t-sm)/1.4 var(--mono); background: color-mix(in srgb, var(--m
 .lv-now code { background: transparent; padding: 0; }
 .lv-agents, .lv-note { color: var(--muted); }
 .lv-needs-you .lv-note { color: var(--ink); }
+.live.past { align-items: center; }
+.lv-host { color: var(--muted); white-space: nowrap; }
+.lv-acts { display: inline-flex; flex-wrap: wrap; gap: var(--s-1); margin-left: auto; }
+.lv-acts button { padding: 0 8px; font-size: var(--t-xs); }
 
 .refs { position: relative; }
 .refs > summary { display: inline-block; list-style: none; padding: 2px 10px; background: var(--card); border: 1px solid var(--line); border-radius: var(--r-1); cursor: pointer; white-space: nowrap; }
@@ -358,6 +362,7 @@ export const UI_SCRIPT = String.raw`
   function liveState(name) { return Object.prototype.hasOwnProperty.call(LIVE_TEXT, name) ? name : 'idle'; }
   function liveSpan(ms) {
     var s = Math.max(0, Math.round(ms / 1000));
+    if (s >= 172800) return Math.floor(s / 86400) + ' days';
     return s < 60 ? s + ' s' : s < 3600 ? Math.floor(s / 60) + ' min' : Math.floor(s / 3600) + ' h ' + Math.floor(s % 3600 / 60) + ' min';
   }
   // The time since a moment of the server clock. The element counts on each second (liveTick).
@@ -387,6 +392,77 @@ export const UI_SCRIPT = String.raw`
     if (session.note && state === 'needs-you') line.appendChild(make('span', 'lv-note', session.note));
     return line;
   }
+  // One session of the session list that is not live: closed, or with no end seen. It has the time since its end (or its start),
+  // the name of its harness, and the buttons Resume and Copy command. The command text comes from the server.
+  // Each text of a session goes into the page as text, never as HTML.
+  var OPEN_NOTE = 'Forge saw the start of this session and no end. It can be open in a terminal.';
+  function pastLine(item, named) {
+    var closed = item.state === 'closed';
+    var line = make('p', 'live past lv-ended');
+    var state = make('span', 'lv-state', closed ? 'closed' : 'no end seen');
+    if (!closed) state.title = OPEN_NOTE;
+    line.appendChild(state);
+    line.appendChild(liveTime(item.at));
+    // A row that names the harness at its start does not name it again.
+    if (!named) line.appendChild(make('span', 'lv-host', item.name));
+    var acts = make('span', 'lv-acts');
+    var resume = make('button', '', 'Resume');
+    resume.type = 'button';
+    resume.title = 'Open a terminal and continue this session';
+    resume.setAttribute('data-resume', item.id);
+    resume.setAttribute('data-command', item.command);
+    if (!closed) resume.setAttribute('data-check', '1');
+    var copy = make('button', 'quiet', 'Copy command');
+    copy.type = 'button';
+    copy.title = item.command;
+    copy.setAttribute('data-copy', item.command);
+    acts.appendChild(resume);
+    acts.appendChild(copy);
+    line.appendChild(acts);
+    return line;
+  }
+  // The text that tells when a list of such sessions changed: a page draws the rows again only then, so a button keeps the focus.
+  function pastMark(items) {
+    return items.map(function (item) { return [item.id, item.state, item.at, item.label, item.command].join('|'); }).join('\n');
+  }
+  function copyCommand(text, done) {
+    var shown = function () { window.prompt('Copy this command, and run it in a terminal:', text); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(function () { toast(done); }, shown);
+    else shown();
+  }
+  // Resume asks the live server to open a terminal with the command of the session. The request holds only the id of the session.
+  // When no terminal opens, the user gets the command to paste.
+  function resumeSession(button) {
+    var command = button.getAttribute('data-command');
+    // Two terminals on one session can lose messages, so a session with no end seen needs a second click.
+    if (button.getAttribute('data-check') === '1') {
+      button.setAttribute('data-check', '2');
+      button.textContent = 'Resume anyway';
+      toast(OPEN_NOTE + ' Close it there first, then select Resume anyway.');
+      return;
+    }
+    if (!data.resume || offline) { copyCommand(command, 'The live server does not answer. The command is on the clipboard: paste it into a terminal.'); return; }
+    button.disabled = true;
+    fetch(data.resume, { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', 'X-Forge-Token': data.token }, body: JSON.stringify({ id: button.getAttribute('data-resume') }) })
+      .then(function (response) { return response.json(); })
+      .then(function (answer) {
+        button.disabled = false;
+        if (answer.ok) toast(answer.moved ? 'A terminal opened in ' + answer.folder + ': the folder of the session is gone.' : 'A terminal opened with the session.');
+        else if (answer.command) copyCommand(answer.command, (answer.error || 'No terminal started.') + ' The command is on the clipboard: paste it into a terminal.');
+        else toast(answer.error || 'The live server refused the request.');
+      })
+      .catch(function () {
+        button.disabled = false;
+        copyCommand(command, 'The live server does not answer. The command is on the clipboard: paste it into a terminal.');
+      });
+  }
+  document.addEventListener('click', function (event) {
+    var button = event.target.closest ? event.target.closest('button[data-resume], button[data-copy]') : null;
+    if (!button) return;
+    event.preventDefault();
+    if (button.hasAttribute('data-copy')) copyCommand(button.getAttribute('data-copy'), 'Copied. Paste it into a terminal.');
+    else resumeSession(button);
+  });
   function liveAsk() {
     if (!data.live || !live.show || live.busy || offline || document.hidden) return;
     live.busy = true;

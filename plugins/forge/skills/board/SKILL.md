@@ -93,10 +93,11 @@ When the user asks to see the sessions live ("live view", "show the board live",
 
 1. Run `<F> open --no-browser`. It starts the live server of this repository in the background when none runs, and it prints the links of the board and the wiki. Give the links.
 2. When the command says that the server did not start, start `<F> live` as a background command, in the same way as the canvas server in the host file. Give the link from its first line.
-3. Tell the user what the page shows: one live line for each session on the card of its ticket (working, needs you, idle, or ended), and the Live panel on each canvas.
+3. Tell the user what the page shows: one live line for each session on the card of its ticket (working, needs you, idle, or ended), and the Live panel on each canvas. A session of Claude Code or of Copilot CLI that is not live shows as closed, with the buttons **Resume** and **Copy command**.
 
 One server runs for each repository, and a session reports to the server of its repository. `<F> open --list` gives each server of the user, and `<F> open --stop` stops the server of this repository.
-The live server is read-only for a session, and only Claude Code sessions report in this version.
+The live server sends no text to a session. The live activity comes from Claude Code sessions, and a Copilot CLI session shows only with its start and its end.
+**Resume** is a button for the user: it opens a terminal of the user with the resume command of the harness. Never send a request to the `/resume` route.
 A "needs you" line is a report: never answer that prompt for the user.
 
 ## 🚫 Rules

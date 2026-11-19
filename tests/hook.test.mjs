@@ -1,11 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { CLAUDE_PARTS, END_MARKER, buildContext, detectHost, promptSubmit, readEvent, resolveHost, ruleBody, sessionStart, splitParts } from '../plugins/forge/scripts/lib/hook.mjs';
+import { CLAUDE_PARTS, END_MARKER, buildContext, detectHost, promptSubmit, readEvent, resolveHost, ruleBody, sessionEnd, sessionStart, splitParts } from '../plugins/forge/scripts/lib/hook.mjs';
+import { readSessions } from '../plugins/forge/scripts/lib/sessions.mjs';
 import { status as trustStatus, approve } from '../plugins/forge/scripts/lib/trust.mjs';
 import { resolve } from '../plugins/forge/scripts/lib/repo.mjs';
 import { nowCard } from '../plugins/forge/scripts/lib/ticket.mjs';
@@ -53,9 +54,11 @@ function setup(t, { workflow = 'full-v3', worktree = '', branch = '' } = {}) {
 const run = (event) => sessionStart(event, { cli, env });
 
 test('readEvent accepts camelCase and snake_case payloads and refuses bad JSON', () => {
-  assert.deepEqual(readEvent('{"cwd":"C:/x","source":"new","initialPrompt":"APP-1"}'), { cwd: 'C:/x', source: 'new', prompt: 'APP-1', title: '' });
-  assert.deepEqual(readEvent('{"cwd":"/x","hook_event_name":"SessionStart","initial_prompt":"APP-2"}'), { cwd: '/x', source: '', prompt: 'APP-2', title: '' });
-  assert.deepEqual(readEvent(''), { cwd: '', source: '', prompt: '', title: '' });
+  // 9.1.0: the event also gives the session id and the end reason, for the session list.
+  assert.deepEqual(readEvent('{"cwd":"C:/x","source":"new","initialPrompt":"APP-1","sessionId":"abc-1"}'), { cwd: 'C:/x', source: 'new', prompt: 'APP-1', title: '', session: 'abc-1', reason: '' });
+  assert.deepEqual(readEvent('{"cwd":"/x","hook_event_name":"SessionEnd","session_id":"abc-2","reason":"other"}'), { cwd: '/x', source: '', prompt: '', title: '', session: 'abc-2', reason: 'other' });
+  assert.deepEqual(readEvent('{"cwd":"/x","hook_event_name":"SessionStart","initial_prompt":"APP-2"}'), { cwd: '/x', source: '', prompt: 'APP-2', title: '', session: '', reason: '' });
+  assert.deepEqual(readEvent(''), { cwd: '', source: '', prompt: '', title: '', session: '', reason: '' });
   assert.equal(readEvent('{"prompt":"x","session_title":"APP-1 - t"}').title, 'APP-1 - t');
   assert.equal(readEvent('{bad'), null);
   assert.equal(readEvent('[1]'), null);
@@ -358,4 +361,56 @@ test('a full-v3 ticket gets the plain Now card and Resume', (t) => {
   assert.match(v3, /Now card from the README:\n- State: 🟡 needs-me\n- Phase: plan\n- Next: Approve Planned\?/);
   assert.doesNotMatch(v3, /legacy/);
   assert.deepEqual(nowCard('# A\n\n## Now\n\n- State: ▶️ active\n- Waiting on: nobody\n\n## Files\n').fields, { state: '▶️ active', 'waiting on': 'nobody' });
+});
+
+test('the hooks of a terminal harness write the start and the end of a session to the session list, and VS Code writes nothing', (t) => {
+  const s = setup(t);
+  const raw = path.join(s.wiki, 'raw');
+  const file = path.join(raw, 'sessions.jsonl');
+  const lines = () => (existsSync(file) ? readFileSync(file, 'utf8').trim().split('\n').map((line) => JSON.parse(line)) : []);
+  const id = '11111111-2222-4333-8444-555555555555';
+
+  // No session id (a test payload, an old host version), a host without a row, or an id of another shape: no line.
+  sessionStart({ cwd: s.app, source: 'startup', prompt: '', session: '' }, { cli, env, host: 'claude', part: 1 });
+  sessionStart({ cwd: s.app, source: 'new', prompt: '', session: 'vs-1' }, { cli, env, host: 'vscode' });
+  sessionStart({ cwd: s.app, source: 'startup', prompt: '', session: '--dangerously-skip-permissions' }, { cli, env, host: 'claude', part: 1 });
+  sessionStart({ cwd: s.app, source: 'startup', prompt: '', session: '-x' }, { cli, env, host: 'copilot-cli' });
+  assert.deepEqual(lines(), []);
+
+  // Claude Code runs one hook for each part. Only part 1 writes.
+  for (let part = 1; part <= CLAUDE_PARTS; part++) sessionStart({ cwd: s.app, source: 'startup', prompt: 'Resume APP-7', session: id, title: '' }, { cli, env, host: 'claude', part });
+  const [first, ...more] = lines();
+  assert.equal(more.length, 0);
+  assert.deepEqual({ ...first, ts: 0 }, { v: 1, e: 'start', host: 'claude', id, cwd: s.app, ts: 0, title: 'APP-7 - 🟡 - Doc import error telemetry', label: 'Resume APP-7', source: 'startup' });
+  assert.ok(first.ts > 0);
+
+  // The Copilot CLI gives the first prompt at the start. A secret value in it gets a mask.
+  sessionStart({ cwd: s.app, source: 'new', prompt: 'Check why token=abc123XYZ fails', session: 'cp-1' }, { cli, env, host: 'copilot-cli' });
+  assert.deepEqual({ ...lines()[1], ts: 0 }, { v: 1, e: 'start', host: 'copilot-cli', id: 'cp-1', cwd: s.app, ts: 0, label: 'Check why token=*** fails', source: 'new' });
+
+  assert.deepEqual(sessionEnd({ cwd: s.app, session: id, reason: 'prompt_input_exit' }, { env, host: 'claude' }), {});
+  assert.deepEqual(sessionEnd({ cwd: s.app, session: 'vs-1', reason: 'complete' }, { env, host: 'vscode' }), {});
+  assert.deepEqual(sessionEnd({ cwd: s.app, session: '', reason: 'complete' }, { env, host: 'copilot-cli' }), {});
+  assert.deepEqual(sessionEnd(null, { env, host: 'claude' }), {});
+  assert.equal(lines().length, 3);
+  assert.deepEqual({ ...lines()[2], ts: 0 }, { v: 1, e: 'end', host: 'claude', id, cwd: s.app, ts: 0, reason: 'prompt_input_exit' });
+  const records = readSessions(raw);
+  assert.ok(records.get(id).end > 0, 'the Claude Code session is closed');
+  assert.equal(records.get('cp-1').end, 0, 'the Copilot CLI session has no end yet');
+
+  // The commands of the hook files: the end hook prints {} and writes the line, and a folder without a wiki gets no file.
+  const call = (args, input, extra = {}) => spawnSync(process.execPath, [cli, 'hook', ...args], { input: JSON.stringify(input), encoding: 'utf8', env: { ...env, CLAUDECODE: '', AI_AGENT: '', ...extra }, cwd: s.app });
+  const ended = call(['session-end'], { cwd: s.app, sessionId: 'cp-1', reason: 'user_exit' });
+  assert.deepEqual([ended.status, JSON.parse(ended.stdout)], [0, {}]);
+  assert.equal(readSessions(raw).get('cp-1').reason, 'user_exit');
+  const before = lines().length;
+  assert.deepEqual(JSON.parse(call(['session-end'], { cwd: s.app, sessionId: 'cp-2', reason: 'user_exit' }, { AI_AGENT: 'github_copilot_vscode_agent' }).stdout), {}, 'the Copilot hook file also runs in VS Code');
+  assert.equal(lines().length, before, 'a VS Code session has no terminal to continue');
+  const outside = mkdtempSync(path.join(os.tmpdir(), 'forge-hook-none-'));
+  t.after(() => rmSync(outside, { recursive: true, force: true }));
+  assert.deepEqual(sessionEnd({ cwd: outside, session: id, reason: 'other' }, { env, host: 'claude' }), {});
+  assert.ok(!existsSync(path.join(outside, 'raw')));
+  assert.deepEqual(hookArgs(['hook', 'session-end'], {}), { name: 'session-end', host: 'copilot-cli', part: 1 });
+  assert.equal(hookArgs(['hook', 'session-end', '--host', 'claude'], {}).host, 'claude');
+  assert.equal(hookArgs(['hook', 'session-end', '--host', 'claude', '--part', '1'], {}), null);
 });

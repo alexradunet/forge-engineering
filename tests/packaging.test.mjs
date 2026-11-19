@@ -159,3 +159,31 @@ test('the Claude hooks give the live reporter each activity event, and the repor
   // The Copilot hosts get the reporter in a later version: their hooks have no background option.
   assert.doesNotMatch(JSON.stringify(copilotHooks), /live-hook/);
 });
+
+test('each terminal harness has a session end hook that writes the session list, prints {}, and never holds the session', (t) => {
+  const root = scratch(t);
+  // Copilot CLI: one entry. The live reporter stays out of this file (see the test above).
+  const [copilot, ...moreCopilot] = copilotHooks.hooks.sessionEnd;
+  assert.equal(moreCopilot.length, 0);
+  assert.equal(copilot.type, 'command');
+  assert.ok(copilot.timeoutSec > 0 && copilot.timeoutSec <= 10);
+  assert.match(copilot.command, /^node "\$\{PLUGIN_ROOT\}\/scripts\/forge\.mjs" hook session-end$/);
+  assert.deepEqual(Object.keys(copilotHooks.hooks).sort(), ['preToolUse', 'sessionEnd', 'sessionStart']);
+  const command = copilot.command.replaceAll('${PLUGIN_ROOT}', pluginDir.replaceAll('\\', '/'));
+  const input = JSON.stringify({ sessionId: 'cp-1', timestamp: 1, cwd: root, reason: 'user_exit' });
+  const first = spawnSync(command, { shell: true, input, encoding: 'utf8', env: hookEnv(root), cwd: root });
+  assert.deepEqual([first.status, JSON.parse(first.stdout)], [0, {}], first.stderr);
+
+  // Claude Code: the reporter keeps its own group, and the second group writes the end line.
+  // All SessionEnd hooks share 1.5 seconds, and the timeout of a plugin hook does not raise that (hooks reference, 2026-11-19).
+  const [reporter, end, ...moreClaude] = claudeHooks.hooks.SessionEnd;
+  assert.equal(moreClaude.length, 0);
+  assert.ok(reporter.hooks[0].args[0].endsWith('live-hook.mjs'));
+  assert.deepEqual(end.hooks, [{ type: 'command', command: 'node', args: ['${CLAUDE_PLUGIN_ROOT}/scripts/forge.mjs', 'hook', 'session-end', '--host', 'claude'], timeout: 2 }]);
+  const args = end.hooks[0].args.map((a) => a.replaceAll('${CLAUDE_PLUGIN_ROOT}', pluginDir));
+  const payload = JSON.stringify({ hook_event_name: 'SessionEnd', session_id: '11111111-2222-4333-8444-555555555555', cwd: root, reason: 'other' });
+  const second = spawnSync(process.execPath, args, { input: payload, encoding: 'utf8', env: hookEnv(root, { CLAUDECODE: '1' }), cwd: root });
+  assert.deepEqual([second.status, JSON.parse(second.stdout), second.stderr], [0, {}, '']);
+  // A folder that is no repository with a wiki gets no file.
+  assert.ok(!existsSync(path.join(root, 'raw')) && !existsSync(path.join(root, 'sessions.jsonl')));
+});

@@ -71,7 +71,12 @@ test('the design system gives each page the same tokens, both themes, and a scri
     assert.doesNotMatch(script, /XMLHttpRequest|WebSocket|sendBeacon|EventSource|https?:\/\/(?!www\.w3\.org\/2000\/svg)/, name);
   }
   // Forge 7.6 adds one request: a page of the live server asks that server for the state of the sessions.
-  assert.equal(BOARD_SCRIPT.match(/\bfetch\(/g).length, 2, 'the board page asks only its own server: for the next page, and for the live state');
+  // Forge 9.1 adds one more: the Resume button asks that server to open a terminal for one session of the session list.
+  assert.equal(BOARD_SCRIPT.match(/\bfetch\(/g).length, 3, 'the board page asks only its own server: for the next page, for the live state, and for a Resume');
+  for (const script of [BOARD_SCRIPT, CANVAS_SCRIPT]) {
+    assert.match(script, /fetch\(data\.resume, \{ method: 'POST', cache: 'no-store', headers: \{ 'Content-Type': 'application\/json', 'X-Forge-Token': data\.token \}, body: JSON\.stringify\(\{ id: button\.getAttribute\('data-resume'\) \}\) \}\)/, 'the request holds only the id of the session');
+    assert.match(script, /if \(button\.getAttribute\('data-check'\) === '1'\) \{/, 'a session with no end seen needs a second click');
+  }
   for (const script of [BOARD_SCRIPT, CANVAS_SCRIPT]) assert.match(script, /fetch\(data\.live \+ '&v=' \+ live\.v, \{ cache: 'no-store'/);
   assert.doesNotMatch(UI_SCRIPT, /innerHTML|insertAdjacentHTML|document\.write/, 'the text of a session goes into the page as text');
 });

@@ -127,6 +127,7 @@ const HELP = [
 /**
  * The self-contained HTML page of a board model. With serve.token, the links use the routes of the server of the page.
  * serve.live is the address of the session states on the live server (live-serve.mjs): then the page shows what each session does now.
+ * serve.resume is the address on that server that continues a closed session: then a closed session has the Resume button.
  * nav.closed (buildNav in ui.mjs) gives the closed tickets of the wiki.
  */
 export function renderBoardPage(board, { links = 'vscode', nav = null, serve = null, wiki = '' } = {}) {
@@ -134,6 +135,7 @@ export function renderBoardPage(board, { links = 'vscode', nav = null, serve = n
   const token = serve?.token ?? '';
   if (token && !/^[0-9a-f]{32}$/.test(token)) throw new Error('The canvas token must have 32 hexadecimal characters.');
   const live = token && serve.live ? String(serve.live) : '';
+  const resume = live && serve.resume ? String(serve.resume) : '';
   const ctx = { links, wiki, nav: nav ?? buildNav(board, { token }) };
   const chips = board.groups.map((group, index) => (
     `<button type="button" class="chip st-${esc(group.state)}" data-state="${esc(group.state)}" aria-pressed="false" title="Show only ${esc(group.label)} (${index + 1})"${group.tickets.length ? '' : ' disabled'}>`
@@ -145,7 +147,7 @@ export function renderBoardPage(board, { links = 'vscode', nav = null, serve = n
   const lanes = board.total
     ? `${lane('needs-me')}${side ? `<div class="side">${side}</div>` : ''}${lane('done')}`
     : `<section class="lane"><p class="empty">${ctx.nav.closed?.length ? 'No open ticket.' : 'No tickets yet.'} Give a work item key to a session, and its ticket shows here.</p></section>`;
-  const data = JSON.stringify({ generated: board.generated, total: board.total, ...(token ? { token } : {}), ...(live ? { live } : {}), nav: navData(ctx.nav) }).replace(/</g, '\\u003c');
+  const data = JSON.stringify({ generated: board.generated, total: board.total, ...(token ? { token } : {}), ...(live ? { live } : {}), ...(resume ? { resume } : {}), nav: navData(ctx.nav) }).replace(/</g, '\\u003c');
   return [
     '<!doctype html>', '<html lang="en">', '<head>', '<meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
@@ -165,9 +167,10 @@ export function renderBoardPage(board, { links = 'vscode', nav = null, serve = n
   ].join('\n');
 }
 
-// The sessions that have no ticket on the board. Only a page of the live server has this part, and its script fills it.
-const LIVE_HTML = '<section class="lane plain" id="live-other" hidden><h2>Other sessions <span class="count" id="live-count">0</span> <small>live, without a ticket on this board</small></h2>'
-  + '<ul class="rows" id="live-list"></ul></section>';
+// The sessions that have no ticket on the board: the live sessions, then the sessions of the session list that are not live.
+// Only a page of the live server has this part, and its script fills it.
+const LIVE_HTML = '<section class="lane plain" id="live-other" hidden><h2>Other sessions <span class="count" id="live-count">0</span> <small>without a ticket on this board</small></h2>'
+  + '<ul class="rows" id="live-list"></ul><ul class="rows" id="past-list"></ul></section>';
 
 export const BOARD_STYLE = String.raw`
 body { min-height: 100vh; display: flex; flex-direction: column; }
@@ -228,6 +231,8 @@ main { flex: 1; width: 100%; max-width: 1560px; margin: 0 auto; padding: var(--s
 .tcard footer a { position: relative; z-index: 1; color: var(--muted); }
 .tcard footer a:hover { color: var(--accent); }
 .tcard .live { position: relative; z-index: 1; pointer-events: none; }
+.tcard .live button { pointer-events: auto; }
+#live-list:empty, #past-list:empty { display: none; }
 .lrow { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px var(--s-3); padding: 6px 14px; }
 .lrow + .lrow { border-top: 1px solid var(--line); }
 .lrow .what { flex: 1 1 220px; min-width: 0; overflow-wrap: anywhere; }
@@ -349,15 +354,48 @@ ${UI_SCRIPT}
   });
 
   // The live view: a session shows on the card of its ticket. A session without a card shows in the list of the other sessions.
+  // A session of the session list that is not live shows with its buttons: the newest one on the card of its ticket, when no live
+  // session is on that card, and each one without a card in the list of the other sessions.
+  var pastShown = null;
+  function showPast(items, busy) {
+    var onCard = {};
+    var rows = [];
+    items.forEach(function (item) {
+      var card = item.ticket ? byId('ticket-' + item.ticket) : null;
+      if (!card || !card.classList.contains('tcard')) rows.push(item);
+      else if (!busy[item.ticket] && !onCard[item.ticket]) onCard[item.ticket] = item;
+    });
+    var cards = Object.keys(onCard).map(function (ticket) { return onCard[ticket]; });
+    var mark = pastMark(cards) + '\n\n' + pastMark(rows);
+    if (mark === pastShown) return rows.length;
+    pastShown = mark;
+    each(document.querySelectorAll('.tcard > .past'), function (old) { old.parentNode.removeChild(old); });
+    cards.forEach(function (item) {
+      var card = byId('ticket-' + item.ticket);
+      card.insertBefore(pastLine(item), card.querySelector('.tags'));
+    });
+    var list = byId('past-list');
+    while (list.firstChild) list.removeChild(list.firstChild);
+    rows.forEach(function (item) {
+      var card = item.ticket ? byId('ticket-' + item.ticket) : null;
+      var row = make('li', 'lrow');
+      row.appendChild(make('span', 'key', card ? card.querySelector('.key').textContent : item.name));
+      row.appendChild(make('span', 'what', item.label || 'A session without a title'));
+      row.appendChild(pastLine(item, true));
+      list.appendChild(row);
+    });
+    return rows.length;
+  }
   function showLive(state, ok) {
-    each(document.querySelectorAll('.tcard > .live'), function (old) { old.parentNode.removeChild(old); });
+    each(document.querySelectorAll('.tcard > .live:not(.past)'), function (old) { old.parentNode.removeChild(old); });
     var list = byId('live-list');
     while (list.firstChild) list.removeChild(list.firstChild);
     var sessions = state ? state.sessions : [];
     var other = 0;
+    var busy = {};
     sessions.forEach(function (session) {
       var card = session.ticket ? byId('ticket-' + session.ticket) : null;
-      if (card && card.classList.contains('tcard')) { card.insertBefore(liveLine(session), card.querySelector('.tags')); return; }
+      if (card && card.classList.contains('tcard')) { busy[session.ticket] = true; card.insertBefore(liveLine(session), card.querySelector('.tags')); return; }
       var row = make('li', 'lrow');
       row.appendChild(make('span', 'key', card ? card.querySelector('.key').textContent : session.host));
       row.appendChild(make('span', 'what', session.title || session.dir || 'A session without a title'));
@@ -365,6 +403,7 @@ ${UI_SCRIPT}
       list.appendChild(row);
       other += 1;
     });
+    other += showPast(state && state.past ? state.past : [], busy);
     byId('live-other').hidden = !other;
     byId('live-count').textContent = String(other);
     byId('live-note').textContent = !ok ? 'Live view: the live server does not answer'

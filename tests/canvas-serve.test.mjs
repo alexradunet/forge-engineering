@@ -91,7 +91,8 @@ test('the page script has the message functions, LF line ends, and only requests
   for (const name of ['function canvasClean(', 'function canvasLine(', 'function canvasMessage(']) assert.ok(CANVAS_SCRIPT.includes(name), name);
   // Forge 7.2 adds one request: before a served page goes to another page, it asks its own server for that page (a relative link).
   // Forge 7.6 adds one more: a page of the live server asks that server for the state of the sessions (data.live, a link of its own server).
-  assert.equal(CANVAS_SCRIPT.match(/\bfetch\(/g).length, 3);
+  // Forge 9.1 adds one more: the Resume button of a closed session in the Live panel (data.resume, a route of the live server).
+  assert.equal(CANVAS_SCRIPT.match(/\bfetch\(/g).length, 4);
   assert.match(CANVAS_SCRIPT, /if \(data\.token && !data\.home && !data\.live\) \{\n    sendButton\.hidden = false;/, 'a page of the live server cannot send');
   assert.match(CANVAS_SCRIPT, /fetch\(href, \{ cache: 'no-store' \}\)/);
   assert.match(CANVAS_SCRIPT, /fetch\('send', \{ method: 'POST'/);

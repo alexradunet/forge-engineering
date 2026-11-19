@@ -10,8 +10,10 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { loadConfig } from './config.mjs';
+import { harness } from './harness.mjs';
 import { writeLauncher, writePointer } from './launcher.mjs';
 import { resolve, samePath } from './repo.mjs';
+import { recordEnd, recordStart } from './sessions.mjs';
 import { STATE_EMOJI, nowCard, sessionTitle } from './ticket.mjs';
 import { listTickets } from './tickets.mjs';
 import { RULES, assertTrusted, status as trustStatus } from './trust.mjs';
@@ -69,6 +71,7 @@ export function readEvent(raw) {
     cwd: text(event.cwd), source: text(event.source),
     prompt: text(event.initialPrompt) || text(event.initial_prompt) || text(event.prompt),
     title: text(event.session_title) || text(event.sessionTitle),
+    session: text(event.session_id) || text(event.sessionId), reason: text(event.reason),
   };
 }
 
@@ -269,8 +272,8 @@ function locate(event, env) {
 }
 
 /**
- * The full Forge context for one session, without the end marker: { body, title }.
- * body is '' when no part can be read. cli is the absolute path of forge.mjs.
+ * The full Forge context for one session, without the end marker: { body, title, where }.
+ * body is '' when no part can be read. cli is the absolute path of forge.mjs. where is the place of the session (resolve in repo.mjs), or null.
  */
 export function buildContext(event, { cli, env = process.env, host = 'vscode' } = {}) {
   if (!event || !cli) return { body: '', title: '' };
@@ -293,7 +296,7 @@ export function buildContext(event, { cli, env = process.env, host = 'vscode' } 
   const rules = pluginRules(pluginDir);
   let company = '';
   try { if (where?.wiki.exists) company = wikiRules(where, env); } catch { company = ''; }
-  if (!ticket && !rules && !company) return { body: '', title: '' };
+  if (!ticket && !rules && !company) return { body: '', title: '', where };
 
   const table = hostTable(pluginDir, host);
   const parts = [`# Forge session context\n\n${pathsLine(pluginDir, where)}`];
@@ -301,7 +304,7 @@ export function buildContext(event, { cli, env = process.env, host = 'vscode' } 
   if (rules) parts.push(rules);
   if (table) parts.push(table);
   if (company) parts.push(company);
-  return { body: parts.join('\n\n'), title };
+  return { body: parts.join('\n\n'), title, where };
 }
 
 /** The full Forge context as one text with the end marker, or '' when no part can be read. */
@@ -361,13 +364,37 @@ export function claudeParts(body, forge) {
   });
 }
 
+// The session list (sessions.mjs) gets one line for a session of a terminal harness in a repository with a wiki.
+// The title is the title of the session, or the ticket title that Forge sets or gives to the user. An error here stops no session.
+function noteStart(event, where, host, title) {
+  try {
+    if (!event?.session || !harness(host) || !where?.wiki.exists) return;
+    recordStart(where.raw, { host, id: event.session, cwd: event.cwd || process.cwd(), title: event.title || title, prompt: event.prompt, source: event.source });
+  } catch { /* The session list is a view. */ }
+}
+
+/**
+ * The hook result for one session end event: always {}. It writes the end line of the session list.
+ * A host without a row in the harness table (the VS Code Agents window) stops before it reads the repository.
+ */
+export function sessionEnd(event, { env = process.env, host = 'vscode' } = {}) {
+  try {
+    if (!event?.session || !harness(host)) return {};
+    const where = locate(event, env);
+    if (where?.wiki.exists) recordEnd(where.raw, { host, id: event.session, cwd: event.cwd || process.cwd(), reason: event.reason });
+  } catch { /* The live server shows such a session with the state "open". */ }
+  return {};
+}
+
 /**
  * The hook result for one session start event, or {}.
  * vscode and copilot-cli: { additionalContext } with the full context.
  * claude: { hookSpecificOutput } with part `part` of the context; part 1 also sets the session title.
  */
 export function sessionStart(event, { cli, env = process.env, host = 'vscode', part = 1 } = {}) {
-  const { body, title } = buildContext(event, { cli, env, host });
+  const { body, title, where } = buildContext(event, { cli, env, host });
+  // Claude Code runs one hook for each part: only part 1 writes the line of the session list.
+  if (part === 1) noteStart(event, where, host, title);
   if (!body) return {};
   if (host !== 'claude') return { additionalContext: `${body}\n\n${END_MARKER}` };
   const text = claudeParts(body, `node "${cli}"`)[part - 1];

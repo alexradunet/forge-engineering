@@ -12,7 +12,9 @@ import { fileURLToPath } from 'node:url';
 import { BOARD_SCRIPT } from '../plugins/forge/scripts/lib/board-page.mjs';
 import { CANVAS_SCRIPT } from '../plugins/forge/scripts/lib/canvas-page.mjs';
 import { pickServer } from '../plugins/forge/scripts/lib/live-event.mjs';
-import { liveFile, liveList, liveRoots, liveStatus, serveLive } from '../plugins/forge/scripts/lib/live-serve.mjs';
+import { rawDir } from '../plugins/forge/scripts/lib/layout.mjs';
+import { RESUME_GAP_MS, liveFile, liveList, liveRoots, liveStatus, serveLive } from '../plugins/forge/scripts/lib/live-serve.mjs';
+import { readSessions, recordEnd, recordStart, sessionsFile } from '../plugins/forge/scripts/lib/sessions.mjs';
 import { browserCommand, openBrowser } from '../plugins/forge/scripts/lib/open.mjs';
 import { MERMAID_INTEGRITY, MERMAID_ROUTE, mermaidPath } from '../plugins/forge/scripts/lib/mermaid.mjs';
 import { WIKI_SCRIPT } from '../plugins/forge/scripts/lib/wiki-page.mjs';
@@ -126,7 +128,7 @@ test('the server refuses each request without the right token, and a page cannot
   assert.equal((await post(s, JSON.stringify({ ...event, text: 'x'.repeat(20000) }))).status, 413);
   assert.deepEqual((await live(s)).sessions, [], 'a refused request changes nothing');
 
-  // The server is read-only for a session: the only route that takes data is /event.
+  // The server gives no text to a session: the only route that takes an event is /event. POST /resume has its own test.
   for (const url of ['/send', '/live', '/board', '/', '/message', '/ticket/app-9/send']) {
     const res = await request(s.port, { method: 'POST', url, body: '{}', headers: { 'Content-Type': 'application/json', 'X-Forge-Token': s.event } });
     assert.equal(res.status, 404, url);
@@ -182,8 +184,9 @@ test('the pages of the live server: the board and each canvas with the live part
   assert.equal(board.status, 200);
   assert.equal(board.headers['content-security-policy'], `default-src 'none'; script-src 'sha256-${hash(BOARD_SCRIPT)}'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'`);
   assert.equal(/<script>([\s\S]*)<\/script>/.exec(board.text)[1], BOARD_SCRIPT);
-  assert.ok(board.text.includes(`"live":"/live?t=${s.page}"`));
+  assert.ok(board.text.includes(`"live":"/live?t=${s.page}","resume":"/resume"`));
   assert.match(board.text, /<section class="lane plain" id="live-other" hidden>/);
+  assert.match(board.text, /<ul class="rows" id="live-list"><\/ul><ul class="rows" id="past-list"><\/ul>/);
   assert.match(board.text, /<p class="note" id="live-note">/);
   assert.ok(board.text.includes(`href="/ticket/app-9/?t=${s.page}"`), 'each ticket has its canvas on this server');
   assert.equal(board.text.match(/<script\b/g).length, 2);
@@ -195,7 +198,8 @@ test('the pages of the live server: the board and each canvas with the live part
   assert.equal(canvas.headers['content-security-policy'], `default-src 'none'; script-src 'sha256-${hash(CANVAS_SCRIPT)}'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'`);
   assert.equal(/<script>([\s\S]*)<\/script>/.exec(canvas.text)[1], CANVAS_SCRIPT);
   assert.ok(canvas.text.includes(`"live":"/live?t=${s.page}\\u0026ticket=app-9"`) || canvas.text.includes(`"live":"/live?t=${s.page}&ticket=app-9"`));
-  for (const id of ['live', 'live-toggle', 'live-close', 'live-hint', 'live-body']) assert.ok(canvas.text.includes(`id="${id}"`), id);
+  for (const id of ['live', 'live-toggle', 'live-close', 'live-hint', 'live-body', 'live-past']) assert.ok(canvas.text.includes(`id="${id}"`), id);
+  assert.ok(canvas.text.includes('"resume":"/resume"'));
   assert.match(canvas.text, /<button type="button" id="send-all" hidden>/, 'Send to agent stays hidden: the script shows it only without data.live');
   assert.ok(canvas.text.includes(`href="/board?t=${s.page}"`));
   assert.equal(canvas.text.match(/<script\b/g).length, 2);
@@ -399,4 +403,134 @@ test('the live command refuses wrong arguments', () => {
     assert.equal(result.status, 1, args.join(' '));
     assert.match(result.stderr, /Usage: forge\.mjs live/);
   }
+});
+
+const UUID_A = '11111111-2222-4333-8444-555555555555';
+const UUID_B = '99999999-2222-4333-8444-555555555555';
+
+test('the server gives the pages the sessions of the session list that are not live, and it keeps that list complete', async (t) => {
+  const s = await start(t);
+  const raw = rawDir(s.wiki);
+  assert.deepEqual((await live(s)).past, []);
+  const now = Date.now();
+  recordStart(raw, { host: 'copilot-cli', id: 'cp-1', cwd: '/code/app.worktrees/APP-9', prompt: 'Fix the retry' }, now - 60000);
+  recordEnd(raw, { host: 'copilot-cli', id: 'cp-1', cwd: '/code/app.worktrees/APP-9', reason: 'user_exit' }, now - 30000);
+  recordStart(raw, { host: 'copilot-cli', id: 'cp-2', cwd: '/code/app' }, now - 20000);
+  const state = await live(s);
+  assert.deepEqual(state.past, [
+    { id: 'cp-2', host: 'copilot-cli', name: 'Copilot CLI', label: 'app', dir: 'app', ticket: '', state: 'open', at: now - 20000, command: 'cd "/code/app"; copilot --resume=cp-2' },
+    { id: 'cp-1', host: 'copilot-cli', name: 'Copilot CLI', label: 'Fix the retry', dir: 'APP-9', ticket: 'app-9', state: 'closed', at: now - 30000, command: 'cd "/code/app.worktrees/APP-9"; copilot --resume=cp-1' },
+  ]);
+  assert.deepEqual((await live(s, '&ticket=app-9')).past.map((item) => item.id), ['cp-1'], 'a canvas gets the sessions of its ticket');
+
+  // A live session with the id of a harness gets a line when the list has none: its hooks can be older than this version.
+  const at = Date.now();
+  const event = (name, extra = {}) => ({ v: 1, host: 'claude', event: name, ts: at + (clock += 10), session: UUID_A, cwd: '/code/app.worktrees/APP-9', ...extra });
+  assert.equal((await post(s, event('prompt', { text: 'Add a test for token=abc123XYZ' }))).status, 204);
+  let record = readSessions(raw).get(UUID_A);
+  assert.deepEqual([record.host, record.cwd, record.label, record.end], ['claude', '/code/app.worktrees/APP-9', 'Add a test for token=***', 0]);
+  let now2 = await live(s);
+  assert.deepEqual(now2.sessions.map((item) => [item.state, item.ticket]), [['working', 'app-9']]);
+  assert.ok(!now2.past.some((item) => item.id === UUID_A), 'a live session is not a row of the list');
+  // A new title of the session goes to the list. A second prompt changes nothing.
+  await post(s, event('prompt', { text: 'Second prompt', title: 'APP-9 - ▶️ - Short APP-9' }));
+  record = readSessions(raw).get(UUID_A);
+  assert.deepEqual([record.title, record.label], ['APP-9 - ▶️ - Short APP-9', 'Add a test for token=***']);
+  const size = readFileSync(sessionsFile(raw), 'utf8').split('\n').length;
+  await post(s, event('tool-start', { tool: { id: 't1', name: 'Bash', label: 'npm test' }, title: 'APP-9 - ▶️ - Short APP-9' }));
+  await post(s, event('tool-start', { tool: { id: 't2', name: 'Read', label: 'a.js' }, agent: { id: 'a1', type: 'Explore' } }));
+  assert.equal(readFileSync(sessionsFile(raw), 'utf8').split('\n').length, size, 'a tool call writes no line');
+  // The end event closes the record when the end hook wrote no line. Then the session shows one time, as a closed row.
+  await post(s, event('session-end', { kind: 'prompt_input_exit' }));
+  assert.equal(readSessions(raw).get(UUID_A).reason, 'prompt_input_exit');
+  now2 = await live(s);
+  assert.deepEqual(now2.sessions, []);
+  assert.deepEqual(now2.past.map((item) => [item.id, item.state, item.label]).slice(0, 1), [[UUID_A, 'closed', 'APP-9 - ▶️ - Short APP-9']]);
+  // A late event of the closed session does not open it again. An event that is clearly later is a session that continues.
+  const closedAt = readSessions(raw).get(UUID_A).end;
+  await post(s, { v: 1, host: 'claude', event: 'stop', ts: closedAt + 500, session: UUID_A, cwd: '/code/app.worktrees/APP-9' });
+  assert.equal(readSessions(raw).get(UUID_A).end, closedAt);
+  await post(s, { v: 1, host: 'claude', event: 'prompt', ts: closedAt + 60000, session: UUID_A, cwd: '/code/app.worktrees/APP-9', text: 'Go on' });
+  assert.equal(readSessions(raw).get(UUID_A).end, 0, 'the session continues, also when its start hook wrote no line');
+  assert.ok(!(await live(s)).past.some((item) => item.id === UUID_A));
+  // A session with another id shape (a test id, another host version) writes nothing.
+  await post(s, ev('prompt', { text: 'hello' }));
+  await post(s, { ...ev('prompt', { text: 'hello' }), host: 'vscode', session: UUID_B });
+  assert.ok(!readSessions(raw).has('S1') && !readSessions(raw).has(UUID_B));
+});
+
+test('POST /resume opens a terminal for one session of the list, and only for a request of a page of this server', async (t) => {
+  const calls = [];
+  let answer = { ok: true, how: 'test' };
+  const s = await start(t, { openTerminalFn: async (spec, options) => { calls.push({ spec, env: options.env }); return answer; } });
+  const raw = rawDir(s.wiki);
+  const now = Date.now();
+  // The folder of the first session is a folder of this repository that exists: the wiki folder is one of the roots.
+  recordStart(raw, { host: 'claude', id: UUID_A, cwd: s.wiki, title: 'APP-9 - ▶️ - Short APP-9' }, now - 60000);
+  recordEnd(raw, { host: 'claude', id: UUID_A, cwd: s.wiki, reason: 'prompt_input_exit' }, now - 30000);
+  recordStart(raw, { host: 'copilot-cli', id: 'cp-gone', cwd: '/code/app.worktrees/removed' }, now - 20000);
+  recordStart(raw, { host: 'copilot-cli', id: 'cp-out', cwd: os.tmpdir() }, now - 10000);
+  const origin = `http://127.0.0.1:${s.port}`;
+  const resume = (body, headers = {}, drop = []) => {
+    const all = { 'Content-Type': 'application/json', 'X-Forge-Token': s.page, Origin: origin, ...headers };
+    for (const name of drop) delete all[name];
+    return request(s.port, { method: 'POST', url: '/resume', body: typeof body === 'string' ? body : JSON.stringify(body), headers: all });
+  };
+
+  // Each refused request starts nothing.
+  assert.equal((await resume({ id: UUID_A }, { 'X-Forge-Token': s.event })).status, 403, 'the event token starts no terminal');
+  assert.equal((await resume({ id: UUID_A }, { 'X-Forge-Token': '' })).status, 403);
+  assert.equal((await resume({ id: UUID_A }, {}, ['Origin'])).status, 403, 'a request without the Origin of a page (a script, curl) starts no terminal');
+  assert.equal((await resume({ id: UUID_A }, { Origin: 'http://evil.test' })).status, 403);
+  assert.equal((await resume({ id: UUID_A }, { Origin: `http://localhost:${s.port}` })).status, 403, 'the Origin is the address of this page');
+  assert.equal((await resume({ id: UUID_A }, { 'Sec-Fetch-Site': 'cross-site' })).status, 403);
+  assert.equal((await resume({ id: UUID_A }, { Host: 'evil.test' })).status, 403);
+  assert.equal((await resume({ id: UUID_A }, { 'Content-Type': 'text/plain' })).status, 415);
+  assert.equal((await resume(JSON.stringify({ id: UUID_A, pad: 'x'.repeat(2000) }))).status, 413);
+  assert.equal((await request(s.port, { url: `/resume?t=${s.page}` })).status, 404, 'a link (GET) starts nothing');
+  for (const body of ['{not json', '{}', { id: 7 }, { id: '' }, { id: UUID_B }, { id: '--dangerously-skip-permissions' }, { id: 'S1' }, { id: [UUID_A] }]) {
+    const res = await resume(body);
+    assert.deepEqual([res.status, JSON.parse(res.text).ok], [404, false], JSON.stringify(body));
+  }
+  assert.deepEqual(calls, []);
+
+  // The page gives only the id. The folder, the command, and the tab title come from the record and the harness table.
+  const ok = await resume({ id: UUID_A, cwd: '/tmp', command: 'calc.exe', host: 'copilot-cli' });
+  assert.equal(ok.status, 200);
+  assert.match(ok.headers['content-type'], /^application\/json/);
+  assert.deepEqual(JSON.parse(ok.text), { ok: true, how: 'test', folder: s.wiki });
+  assert.deepEqual(calls.map((call) => call.spec), [{ cwd: s.wiki, argv: ['claude', '--resume', UUID_A], title: 'APP-9 Claude Code' }]);
+  assert.equal(calls[0].env, s.env);
+  // A second click in a short time opens no second terminal on the same session.
+  const again = await resume({ id: UUID_A });
+  assert.deepEqual([again.status, JSON.parse(again.text).ok], [409, false]);
+  assert.match(JSON.parse(again.text).error, /a moment ago/);
+  assert.ok(RESUME_GAP_MS >= 10000);
+  assert.equal(calls.length, 1);
+
+  // The folder of a session is gone (a removed worktree) or is not a folder of this repository: the terminal opens in a folder of the repository.
+  for (const id of ['cp-gone', 'cp-out']) {
+    const moved = await resume({ id });
+    assert.deepEqual(JSON.parse(moved.text), { ok: true, how: 'test', folder: s.wiki, moved: true }, id);
+    assert.deepEqual(calls.at(-1).spec, { cwd: s.wiki, argv: ['copilot', `--resume=${id}`], title: 'Copilot CLI' });
+  }
+
+  // No terminal starts on this machine: the page gets the command for the user, and a next click can try again.
+  answer = { ok: false };
+  recordStart(raw, { host: 'claude', id: UUID_B, cwd: s.wiki }, now - 5000);
+  const none = JSON.parse((await resume({ id: UUID_B })).text);
+  assert.deepEqual(none, { ok: false, command: `cd "${s.wiki}"; claude --resume ${UUID_B}`, error: 'No terminal started on this machine.' });
+  assert.equal(JSON.parse((await resume({ id: UUID_B })).text).command, none.command, 'no wait after a start that failed');
+
+  // A session that is live is open in a terminal: no second terminal.
+  answer = { ok: true, how: 'test' };
+  const count = calls.length;
+  await post(s, { v: 1, host: 'claude', event: 'prompt', ts: Date.now(), session: UUID_B, cwd: s.wiki, text: 'hello' });
+  const open = await resume({ id: UUID_B });
+  assert.deepEqual([open.status, JSON.parse(open.text).ok], [409, false]);
+  assert.match(JSON.parse(open.text).error, /is open/);
+  await post(s, { v: 1, host: 'claude', event: 'session-end', ts: Date.now() + 1, session: UUID_B, cwd: s.wiki, kind: 'other' });
+  assert.equal(JSON.parse((await resume({ id: UUID_B })).text).ok, true, 'after its end, the session can continue');
+  assert.equal(calls.length, count + 1);
+  assert.equal(ok.headers['access-control-allow-origin'], undefined);
 });

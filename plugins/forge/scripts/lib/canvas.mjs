@@ -551,12 +551,13 @@ const HELP = [
 
 // The Live panel. Only a page of the live server has it, and the page script fills it.
 const LIVE_HTML = '<aside id="live" aria-label="Live" hidden><h2>Live <button type="button" class="quiet icon" id="live-close" title="Hide the Live panel (l)" aria-label="Hide the Live panel">×</button></h2>'
-  + '<p class="hint" id="live-hint">No answer from the live server yet.</p><div id="live-body"></div></aside>';
+  + '<p class="hint" id="live-hint">No answer from the live server yet.</p><div id="live-body"></div><div id="live-past"></div></aside>';
 
 /**
  * The self-contained HTML page of a canvas model. With serve.token, the page can send its comments to the canvas server.
  * serve.home is the key of the ticket of that server, when this page shows another ticket: then the page cannot send.
  * serve.live is the address of the session states on the live server (live-serve.mjs): then the page has the Live panel, and it cannot send.
+ * serve.resume is the address on that server that continues a closed session: then a closed session has the Resume button.
  * nav (buildNav in ui.mjs) adds the links to the board page and to the other tickets.
  * wiki (wikiLinks in wiki.mjs) makes each link to a wiki page open the wiki page, and adds the Wiki menu of the bar.
  * mermaid lets the page draw its Mermaid blocks with the Mermaid file of forge (mermaid.mjs): the file is in raw/ for a file page, and on the server for a served page.
@@ -576,8 +577,9 @@ export function renderCanvas(model, { links = 'vscode', serve = null, nav = null
   const note = model.missing.length ? `<p class="note">Not written yet: ${esc(model.missing.join(', '))}.</p>` : '';
   const home = token && serve.home && serve.home !== ticket.key ? String(serve.home) : '';
   const live = token && serve.live ? String(serve.live) : '';
+  const resume = live && serve.resume ? String(serve.resume) : '';
   const draw = !mermaid || !needsMermaid(board) ? null : token ? { src: `${MERMAID_ROUTE}?t=${token}`, integrity: MERMAID_INTEGRITY } : { src: `../../${MERMAID_FILE}` };
-  const data = JSON.stringify({ key: ticket.key, generated: model.generated, ...(draw ? { mermaid: draw } : {}), ...(model.focus ? { focus: model.focus, focusZone: model.focusZone } : {}), ...(token ? { token } : {}), ...(home ? { home } : {}), ...(live ? { live } : {}), ...(nav ? { nav: navData(nav) } : {}) }).replace(/</g, '\\u003c');
+  const data = JSON.stringify({ key: ticket.key, generated: model.generated, ...(draw ? { mermaid: draw } : {}), ...(model.focus ? { focus: model.focus, focusZone: model.focusZone } : {}), ...(token ? { token } : {}), ...(home ? { home } : {}), ...(live ? { live } : {}), ...(resume ? { resume } : {}), ...(nav ? { nav: navData(nav) } : {}) }).replace(/</g, '\\u003c');
   return [
     '<!doctype html>', '<html lang="en">', '<head>', '<meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1">',

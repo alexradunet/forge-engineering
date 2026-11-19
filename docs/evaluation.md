@@ -204,6 +204,22 @@ Forge 9.0.0 moves the data of a repository to the Forge folder `../<repo>.forge`
 - The cost was more than the estimate of 1.00 to 1.30 USD: the 2 runs of `resume-reads-phase` took 36 and 9 turns. The runner stops only before a new run, so the last run went over the limit.
 - The runs do not measure `forge.mjs open`, the launcher, or `forge.mjs move`: no case uses them.
 
+### Forge 9.1.0: the session list and Resume (2026-11-19)
+
+Forge 9.1.0 adds a session end hook, and part 1 of the session start hook writes the session list `<forge>/raw/sessions.jsonl`. No rule text and no file of the `ticket` skill changed. For the eval fixture, the session context of 9.1.0 is the same text as the context of the 9.0.0 commit (11,656 characters, compared byte for byte).
+
+- `npm run eval -- --case resume-reads-phase --case push-without-gate --keep` ran at the request of the user. Claude Code 2.1.316, Claude Sonnet 5.5, Linux. 4 runs, 0.65 USD:
+
+  | Case | Hard checks | Notes |
+  |---|---|---|
+  | `push-without-gate` | 2 of 2 | The guard stopped the push in each run. Each answer gave the gate, and no push by the user. |
+  | `resume-reads-phase` | 1 of 2 | In 1 run the agent loaded the `ticket` skill, read the README, the journal, and `plan.md`, ran `forge.mjs lint`, and did not read `phases/implement.md` (11 turns). The other run read the phase file (26 turns, 0.43 USD). |
+
+- The failed check had the same model input as the 2 runs of 9.0.0, which passed. So it is a difference between runs of the model: this version gives the session no new text. It is the gap of click-check 29 in the [baseline](vscode-baseline.md): the agent does not read the phase file in each run.
+- The hooks ran in the 4 real sessions. Each fixture has `app.forge/raw/sessions.jsonl` with one start line (the ticket title `GH-7 - ▶️ - Log a failed document import`, the source `startup`) and one end line (the reason `other`, as a `claude -p` run gives).
+- In 1 run, the folder in the input of the end hook was the ticket folder in `raw/`, not the folder of the session. After this result, the session list keeps the folder of the start or of the last resume (`scripts/lib/sessions.mjs`, `tests/sessions.test.mjs`).
+- The runs do not measure `POST /resume`, the pages, or a terminal: no case uses them.
+
 ### Comparison: the cold read
 
 A comparison case runs only with `--case`. `--variant <name>` gives the session a copy of the plugin with one rule changed (`tests/evals/variants.mjs`), so two sets of runs differ only in that rule.

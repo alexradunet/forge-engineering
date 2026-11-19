@@ -25,7 +25,7 @@
 //   canvas  <key> --serve [--port <n>] [--links vscode|file]   show the canvas on http://127.0.0.1 until the user sends the comments
 //            from the page; then print the comment message and stop. Exit 0 after a Send, and not 0 when it stops without comments.
 //   live    [--port <n>] [--links vscode|file]   show the board and the canvases on http://127.0.0.1 with the live state of the agent sessions
-//            (the session hooks send their events to this server). Read-only for a session. It stops at a signal, or after 8 hours without an event.
+//            (the session hooks send their events to this server). It gives no text to a session: its one action is Resume, which opens a terminal for a closed session. It stops at a signal, or after 8 hours without an event.
 //            One server runs for each repository, and a session reports to the server of its repository.
 //   live --status   print the link of the live server of this repository, or exit 1 when none runs
 //   open    [--no-browser] [--port <n>] [--links vscode|file]   the command for a person: start the live server of this repository in the background
@@ -36,6 +36,7 @@
 //   hook session-start [--host <host>]   read the hook event on stdin; print {"additionalContext"} with the Forge context, else {}
 //   hook session-start --host claude --part <n>   the same for Claude Code: part n of the context in {"hookSpecificOutput"}
 //   hook prompt-submit --host claude   Claude Code: the ticket part and the session title when the prompt names a ticket
+//   hook session-end [--host <host>]   write the end of the session to the session list (<forge>/raw/sessions.jsonl); print {}
 //   hook pre-tool [--host <host>]   the gate guard: read the preToolUse event on stdin; for a push or a new change request
 //            in a ticket worktree without a valid Shippable? approval, print the deny (or ask) decision, else {}
 //   context [--cwd <dir>] [--host <host>]   print the Forge context (for a host without the hook)
@@ -58,7 +59,7 @@ import { findTicket } from './lib/tickets.mjs';
 import { approveGate } from './lib/approve.mjs';
 import { writeBoard } from './lib/board.mjs';
 import { createWorktree, planWorktree } from './lib/worktree.mjs';
-import { CLAUDE_PARTS, HOST_NAMES, contextText, promptSubmit, readEvent, resolveHost, sessionStart } from './lib/hook.mjs';
+import { CLAUDE_PARTS, HOST_NAMES, contextText, promptSubmit, readEvent, resolveHost, sessionEnd, sessionStart } from './lib/hook.mjs';
 import { preTool, preToolOutput, readToolEvent } from './lib/guard.mjs';
 import { diffGate, gateName, renderDiff, saveSnapshot } from './lib/reading.mjs';
 import { LINK_MODES, buildCanvas } from './lib/canvas.mjs';
@@ -300,7 +301,7 @@ export function hookArgs(argv, env = process.env) {
   out.host = explicitClaude ? 'claude' : resolveHost(out.host || 'copilot', env);
   if (name === 'session-start' && (explicitClaude || !partGiven)) return out;
   if (name === 'prompt-submit' && explicitClaude && !partGiven) return out;
-  if (name === 'pre-tool' && !partGiven) return out;
+  if ((name === 'pre-tool' || name === 'session-end') && !partGiven) return out;
   return null;
 }
 
@@ -325,12 +326,13 @@ export function main(argv = process.argv.slice(2)) {
     let result = {};
     try {
       const hook = hookArgs(argv);
-      if (!hook) console.error(`forge: Usage: forge.mjs hook session-start [--host vscode|copilot-cli | --host claude --part <1-${CLAUDE_PARTS}>] | hook prompt-submit --host claude | hook pre-tool [--host <host>] (reads the hook event JSON on stdin).`);
+      if (!hook) console.error(`forge: Usage: forge.mjs hook session-start [--host vscode|copilot-cli | --host claude --part <1-${CLAUDE_PARTS}>] | hook prompt-submit --host claude | hook pre-tool [--host <host>] | hook session-end [--host <host>] (reads the hook event JSON on stdin).`);
       else {
         let raw = '';
         try { if (!process.stdin.isTTY) raw = readFileSync(0, 'utf8'); } catch { /* no input */ }
         const options = { cli: fileURLToPath(import.meta.url), host: hook.host, part: hook.part };
         if (hook.name === 'pre-tool') result = preToolOutput(preTool(readToolEvent(raw)), hook.host);
+        else if (hook.name === 'session-end') result = sessionEnd(readEvent(raw), { host: hook.host });
         else result = hook.name === 'prompt-submit' ? promptSubmit(readEvent(raw), options) : sessionStart(readEvent(raw), options);
       }
     } catch (err) {
