@@ -10,6 +10,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { loadConfig } from './config.mjs';
+import { writeLauncher, writePointer } from './launcher.mjs';
 import { resolve, samePath } from './repo.mjs';
 import { STATE_EMOJI, nowCard, sessionTitle } from './ticket.mjs';
 import { listTickets } from './tickets.mjs';
@@ -172,7 +173,7 @@ function pathsLine(pluginDir, where) {
   const parts = [`\`<plugin>\` is \`${pluginDir}\`.`];
   if (where) {
     parts.push(`\`<repo>\` is \`${where.repo.path}\`.`);
-    if (where.wiki.exists) parts.push(`\`<wiki>\` is \`${where.wiki.path}\`.`, `\`<config>\` is \`${where.configDir}\`.`);
+    if (where.wiki.exists) parts.push(`\`<forge>\` is \`${where.forge.path}\`.`, `\`<wiki>\` is \`${where.wiki.path}\`.`, `\`<config>\` is \`${where.configDir}\`.`);
     else parts.push(`The wiki \`${where.wiki.path}\` does not exist.`);
   }
   return parts.join(' ');
@@ -276,6 +277,8 @@ export function buildContext(event, { cli, env = process.env, host = 'vscode' } 
   const pluginDir = path.dirname(path.dirname(cli));
   const forge = `node "${cli}"`;
   const where = locate(event, env);
+  // The launcher of the Forge folder needs the path of this plugin, which changes at each plugin update. A failure here stops no session.
+  try { if (where?.wiki.exists && where.forge.layout === 'forge') { writePointer(where.forge.path, pluginDir); writeLauncher(where.forge.path); } } catch { /* The launcher says what is missing. */ }
 
   let ticket = '';
   let title = '';

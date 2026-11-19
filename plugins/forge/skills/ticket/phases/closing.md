@@ -22,7 +22,7 @@ Run only when the user says that the ticket is done.
 7. Set `phase: closed` and `state: done` in `README.md`, and update the Now card. Rename the session title to ✅.
 8. Move the folder:
    ```sh
-   node -e "const fs=require('fs'),[,a,b]=process.argv;fs.mkdirSync(require('path').dirname(b),{recursive:true});fs.renameSync(a,b)" "<wiki>/raw/tickets/<key>" "<wiki>/archive/tickets/<key>"
+   node -e "const fs=require('fs'),[,a,b]=process.argv;fs.mkdirSync(require('path').dirname(b),{recursive:true});fs.renameSync(a,b)" "<forge>/raw/tickets/<key>" "<forge>/archive/tickets/<key>"
    ```
 9. Append a `close` entry to `<wiki>/log.md` that lists each changed page. Commit the canonical pages in the wiki repository.
 10. Clean up the ticket worktree. Ask the user first, with one `host.ask` confirmation. Without a "yes", leave it.

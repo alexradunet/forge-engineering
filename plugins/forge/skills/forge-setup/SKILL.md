@@ -1,6 +1,6 @@
 ---
 name: forge-setup
-description: Set up, check, repair, resume, or refresh forge for the repository of the plugin profile. Detects the CLIs and their login, the MCP servers of the profile, the default branch, your branch pattern, and your main clone; creates or binds the repository wiki (../<repo>.wiki); seeds the profile config (tracker, repository, CI, policy) and the rule pages; sets your personal values; stores the credentials of the profile in the OS credential store; checks each capability with a live read; and offers the optional extras (learning mode, daily recap, automations). Use when the user says "set up forge", "configure forge", "check forge", "repair forge", "finish forge setup", "resume forge setup", or "refresh the forge config".
+description: Set up, check, repair, resume, or refresh forge for the repository of the plugin profile. Detects the CLIs and their login, the MCP servers of the profile, the default branch, your branch pattern, and your main clone; creates or binds the Forge folder of the repository (../<repo>.forge, with its wiki); seeds the profile config (tracker, repository, CI, policy) and the rule pages; sets your personal values; stores the credentials of the profile in the OS credential store; checks each capability with a live read; and offers the optional extras (learning mode, daily recap, automations). Use when the user says "set up forge", "configure forge", "check forge", "repair forge", "finish forge setup", "resume forge setup", or "refresh the forge config".
 disable-model-invocation: true
 ---
 
@@ -12,7 +12,7 @@ disable-model-invocation: true
 > [forge.md](../../context/forge.md) and [style.md](../../context/style.md): they are the `forge` and `style` rules.
 
 One chat sets up forge for the repository of the plugin profile. The plugin holds the profile config templates,
-but no machine paths. The config lives in the repository wiki (`../<repo>.wiki`).
+but no machine paths. The config lives in the repository wiki (`../<repo>.forge/wiki`).
 
 ## 🏷️ Profile
 
@@ -41,7 +41,8 @@ resolved path in each command. All commands run on Windows, macOS, and Linux.
 | `<F> where --json` | Repository, worktree, wiki, and config folder | nothing |
 | `<F> detect` | Host, visibility, CLIs and login, default branch, key hints, your branch pattern, wiki state, and suggested values | nothing |
 | `<F> doctor` | Read-only check of the whole setup, with placeholders and credentials | nothing |
-| `<F> init-wiki` | Create the local wiki (`git init`, `.gitignore`, `index.md`) and bind it | the wiki folder |
+| `<F> init` | Create the Forge folder `../<repo>.forge`: the wiki (`git init`, `index.md`, the binding), `raw/`, `archive/`, and the launcher | the Forge folder |
+| `<F> move [--dry-run]` | Move an older folder `../<repo>.wiki` to the Forge folder. It changes no file | the two folders |
 | `<F> bind` | Write `<wiki>/forge/repo.json` | the wiki folder |
 | `<F> seed [--force]` | Copy the profile templates to `<wiki>/forge/config`, and the rule pages to `<wiki>/rules` | the wiki folder |
 | `<F> config set <file>.<key>=<value> ...` | Set frontmatter values. Validates first; writes nothing on a problem | the wiki folder |
@@ -103,7 +104,8 @@ A missing CLI never blocks setup. Continue, and tell the user that those capabil
 ### Step 3. Wiki
 
 When `wiki.exists` is false, show the path and the remote, and ask for approval (see **📚 Wiki remote**).
-Clone the team wiki to that path when the team already shares one. Otherwise, run `init-wiki`.
+Clone the team wiki to that path (`../<repo>.forge/wiki`) when the team already shares one. Then run `init`: it adds `raw/`, `archive/`, and the launcher, and it changes no file of the clone. Without a team wiki, `init` also creates the wiki.
+When `forge.layout` of `where` is `wiki`, the repository has an older folder `../<repo>.wiki`. It still works. Show the steps of `<F> move --dry-run`, and run `<F> move` only after a "yes". Tell the user to update the plugin in each host first, and to start each session again after the move.
 Run `bind` after a clone, or when an existing wiki is not bound.
 Add the remote with `git -C <wiki> remote add origin <url>` only after approval.
 A cloned wiki usually has its config already. Then skip to step 5, and set only your personal values.
@@ -225,7 +227,7 @@ Write the answer with `<F> config set "policy.learningMode=true"` (or `false`). 
 ### Daily recap
 
 Ask whether the user wants a daily recap. When yes, use the `daily-recap` skill to write
-`<wiki>/raw/daily-recap/settings.json` (time zone, work days, daily meeting, and the `mine` query).
+`<forge>/raw/daily-recap/settings.json` (time zone, work days, daily meeting, and the `mine` query).
 Then offer a scheduled VS Code Automation "Prepare my daily":
 
 1. Read the [Automations](https://code.visualstudio.com/docs/agents/run/automations) page first. Its UI and settings change.
@@ -252,7 +254,7 @@ The forge plugin has two automation templates. VS Code shows them under **Templa
 3. In the **New Automation** dialog: **Run in the Cloud** off, the main checkout as the workspace, not **New Worktree**, and the default **Agent**. In VS Code 1.145, a run with a plugin agent has no workspace and does not get the agent instructions.
    Select a model that defers MCP tools, for example Claude Sonnet. Also read **Automations** in `profile.md`. A model that loads all MCP tools in full can exceed its context budget before the run starts. In **Advanced** > **Customizations**, keep **forge** selected. Review the prompt, the schedule, and the permissions. With **Interactive**, each run stops at its first command until you approve it. For runs without you, select **Allow all**.
 4. Select **Run now** one time, and review the run in **History**. Then select **Enabled**, and save.
-5. A run writes only in `<wiki>/raw/` and changes only session titles and groups. It reads the tracker, the repository host, and CI.
+5. A run writes only in `<forge>/raw/` and changes only session titles and groups. It reads the tracker, the repository host, and CI.
 6. Never create, change, or enable an automation without explicit approval. When the user asks you to create one, use `host.automation` with:
    the template prompt, the template schedule as a cron expression, the main checkout as a folder workspace (not a worktree),
    and a Claude Sonnet model from the list of automation models, not Haiku.
@@ -267,8 +269,12 @@ The forge plugin has two automation templates. VS Code shows them under **Templa
 
 ## 📚 Wiki remote
 
-The wiki is `../<repo>.wiki`, next to `../<repo>.worktrees`. It holds the forge config,
-helper scripts, and knowledge pages. `raw/` and `archive/` stay local (`.gitignore`).
+The wiki is `../<repo>.forge/wiki`, and the Forge folder is next to `../<repo>.worktrees`. The wiki holds the forge config,
+helper scripts, and knowledge pages. `raw/` and `archive/` are next to the wiki, so they stay local.
+
+The Forge folder has a launcher: the user runs `../<repo>.forge/forge open` in a terminal (`forge.cmd` on Windows).
+It starts the live server of the repository in the background and opens the board and the wiki in the browser.
+Tell the user this command at the end of the setup.
 
 | `suggestion.wikiRemote.type` | Meaning | Action |
 |---|---|---|

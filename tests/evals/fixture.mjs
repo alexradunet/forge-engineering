@@ -2,7 +2,7 @@
 // All data is synthetic. Layout of one run:
 //   <base>/ws                      the ticket worktree: the folder where the session starts
 //   <base>/ws/app                  the main checkout (Git ignores it in the worktree)
-//   <base>/ws/app.wiki             the wiki of the repository, with the config and one ticket folder
+//   <base>/ws/app.forge            the Forge folder of the repository: wiki/ with the config, and raw/ with one ticket folder
 //   <base>/ws/origin.git           the remote, a bare repository on this machine
 //   <base>/data                    the Forge data folder (FORGE_DATA_DIR): the trust approvals
 //   <base>/bin                     the gh stub (gh-stub.mjs) that run.mjs puts first on the PATH
@@ -81,7 +81,7 @@ export function buildFixture(name, { env = process.env } = {}) {
   for (const [file, text] of Object.entries(scenario.files ?? {})) put(path.join(first, ...file.split('/')), text);
   git(first, 'add', '.');
   git(first, 'commit', '-q', '-m', 'Add the document import');
-  appendFileSync(path.join(first, '.git', 'info', 'exclude'), '/app/\n/app.wiki/\n/origin.git/\n');
+  appendFileSync(path.join(first, '.git', 'info', 'exclude'), '/app/\n/app.forge/\n/origin.git/\n');
   git(first, 'worktree', 'add', '-q', '-b', BRANCH, root);
   const app = path.join(root, 'app');
   renameSync(first, app);
@@ -96,9 +96,10 @@ export function buildFixture(name, { env = process.env } = {}) {
   }
 
   // The wiki, the config of the profile, and the approval of its files, as the user gives it in setup.
-  const wiki = path.join(root, 'app.wiki');
-  mkdirSync(wiki);
-  put(path.join(wiki, 'index.md'), `---\ntitle: Index\ntype: index\n---\n# Index\n\n## Tickets\n\n### Active\n\n- [${KEY}](raw/tickets/${KEY.toLowerCase()}/README.md) (local only)\n`);
+  // Forge 9: the Forge folder, with the wiki in wiki/ and the ticket folders in raw/ next to it.
+  const wiki = path.join(root, 'app.forge', 'wiki');
+  mkdirSync(wiki, { recursive: true });
+  put(path.join(wiki, 'index.md'), `---\ntitle: Index\ntype: index\n---\n# Index\n\n## Tickets\n\n### Active\n\n- [${KEY}](../raw/tickets/${KEY.toLowerCase()}/README.md) (local only)\n`);
   const where = resolve({ cwd: root, env: runEnv });
   bind(where);
   const { configDir } = seed(where, path.join(plugin, 'templates', 'config'));
@@ -108,7 +109,7 @@ export function buildFixture(name, { env = process.env } = {}) {
   approve(where, status(where, { env: runEnv }).files.map((f) => `${f.rel}=${f.sha.slice(0, 12)}`), { env: runEnv });
 
   // The ticket folder.
-  const dir = path.join(wiki, 'raw', 'tickets', KEY.toLowerCase());
+  const dir = path.join(root, 'app.forge', 'raw', 'tickets', KEY.toLowerCase());
   const texts = {
     'story.md': `---\ntype: story\nticket: ${KEY}\ngate: Scoped?\nupdated: 2026-11-17\n---\n# Story ${KEY}: Log a failed document import\n\nProblem: a document without an id fails the import, and no log line shows it.\n\nScope: log one error event for a failed import. No retry.\n\nNeed from you: GO on Scoped?\n\n## Scope\n\n- In: one \`import.failed\` log event with the reason.\n- Out: a retry of the import.\n\n## Done when\n\n- A document without an id gives \`ok: false\` and one \`import.failed\` event.\n`,
     'plan.md': `---\ntype: plan\nticket: ${KEY}\ngate: Planned?\nupdated: 2026-11-17\n---\n# Plan ${KEY}: Log a failed document import\n\nPlan: add a log parameter to \`importDocument\`, and log \`import.failed\` when the id is missing.\n\nNeed from you: GO on Planned?\n\n## Diagnosis\n\n- supported: \`importDocument\` returns ok for each document, and it does not check the id.\n\n## Steps\n\n1. Check the id in \`importDocument\`.\n   Files: src/import.js\n   Why: the import must fail for a document without an id.\n   Test: a unit test for a document without an id.\n\n## Checks\n\n- A document without an id gives one \`import.failed\` event. Baseline: no event before the change.\n`,

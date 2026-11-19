@@ -185,7 +185,7 @@ test('CLI config set and row print the changed files and fail without writing', 
   const ok = spawnSync(process.execPath, [cli, 'config', 'set', 'repo.baseBranch=develop'], { cwd: app, env, encoding: 'utf8' });
   assert.equal(ok.status, 0, ok.stderr);
   assert.deepEqual(JSON.parse(ok.stdout).changed, ['config/repo.md']);
-  const row = spawnSync(process.execPath, [cli, 'config', 'row', 'queries', 'mine', '--assignee=@me', '--wiki', path.join(root, 'app.wiki')], { cwd: app, env, encoding: 'utf8' });
+  const row = spawnSync(process.execPath, [cli, 'config', 'row', 'queries', 'mine', '--assignee=@me', '--wiki', path.join(root, 'app.forge', 'wiki')], { cwd: app, env, encoding: 'utf8' });
   assert.equal(row.status, 0, row.stderr);
   assert.equal(loadConfig(dir).config.tracker.queries.mine, '--assignee=@me');
   const bad = spawnSync(process.execPath, [cli, 'config', 'set', 'repo.changeName=XR'], { cwd: app, env, encoding: 'utf8' });

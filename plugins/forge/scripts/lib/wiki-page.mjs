@@ -1,4 +1,4 @@
-// The wiki page: <wiki>/raw/wiki.html. One page for all canonical pages of the wiki (wiki.mjs): a list of the pages by folder,
+// The wiki page: <forge>/raw/wiki.html. One page for all canonical pages of the wiki (wiki.mjs): a list of the pages by folder,
 // and one page in view. The address of a page is the path of its Markdown file after the "#" of the link.
 // Each page shows its sources, the pages that name it, and the open tickets that name it. The summary pages of the
 // closed tickets are in the folder tickets/. It loads nothing from a network, and it is never a source.

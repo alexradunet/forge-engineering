@@ -95,7 +95,7 @@ The artifacts panel of the host (`host.artifact`) shows what this session works 
 
 ### 📋 Ticket overview
 
-When the user asks for "the board", "my tickets", or a ticket status, use the `board` skill. `<F> board --json` reads the README frontmatter of each ticket folder and groups the tickets by `state`. `<F> board` writes the same view to `<wiki>/raw/board.md`. The README frontmatter stays the source.
+When the user asks for "the board", "my tickets", or a ticket status, use the `board` skill. `<F> board --json` reads the README frontmatter of each ticket folder and groups the tickets by `state`. `<F> board` writes the same view to `<forge>/raw/board.md`. The README frontmatter stays the source.
 
 - Start `waiting_on` with `you:`, `colleague:`, or `outside:`.
 - When a gate is `in-review` or `waiting_on` starts with `you:`, set `state: needs-me`.

@@ -13,13 +13,13 @@ description: Prepare a personal daily recap (done since the last recap, plan for
 A daily recap is a short personal summary of your work day.
 Use it before a daily meeting, or alone when your team has no daily meeting.
 
-Recaps live in `<wiki>/raw/daily-recap/`. Each repository wiki has its own recaps.
-Get `<wiki>` from `forge.mjs where` (see the `forge` rule). Run the recap from the repository or a worktree.
+Recaps live in `<forge>/raw/daily-recap/`. Each repository wiki has its own recaps.
+Get `<forge>` and `<wiki>` from `forge.mjs where` (see the `forge` rule). Run the recap from the repository or a worktree.
 Git ignores `raw/`, so recaps stay on this machine.
 They are working material, not canonical wiki pages.
 
 ```text
-<wiki>/raw/daily-recap/
+<forge>/raw/daily-recap/
   settings.json          schedule, sources, sections
   days/<yyyy-mm-dd>/
     recap.md             the draft or reviewed recap
@@ -30,7 +30,7 @@ They are working material, not canonical wiki pages.
 
 Read `settings.json` first. When it does not exist:
 
-1. If `<wiki>/raw/meetings/daily/` exists, offer to move it. Wait for a "yes". Then:
+1. If `<forge>/raw/meetings/daily/` exists, offer to move it. Wait for a "yes". Then:
    - move `series.json` to `settings.json`,
    - move each `occurrences/<date>/brief.md` to `days/<date>/recap.md`, and each `outcome.md` with it,
    - make each source path relative to `<wiki>` (remove `${ORCH_WIKI_ROOT}` or `${FORGE_WIKI_ROOT}`, and use `/`),
@@ -62,7 +62,7 @@ Read `settings.json` first. When it does not exist:
 
 - `meetingTime` is `null` when there is no daily meeting. With a meeting, add the section "Questions for the team".
 - `sources.tracker.query` is a name from `tracker.queries` (the **Queries** table of `<config>/tracker.md`), or a query in the syntax of the tool.
-- A source path is relative to `<wiki>`.
+- A source path is relative to `<forge>`.
 
 ## 📅 Pick the day
 

@@ -6,6 +6,7 @@ import path from 'node:path';
 import { buildBoard } from './board.mjs';
 import { BOARD_PAGE, renderBoardPage } from './board-page.mjs';
 import { CANVAS_FILE, buildCanvas, writeCanvas } from './canvas.mjs';
+import { rawDir } from './layout.mjs';
 import { copyMermaid, needsMermaid } from './mermaid.mjs';
 import { ticketRoot } from './tickets.mjs';
 import { buildNav } from './ui.mjs';
@@ -13,11 +14,11 @@ import { WIKI_PAGE, renderWikiPage } from './wiki-page.mjs';
 import { buildWiki, wikiLinks } from './wiki.mjs';
 
 export function boardPageFile(wikiPath) {
-  return path.join(wikiPath, 'raw', BOARD_PAGE);
+  return path.join(rawDir(wikiPath), BOARD_PAGE);
 }
 
 export function wikiPageFile(wikiPath) {
-  return path.join(wikiPath, 'raw', WIKI_PAGE);
+  return path.join(rawDir(wikiPath), WIKI_PAGE);
 }
 
 // Writes a page when its text changed. A page must be a regular file: a link can point outside of the wiki.

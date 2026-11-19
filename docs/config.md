@@ -1,7 +1,7 @@
 # ⚙️ Configuration
 
 forge reads the config from four Markdown files in `<wiki>/forge/config/`.
-`<wiki>` is the wiki of the repository, by default `../<repo>.wiki`.
+`<wiki>` is the wiki of the repository, by default `../<repo>.forge/wiki`.
 
 | File | Holds | Example |
 |---|---|---|

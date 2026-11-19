@@ -13,12 +13,12 @@ Run the forge maintenance for this repository. No user answers questions in this
 Do all 8 steps in each run. Do not skip a step because an earlier run did it or because nothing changed.
 
 1. Run `<F> where --json`. When it fails, or the wiki does not exist, report it and stop.
-   `<wiki>` is its `wiki.path`, and `<config>` is its `configDir`.
+   `<forge>` is its `forge.path`, `<wiki>` is its `wiki.path`, and `<config>` is its `configDir`.
 2. Run `<F> board --json`.
 3. For each ticket that is not done, read the tracker status, the change request state, and the CI result.
    Use read-only commands only. Use only the capability rows of `<config>`: `tracker.fetch` in `tracker.md`
    (the tool that its row names), and the read rows of `repo.md` and `ci.md`. Do not use a tool that the rows do not name.
-   Write `<wiki>/raw/sync/<KEY>.md` with this frontmatter, one line for each value:
+   Write `<forge>/raw/sync/<KEY>.md` with this frontmatter, one line for each value:
    `checked` (the local time, `YYYY-MM-DDTHH:MM`), `tracker` (the tracker status, for each tracker), `pr`, and `ci`.
    Leave a value empty when you cannot read it, and write the failure under the frontmatter.
    Write each note in each run, with the new `checked` time, also when the values did not change.
@@ -37,7 +37,7 @@ Do all 8 steps in each run. Do not skip a step because an earlier run did it or 
 
 Rules:
 
-- Write only `<wiki>/raw/board.md` and `<wiki>/raw/sync/<KEY>.md`. `<F> board` also writes the pages of the same data (`<wiki>/raw/board.html`, and `canvas.html` in each ticket folder). Change only session titles and groups.
+- Write only `<forge>/raw/board.md` and `<forge>/raw/sync/<KEY>.md`. `<F> board` also writes the pages of the same data (`<forge>/raw/board.html`, and `canvas.html` in each ticket folder). Change only session titles and groups.
 - Do not change code, ticket files, approvals, or wiki pages.
 - Read the tracker, the repository host, and CI only. No comments, transitions, pushes, or merges.
 - Never send a message to a session. Never answer a session question, an approval form, or a permission prompt.

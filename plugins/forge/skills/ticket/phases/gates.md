@@ -115,10 +115,10 @@ The message body is short. Put in it, in this order:
 
 The canvas is one HTML page that shows the whole ticket on one board: the gate rail, the story and the people, the code map with the changed components, the plan as a path, and the review with its proof. The user reads and moves on it. The Markdown files stay the source.
 
-- Make it with `<F> canvas <KEY>`. It writes `<wiki>/raw/tickets/<key>/canvas.html` from the ticket files and prints the path. `<F> canvas <KEY> --json` prints the same content as data.
+- Make it with `<F> canvas <KEY>`. It writes `<forge>/raw/tickets/<key>/canvas.html` from the ticket files and prints the path. `<F> canvas <KEY> --json` prints the same content as data.
 - Run it again after each change of a ticket document that the user will read: after the research, when a gate opens, after you handle comments, and at Resume. Run it when the user asks to "show the canvas" or "show the code map".
 - Give the user the `file://` link of `canvas.html`. The "Ticket canvas" part of the host file says how the user opens a local HTML page. The `# Forge host` part of the session context names that file.
-- The command also writes the board page (`<wiki>/raw/board.html`) and the canvas of each ticket that has none. So the page has links to the other pages: **Board**, the ticket key (it opens a list of all tickets), and the arrows to the previous and the next ticket.
+- The command also writes the board page (`<forge>/raw/board.html`) and the canvas of each ticket that has none. So the page has links to the other pages: **Board**, the ticket key (it opens a list of all tickets), and the arrows to the previous and the next ticket.
 - For a review, run `<F> canvas <KEY> --serve`. It shows the same page on `http://127.0.0.1` (this machine only) and prints the link. This page has the button **Send to agent**. When the user selects it, the command prints the comment message and stops.
   - Use it when a gate opens, and when the user wants to comment on the canvas. Start it as the "Ticket canvas" part of the host file says, give the user the link, and do not wait for the command in the turn.
   - Each run has a new link. After you handle the comments, run it again and give the new link.

@@ -53,4 +53,5 @@ so your memory of a VS Code feature can be old.
 - The board page (`scripts/lib/board-page.mjs`), the wiki page (`scripts/lib/wiki-page.mjs`), and the ticket canvas share one design system: `scripts/lib/ui.mjs` and [docs/design-system.md](docs/design-system.md).
   Change a token or a shared component and the document together (`tests/board-page.test.mjs`). Look at each page change in a browser, in the light and the dark theme.
 - Change the version in `plugins/forge/plugin.json`, `.github/plugin/marketplace.json`, and `.claude-plugin/marketplace.json` together (`tests/packaging.test.mjs`).
-- Never commit a wiki `raw/` file, a credential, or a personal path.
+- Never commit a `raw/` file of a Forge folder, a credential, or a personal path.
+- `scripts/lib/layout.mjs` is the only place that knows where `raw/` and `archive/` are for a wiki folder: next to the wiki in a Forge folder `../<repo>.forge`, and inside the wiki in an older folder `../<repo>.wiki`. Use `rawDir` and `archiveDir`, and write `<forge>/raw` in plugin text.

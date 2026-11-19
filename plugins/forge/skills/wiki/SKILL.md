@@ -1,6 +1,6 @@
 ---
 name: wiki
-description: Engineering wiki of the current repository (../<repo>.wiki), shared by all sessions in the VS Code Agents window. Use it to look up past findings, gotchas, decisions, and how parts of your code connect, and to record new durable knowledge. Use when asked to "check the wiki", "remember this in the wiki", "add to wiki", "what do we know about X", "lint the wiki", or when you start non-trivial work in an area the wiki index covers.
+description: Engineering wiki of the current repository (../<repo>.forge/wiki), shared by all sessions in the VS Code Agents window. Use it to look up past findings, gotchas, decisions, and how parts of your code connect, and to record new durable knowledge. Use when asked to "check the wiki", "remember this in the wiki", "add to wiki", "what do we know about X", "lint the wiki", or when you start non-trivial work in an area the wiki index covers.
 ---
 
 # 📚 Repository wiki
@@ -10,14 +10,15 @@ description: Engineering wiki of the current repository (../<repo>.wiki), shared
 > is two folders above the folder of this file. When the command fails, read
 > [forge.md](../../context/forge.md) and [style.md](../../context/style.md): they are the `forge` and `style` rules.
 
-The wiki is a folder of Markdown pages next to the repository: `../<repo>.wiki`. Get its path with
-`forge.mjs where` (see the `forge` rule). This skill calls that folder `<wiki>`. All
+The wiki is a folder of Markdown pages in the Forge folder of the repository: `../<repo>.forge/wiki`. Get its path with
+`forge.mjs where` (see the `forge` rule). This skill calls that folder `<wiki>`, and the Forge folder `<forge>`. All
 sessions read and update it. It is the shared memory layer between sessions.
 
 The wiki is its own Git repository. Keep it private when it holds company knowledge.
 Use a public wiki only when all tracked files and Git history contain public data.
 The wiki shares configuration and helper scripts through Git. It needs no separate distribution layer.
-Git ignores `raw/` and `archive/`, so they stay on this machine only.
+`raw/` and `archive/` are next to the wiki in `<forge>`. They are not in the wiki repository, so they stay on this machine only.
+In an older folder `../<repo>.wiki`, they are inside the wiki, and Git ignores them.
 
 ```text
 <wiki>/
@@ -29,9 +30,9 @@ Git ignores `raw/` and `archive/`, so they stay on this machine only.
   <area>/         architecture, flows, and code knowledge (one folder for each product or codebase)
   decisions/      decisions and their reasons
   tickets/        one summary page per closed ticket
-  raw/tickets/    working folders of active tickets (the `ticket` skill)
-  raw/daily-recap/ daily recaps and outcomes (the `daily-recap` skill)
-  archive/tickets/ raw folders of closed tickets, kept as they were
+<forge>/raw/tickets/      working folders of active tickets (the `ticket` skill)
+<forge>/raw/daily-recap/  daily recaps and outcomes (the `daily-recap` skill)
+<forge>/archive/tickets/  raw folders of closed tickets, kept as they were
 ```
 
 `raw/` and `archive/` are working material, not canonical pages. The `ticket`
@@ -113,7 +114,7 @@ sources:
 
 Every canonical page starts with this frontmatter. `index.md` and `log.md` have only `title` and `type`.
 An absent `log.md` is allowed until it is created; do not invent entries just to satisfy lint.
-Ticket documents in `raw/tickets/` use their own frontmatter schema (the `ticket` skill, "Frontmatter").
+Ticket documents in `<forge>/raw/tickets/` use their own frontmatter schema (the `ticket` skill, "Frontmatter").
 Writing rules:
 
 - Follow the wiki page mode of the [`writing` skill](../writing/SKILL.md): STE, a full pass for AI patterns, no emoji, and no bold labels.

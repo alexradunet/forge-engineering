@@ -111,7 +111,7 @@ test('each automation template has the documented frontmatter and a cron schedul
 test('the automations keep the agreed schedules and their limited write scope', () => {
   const maintenance = frontmatter(path.join(automationDir, 'forge-maintenance.automation.md'));
   assert.equal(maintenance.data.schedule.expression, '0 9,11,13,15,17 * * MON-FRI');
-  for (const text of ['Write only `<wiki>/raw/board.md` and `<wiki>/raw/sync/<KEY>.md`', 'Do not use `--fix`', 'Never send a message to a session', 'Ignore the context of the Forge `sessionStart` hook']) {
+  for (const text of ['Write only `<forge>/raw/board.md` and `<forge>/raw/sync/<KEY>.md`', 'Do not use `--fix`', 'Never send a message to a session', 'Ignore the context of the Forge `sessionStart` hook']) {
     assert.ok(maintenance.body.includes(text), `maintenance: ${text}`);
   }
   const recap = frontmatter(path.join(automationDir, 'forge-daily-recap.automation.md'));

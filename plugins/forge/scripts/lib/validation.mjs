@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { appendFileSync, lstatSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { nowCard, parseFrontmatter, parseTicket, validDate } from './ticket.mjs';
+import { homeOf, rawDir } from './layout.mjs';
 import { DOC_BUDGET, SUMMARY_BUDGET, V3_DOCS, summaryCheck } from './reading.mjs';
 
 // The gates of a full-v3 ticket. Each gate has one document, and the plan has no approved copy.
@@ -282,9 +283,10 @@ export function lint({ wikiPath, repoPath, fix = false }) {
   inspect(report.wikiPath, () => {
     if (!lstatSync(report.wikiPath).isDirectory()) throw new Error('Wiki path must be a directory.');
     let ticketRoot = null;
-    try { ticketRoot = within(report.wikiPath, 'raw\\tickets'); }
+    // The tickets are in the raw folder of the Forge folder: inside the wiki for an older folder, and next to the wiki from Forge 9.
+    try { ticketRoot = within(homeOf(report.wikiPath), 'raw\\tickets'); }
     catch (error) {
-      if (error.code !== 'ENOENT') add(path.join(report.wikiPath, 'raw', 'tickets'), 'invalid-input', error.message, 'Inspect the ticket path explicitly; lint does not follow links.');
+      if (error.code !== 'ENOENT') add(path.join(rawDir(report.wikiPath), 'tickets'), 'invalid-input', error.message, 'Inspect the ticket path explicitly; lint does not follow links.');
     }
     const keys = new Set();
     for (const entry of ticketRoot ? children(ticketRoot) : []) {

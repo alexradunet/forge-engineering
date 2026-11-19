@@ -127,7 +127,8 @@ test('outside a repository or without a wiki the hook gives only the plugin path
   rmSync(s.wiki, { recursive: true, force: true });
   const noWiki = run({ cwd: s.app, prompt: 'APP-7' }).additionalContext;
   assert.ok(noTicket({ additionalContext: noWiki }));
-  assert.match(noWiki, /The wiki `.*app\.wiki` does not exist\./);
+  // Forge 9: without a folder, the wiki of the repository is the wiki/ folder of its Forge folder.
+  assert.match(noWiki, /The wiki `.*app\.forge[\\/]wiki` does not exist\./);
 });
 
 test('every session gets the paths, the forge and style rules, and the ticket part first', (t) => {

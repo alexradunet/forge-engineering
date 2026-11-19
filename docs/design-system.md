@@ -70,7 +70,7 @@ The page is read-only for a session. It has no control that sends text or an ans
 
 ## Wiki page
 
-The wiki page (`raw/wiki.html`) shows each canonical page of the wiki: each Markdown file outside `raw/`, `archive/`, `forge/`, and `.git`. `forge.mjs lint` checks the same files.
+The wiki page (`raw/wiki.html` in the Forge folder) shows each canonical page of the wiki: each Markdown file of the wiki outside `forge/` and `.git` (and outside `raw/` and `archive/` in an older folder, where they are inside the wiki). `forge.mjs lint` checks the same files.
 One file holds all pages. The address of a page is the path of its Markdown file after the `#` of the link, for example `wiki.html#tooling/build.md`.
 
 - The list at the left has one group for each folder. The pages at the top of the wiki come first, and the folder `tickets/` has the name **Closed tickets**.
@@ -253,6 +253,7 @@ The switcher of each page also lists the closed tickets, after the tickets of th
 | A session works on a ticket | The board card shows the live line: "working", the time, the tool that runs now, and the count of subagents that run. The canvas shows the same line and the tree of the turn in the Live panel |
 | A session waits for the user | The live line is amber and says "needs you", with the text of the prompt of the host. The **Live** button of the canvas says "Live: needs you". The user answers in the session, not on the page |
 | A session of the repository has no ticket on the board | The board lists it under **Other sessions**, with its title or its folder name |
+| The user wants to open Forge from a terminal | `../<repo>.forge/forge open` starts the server of that repository when none runs, prints the links, and opens the board in the browser |
 | Two repositories are open | Each repository has its own server, port, and pages. A session shows only on the pages of its repository, and a session in another folder shows on no page |
 | No session reports for a ticket | The Live panel says so, and it names the 2 ways that give a session its ticket: the worktree of the ticket, or the ticket key at the start of the title |
 | A session works for 10 minutes without an event | The live line says "working, quiet" and shows the time since the last event |
@@ -295,6 +296,7 @@ The switcher of each page also lists the closed tickets, after the tickets of th
 - The canvas has no pinch zoom on a touch screen.
 - The theme of the user applies after the page loaded, so a dark page can show light for a moment.
 - A file page shows the tickets of its last run. Only a served page reads the files on each load.
+- A ticket document that was written before the move to a Forge folder has links with the old depth. The canvas still opens the wiki page for such a link. A link with an absolute path to the old folder does not work after the move.
 - The live view shows Claude Code sessions only. The hooks of Copilot CLI and VS Code have no background option, so those hosts send no events yet.
 - The Live panel shows the last text at the end of a turn or of a subagent. It does not show the text while the model writes it.
 - A `claude -p` run stops its background hooks when it ends, so its last text can be missing.

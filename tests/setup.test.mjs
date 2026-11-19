@@ -1,9 +1,10 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { LAUNCHER_CMD, LAUNCHER_SH, readPointer } from '../plugins/forge/scripts/lib/launcher.mjs';
 import { resolve } from '../plugins/forge/scripts/lib/repo.mjs';
 import { detect, hostKind, initWiki, bind, seed, keyHints, branchPatternHint, suggestValues } from '../plugins/forge/scripts/lib/setup.mjs';
 import { loadConfig, parseFile } from '../plugins/forge/scripts/lib/config.mjs';
@@ -66,13 +67,38 @@ test('detect does not offer a disabled public wiki', () => {
   assert.deepEqual(d.suggestion.wikiRemote.options, ['separate-private-repo', 'local-only']);
 });
 
-test('initWiki creates, ignores raw, binds, and is idempotent', () => {
+test('initWiki keeps an older ../<repo>.wiki folder: it ignores raw and archive inside the wiki, and adds no launcher', () => {
+  const other = path.join(root, 'old');
+  mkdirSync(other);
+  execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: other });
+  mkdirSync(`${other}.wiki`);
+  const where = resolve({ cwd: other, env });
+  assert.deepEqual([where.wiki.path, where.forge.path, where.forge.layout, where.raw], [`${other}.wiki`, `${other}.wiki`, 'wiki', path.join(`${other}.wiki`, 'raw')]);
+  const r = initWiki(where, { pluginDir: path.join(root, 'plugin') });
+  assert.match(readFileSync(path.join(`${other}.wiki`, '.gitignore'), 'utf8'), /^raw\/\narchive\/$/m);
+  assert.ok(!r.created.some((name) => name.startsWith('../')) && !existsSync(path.join(`${other}.wiki`, '.plugin')));
+  assert.deepEqual(initWiki(resolve({ cwd: other, env })).created, []);
+});
+
+test('initWiki creates the Forge folder with its wiki, raw, archive, and launcher, binds it, and is idempotent', () => {
   const where = resolve({ cwd: app, env });
-  const r = initWiki(where);
-  const wiki = path.join(root, 'app.wiki');
+  const home = path.join(root, 'app.forge');
+  const wiki = path.join(home, 'wiki');
+  assert.deepEqual([where.wiki.path, where.wiki.exists, where.forge.path, where.forge.layout, where.raw, where.archive], [wiki, false, home, 'forge', path.join(home, 'raw'), path.join(home, 'archive')]);
+  const plugin = path.join(root, 'plugin');
+  mkdirSync(path.join(plugin, 'scripts'), { recursive: true });
+  writeFileSync(path.join(plugin, 'plugin.json'), '{"version":"9.0.0"}');
+  writeFileSync(path.join(plugin, 'scripts', 'forge.mjs'), '');
+  const r = initWiki(where, { pluginDir: plugin });
   assert.equal(r.wiki, wiki);
   assert.ok(existsSync(path.join(wiki, '.git')));
-  assert.match(readFileSync(path.join(wiki, '.gitignore'), 'utf8'), /^raw\/$/m);
+  // raw/ and archive/ are next to the wiki, so the wiki repository needs no .gitignore line for them.
+  assert.ok(!existsSync(path.join(wiki, '.gitignore')) && existsSync(path.join(home, 'raw')) && existsSync(path.join(home, 'archive')));
+  assert.deepEqual(r.created.filter((name) => name.startsWith('../')), ['../raw/', '../archive/', '../forge', '../forge.cmd', '../.plugin']);
+  assert.equal(readFileSync(path.join(home, 'forge'), 'utf8'), LAUNCHER_SH);
+  assert.equal(readFileSync(path.join(home, 'forge.cmd'), 'utf8'), LAUNCHER_CMD);
+  if (process.platform !== 'win32') assert.equal(statSync(path.join(home, 'forge')).mode & 0o111, 0o111, 'a person can run the launcher');
+  assert.equal(readPointer(home), plugin);
   const index = readFileSync(path.join(wiki, 'index.md'), 'utf8');
   assert.deepEqual(parseFile(index).data, { title: 'Wiki index', type: 'index' });
   assert.deepEqual(JSON.parse(readFileSync(path.join(wiki, 'forge', 'repo.json'), 'utf8')).repo, { path: app, remote: 'https://github.com/owner/app' });

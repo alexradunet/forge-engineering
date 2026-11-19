@@ -21,7 +21,7 @@ CLI calls are visible, reproducible, and cost no context for tool lists.
 flowchart LR
   plugin["forge plugin<br/>rules, skills, scripts,<br/>profile config templates"] --> vscode["VS Code Agents window<br/>Copilot harness"]
   repo["code checkout"] --> vscode
-  wiki["../repo.wiki<br/>forge/config, rules, tickets, knowledge"] --> vscode
+  wiki["../repo.forge<br/>wiki: config, rules, knowledge<br/>raw: tickets and pages"] --> vscode
   shared["wiki Git remote<br/>private"] <-->|push / pull| wiki
 ```
 
@@ -42,7 +42,7 @@ Setup reads the repository first, so most answers are prefilled:
 - the path and the remote of your clone,
 - each CLI that is missing or not logged in.
 
-Then it creates `../<repo>.wiki`, seeds the profile config and rule pages, writes your values with a validated command,
+Then it creates the Forge folder `../<repo>.forge` with its wiki, seeds the profile config and rule pages, writes your values with a validated command,
 asks you to store the credentials of the profile, asks you to approve the files by hash, and runs one live read for each tool.
 At the end, it offers the optional extras: learning mode, daily recap, and automations.
 
@@ -102,11 +102,14 @@ each company test to `tests`, each CLI to `tools`, and each company name to `ter
 
 | Path | Content |
 |---|---|
-| `<repo>/../<repo>.wiki/` | The wiki: one Git repository for each code repository |
+| `<repo>/../<repo>.forge/` | The Forge folder (`<forge>`) of a code repository: the wiki, the tickets, the pages, and the launcher |
+| `<forge>/wiki/` | The wiki (`<wiki>`): one Git repository for each code repository |
+| `<forge>/raw/`, `<forge>/archive/` | Local folders: the open tickets and the pages, and the closed ticket folders. They are not in the wiki repository |
+| `<forge>/forge`, `<forge>/forge.cmd` | The launcher: `../<repo>.forge/forge open` |
 | `<wiki>/rules/` | Company rules for each session: tools, credentials, data rules (approve with `forge.mjs trust`) |
 | `<wiki>/forge/config/` | Config: `tracker.md`, `repo.md`, `ci.md`, `policy.md` |
 | `<wiki>/forge/scripts/` | Optional helper scripts |
-| `<wiki>/raw/tickets/<key>/` | Ticket folders |
+| `<forge>/raw/tickets/<key>/` | Ticket folders |
 | OS credential store | Secrets (`cred.mjs set <name>`). Never in a file. |
 
 Use a private wiki: a wiki can hold internal hosts, names, and company rules.
@@ -125,7 +128,7 @@ Setup offers the native wiki of the private repository, a separate private `<rep
 | `plugins/forge/automations/` | Automation templates: Forge maintenance and Prepare my daily |
 | `plugins/forge/skills/` | `ticket`, `agents`, `board`, `wiki`, `daily-recap`, `forge-setup`, `learning-mode`, `writing` |
 | `plugins/forge/templates/` | The profile: config (`config/`), rule pages (`rules/`), setup values (`profile.md`), and machine values with the list of the other profile files (`profile.json`) |
-| `plugins/forge/scripts/` | `forge.mjs` (setup, config, trust, lint, board, worktree, snapshot, diff, canvas, live, gate-approve, hook, wiki scripts), `cred.mjs`, `live-hook.mjs` (the reporter of the live view) |
+| `plugins/forge/scripts/` | `forge.mjs` (init, move, config, trust, lint, board, worktree, snapshot, diff, canvas, live, open, gate-approve, hook, wiki scripts), `cred.mjs`, `live-hook.mjs` (the reporter of the live view) |
 | `plugins/forge/vendor/mermaid/` | The only third-party program of the plugin: the small Mermaid build that draws the diagrams of the wiki page and the ticket canvas, with its license and a [notice](plugins/forge/vendor/mermaid/NOTICE.md) (version, hash, update steps) |
 | `docs/` | [config.md](docs/config.md) (config format), [wiki.md](docs/wiki.md) (sharing and scripts), [evaluation.md](docs/evaluation.md) (behavioral runs: `npm run eval` gives the cases of `tests/evals/` to a real agent session), and [vscode-baseline.md](docs/vscode-baseline.md) (the VS Code features that forge uses) |
 | `AGENTS.md` | [Rules for agents that develop forge](AGENTS.md): docs-first checks, tests, and file format |
@@ -134,7 +137,7 @@ Setup offers the native wiki of the private repository, a separate private `<rep
 
 | Skill | Use |
 |---|---|
-| `ticket` | One folder per work item in `<wiki>/raw/tickets/<key>`, full research and investigation, review gates, code map, ticket canvas, evidence, outbox. `SKILL.md` is short, and the steps of each phase are in `phases/`. |
+| `ticket` | One folder per work item in `<forge>/raw/tickets/<key>`, full research and investigation, review gates, code map, ticket canvas, evidence, outbox. `SKILL.md` is short, and the steps of each phase are in `phases/`. |
 | `agents` | Implementer sessions in worktrees, reviewer subagents, the cold read of gate documents, hand-off, session status |
 | `board` | "Show the board" in any session: ticket status, refresh, session titles and state groups |
 | `wiki` | Query, record, and lint the repository wiki |
@@ -353,11 +356,11 @@ See [config.md](docs/config.md#learning-mode) for the setting and trust flow.
 
 Say "show the board" or "my tickets". The agent reads the README frontmatter of each ticket
 and groups the tickets by state: 🟡 Needs me, 🔴 Blocked, 🟢 Go, ▶️ Active, ⏳ Waiting, ✅ Done.
-`forge.mjs board` writes the same view to `<wiki>/raw/board.md`, so you can keep it open in the editor.
+`forge.mjs board` writes the same view to `<forge>/raw/board.md`, so you can keep it open in the editor.
 Each row shows the session title, the open gate, the next step, who the ticket waits on, and the days since the update.
-When `<wiki>/raw/sync/<KEY>.md` exists, the row also shows the change request, CI, and tracker status.
+When `<forge>/raw/sync/<KEY>.md` exists, the row also shows the change request, CI, and tracker status.
 
-The same command writes the board page, `<wiki>/raw/board.html`, and the canvas of each ticket. Open the page in a browser tab, or in VS Code with **Open in Integrated Browser**.
+The same command writes the board page, `<forge>/raw/board.html`, and the canvas of each ticket. Open the page in a browser tab, or in VS Code with **Open in Integrated Browser**.
 
 - The tickets that wait for you are first, in a lane with the full width. The other open states are side by side, and **Done** is a closed list.
 - A card shows the key, the title, the gates as steps, the next step, who the ticket waits on, and the change request, CI, and tracker status. A click on the card opens the ticket canvas. A ticket with a gate in review opens at the document of that gate.
@@ -413,6 +416,22 @@ Forge 6.5 had a **Forge Master** custom agent for this. Forge 6.6 removes it: VS
 
 The page is a view. It shows no file of `raw/` and `archive/`, and it changes no wiki page.
 
+## 🚪 Open Forge
+
+Each repository has a launcher in its Forge folder. Run it in a terminal, from the repository or from another folder:
+
+```bash
+../<repo>.forge/forge open
+```
+
+- It starts the live server of that repository in the background, prints the links of the board and the wiki, and opens the board in your browser.
+- A second run starts no second server. `forge open --status` prints the links again, `forge open --stop` stops the server, and `forge open --list` shows the server of each repository that runs.
+- Each repository has its own server and port, so more than one repository can be open at the same time.
+- The launcher runs each other `forge.mjs` command too, for example `../<repo>.forge/forge board`.
+- The path of the installed plugin changes at each plugin update. The session start of an agent session writes the current path into the Forge folder, so the launcher needs no change.
+
+An older folder `../<repo>.wiki` has no launcher. It still works, and `forge.mjs move` moves it to the Forge folder: the wiki becomes `<forge>/wiki`, and `raw/` and `archive/` go next to it. The move changes no file. Update the plugin in each host before the move, and start each session again after it.
+
 ## 📡 Live view
 
 `forge.mjs open` starts the live server of a repository in the background, prints the links of the board and the wiki, and opens the board in your browser.
@@ -456,7 +475,7 @@ VS Code shows them under **Templates from Plugins**. A template does nothing unt
    Review the prompt, the schedule, and the permissions. With **Interactive**, each run stops at its first command until you approve it. For runs without you, select **Allow all**.
 3. Select **Run now** one time, and check the run in **History**. Then select **Enabled**, and save.
 
-A run writes only in `<wiki>/raw/`, and changes only session titles and groups. It only reads the tracker,
+A run writes only in `<forge>/raw/`, and changes only session titles and groups. It only reads the tracker,
 the repository host, and CI. When **Automations** is not visible, turn on `chat.automations.enabled`.
 
 ## 🔎 Local validation

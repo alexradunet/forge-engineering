@@ -1,7 +1,7 @@
 # Shared configuration in the wiki
 
 The repository wiki is the source for configuration, helper scripts, and knowledge pages.
-It is a separate Git repository at `../<repo>.wiki`.
+It is a separate Git repository at `../<repo>.forge/wiki`, in the Forge folder of the repository.
 The plugin holds the templates of its profile. `forge-setup` copies them to the wiki. There is no pack to install or update.
 
 ```mermaid
@@ -15,21 +15,25 @@ flowchart LR
 ## Layout
 
 ```text
-<repo>.wiki/
-  .gitignore            raw/ and archive/ stay local
-  index.md              knowledge index
-  forge/
-    repo.json           repository binding
-    config/
-      tracker.md
-      repo.md
-      ci.md
-      policy.md
-    scripts/            optional helper scripts
-  rules/                company rules for each session (toolkit.md, data.md, ...)
-  raw/                  local working material
-  archive/              local archives
+<repo>.forge/             the Forge folder (<forge>)
+  forge, forge.cmd        the launcher: "../<repo>.forge/forge open" shows the board and the wiki
+  raw/                    local working material: tickets, pages, sync notes
+  archive/                local archives of closed tickets
+  wiki/                   the wiki (<wiki>): a git repository
+    index.md              knowledge index
+    forge/
+      repo.json           repository binding
+      config/
+        tracker.md
+        repo.md
+        ci.md
+        policy.md
+      scripts/            optional helper scripts
+    rules/                company rules for each session (toolkit.md, data.md, ...)
 ```
+
+Until Forge 8, all of this was one folder `../<repo>.wiki`, with `raw/` and `archive/` inside the wiki and ignored by Git.
+Such a folder still works. `forge.mjs move` moves it to the Forge folder, and it changes no file.
 
 Say "set up forge" to create the wiki and seed missing config files.
 Setup keeps existing configuration. See [config.md](config.md) for the file format.
@@ -54,7 +58,7 @@ The wiki can stay personal. To share it with a team, do these steps:
 1. Edit configuration and scripts directly in the wiki.
 2. Review and commit only files that belong in the shared wiki.
 3. Push the wiki after explicit approval of the command and target.
-4. Teammates clone it to `../<repo>.wiki`, or pull changes in their existing clone.
+4. Teammates clone it to `../<repo>.forge/wiki`, or pull changes in their existing clone.
 5. Run setup to bind the clone and review its files before local trust approval.
 
 Each code repository has its own wiki binding.
@@ -72,7 +76,7 @@ Exclude secrets, personal paths, internal hosts, company guidance, and private p
 Check `forge/repo.json` and the **Checkouts** table for local paths.
 Do not assume that a secret scan detects all private content.
 
-Git ignores `raw/` and `archive/`. This does not untrack files that Git already tracks.
+`raw/` and `archive/` are outside of the wiki repository. In an older folder `../<repo>.wiki`, Git ignores them: this does not untrack files that Git already tracks.
 Check the tracked files before any push.
 Never publish credentials or trust approvals.
 

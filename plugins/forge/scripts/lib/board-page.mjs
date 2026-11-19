@@ -1,10 +1,11 @@
-// The board page: <wiki>/raw/board.html. One page for all tickets of the wiki: one lane for each state,
+// The board page: <forge>/raw/board.html. One page for all tickets of the wiki: one lane for each state,
 // the tickets that wait for the user first, a link from each ticket to its canvas, and the closed tickets with a link to their summary page in the wiki.
 // It shows the model of board.mjs (the same data as raw/board.md). It loads nothing from a network, and it is never a source.
 // The style and the components come from ui.mjs. The script uses no template literals: it sits in one.
 import path from 'node:path';
 import { WAIT_WORKDAYS } from './board.mjs';
 import { LINK_MODES, linkTarget } from './canvas.mjs';
+import { rawDir } from './layout.mjs';
 import { GATE_TEXT, TOOLS_HTML, UI_SCRIPT, UI_STYLE, buildNav, esc, gateLine, helpHtml, navData, switcherHtml } from './ui.mjs';
 
 export const BOARD_PAGE = 'board.html';
@@ -53,7 +54,7 @@ function cardHtml(item, label, ctx) {
   const gate = gateLine(item) || (item.gates.length && item.gates.every((one) => ['approved', 'skipped'].includes(one.status)) ? 'All gates approved' : '');
   const links = [];
   const readme = ctx.links === 'vscode' && ctx.wiki
-    ? linkTarget(path.join(ctx.wiki, 'raw', 'tickets', item.folder, 'README.md'))
+    ? linkTarget(path.join(rawDir(ctx.wiki), 'tickets', item.folder, 'README.md'))
     : ctx.nav.file(item.folder, 'README.md');
   links.push(`<a href="${esc(readme)}">README</a>`);
   const worktree = ctx.links === 'vscode' && item.worktree ? linkTarget(item.worktree) : '';

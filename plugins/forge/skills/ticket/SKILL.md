@@ -1,6 +1,6 @@
 ---
 name: ticket
-description: Ticket workspace for the work items of one repository, from the tracker of the forge config (for example Jira or GitHub Issues). Every new ticket follows the full-v3 workflow (research, scope, investigation, plan, implementation, evidence, and learning) with four review gates, a small set of plain documents, and a ticket canvas in the browser. Keeps working artifacts in <wiki>/raw/tickets/<key>, shared by agent sessions (VS Code Agents window, Copilot CLI, Claude Code), and distills them into canonical wiki pages at close. Use when the user pastes a work item key or URL, or asks to "start ticket APP-123", "work on APP-123", "resume APP-123", "where are we on the ticket", "record this finding", "save the plan to the ticket", "show the canvas", "show the code map", "close the ticket", or "archive the ticket".
+description: Ticket workspace for the work items of one repository, from the tracker of the forge config (for example Jira or GitHub Issues). Every new ticket follows the full-v3 workflow (research, scope, investigation, plan, implementation, evidence, and learning) with four review gates, a small set of plain documents, and a ticket canvas in the browser. Keeps working artifacts in <forge>/raw/tickets/<key>, shared by agent sessions (VS Code Agents window, Copilot CLI, Claude Code), and distills them into canonical wiki pages at close. Use when the user pastes a work item key or URL, or asks to "start ticket APP-123", "work on APP-123", "resume APP-123", "where are we on the ticket", "record this finding", "save the plan to the ticket", "show the canvas", "show the code map", "close the ticket", or "archive the ticket".
 ---
 
 # 🎫 Ticket workspace
@@ -14,7 +14,7 @@ One folder per ticket holds all working artifacts. Every session reads
 and writes it. When the ticket is done, you distill the folder into canonical
 wiki pages, then you move the folder to the archive.
 
-`<wiki>` is the wiki of the current repository. Get it with `forge.mjs where` once per session (see the `forge` rule).
+`<forge>` is the Forge folder of the current repository, and `<wiki>` is its wiki. Get them with `forge.mjs where` once per session (see the `forge` rule).
 
 ## 📚 Parts of this skill
 
@@ -108,7 +108,7 @@ Two goals for every ticket:
 The folder name is `<key>`, for example `app-123`. A file starts to exist when its phase starts.
 
 ```text
-<wiki>/raw/tickets/<key>/
+<forge>/raw/tickets/<key>/
   README.md     frontmatter (state, phase, gates, people, change requests) and the Now card
   story.md      Scoped?: problem, scope, done-when, answers, history, open questions
   plan.md       Planned?: diagnosis, steps, tests, checks, risks, decisions

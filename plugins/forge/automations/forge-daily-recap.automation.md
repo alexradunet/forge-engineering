@@ -11,4 +11,4 @@ schedule:
 Prepare my daily.
 
 Use the forge `daily-recap` skill, and follow its "⏰ Automation" section. No user answers questions in this run.
-Write only under `<wiki>/raw/daily-recap/`. Do not change code, ticket files, approvals, or wiki pages.
+Write only under `<forge>/raw/daily-recap/`. Do not change code, ticket files, approvals, or wiki pages.

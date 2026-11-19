@@ -1,6 +1,7 @@
-// The ticket board: <wiki>/raw/board.md, grouped by state. The output is the same for the same wiki and day. board-page.mjs shows the same model as a page.
+// The ticket board: <forge>/raw/board.md, grouped by state. The output is the same for the same wiki and day. board-page.mjs shows the same model as a page.
 import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { rawDir } from './layout.mjs';
 import { STATE_EMOJI, parseFrontmatter, sessionTitle, validDate } from './ticket.mjs';
 import { listTickets } from './tickets.mjs';
 
@@ -14,7 +15,7 @@ const byKey = (a, b) => a.localeCompare(b, 'en', { numeric: true, sensitivity: '
 const oneLine = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
 
 export function boardFile(wikiPath) {
-  return path.join(wikiPath, 'raw', 'board.md');
+  return path.join(rawDir(wikiPath), 'board.md');
 }
 
 /** The first required gate that is not done, with in-review before blocked before todo. */
@@ -56,7 +57,7 @@ export function daysSince(updated, today) {
 
 /** The sync note that the `board` skill or the maintenance automation writes: raw/sync/<key>.md frontmatter. */
 export function readSync(wikiPath, key) {
-  const file = path.join(wikiPath, 'raw', 'sync', `${key}.md`);
+  const file = path.join(rawDir(wikiPath), 'sync', `${key}.md`);
   if (!existsSync(file)) return null;
   try {
     if (lstatSync(file).isSymbolicLink()) throw new Error('The sync note must not be a link.');

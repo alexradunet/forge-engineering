@@ -27,7 +27,7 @@ before(() => {
   execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: app });
   execFileSync('git', ['remote', 'add', 'origin', 'https://gitlab.com/team/app.git'], { cwd: app });
   initWiki(where());
-  wiki = path.join(root, 'app.wiki');
+  wiki = path.join(root, 'app.forge', 'wiki');
   seed(where(), path.join(scripts, '..', 'templates', 'config'));
   write(path.join(wiki, 'forge', 'scripts', 'hello.mjs'),
     'import assert from "node:assert/strict";\n' +
@@ -93,14 +93,17 @@ test('trust refuses symlinks and matches prefixes without case', () => {
 });
 
 test('a teammate can clone the wiki and approve its config and scripts locally', () => {
-  write(path.join(wiki, 'raw', 'local.md'), 'local only');
-  write(path.join(wiki, 'archive', 'local.md'), 'local only');
-  execFileSync('git', ['add', 'forge', 'index.md', '.gitignore'], { cwd: wiki });
+  // Forge 9: raw/ and archive/ are next to the wiki, so they are not in the wiki repository and need no .gitignore line.
+  write(path.join(root, 'app.forge', 'raw', 'local.md'), 'local only');
+  write(path.join(root, 'app.forge', 'archive', 'local.md'), 'local only');
+  assert.ok(!existsSync(path.join(wiki, '.gitignore')));
+  execFileSync('git', ['add', 'forge', 'index.md'], { cwd: wiki });
   execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'Share wiki'], { cwd: wiki });
 
   const teammate = path.join(root, 'teammate', 'app');
-  const clonedWiki = `${teammate}.wiki`;
+  const clonedWiki = path.join(`${teammate}.forge`, 'wiki');
   mkdirSync(teammate, { recursive: true });
+  mkdirSync(`${teammate}.forge`);
   execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: teammate });
   execFileSync('git', ['remote', 'add', 'origin', 'https://gitlab.com/team/app.git'], { cwd: teammate });
   execFileSync('git', ['clone', '-q', wiki, clonedWiki]);
@@ -113,8 +116,9 @@ test('a teammate can clone the wiki and approve its config and scripts locally',
   const cloned = resolve({ cwd: teammate, env: teammateEnv });
   bind(cloned);
   assert.equal(resolve({ cwd: clonedWiki, env: teammateEnv }).repo.path, teammate);
-  assert.ok(!existsSync(path.join(clonedWiki, 'raw')));
-  assert.ok(!existsSync(path.join(clonedWiki, 'archive')));
+  assert.ok(!existsSync(path.join(clonedWiki, 'raw')) && !existsSync(path.join(clonedWiki, 'archive')));
+  assert.ok(!existsSync(path.join(`${teammate}.forge`, 'raw', 'local.md')), 'the local files of one user do not go to a teammate');
+  assert.deepEqual([cloned.wiki.path, cloned.forge.layout], [clonedWiki, 'forge']);
   assert.deepEqual(read(path.join(cloned.configDir, 'tracker.md')), read(path.join(wiki, 'forge', 'config', 'tracker.md')));
   assert.ok(status(cloned, { env: teammateEnv }).files.every((f) => f.state === 'new'));
   assert.throws(() => runScript('hello', [], { cwd: teammate, env: teammateEnv }), (e) => e.code === 'untrusted');

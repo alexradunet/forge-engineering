@@ -4,6 +4,7 @@
 // It reads files only. A page that it cannot read is in `errors`, and the other pages still show.
 import { lstatSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
+import { homeOf, isForgeLayout } from './layout.mjs';
 import { parseFrontmatter } from './ticket.mjs';
 import { ticketRoot } from './tickets.mjs';
 
@@ -43,8 +44,21 @@ export function pageOf(model, base, target) {
   try { text = decodeURIComponent(text); } catch { return ''; }
   text = text.replaceAll('\\', '/');
   if (!/\.md$/i.test(text) || text.includes('\0')) return '';
-  const relative = posix(path.relative(model.root, path.resolve(base, text)));
-  if (relative && !relative.startsWith('..') && !path.isAbsolute(relative) && model.byPath.has(relative)) return relative;
+  const inWiki = (file) => {
+    const relative = posix(path.relative(model.root, file));
+    return relative && !relative.startsWith('..') && !path.isAbsolute(relative) && model.byPath.has(relative) ? relative : '';
+  };
+  const found = inWiki(path.resolve(base, text));
+  if (found) return found;
+  // A ticket that started before the move to a Forge folder has links with the old depth: then raw/ and archive/ were inside the wiki.
+  // The move changes no ticket document, so this reader also tries the link from the old place of the document.
+  if (isForgeLayout(model.root)) {
+    const fromHome = path.relative(homeOf(model.root), path.resolve(base));
+    if (fromHome && !fromHome.startsWith('..') && !path.isAbsolute(fromHome) && /^(raw|archive)([\\/]|$)/.test(fromHome)) {
+      const old = inWiki(path.resolve(path.join(model.root, fromHome), text));
+      if (old) return old;
+    }
+  }
   // A ticket document can name a page from the top of the wiki, for example tooling/build.md. A name without a folder is a file next to the document.
   return /^[^./][^/]*\//.test(text) && model.byPath.has(text) ? text : '';
 }

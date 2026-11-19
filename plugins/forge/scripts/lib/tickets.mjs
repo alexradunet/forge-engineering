@@ -1,10 +1,11 @@
-// Finds and reads the ticket folders of a wiki: <wiki>/raw/tickets/<key>/README.md.
+// Finds and reads the ticket folders of a repository: <forge>/raw/tickets/<key>/README.md (rawDir in layout.mjs gives the raw folder of a wiki).
 import { lstatSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
+import { rawDir } from './layout.mjs';
 import { parseTicket } from './ticket.mjs';
 
 export function ticketRoot(wikiPath) {
-  return path.join(wikiPath, 'raw', 'tickets');
+  return path.join(rawDir(wikiPath), 'tickets');
 }
 
 /** Every ticket folder, sorted by name. Each entry has a parsed ticket or a read error. */

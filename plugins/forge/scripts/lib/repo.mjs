@@ -1,8 +1,11 @@
 // Finds the code repository and its wiki from any folder: the main checkout,
-// a linked worktree (for example <repo>.worktrees\<name>), or the wiki itself.
+// a linked worktree (for example <repo>.worktrees\<name>), the wiki itself, or another folder of the Forge folder.
+// From Forge 9 the data of a repository is in the Forge folder ../<repo>.forge, with wiki/, raw/, and archive/ (layout.mjs).
+// An older folder ../<repo>.wiki, with raw/ and archive/ inside the wiki, still works.
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
+import { FORGE_SUFFIX, WIKI_NAME, archiveDir, homeOf, isForgeLayout, rawDir } from './layout.mjs';
 
 export class ForgeError extends Error {
   constructor(message, code) {
@@ -67,33 +70,69 @@ function mainCheckout(cwd) {
   return { main, top: path.resolve(top), worktree: linked ? path.resolve(top) : null };
 }
 
+// The Forge folder that holds a folder: the nearest folder above it (or the folder itself) with the name <name>.forge and a bound wiki.
+// The binding is the proof: a code repository can have the name <name>.forge and a folder wiki/ of its own.
+function forgeAbove(start) {
+  let dir = path.resolve(start);
+  for (;;) {
+    if (path.basename(dir).toLowerCase().endsWith(FORGE_SUFFIX) && existsSync(path.join(dir, WIKI_NAME, 'forge', 'repo.json'))) return dir;
+    const up = path.dirname(dir);
+    if (up === dir) return null;
+    dir = up;
+  }
+}
+
+const inside = (folder, root) => samePath(folder, root) || path.resolve(folder).startsWith(path.resolve(root) + path.sep);
+
+// The repository of a Forge folder, from the binding of its wiki.
+function boundRepo(home) {
+  const repo = readBinding(path.join(home, WIKI_NAME))?.repo?.path;
+  if (!repo) throw new ForgeError(`The Forge folder ${home} is not bound to a repository. Run the forge-setup skill in the code repository.`, 'not-bound');
+  return path.resolve(repo);
+}
+
 /**
  * Resolves the repository and its wiki.
  * @param {object} [opts]
  * @param {string} [opts.cwd] start folder
  * @param {string} [opts.wiki] explicit wiki folder (per call override)
- * @param {object} [opts.env] environment (for tests)
+ * @param {object} [opts.env] environment (for tests). FORGE_HOME names a Forge folder: the launcher of that folder sets it.
  */
 export function resolve({ cwd = process.cwd(), wiki, env = process.env } = {}) {
   const warnings = [];
-  const here = mainCheckout(cwd);
-  if (!here) throw new ForgeError(`${cwd} is not inside a Git repository. Open the code repository or its wiki.`, 'not-git');
-
-  let repoPath = here.main;
-  let worktree = here.worktree;
+  let here = mainCheckout(cwd);
+  let repoPath = null;
+  let worktree = null;
   let wikiPath = null;
   let source = 'convention';
 
-  // Started inside a wiki: a bound wiki, or a legacy "<repo>.wiki" folder next to its repo.
-  const ownBinding = readBinding(here.top);
-  if (ownBinding?.repo?.path) {
-    wikiPath = here.top;
-    repoPath = path.resolve(ownBinding.repo.path);
-    worktree = null;
-    source = 'binding';
-  } else if (here.top.toLowerCase().endsWith('.wiki')) {
-    const sibling = here.top.slice(0, -'.wiki'.length);
-    if (existsSync(path.join(sibling, '.git'))) {
+  // The launcher of a Forge folder selects that folder, also from a folder of another repository.
+  const launched = env.FORGE_HOME && !wiki ? path.resolve(env.FORGE_HOME) : '';
+  // A folder of a Forge folder outside of its wiki (raw/, archive/) is in no git repository, or in a git repository that is not its own.
+  const above = launched ? null : forgeAbove(cwd);
+  const home = launched || (above && !inside(cwd, path.join(above, WIKI_NAME)) ? above : '');
+  if (home) {
+    repoPath = boundRepo(home);
+    wikiPath = path.join(home, WIKI_NAME);
+    source = launched ? 'launcher' : 'binding';
+    // A launcher call from the repository keeps the worktree of the session. From each other folder, the main checkout is the place.
+    if (here && samePath(here.main, repoPath)) worktree = here.worktree;
+    else here = { main: repoPath, top: launched ? repoPath : wikiPath, worktree: null };
+  }
+  if (!here) throw new ForgeError(`${cwd} is not inside a Git repository. Open the code repository or its wiki.`, 'not-git');
+  if (!home) {
+    repoPath = here.main;
+    worktree = here.worktree;
+    // Started inside a wiki: a bound wiki, or a wiki without a binding next to its repository ("<repo>.wiki", or "<repo>.forge/wiki").
+    const ownBinding = readBinding(here.top);
+    const sibling = here.top.toLowerCase().endsWith('.wiki') ? here.top.slice(0, -'.wiki'.length)
+      : isForgeLayout(here.top) ? path.dirname(here.top).slice(0, -FORGE_SUFFIX.length) : '';
+    if (ownBinding?.repo?.path) {
+      wikiPath = here.top;
+      repoPath = path.resolve(ownBinding.repo.path);
+      worktree = null;
+      source = 'binding';
+    } else if (sibling && existsSync(path.join(sibling, '.git'))) {
       wikiPath = here.top;
       repoPath = sibling;
       worktree = null;
@@ -109,7 +148,13 @@ export function resolve({ cwd = process.cwd(), wiki, env = process.env } = {}) {
     wikiPath = explicit;
     source = 'override';
   }
-  if (!wikiPath) wikiPath = `${repoPath}.wiki`;
+  if (!wikiPath) {
+    // The Forge folder comes first. An older folder is used only when no Forge folder is there, and a new repository gets a Forge folder.
+    const forgeHome = `${repoPath}${FORGE_SUFFIX}`;
+    const older = `${repoPath}.wiki`;
+    wikiPath = isDir(forgeHome) || !isDir(older) ? path.join(forgeHome, WIKI_NAME) : older;
+    if (isDir(forgeHome) && isDir(older)) warnings.push(`Both ${forgeHome} and ${older} exist. forge uses ${forgeHome}.`);
+  }
 
   const repoRemote = normalizeRemote(git(repoPath, ['remote', 'get-url', 'origin']));
   const exists = isDir(wikiPath);
@@ -136,6 +181,10 @@ export function resolve({ cwd = process.cwd(), wiki, env = process.env } = {}) {
     top: here.top,
     repo: { path: repoPath, remote: repoRemote, worktree },
     wiki: { path: wikiPath, exists, bound: Boolean(binding?.repo), source },
+    // The Forge folder: 'forge' is ../<repo>.forge with the wiki inside it, and 'wiki' is an older folder that is the wiki itself.
+    forge: { path: homeOf(wikiPath), layout: isForgeLayout(wikiPath) ? 'forge' : 'wiki' },
+    raw: rawDir(wikiPath),
+    archive: archiveDir(wikiPath),
     configDir: path.join(wikiPath, 'forge', 'config'),
     warnings,
   };
