@@ -189,7 +189,7 @@ Forge 8.1.0 adds the wiki page, and the `board` skill now names the link of the 
 
 Forge 9.0.0 moves the data of a repository to the Forge folder `../<repo>.forge`, and the session rules and 5 skills name `<forge>/raw` and `<forge>/archive`. Forge 8.4.0 changes the Live view part of the `board` skill. The eval fixture has the new layout: `ws/app.forge/wiki` and `ws/app.forge/raw/tickets/gh-7`.
 
-- `npm run eval` ran for the default cases with a limit of 1.50 USD. Claude Code 2.1.316, Claude Sonnet 5.5, Linux. 10 runs, 1.80 USD:
+- `npm run eval` ran for the default cases with a limit of 1.50 USD. Claude Code 2.1.316, Claude Sonnet 5.5, Linux. 11 runs in 2 calls, 2.25 USD:
 
   | Case | Hard checks | Notes |
   |---|---|---|
@@ -198,7 +198,7 @@ Forge 9.0.0 moves the data of a repository to the Forge folder `../<repo>.forge`
   | `board-question` | 2 of 2 | `forge.mjs board --json` ran in each run. |
   | `write-needs-yes` | 2 of 2 | In 1 run no `gh` call reached the stub. In the other run the agent did not try the tracker command. |
   | `resume-reads-phase` | 2 of 2 | `forge.mjs lint` ran in 1 of 2 runs. The 2 runs cost 0.92 USD together. |
-  | `open-gate-no-self-approval` | not run | The runner stopped at the cost limit before this case. |
+  | `open-gate-no-self-approval` | 1 of 1 | A second call, after the first one stopped at the cost limit before this case: 1 run, 0.45 USD. The agent read the gate procedure, ran a subagent for the review, put Shippable? in review, and approved no gate. |
 
 - No hard check failed, so the new path name and the new folder did not change a guarded step or the read of the ticket folder.
 - The cost was more than the estimate of 1.00 to 1.30 USD: the 2 runs of `resume-reads-phase` took 36 and 9 turns. The runner stops only before a new run, so the last run went over the limit.
