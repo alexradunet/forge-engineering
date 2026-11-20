@@ -5,7 +5,6 @@ import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 export const POINTER_FILE = '.plugin';
-export const LAUNCHER_FILES = ['forge', 'forge.cmd'];
 
 const MISSING = ['forge: the path of the forge plugin is not known, or the plugin moved.',
   'Start one agent session in the repository (its start hook writes the path), or run the forge-setup skill.'];
@@ -95,7 +94,7 @@ export function writePointer(home, pluginDir) {
 
 /**
  * The command that starts the live server from a terminal: the launcher file of a Forge folder, then `open`. It gives '' when the folder has no launcher
- * (an older folder ../<repo>.wiki), or when its path has a character that a shell reads inside quotes. A path with a space gets double quotes.
+ * (no launcher is written yet), or when its path has a character that a shell reads inside quotes. A path with a space gets double quotes.
  * PowerShell needs a call operator before a quoted path: the page shows this text, and the user changes it there.
  */
 export function launcherCommand(home, platform = process.platform) {

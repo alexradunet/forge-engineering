@@ -11,7 +11,7 @@ description: The ticket board of one repository, in any session. Shows the state
 > [forge.md](../../context/forge.md) and [style.md](../../context/style.md): they are the `forge` and `style` rules.
 
 The board gives one view of all forge tickets of the repository, so that the user does not have to open each session.
-Any session can use it: a session in the main checkout, a ticket session, or an automation.
+Any session can use it: a session in the main checkout, or a ticket session.
 You read, report, and keep the sessions list in order. The ticket sessions do the work.
 
 `<F>` means `node "<plugin>/scripts/forge.mjs"`. `<plugin>` is the forge plugin folder:
@@ -92,7 +92,7 @@ When the user asks, and after each refresh:
 When the user asks to see the sessions live ("live view", "show the board live", "what do the sessions do now"):
 
 1. Run `<F> open --no-browser`. It starts the live server of this repository in the background when none runs, and it prints the links of the board and the wiki. Give the links.
-2. When the command says that the server did not start, start `<F> live` as a background command, in the same way as the canvas server in the host file. Give the link from its first line.
+2. When the command says that the server did not start, start `<F> live` as a background command, as the host file says for a background command. Give the link from its first line.
 3. Tell the user what the page shows: one live line for each session on the card of its ticket (working, needs you, idle, or ended), and the Live panel on each canvas. A session of Claude Code or of Copilot CLI that is not live shows as closed, with the buttons **Resume** and **Copy command**.
 
 One server runs for each repository, and a session reports to the server of its repository. `<F> open --list` gives each server of the user, and `<F> open --stop` stops the server of this repository.

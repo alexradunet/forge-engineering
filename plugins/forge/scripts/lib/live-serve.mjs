@@ -1,8 +1,9 @@
 // The live server: `forge.mjs live`. It shows the board page, the wiki page, and the ticket canvases on this machine only (127.0.0.1),
 // with the live state of the agent sessions: the session hooks (live-hook.mjs) send their events to POST /event,
 // and a page reads the state from GET /live (the server holds the answer until the state changes).
-// It has no route that sends text or an answer to a session, and no Send to agent. Its one action for a page is POST /resume:
-// it opens a terminal of the user with the command that continues a closed session of the session list (sessions.mjs, terminal.mjs).
+// Its actions for a page are two. POST /ticket/<folder>/send is Send to agent: it adds the comment message of the canvas to the file
+// canvas-comments.md in the ticket folder, and the ticket session reads that file. POST /resume opens a terminal of the user with the command
+// that continues a closed session of the session list (sessions.mjs, terminal.mjs). Each other request is a GET, or an event of the reporter.
 // The events stay in memory. It writes its state file in the forge data folder (the port, the tokens, and the folders of its repository,
 // for the reporter of the same user), and lines of the session list. It has no CORS header. A page needs the page token, and an event needs the event token.
 // The page token is stable for each Forge folder: it is in a key file next to the state file, so a bookmark of the board works after a restart.
@@ -11,25 +12,26 @@
 // to the server whose folders hold the folder of the session.
 import http from 'node:http';
 import net from 'node:net';
-import { createHash, randomBytes } from 'node:crypto';
-import { closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { appendFileSync, closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { buildBoard } from './board.mjs';
 import { BOARD_SCRIPT, renderBoardPage } from './board-page.mjs';
 import { buildCanvas, renderCanvas } from './canvas.mjs';
-import { BASE_HEADERS, SERVE_HOST, bind, canvasPolicy, checkRequest, errorAnswer, mermaidAnswer, policy, readBody, sameToken, ticketFile } from './canvas-serve.mjs';
+import { CANVAS_SCRIPT, canvasMessage } from './canvas-page.mjs';
 import { dataDir } from './data-dir.mjs';
 import { harness, resumeArgv, resumeText } from './harness.mjs';
 import { homeOf, rawDir } from './layout.mjs';
 import { launcherCommand } from './launcher.mjs';
-import { LIVE_DIR, LIVE_FILE, MAX_EVENT, checkEvent } from './live-event.mjs';
+import { COMMENTS_FILE, LIVE_DIR, LIVE_FILE, MAX_EVENT, checkEvent } from './live-event.mjs';
 import { boardStamp, needsCount, ticketStamp } from './live-stamp.mjs';
 import { createLive, detail, prune, reduce, summary } from './live.mjs';
-import { MERMAID_ROUTE, needsMermaid } from './mermaid.mjs';
+import { MERMAID_ROUTE, needsMermaid, readMermaid } from './mermaid.mjs';
 import { pastSessions, readSessions, recordEnd, recordLabel, recordStart, sessionsFile } from './sessions.mjs';
 import { openTerminal } from './terminal.mjs';
 import { ticketRoot } from './tickets.mjs';
-import { buildNav } from './ui.mjs';
+import { ERROR_POLICY, buildNav, errorPage } from './ui.mjs';
 import { WIKI_SCRIPT, renderWikiPage } from './wiki-page.mjs';
 import { buildWiki, wikiLinks } from './wiki.mjs';
 
@@ -47,9 +49,164 @@ const MAX_RESUME = 1024;
 // The reporter of a late event of a session can start after the end hook wrote its line.
 const REOPEN_MS = 2000;
 const KEY_TITLE = /^([A-Za-z][A-Za-z0-9]*-\d+) - /;
+export const SERVE_HOST = '127.0.0.1';
+/** The version of this plugin. The state file holds it, so `open` can replace a server of an older version. */
+export const PLUGIN_VERSION = (() => {
+  try { return String(JSON.parse(readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'plugin.json'), 'utf8')).version ?? ''); } catch { return ''; }
+})();
+const PORT_BASE = 41000;
+const PORT_SPAN = 2000;
+const PORT_TRIES = 10;
+export { COMMENTS_FILE };
+const MAX_BODY = 256 * 1024;
+const MAX_COMMENTS = 200;
+const MAX_FILE = 8 * 1024 * 1024;
+const FIELDS = ['id', 'file', 'section', 'title', 'text', 'quote', 'label', 'kind'];
+// A link on the page can name a file of the ticket folder. The server gives only these types, and never a page.
+const TYPES = {
+  '.md': 'text/plain; charset=utf-8', '.txt': 'text/plain; charset=utf-8', '.log': 'text/plain; charset=utf-8', '.json': 'text/plain; charset=utf-8',
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp',
+};
+const BASE_HEADERS = { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff' };
+// A page can run only its own script, and it can connect only to this server. It can show an image from a data address only: the icon of its tab.
+// With `self`, the page can also load a script file of this server: the Mermaid file of the wiki page.
+export const policy = (script, self = false) => `default-src 'none'; script-src 'sha256-${createHash('sha256').update(script).digest('base64')}'${self ? " 'self'" : ''}; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; base-uri 'none'; form-action 'none'`;
+/** The answer for the Mermaid file of forge: the bytes and the headers. The browser can keep the file for one run of the server. */
+function mermaidAnswer() {
+  return { body: readMermaid(), headers: { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'private, max-age=86400' } };
+}
+const PAGE_POLICY = policy(CANVAS_SCRIPT);
+const PAGE_POLICY_MERMAID = policy(CANVAS_SCRIPT, true);
+/** The policy of a canvas page: a page with a Mermaid block can also load the Mermaid file of its server. */
+const canvasPolicy = (page) => (needsMermaid(page) ? PAGE_POLICY_MERMAID : PAGE_POLICY);
 const BOARD_POLICY = policy(BOARD_SCRIPT);
 const WIKI_POLICY = policy(WIKI_SCRIPT);
 const WIKI_POLICY_MERMAID = policy(WIKI_SCRIPT, true);
+
+/** True for a GET that a browser makes for a page: its Accept header names text/html. A script, a hook reporter, or curl does not send that. */
+const wantsHtml = (req) => req.method === 'GET' && /text\/html/i.test(String(req.headers.accept ?? ''));
+
+/**
+ * Answers a 403, a 404, or a 500. A request that wants a page gets the error page of the kit with ERROR_POLICY (no script, no connection).
+ * Each other caller gets `text` as plain text, as before. `page` is { title, text, command, links } for errorPage. The headers of a plain answer stay.
+ */
+function errorAnswer(req, res, status, text, page) {
+  const html = wantsHtml(req);
+  const body = html ? errorPage({ status, ...page }) : text;
+  res.writeHead(status, {
+    ...BASE_HEADERS, 'Content-Type': html ? 'text/html; charset=utf-8' : 'text/plain; charset=utf-8', 'Content-Length': Buffer.byteLength(body),
+    ...(html ? { 'Content-Security-Policy': ERROR_POLICY } : {}),
+  });
+  res.end(body);
+}
+
+/** The first port that the server tries for a key. The same key gets the same port, so the browser keeps the address. */
+export function defaultPort(key) {
+  return PORT_BASE + createHash('sha256').update(String(key)).digest().readUInt32BE(0) % PORT_SPAN;
+}
+
+/** True when the two tokens are the same. The comparison takes the same time for each wrong token of the same length. */
+export function sameToken(given, token) {
+  const a = Buffer.from(String(given));
+  const b = Buffer.from(String(token));
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/** 0 when the server can answer the request, or the HTTP status of the refusal. */
+export function checkRequest(req, token) {
+  const host = String(req.headers.host ?? '').toLowerCase();
+  // A page of another site can make the browser call this server by a name of its own. Only a loopback name is accepted.
+  if (!/^(?:127\.0\.0\.1|localhost)(?::\d{1,5})?$/.test(host)) return 403;
+  if (req.method !== 'GET' && req.method !== 'POST') return 405;
+  let url;
+  try { url = new URL(req.url, `http://${host}`); } catch { return 400; }
+  const given = req.method === 'GET' ? url.searchParams.get('t') ?? '' : req.headers['x-forge-token'] ?? '';
+  if (!sameToken(given, token)) return 403;
+  if (req.method === 'POST') {
+    const { origin } = req.headers;
+    if (origin !== undefined && String(origin).toLowerCase() !== `http://${host}`) return 403;
+    const site = req.headers['sec-fetch-site'];
+    if (site !== undefined && site !== 'same-origin') return 403;
+    if (!/^application\/json(?:\s*;|$)/i.test(String(req.headers['content-type'] ?? ''))) return 415;
+  }
+  return 0;
+}
+
+/** The comments and the general comment of a Send request, or null when the shape is wrong. */
+export function readSend(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+  const { comments = [], general = '' } = body;
+  if (!Array.isArray(comments) || comments.length > MAX_COMMENTS || typeof general !== 'string') return null;
+  const items = [];
+  for (const comment of comments) {
+    if (!comment || typeof comment !== 'object' || Array.isArray(comment)) return null;
+    const item = {};
+    for (const name of FIELDS) {
+      const value = comment[name];
+      if (value === undefined || value === null) continue;
+      if (typeof value !== 'string') return null;
+      item[name] = value;
+    }
+    items.push(item);
+  }
+  return { comments: items, general };
+}
+
+/** A regular file inside the ticket folder with a listed type, or null. */
+function ticketFile(dir, pathname) {
+  let relative;
+  try { relative = decodeURIComponent(pathname.slice(1)); } catch { return null; }
+  const type = TYPES[path.extname(relative).toLowerCase()];
+  if (!relative || !type || relative.includes('\0') || relative.includes('\\')) return null;
+  try {
+    const root = realpathSync(dir);
+    const file = path.resolve(root, relative);
+    if (!file.startsWith(root + path.sep)) return null;
+    const info = lstatSync(file);
+    if (info.isSymbolicLink() || !info.isFile() || info.size > MAX_FILE) return null;
+    if (!realpathSync(file).startsWith(root + path.sep)) return null;
+    return { file, type };
+  } catch { return null; }
+}
+
+/** The text of a request body, or null when it has more than `max` bytes. */
+function readBody(req, max = MAX_BODY) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    req.on('data', (chunk) => { size += chunk.length; if (size <= max) chunks.push(chunk); });
+    req.on('end', () => resolve(size > max ? null : Buffer.concat(chunks).toString('utf8')));
+    req.on('error', reject);
+  });
+}
+
+function listen(server, port) {
+  return new Promise((resolve, reject) => {
+    const onError = (err) => { server.off('listening', onListening); reject(err); };
+    const onListening = () => { server.off('error', onError); resolve(server.address().port); };
+    server.once('error', onError);
+    server.once('listening', onListening);
+    server.listen(port, SERVE_HOST);
+  });
+}
+
+/** Listens on `port`, or on the stable port of `key` and the ports after it. `name` is the server name in the error text. */
+async function bind(server, key, port, name = 'live') {
+  if (port !== undefined) {
+    try { return await listen(server, port); } catch (err) {
+      if (err.code === 'EADDRINUSE') throw new Error(`Port ${port} is in use. Give another --port, or stop the other ${name} server.`);
+      throw err;
+    }
+  }
+  const first = defaultPort(key);
+  for (let step = 0; step < PORT_TRIES; step++) {
+    try { return await listen(server, first + step); } catch (err) {
+      if (err.code !== 'EADDRINUSE' && err.code !== 'EACCES') throw err;
+    }
+  }
+  return listen(server, 0);
+}
+
 const OLD_LINK = 'This link is old or not complete. Run "forge.mjs open --status" for the link of the live server.\n';
 // The page for a 403 echoes nothing of the request and names no folder: the command is the one that the launcher of the Forge folder has.
 const OLD_PAGE = { title: 'This link is old', text: 'The link is old or not complete. Run this command in the Forge folder of the repository for the new link:', command: 'forge open' };
@@ -142,6 +299,7 @@ function readState(file) {
   return {
     pid: state.pid, port: state.port, link: `${base}/board?t=${state.page}`, wikiLink: `${base}/wiki?t=${state.page}`, file,
     home: typeof state.home === 'string' ? state.home : '', repo: typeof state.repo === 'string' ? state.repo : '',
+    version: typeof state.version === 'string' ? state.version : '',
   };
 }
 
@@ -300,7 +458,7 @@ export async function serveLive(wiki, { links = 'vscode', port, repo = '', idleM
   function writeState(found) {
     roots = liveRoots(home, repo, found);
     const temp = `${file}.${process.pid}.tmp`;
-    writeFileSync(temp, `${JSON.stringify({ v: 2, pid: process.pid, port: bound, token: eventToken, page: pageToken, wiki, home, repo, roots })}\n`, { mode: 0o600 });
+    writeFileSync(temp, `${JSON.stringify({ v: 2, version: PLUGIN_VERSION, pid: process.pid, port: bound, token: eventToken, page: pageToken, wiki, home, repo, roots })}\n`, { mode: 0o600 });
     renameSync(temp, file);
   }
 
@@ -356,9 +514,10 @@ export async function serveLive(wiki, { links = 'vscode', port, repo = '', idleM
     let checked = false;
     try {
       const post = req.method === 'POST';
-      // POST /resume comes from a page, so it needs the page token. Each other POST needs the event token.
+      // POST /resume and POST /ticket/<folder>/send come from a page, so they need the page token. Each other POST needs the event token.
       const toResume = post && /^\/resume(?:\?|$)/.test(req.url ?? '');
-      const status = checkRequest(req, post && !toResume ? eventToken : pageToken);
+      const toSend = post && /^\/ticket\/[^/?]+\/send(?:\?|$)/.test(req.url ?? '');
+      const status = checkRequest(req, post && !toResume && !toSend ? eventToken : pageToken);
       if (status) {
         req.resume();
         if (status === 403) errorAnswer(req, res, 403, OLD_LINK, OLD_PAGE);
@@ -380,6 +539,28 @@ export async function serveLive(wiki, { links = 'vscode', port, repo = '', idleM
         const result = await resume(id);
         restIdle();
         send(res, result.status, 'application/json; charset=utf-8', JSON.stringify(result.body));
+        return;
+      }
+      if (toSend) {
+        // The folder must be the folder of a ticket on the board. The key of the message is the key of that ticket, never a key from the request.
+        let name = '';
+        try { name = decodeURIComponent(url.pathname.split('/')[2]); } catch { name = ''; }
+        const row = buildBoard(wiki).groups.flatMap((group) => group.tickets).find((item) => item.folder === name);
+        if (!row) { req.resume(); missing(req, res); return; }
+        const text = await readBody(req);
+        if (text === null) { plain(res, 413, 'The comments are too large.\n'); return; }
+        let body = null;
+        try { body = readSend(JSON.parse(text)); } catch { body = null; }
+        const message = body ? canvasMessage(row.key, body.comments, body.general) : '';
+        if (!body || !message.includes('\n')) { plain(res, 400, 'The request has no comment that the server can read.\n'); return; }
+        // The file is never a link: a file that is not a regular file stops the write, and the open does not follow a link where the system can say so.
+        const target = path.join(ticketRoot(wiki), name, COMMENTS_FILE);
+        let blocked = false;
+        try { blocked = !lstatSync(target).isFile(); } catch { /* No file yet. */ }
+        if (blocked) { plain(res, 409, `${COMMENTS_FILE} is not a regular file.\n`); return; }
+        appendFileSync(target, `${message}\n\n`, { mode: 0o600, flag: constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | (constants.O_NOFOLLOW ?? 0) });
+        changed();
+        send(res, 200, 'application/json', '{"ok":true}');
         return;
       }
       if (post) {

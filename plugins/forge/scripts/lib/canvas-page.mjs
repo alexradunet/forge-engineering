@@ -2,7 +2,7 @@
 // so the page needs no network and no other file. The script uses no template literals: it sits in one.
 // The tokens, the shared components, and the links between the pages come from the design system (ui.mjs).
 // The three message functions below are the one source of the comment message. The page gets their text
-// (Copy all), and the canvas server calls them (Send to agent). They use only ES5 and no outer name.
+// (Copy all), and the live server calls them (Send to agent). They use only ES5 and no outer name.
 import { BREAK, UI_STYLE, pageScript, step } from './ui.mjs';
 
 /** One line of plain text: no control character, single spaces, at most max characters. */
@@ -955,15 +955,8 @@ export const CANVAS_SCRIPT = pageScript('canvas-data', String.raw`  var viewport
     liveStart(showLive);
   }
 
-  // The canvas server (forge.mjs canvas <key> --serve) puts a token into the page. Only the page of its own ticket can send.
-  // A page of the live server cannot send: that server gives no text to a session.
-  if (data.token && data.live) {
-    document.getElementById('tray-hint').textContent = 'This page comes from the live server, so it cannot send. Use Copy all, and paste the comments into the session of ' + data.key + '.';
-  }
-  if (data.token && data.home) {
-    document.getElementById('tray-hint').textContent = 'This page comes from the session of ' + data.home + ', so it cannot send. Use Copy all, and paste the comments into the session of ' + data.key + '.';
-  }
-  if (data.token && !data.home && !data.live) {
+  // The live server puts a token into the page: then the page can send its comments (Send to agent) to the file of the ticket.
+  if (data.token) {
     sendButton.hidden = false;
     document.getElementById('tray-hint').textContent = 'Select words on a card, or use the Comment button of a card. Then select Send to agent.';
     sendButton.addEventListener('click', function () {
@@ -977,15 +970,14 @@ export const CANVAS_SCRIPT = pageScript('canvas-data', String.raw`  var viewport
           generalBox.value = '';
           store.set('general', general);
           saveComments();
-          sendButton.hidden = true;
-          document.getElementById('tray-hint').textContent = 'Sent. The ticket session gives you a new link for more comments.';
-          setOffline();
-          toast('Sent to the session. The server stopped.');
+          sendButton.disabled = false;
+          document.getElementById('tray-hint').textContent = 'Sent. Tell the ticket session: sent. It reads the comments from the ticket folder.';
+          toast('Saved for the session. Tell it: sent.');
         })
         .catch(function (error) {
           sendButton.disabled = false;
-          // The comments stay in the browser, so the new link of the same ticket shows them again.
-          toast(error && error.message === 'old' ? 'This page is old. Open the new link from the session, or use Copy all.' : 'The session did not get the comments. Use Copy all.');
+          // The comments stay in the browser, so the page shows them again.
+          toast(error && error.message === 'old' ? 'This page is old. Open the board link again (forge open), or use Copy all.' : 'The session did not get the comments. Use Copy all.');
         });
     });
   }

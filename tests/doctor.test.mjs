@@ -100,6 +100,9 @@ test('fix commands: the wiki, the binding, and the config files name an exact co
   mkdirSync(lone);
   git(lone, 'init', '-q', '-b', 'main');
   assert.match(line(doctor({ cwd: lone, env }), 'wiki').detail, /Run "forge\.mjs init", or say "set up forge"\./);
+  mkdirSync(`${lone}.wiki`);
+  assert.match(line(doctor({ cwd: lone, env }), 'wiki').detail, /^Forge 10 does not read \.\.\/<repo>\.wiki\. Make \.\.\/<repo>\.forge, move the wiki into wiki\/, and move raw\/ and archive\/ next to it\.$/);
+  rmSync(`${lone}.wiki`, { recursive: true });
   rmSync(path.join(where.configDir, 'ci.md'));
   assert.match(line(doctor({ cwd: app, env }), 'config:ci.md').detail, /Run "forge\.mjs seed"\./);
 });

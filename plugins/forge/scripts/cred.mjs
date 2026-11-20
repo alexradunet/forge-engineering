@@ -3,7 +3,7 @@
 //   node cred.mjs set <name>      asks for the secret (hidden), or reads it from stdin
 //   node cred.mjs has <name>      prints "set" (exit 0) or "absent" (exit 1)
 //   node cred.mjs delete <name>
-// There is no "get": scripts call getSecret() from lib/cred.mjs.
+// There is no "get": a script reads a secret through the store in lib/cred.mjs.
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createStore } from './lib/cred.mjs';

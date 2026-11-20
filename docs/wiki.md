@@ -32,8 +32,7 @@ flowchart LR
     rules/                company rules for each session (toolkit.md, data.md, ...)
 ```
 
-Until Forge 8, all of this was one folder `../<repo>.wiki`, with `raw/` and `archive/` inside the wiki and ignored by Git.
-Such a folder still works. `forge.mjs move` moves it to the Forge folder, and it changes no file.
+Forge 10 does not read an older folder `../<repo>.wiki`. To keep such a wiki, make the folder `../<repo>.forge`, move the wiki into `wiki/`, and move `raw/` and `archive/` next to it.
 
 Say "set up forge" to create the wiki and seed missing config files.
 Setup keeps existing configuration. See [config.md](config.md) for the file format.
@@ -76,7 +75,7 @@ Exclude secrets, personal paths, internal hosts, company guidance, and private p
 Check `forge/repo.json` and the **Checkouts** table for local paths.
 Do not assume that a secret scan detects all private content.
 
-`raw/` and `archive/` are outside of the wiki repository. In an older folder `../<repo>.wiki`, Git ignores them: this does not untrack files that Git already tracks.
+`raw/` and `archive/` are outside of the wiki repository.
 Check the tracked files before any push.
 Never publish credentials or trust approvals.
 

@@ -1,7 +1,6 @@
 // Finds the code repository and its wiki from any folder: the main checkout,
 // a linked worktree (for example <repo>.worktrees\<name>), the wiki itself, or another folder of the Forge folder.
-// From Forge 9 the data of a repository is in the Forge folder ../<repo>.forge, with wiki/, raw/, and archive/ (layout.mjs).
-// An older folder ../<repo>.wiki, with raw/ and archive/ inside the wiki, still works.
+// The data of a repository is in the Forge folder ../<repo>.forge, with wiki/, raw/, and archive/ (layout.mjs).
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
@@ -123,10 +122,9 @@ export function resolve({ cwd = process.cwd(), wiki, env = process.env } = {}) {
   if (!home) {
     repoPath = here.main;
     worktree = here.worktree;
-    // Started inside a wiki: a bound wiki, or a wiki without a binding next to its repository ("<repo>.wiki", or "<repo>.forge/wiki").
+    // Started inside a wiki: a bound wiki, or a wiki without a binding in the Forge folder of its repository ("<repo>.forge/wiki").
     const ownBinding = readBinding(here.top);
-    const sibling = here.top.toLowerCase().endsWith('.wiki') ? here.top.slice(0, -'.wiki'.length)
-      : isForgeLayout(here.top) ? path.dirname(here.top).slice(0, -FORGE_SUFFIX.length) : '';
+    const sibling = isForgeLayout(here.top) ? path.dirname(here.top).slice(0, -FORGE_SUFFIX.length) : '';
     if (ownBinding?.repo?.path) {
       wikiPath = here.top;
       repoPath = path.resolve(ownBinding.repo.path);
@@ -136,7 +134,7 @@ export function resolve({ cwd = process.cwd(), wiki, env = process.env } = {}) {
       wikiPath = here.top;
       repoPath = sibling;
       worktree = null;
-      source = 'legacy-sibling';
+      source = 'sibling';
     }
   }
 
@@ -149,11 +147,7 @@ export function resolve({ cwd = process.cwd(), wiki, env = process.env } = {}) {
     source = 'override';
   }
   if (!wikiPath) {
-    // The Forge folder comes first. An older folder is used only when no Forge folder is there, and a new repository gets a Forge folder.
-    const forgeHome = `${repoPath}${FORGE_SUFFIX}`;
-    const older = `${repoPath}.wiki`;
-    wikiPath = isDir(forgeHome) || !isDir(older) ? path.join(forgeHome, WIKI_NAME) : older;
-    if (isDir(forgeHome) && isDir(older)) warnings.push(`Both ${forgeHome} and ${older} exist. forge uses ${forgeHome}.`);
+    wikiPath = path.join(`${repoPath}${FORGE_SUFFIX}`, WIKI_NAME);
   }
 
   const repoRemote = normalizeRemote(git(repoPath, ['remote', 'get-url', 'origin']));
@@ -181,7 +175,7 @@ export function resolve({ cwd = process.cwd(), wiki, env = process.env } = {}) {
     top: here.top,
     repo: { path: repoPath, remote: repoRemote, worktree },
     wiki: { path: wikiPath, exists, bound: Boolean(binding?.repo), source },
-    // The Forge folder: 'forge' is ../<repo>.forge with the wiki inside it, and 'wiki' is an older folder that is the wiki itself.
+    // The Forge folder: 'forge' is ../<repo>.forge with the wiki inside it, and 'wiki' is a folder from --wiki that is the wiki itself.
     forge: { path: homeOf(wikiPath), layout: isForgeLayout(wikiPath) ? 'forge' : 'wiki' },
     raw: rawDir(wikiPath),
     archive: archiveDir(wikiPath),

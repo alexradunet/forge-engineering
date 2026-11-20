@@ -18,7 +18,6 @@ The wiki is its own Git repository. Keep it private when it holds company knowle
 Use a public wiki only when all tracked files and Git history contain public data.
 The wiki shares configuration and helper scripts through Git. It needs no separate distribution layer.
 `raw/` and `archive/` are next to the wiki in `<forge>`. They are not in the wiki repository, so they stay on this machine only.
-In an older folder `../<repo>.wiki`, they are inside the wiki, and Git ignores them.
 
 ```text
 <wiki>/
@@ -26,17 +25,15 @@ In an older folder `../<repo>.wiki`, they are inside the wiki, and Git ignores t
   log.md          append-only change log
   forge/          repo.json (binding), config/ (forge config), scripts/ (helper scripts)
   tooling/        VS Code, MCP, build, and environment gotchas
-  learning/       optional concept lessons, linked to artifacts and verified sources
   <area>/         architecture, flows, and code knowledge (one folder for each product or codebase)
   decisions/      decisions and their reasons
   tickets/        one summary page per closed ticket
 <forge>/raw/tickets/      working folders of active tickets (the `ticket` skill)
-<forge>/raw/daily-recap/  daily recaps and outcomes (the `daily-recap` skill)
 <forge>/archive/tickets/  raw folders of closed tickets, kept as they were
 ```
 
 `raw/` and `archive/` are working material, not canonical pages. The `ticket`
-and `daily-recap` skills own them. They can hold customer environment names and aggregated metrics. The
+skill owns them. They can hold customer environment names and aggregated metrics. The
 canonical pages cannot.
 
 ## 🧭 What belongs where
@@ -45,7 +42,6 @@ canonical pages cannot.
 |---|---|
 | One short fact that only one tool needs | Built-in memory (`store_memory`) |
 | A topic, a gotcha with a cause, a decision, or how parts connect | This wiki |
-| An accepted concept lesson with artifact and code links | `learning/`, through the `learning-mode` skill |
 | Company engineering guidance | Nowhere. Use the company source (the company rules in `<wiki>/rules/` can name it). |
 | Repository conventions | Nowhere. Use the repository instructions and skills. |
 
@@ -67,15 +63,6 @@ If a page is wrong, correct it in the same task (see Record).
 Classify each source before resolving it (see Lint). A path that exists does not
 verify the page text. Shared knowledge must remain useful when ignored raw or
 archive material is unavailable on this machine; never publish it as a repair.
-
-## Learning pages
-
-The `learning-mode` skill creates optional, source-linked lessons after the user accepts.
-These pages explain a concept through repository examples; they do not copy existing documentation.
-Use the same frontmatter, index, log, and data rules as other canonical pages.
-Verify sources before reusing a page. Keep durable code links when a source artifact can move.
-Mark evidence gaps as `needs-check`; do not store personal progress or private comment text.
-Learning pages add no approval gate and do not replace the ticket's `Learned?` gate.
 
 ## ✍️ Record
 

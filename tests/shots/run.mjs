@@ -1,5 +1,5 @@
 // Screenshots of the forge pages: the styleguide, the board, the wiki page, and the canvas of the demo ticket, in 2 themes and 2 widths.
-// Run: npm run shots [-- --out <folder>] [--only <page>] [--serve]. `--only canvas` takes the canvas and each page that starts with "canvas-".
+// Run: npm run shots [-- --out <folder>] [--only <page>] [--live]. `--only canvas` takes the canvas and each page that starts with "canvas-".
 // Forge 9.2 stage 5 adds the pictures of the server states: error-403 and error-404 (the error pages of the live server, for a request that wants HTML),
 // board-changed (the notice "The board changed.", after a ticket file changed), and board-stopped (the notice that the server stopped; it stops the demo server and starts it again,
 // and it checks that the notice goes by itself when the server is back). The stopped picture has failed requests by design: only a request for /live that fails with a refused or
@@ -49,8 +49,8 @@ const options = { out: '', only: '', serve: false };
 for (let at = 0; at < argv.length; at++) {
   if (argv[at] === '--out') options.out = argv[++at] ?? '';
   else if (argv[at] === '--only') options.only = argv[++at] ?? '';
-  else if (argv[at] === '--serve') options.serve = true;
-  else fail(`Unknown option ${argv[at]}. Use --out <folder>, --only <${PAGES.join('|')}>, or --serve.`);
+  else if (argv[at] === '--live') options.serve = true;
+  else fail(`Unknown option ${argv[at]}. Use --out <folder>, --only <${PAGES.join('|')}>, or --live.`);
 }
 const picked = (name) => !options.only || name === options.only || name.startsWith(`${options.only}-`);
 if (options.only && !PAGES.some(picked)) fail(`--only takes one of: ${PAGES.join(', ')}.`);

@@ -1,7 +1,7 @@
 // The ticket canvas: one self-contained HTML page that shows a whole ticket on one board.
 // It is a view of the ticket Markdown files. It loads nothing from a network, and it is never a source:
 // no approval manifest lists it, and no step reads a fact from it.
-// The canvas server (canvas-serve.mjs) gives the same page with a token, and then the page can send its comments.
+// The live server (live-serve.mjs) gives the same page with a token, and then the page can send its comments.
 // buildCanvas() gives the model (also `forge.mjs canvas <key> --json`), and renderCanvas() gives the page.
 // With `nav` (ui.mjs), the page has the links to the board page and to the canvas of each other ticket.
 import { existsSync, lstatSync, readFileSync, writeFileSync } from 'node:fs';
@@ -284,7 +284,7 @@ export function linkTarget(target, links = 'vscode') {
   return safe(text.replaceAll('\\', '/'));
 }
 
-// A served page gets the token on each relative link, because the canvas server refuses a request without it.
+// A served page gets the token on each relative link, because the live server refuses a request without it.
 function withToken(href, ctx) {
   if (!ctx.token || !href || /^[a-z][a-z0-9+.-]*:/i.test(href)) return href;
   const [target, hash = ''] = href.split(/(?=#)/, 2);
@@ -558,9 +558,8 @@ const LIVE_HTML = `<aside id="live" aria-label="Live" hidden><h2>${pixelText('Li
   + '<p class="thint" id="live-hint" aria-live="polite">No answer from the live server yet.</p><div id="live-body"></div><div id="live-past"></div></aside>';
 
 /**
- * The self-contained HTML page of a canvas model. With serve.token, the page can send its comments to the canvas server.
- * serve.home is the key of the ticket of that server, when this page shows another ticket: then the page cannot send.
- * serve.live is the address of the session states on the live server (live-serve.mjs): then the page has the Live panel, and it cannot send.
+ * The self-contained HTML page of a canvas model. With serve.token, the page can send its comments to the live server.
+ * serve.live is the address of the session states on the live server (live-serve.mjs): then the page has the Live panel.
  * serve.resume is the address on that server that continues a closed session: then a closed session has the Resume button.
  * nav (buildNav in ui.mjs) adds the links to the board page and to the other tickets.
  * wiki (wikiLinks in wiki.mjs) makes each link to a wiki page open the wiki page, and adds the Wiki menu of the bar.
@@ -580,13 +579,12 @@ export function renderCanvas(model, { links = 'vscode', serve = null, nav = null
   const column = (...ids) => `<div class="column">${ids.map(zone).filter(Boolean).map((item) => zoneHtml(item, ctx, ['code', 'plan'].includes(item.id) ? wide : 0)).join('')}</div>`;
   const board = column('story') + column('code', 'plan') + column('review', 'close', 'journal');
   const note = model.missing.length ? `<p class="note">Not written yet: ${esc(model.missing.join(', '))}.</p>` : '';
-  const home = token && serve.home && serve.home !== ticket.key ? String(serve.home) : '';
   const live = token && serve.live ? String(serve.live) : '';
   const resume = live && serve.resume ? String(serve.resume) : '';
   // serve.open is the command that starts the live server again, and serve.c is the change stamp of this ticket (live-stamp.mjs).
   const open = token && typeof serve.open === 'string' ? serve.open : null;
   const draw = !mermaid || !needsMermaid(board) ? null : token ? { src: `${MERMAID_ROUTE}?t=${token}`, integrity: MERMAID_INTEGRITY } : { src: `../../${MERMAID_FILE}` };
-  const data = { key: ticket.key, generated: model.generated, ...(draw ? { mermaid: draw } : {}), ...(model.focus ? { focus: model.focus, focusZone: model.focusZone } : {}), ...(token ? { token } : {}), ...(home ? { home } : {}), ...(live ? { live } : {}), ...(resume ? { resume } : {}),
+  const data = { key: ticket.key, generated: model.generated, ...(draw ? { mermaid: draw } : {}), ...(model.focus ? { focus: model.focus, focusZone: model.focusZone } : {}), ...(token ? { token } : {}), ...(live ? { live } : {}), ...(resume ? { resume } : {}),
     ...(open !== null ? { open } : {}), ...(live && serve.c ? { c: String(serve.c) } : {}), ...(live ? { icons: { calm: faviconUri('calm'), needs: faviconUri('needs') }, hot: ticket.state === 'needs-me' } : {}), ...(nav ? { nav: navData(nav) } : {}) };
   const body = [
     railHtml(model, nav, Boolean(live), wiki),

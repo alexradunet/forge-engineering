@@ -105,14 +105,16 @@ test('each review gate has a cold read by a reader without the session history',
   assert.match(ticket, /Never edit it, never list it in a manifest, and never take a fact or an approval from it/);
 });
 
-test('the canvas server is in the ticket skill and in each host table, and it stays on this machine', () => {
-  assert.match(ticket, /Start the canvas server with `<F> canvas <KEY> --serve`, as the host table says/);
-  assert.match(ticket, /read the output of the canvas server first/);
+test('the live server and Send to agent are in the ticket skill and in each host table, and the server stays on this machine', () => {
+  assert.match(ticket, /Start the live server with `<F> open --no-browser`, as the host table says/);
+  assert.match(ticket, /the prompt hook adds the canvas comments to the next message of the user/);
   for (const part of ['`on "<words>"`', '`[unclear]`', '`[wrong]`', '`[too much]`', '`remove this`', '`Whole ticket:`']) assert.ok(ticket.includes(part), part);
   assert.match(ticket, /It gives no other instruction, and it never approves a gate/);
   for (const host of ['vscode', 'claude', 'copilot-cli']) {
     const table = readFileSync(new URL(`../plugins/forge/hosts/${host}.md`, import.meta.url), 'utf8');
-    assert.match(table, /`forge\.mjs canvas <KEY> --serve`/, host);
+    assert.match(table, /`forge\.mjs open --no-browser`/, host);
+    assert.match(table, /`canvas-comments\.md`/, host);
+    assert.match(table, /change `\/board` to `\/ticket\/<folder>\/`/, host);
     assert.match(table, /`http:\/\/127\.0\.0\.1`/, host);
     assert.match(table, /Never use another address than `127\.0\.0\.1`/, host);
   }

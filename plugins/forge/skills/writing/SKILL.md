@@ -28,7 +28,7 @@ Find the mode of the text. Then apply its row.
 | Mode | Texts | STE | AI patterns | Formatting |
 |---|---|---|---|---|
 | Chat | Replies to the user, comment replies, progress updates | Yes, plus the ADHD shape | The "No AI tells" list | Emoji in headings, Mermaid, lists of max 5 |
-| Forge document | Ticket documents (`README.md`, `story.md`, `plan.md`, `review.md`, `proof.md`, `map.md`, `journal.md`, `close.md`), daily recaps, config files | Yes, short version first | Strong tells: §1 to §5, §8, §22 to §25 | [Ticket style](../ticket/templates/_style.md): plain, with emoji only for a state |
+| Forge document | Ticket documents (`README.md`, `story.md`, `plan.md`, `review.md`, `proof.md`, `map.md`, `journal.md`, `close.md`), config files | Yes, short version first | Strong tells: §1 to §5, §8, §22 to §25 | [Ticket style](../ticket/templates/_style.md): plain, with emoji only for a state |
 | Wiki page | Canonical pages, lessons, ticket summaries | Yes | Full pass | Plain: no emoji, no bold labels |
 | Outbound text | Text between the `send` markers of an outbox draft, change request titles and descriptions, tracker comments, emails, messages to colleagues | Yes, unless a sample or policy sets a different voice | Full pass (mandatory) | The target format. No emoji, no bold labels, no decorative headings |
 | User text | Text that the user asks you to check or rewrite | Match the voice of the text | Full pass | Keep the format of the text |

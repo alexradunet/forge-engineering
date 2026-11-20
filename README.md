@@ -3,7 +3,7 @@
 `forge` is an agent plugin for the [VS Code Agents window](https://code.visualstudio.com/docs/agents/run/agents-window).
 The same plugin folder also runs in GitHub Copilot CLI and Claude Code (see Hosts).
 It gives every agent session a ticket workflow with review gates, a small set of plain ticket documents,
-a ticket canvas in the browser, a repository wiki, daily recaps, coordinated agent sessions, and a ticket board that any session can show.
+a ticket canvas in the browser, a repository wiki, coordinated agent sessions, and a ticket board that any session can show.
 
 forge has a generic core and one profile (see Profile). This build has the GitHub profile:
 
@@ -44,7 +44,7 @@ Setup reads the repository first, so most answers are prefilled:
 
 Then it creates the Forge folder `../<repo>.forge` with its wiki, seeds the profile config and rule pages, writes your values with a validated command,
 asks you to store the credentials of the profile, asks you to approve the files by hash, and runs one live read for each tool.
-At the end, it offers the optional extras: learning mode, daily recap, and automations.
+At the end, it offers the optional extras: the policy values and a VS Code check.
 
 | Say | Result |
 |---|---|
@@ -68,9 +68,9 @@ for a verb, the agent tells you the manual step.
 
 | Host | Start | Host found by | Notes |
 |---|---|---|---|
-| VS Code Agents window | Install the plugin (above) | `AI_AGENT` contains `vscode` | Session tools, forms, artifacts, comments, and automations |
+| VS Code Agents window | Install the plugin (above) | `AI_AGENT` contains `vscode` | Session tools, forms, artifacts, and comments |
 | GitHub Copilot CLI | `copilot plugin install` or `copilot --plugin-dir <clone>/plugins/forge` | no `AI_AGENT` and no `CLAUDECODE` | You run `/rename` and `/cwd`. The board is the session overview. |
-| Claude Code | `claude plugin marketplace add <clone>`, then `claude plugin install forge@forge`. Or `claude --plugin-dir <clone>/plugins/forge` | `CLAUDECODE=1` | The hooks set the title. The context comes in numbered parts. No automations. |
+| Claude Code | `claude plugin marketplace add <clone>`, then `claude plugin install forge@forge`. Or `claude --plugin-dir <clone>/plugins/forge` | `CLAUDECODE=1` | The hooks set the title. The context comes in numbered parts. |
 
 `forge.mjs context --host <vscode|copilot-cli|claude>` prints the context of a host, for a check or for a host without the hook.
 
@@ -125,10 +125,9 @@ Setup offers the native wiki of the private repository, a separate private `<rep
 | `plugins/forge/hosts/` | One verb table for each host: `vscode.md`, `copilot-cli.md`, `claude.md`. The hook adds the verb table of the current host to the context. The other parts of the file (the ticket canvas, the feature documentation) stay in the file, and the agent reads them at the step. |
 | `plugins/forge/com.github.copilot/hooks/` | `hooks.json`: the `sessionStart` hook. It gives each session the paths, the ticket context, the `forge` and `style` rules, and the approved company rules of `<wiki>/rules/`. The `preToolUse` hook is the gate guard (`forge.mjs hook pre-tool`, see Review gates). Forge 9.1 adds the `sessionEnd` hook: with `sessionStart`, it writes the session list of a Copilot CLI session (see [Live view](#-live-view)). |
 | `plugins/forge/hooks/` | `hooks.json`: the same context for Claude Code (spike). `SessionStart` gives it in parts of at most 9,000 characters (2 parts for a session without company rules), `UserPromptSubmit` sets the ticket title, and `PreToolUse` is the gate guard. See `Claude Code host` in [vscode-baseline.md](docs/vscode-baseline.md) Forge 7.6 adds the live reporter (`scripts/live-hook.mjs`) as a background hook on the activity events of a session: see [Live view](#-live-view). Forge 9.1 adds the session list: part 1 of `SessionStart` writes the start of a session, and `forge.mjs hook session-end` at `SessionEnd` writes its end. |
-| `plugins/forge/automations/` | Automation templates: Forge maintenance and Prepare my daily |
-| `plugins/forge/skills/` | `ticket`, `agents`, `board`, `wiki`, `daily-recap`, `forge-setup`, `learning-mode`, `writing` |
+| `plugins/forge/skills/` | `ticket`, `agents`, `board`, `wiki`, `forge-setup`, `writing` |
 | `plugins/forge/templates/` | The profile: config (`config/`), rule pages (`rules/`), setup values (`profile.md`), and machine values with the list of the other profile files (`profile.json`) |
-| `plugins/forge/scripts/` | `forge.mjs` (init, move, config, trust, lint, board, worktree, snapshot, diff, canvas, live, open, gate-approve, hook, wiki scripts), `cred.mjs`, `live-hook.mjs` (the reporter of the live view) |
+| `plugins/forge/scripts/` | `forge.mjs` (init, config, trust, lint, board, worktree, snapshot, diff, canvas, live, open, gate-approve, hook, wiki scripts), `cred.mjs`, `live-hook.mjs` (the reporter of the live view) |
 | `plugins/forge/vendor/mermaid/` | The only third-party program of the plugin: the small Mermaid build that draws the diagrams of the wiki page and the ticket canvas, with its license and a [notice](plugins/forge/vendor/mermaid/NOTICE.md) (version, hash, update steps) |
 | `docs/` | [config.md](docs/config.md) (config format), [wiki.md](docs/wiki.md) (sharing and scripts), [evaluation.md](docs/evaluation.md) (behavioral runs: `npm run eval` gives the cases of `tests/evals/` to a real agent session), and [vscode-baseline.md](docs/vscode-baseline.md) (the VS Code features that forge uses) |
 | `AGENTS.md` | [Rules for agents that develop forge](AGENTS.md): docs-first checks, tests, and file format |
@@ -141,9 +140,7 @@ Setup offers the native wiki of the private repository, a separate private `<rep
 | `agents` | Implementer sessions in worktrees, reviewer subagents, the cold read of gate documents, hand-off, session status |
 | `board` | "Show the board" in any session: ticket status, refresh, session titles and state groups |
 | `wiki` | Query, record, and lint the repository wiki |
-| `daily-recap` | "Prepare my daily" (done, plan, blockers), with or without a daily meeting, and "record the daily outcome" |
 | `forge-setup` | "set up forge", "check forge", "repair forge", "finish forge setup", "refresh the forge config" |
-| `learning-mode` | Optional 15-minute lessons from artifact questions, saved in the repository wiki |
 | `writing` | One source for the writing rules: modes, precedence, and the AI writing pattern catalog. Say "humanize this" or "check the writing". |
 
 ## ✍️ Writing rules
@@ -159,7 +156,7 @@ The [`writing` skill](plugins/forge/skills/writing/SKILL.md) decides which rules
 | Text | AI pattern check | Formatting |
 |---|---|---|
 | Chat replies | Short list in the `style` rule | Emoji headings |
-| Ticket documents, recaps, config | Strong tells | Plain ticket style: emoji only for a state, no bold labels |
+| Ticket documents, config | Strong tells | Plain ticket style: emoji only for a state, no bold labels |
 | Wiki pages and lessons | Full pass | Plain: no emoji, no bold labels |
 | Outbox drafts, change request text, tracker comments | Full pass, required before Sendable? | Target format, plain |
 
@@ -253,7 +250,7 @@ A ticket has about 7 Markdown files, and each fact has one home. A file starts t
 
 `forge.mjs canvas <KEY>` writes `canvas.html` into the ticket folder: one page that shows the whole ticket on one board.
 Open it in a browser tab, or in VS Code with **Open in Integrated Browser**.
-`forge.mjs canvas <KEY> --serve` shows the same page on `http://127.0.0.1` until you send your comments from it.
+`forge.mjs open` shows the same page on `http://127.0.0.1` (the live server of the repository): open the canvas link of the ticket from the board page.
 The canvas and the [board page](#-ticket-overview) have links to each other, so you go from ticket to ticket in the browser.
 
 | Part | Shows |
@@ -281,9 +278,9 @@ The canvas and the [board page](#-ticket-overview) have links to each other, so 
 - The keyboard reaches each part: a component of the code map, a part title, and a title strip work with `Enter` and `Space`, and the arrow keys move the board. The first key `Tab` shows a link that skips to the content.
 - A click on a component of the code map shows its arrows and their labels.
 - **Comment** on a card saves a note in the browser. Select words on a card to comment on those words only, to mark them with **Remove**, or to give them a label (`unclear`, `wrong`, `too much`). The Comments panel has one box for a comment on the whole ticket.
-- With `--serve`, **Send to agent** gives the comments to the ticket session: the command prints one message that starts with `Canvas comments for <KEY>:`, and stops. The server listens only on `127.0.0.1`, each run has a new link with a token, and `--port <n>` sets a fixed port for a forwarded port.
-- Without `--serve`, **Copy all** gives the same message. Paste it into the ticket session.
-- With `--serve`, the server also shows the board page and the other tickets. Only the page of its own ticket can send. For another ticket, use **Copy all** and the session of that ticket. After a Send the server stops: the page stays, and it tells you to get a new link from the session.
+- On a page of the live server, **Send to agent** saves the comments in `canvas-comments.md` in the ticket folder. The message starts with `Canvas comments for <KEY>:`. Write `sent` in the ticket session: it reads the file and removes it. The server listens only on `127.0.0.1`, and `--port <n>` of `open` sets a fixed port for a forwarded port.
+- On a file page, **Copy all** gives the same message. Paste it into the ticket session.
+- The live server also shows the board page and the other tickets. **Send to agent** on the page of a ticket saves the comments in the folder of that ticket.
 - The page is a view of the Markdown files. It loads nothing from a network, it sends the comments only to the forge server on your machine, it is in `raw/` and so never committed, and no approval comes from it. Gate approval stays in the session.
 - A link can name one part, for example `canvas.html#zone-plan` or `canvas.html#plan-step-2`.
 - A code link opens the file in VS Code. `--links file` writes plain `file://` links. `--json` prints the content of the page as data.
@@ -333,25 +330,6 @@ After more than 3 working days in `waiting`, it suggests a follow-up but changes
 The board (`raw/board.md` and `board --json`) lists these long waits.
 The list is outside approval manifests, so a status change never reopens a gate.
 See [People](plugins/forge/skills/ticket/SKILL.md#-people).
-
-## Learning mode
-
-Learning mode helps you understand an artifact before you approve it. It is off by default.
-
-1. Say "enable learning mode". Review the proposed `learningMode: true` policy edit and approve the changed config through trust.
-2. Comment on an artifact: "What does idempotency mean here?" or "learn: why is this queue needed?"
-3. Submit the feedback, or say "review my comments". Choose whether to create the offered bite.
-4. Read the linked lesson in `<wiki>/learning/`. It explains the concept, its purpose, and the design reason.
-5. Say "disable learning mode" to turn off offers. Existing lessons stay in the wiki.
-
-Each bite includes a repository example, a small exercise, and a self-check within a 15-minute learning budget.
-You can skip or defer it without blocking approval. Lessons never approve a gate or prove understanding.
-The existing `Learned?` close gate stays unchanged.
-
-The switch is `policy.learningMode` in the wiki config, not a VS Code switch.
-Older configs default to `false` without reseeding.
-There is no background watcher: the agent handles comments when you submit feedback or request review.
-See [config.md](docs/config.md#learning-mode) for the setting and trust flow.
 
 ## 📋 Ticket overview
 
@@ -416,7 +394,7 @@ Forge 6.5 had a **Forge Master** custom agent for this. Forge 6.6 removes it: VS
 - On a ticket canvas, a link to a wiki page opens that page on the wiki page. The **Wiki** menu of the canvas lists each wiki page that the ticket names.
 - The board lists the closed tickets. Each one opens its summary page (`tickets/<key>.md`), not its archive folder.
 - A Mermaid block of a wiki page or of a card on a ticket canvas shows as a drawing. Forge has the small Mermaid build for this (`plugins/forge/vendor/mermaid/`, MIT), and the page loads it from your disk or from the Forge server, never from a network.
-- The canvas server and the live server show the same page at `/wiki`.
+- The live server shows the wiki page at `/wiki`.
 
 The page is a view. It shows no file of `raw/` and `archive/`, and it changes no wiki page.
 
@@ -435,8 +413,6 @@ Each repository has a launcher in its Forge folder. Run it in a terminal, from t
 - The server stops after 8 hours with no session event and no page view. A page that is open in a visible tab counts as a view. A page in a hidden tab does not.
 - The launcher runs each other `forge.mjs` command too, for example `../<repo>.forge/forge board`.
 - The path of the installed plugin changes at each plugin update. The session start of an agent session writes the current path into the Forge folder, so the launcher needs no change.
-
-An older folder `../<repo>.wiki` has no launcher. It still works, and `forge.mjs move` moves it to the Forge folder: the wiki becomes `<forge>/wiki`, and `raw/` and `archive/` go next to it. The move changes no file. Update the plugin in each host before the move, and start each session again after it.
 
 ## 📡 Live view
 
@@ -467,7 +443,7 @@ flowchart LR
 - A session shows on a ticket when it runs in the worktree of the ticket, or when its title starts with the ticket key.
 - The server has no route that sends text or a permission answer to a session, and its pages have no **Send to agent**. The route of **Resume** takes only the id of a session of the list, and only from a page of this server. The folder and the command come from the list and from the harness table (`scripts/lib/harness.mjs`).
 - The reporter sends only short text: the prompt (at most 1,000 characters), the tool name with a short label (the first 80 characters of a command, a file path, or a search pattern), and the last message. It never sends a tool result or a file. It puts a mask on the value after a word such as `token` or `password`.
-- The events stay in the memory of the server. The server writes its state file in the forge data folder, which only you can read: it holds the port and the token for the reporter. The token of the reporter is new at each start. The token of the page link is in a key file next to the state file, and it stays (see **Open Forge**). A canvas server (`forge.mjs canvas <KEY> --serve`) still has a new token for each run. It also adds lines to the session list.
+- The events stay in the memory of the server. The server writes its state file in the forge data folder, which only you can read: it holds the port and the token for the reporter. The token of the reporter is new at each start. The token of the page link is in a key file next to the state file, and it stays (see **Open Forge**). It also adds lines to the session list.
 - When no live server runs, the reporter stops at once, and a session gets no delay and no message.
 - A page tells you when its server changes. When the server stops, a notice shows the command that starts it (**Copy command**) and **Try again**, and it goes away when the server runs again. When the link is old, the notice says so and shows the command for a new link. When a ticket file changes, the notice says "This ticket changed." with **Reload** and **Later**. The page never loads again by itself. A wrong address gives an error page with a link to the board, not plain text.
 - One server runs for each repository, each on its own port, so more than one repository can be open at the same time. A session reports to the server of its repository: its folder is in the main checkout, in `<repo>.worktrees`, in the wiki folder, or in the worktree of a ticket. A session in another folder reports to no server.
@@ -475,26 +451,6 @@ flowchart LR
 
 The live activity comes from Claude Code sessions. Copilot CLI and VS Code sessions send no activity yet: their hooks have no background option, so a reporter can slow each tool call (see the [baseline](docs/vscode-baseline.md)).
 A Copilot CLI session shows with its start and its end only, and with **Resume**. A VS Code session does not show.
-
-## ⏰ Automations
-
-The plugin has two [automation](https://code.visualstudio.com/docs/agents/run/automations) templates.
-VS Code shows them under **Templates from Plugins**. A template does nothing until you create and enable an automation from it.
-
-| Template | Schedule | What it does |
-|---|---|---|
-| **Forge maintenance** | 09:00, 11:00, 13:00, 15:00, 17:00, Monday to Friday | Board, sync notes, lint report, people waits, titles, and state groups |
-| **Prepare my daily** | 10:20, Monday to Friday | The draft daily recap of the `daily-recap` skill |
-
-1. Select **Automations** in the Agents window sidebar, expand **Templates from Plugins**, and select a template.
-2. Set the main checkout as the workspace, with **Run in the Cloud** off and not **New Worktree**.
-   Keep the default **Agent**. In VS Code 1.145, a run with a plugin agent has no workspace
-   and does not get the agent instructions. In **Advanced** > **Customizations**, keep **forge** selected.
-   Review the prompt, the schedule, and the permissions. With **Interactive**, each run stops at its first command until you approve it. For runs without you, select **Allow all**.
-3. Select **Run now** one time, and check the run in **History**. Then select **Enabled**, and save.
-
-A run writes only in `<forge>/raw/`, and changes only session titles and groups. It only reads the tracker,
-the repository host, and CI. When **Automations** is not visible, turn on `chat.automations.enabled`.
 
 ## 🔎 Local validation
 

@@ -16,7 +16,7 @@ Tools: gh.
 
 ## 🔎 Queries
 
-Named searches for `tracker.search`, in the GitHub issue search syntax. The `daily-recap` and `ticket` skills use them by name.
+Named searches for `tracker.search`, in the GitHub issue search syntax. The `ticket` skill uses them by name.
 
 | Name | Query |
 |---|---|

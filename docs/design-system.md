@@ -220,7 +220,7 @@ Parts that belong to one page:
 
 ### Content policy
 
-A served page has this policy (`policy()` in `canvas-serve.mjs`): `default-src 'none'`, `script-src` with the hash of the script, `style-src 'unsafe-inline'`, `img-src data:`, `connect-src 'self'`, `base-uri 'none'`, and `form-action 'none'`.
+A served page has this policy (`policy()` in `live-serve.mjs`): `default-src 'none'`, `script-src` with the hash of the script, `style-src 'unsafe-inline'`, `img-src data:`, `connect-src 'self'`, `base-uri 'none'`, and `form-action 'none'`.
 
 - `img-src data:` is there for the tab icon. A `data:` address in a `<link rel="icon">` needs it. No other image source is allowed, so a page cannot load an image from a network.
 - An error page (`errorPage()`) has no script. It has its own `ERROR_POLICY`: `default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'`. It follows the system theme, because it has no script to read the stored choice.
@@ -368,7 +368,7 @@ One state has one emoji, one word, and one color on each page (class `st-<state>
 
 ## 📡 Live view
 
-Only a page of the live server (`forge.mjs live`, which `forge.mjs open` starts) has the live parts. A file page and a page of the canvas server stay as they are.
+Only a page of the live server (`forge.mjs live`, which `forge.mjs open` starts) has the live parts. A file page stays as it is.
 The session hooks send small events to that server, and the page asks the server for the state of the sessions.
 A session has one of 4 live states (class `lv-<state>`, variable `--st`). They use the colors of the ticket states, so the live view has no token of its own.
 
@@ -385,7 +385,7 @@ A page sends no text and no answer to a session. Its one action for a session is
 
 ## 📖 Wiki page
 
-The wiki page (`raw/wiki.html` in the Forge folder) shows each canonical page of the wiki: each Markdown file of the wiki outside `forge/` and `.git` (and outside `raw/` and `archive/` in an older folder, where they are inside the wiki). `forge.mjs lint` checks the same files.
+The wiki page (`raw/wiki.html` in the Forge folder) shows each canonical page of the wiki: each Markdown file of the wiki outside `forge/` and `.git`. `forge.mjs lint` checks the same files.
 One file holds all pages. The address of a page is the path of its Markdown file after the `#` of the link, for example `wiki.html#tooling/build.md`.
 
 - The list at the left has one group for each folder. The pages at the top of the wiki come first, and the folder `tickets/` has the name **Closed tickets**.
@@ -432,13 +432,13 @@ The links have two forms:
 | Page | Board | Another ticket | Made by |
 |---|---|---|---|
 | File page | `../../board.html` | `../<folder>/canvas.html` | `forge.mjs board` writes each page. `forge.mjs canvas <KEY>` writes its page, the board page, and each canvas that is missing |
-| Served page | `/board?t=<token>` | `/ticket/<folder>/?t=<token>` | `forge.mjs canvas <KEY> --serve` reads the files again for each page |
+| Served page | `/board?t=<token>` | `/ticket/<folder>/?t=<token>` | `forge.mjs open` reads the files again for each page |
 | Page of the live server | `/board?t=<token>` | `/ticket/<folder>/?t=<token>` | `forge.mjs live` reads the files again for each page. Each ticket has the same route, and no page can send. The token is stable: it is in a key file, so a bookmark works after a restart |
 
 The wiki page is next to the board page: `wiki.html` in a file page, and `/wiki?t=<token>` on a served page.
 The switcher of each page also lists the closed tickets, after the tickets of the board.
 
-The token of the live server is a secret of this machine. `forge.mjs open --new-link` writes a new one, and each older link stops. The token of the canvas server is new for each run.
+The token of the live server is a secret of this machine. `forge.mjs open --new-link` writes a new one, and each older link stops.
 
 
 | Case | What the page does |
@@ -459,8 +459,8 @@ The token of the live server is a secret of this machine. `forge.mjs open --new-
 | The user wants to read one part | A part name, a number key, or a double-click on a title shows that part at a size to read. The bar marks the current part |
 | The user goes to another ticket and comes back | The browser keeps the position, the zoom, the view, the opened and the folded cards, and the comments of each ticket. A saved position that shows no part of the board gives the whole board |
 | The user comments on a ticket that is not the ticket of the server | That page has no **Send to agent**. The Comments panel says to use **Copy all** and to paste the message into the session of that ticket |
-| The server stopped (a canvas server after a Send, an approval, or 8 hours; the live server after a stop or 8 hours with no event and no page request) | The page stays and keeps its data and its comments. The notice says that the server stopped. On a live page it shows the command that starts the server (**Copy command**) and **Try again**. The page keeps asking, and the notice goes away when the server answers again with the same link. A page of the canvas server says to ask the session for a new link |
-| The link is old (a new run of the canvas server, or `open --new-link`) | A live page that is open shows the notice "This link is old" with the command for the new link. A page of the canvas server says that the page is old. A direct load gets an error page (403) that says so. On the live server the error page names the command for the new link. Another caller gets the plain text |
+| The server stopped (the live server after a stop or 8 hours with no event and no page request) | The page stays and keeps its data and its comments. The notice says that the server stopped. On a live page it shows the command that starts the server (**Copy command**) and **Try again**. The page keeps asking, and the notice goes away when the server answers again with the same link. |
+| The link is old (`open --new-link`) | A live page that is open shows the notice "This link is old" with the command for the new link. A direct load gets an error page (403) that says so. On the live server the error page names the command for the new link. Another caller gets the plain text |
 | A session works on a ticket | The board card shows the live line: "working", the time, the tool that runs now, and the count of subagents that run. The canvas shows the same line and the tree of the turn in the Live panel |
 | A session waits for the user | The live line is amber and says "needs you", with the text of the prompt of the host. The **Live** button of the canvas says "Live: needs you". The user answers in the session, not on the page |
 | A session of the repository has no ticket on the board | The board lists it under **Other sessions**, with its title or its folder name |
@@ -515,9 +515,9 @@ The token of the live server is a secret of this machine. `forge.mjs open --new-
 |---|---|
 | `tests/ui-kit.test.mjs` | The contract, the order lists, the script rules, the tokens, the contrast pairs, the sprites and glyphs, the class collisions, the one breakpoint, the focus rings, the live regions, the skip link, the icon and the title, the content policy, the notice, the error page, and the token table of this document |
 | `tests/board-page.test.mjs` | The board page, the tokens in `:root` named in this document, the fetch counts of the scripts, and the next strike |
-| `tests/canvas.test.mjs`, `tests/canvas-serve.test.mjs` | The canvas model and the canvas server, with the policy and the error answers |
+| `tests/canvas.test.mjs` | The canvas model |
 | `tests/wiki-page.test.mjs` | The wiki page and the hash of the vendored Mermaid file |
-| `tests/live-serve.test.mjs` | The live server: the key file, the idle time, the stamp, and the error pages |
+| `tests/live-serve.test.mjs` | The live server: the key file, the idle time, the stamp, the policy, the error pages, and Send to agent |
 
 Page code rules:
 
@@ -548,7 +548,7 @@ Tests do not show a page. Look at each page change in a browser.
 |---|---|
 | `--out <folder>` | Keep the PNG files in this folder. Without it, they go to a temporary folder |
 | `--only <page>` | One page, and each page that starts with its name (`canvas` takes `canvas-plan`, `canvas-code`, and so on) |
-| `--serve` | Do not take pictures. Start the demo live server, print the link of its board, and wait for Ctrl+C |
+| `--live` | Do not take pictures. Start the demo live server, print the link of its board, and wait for Ctrl+C |
 
 - It seeds the demo of `tests/fixtures/demo.mjs` in a temporary folder: tickets in the 6 states, one full ticket with a Mermaid block, a people wait, a read error, and wiki pages. All names are invented.
 - It starts its own live server on a free port with its own data folder, so a live server of a real repository stays untouched. It sends synthetic events for the live lines.
@@ -569,8 +569,6 @@ Tests do not show a page. Look at each page change in a browser.
 - The pages say "needs you". `raw/board.md` and the session groups keep "Needs me".
 - The canvas has no pinch zoom on a touch screen.
 - A file page shows the tickets of its last run. Only a served page reads the files on each load, and only a page of the live server says that the data changed.
-- A page of the canvas server (`forge.mjs canvas <KEY> --serve`) has a new token for each run, so its link is old after the run.
-- A ticket document that was written before the move to a Forge folder has links with the old depth. The canvas still opens the wiki page for such a link. A link with an absolute path to the old folder does not work after the move.
 - The live activity comes from Claude Code sessions only. The hooks of Copilot CLI and VS Code have no background option, so those hosts send no events yet. A Copilot CLI session shows as a closed session row ("no end seen" while it runs), and a VS Code session does not show.
 - **Resume** opens a terminal on Windows and Linux. On macOS the page gives the command to copy. A terminal that starts and shows no window still counts as open, so each row also has **Copy command**.
 - A file page (`raw/board.html`) has no closed session rows: only the live server reads the session list.

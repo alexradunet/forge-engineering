@@ -2,10 +2,10 @@
 // wiki, and seed the forge config from the profile templates. Read-only except
 // initWiki, bind, and seed, which write only inside the wiki folder.
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { POINTER_FILE, writeLauncher, writePointer } from './launcher.mjs';
-import { FORGE_SUFFIX, WIKI_NAME, homeOf, isForgeLayout } from './layout.mjs';
+import { homeOf, isForgeLayout } from './layout.mjs';
 import { ForgeError, normalizeRemote, readBinding } from './repo.mjs';
 import { loadProfile } from './profile.mjs';
 
@@ -169,13 +169,13 @@ export function detect(where, { platform = process.platform, probe = run, git = 
   };
 }
 
-// Only an older folder ../<repo>.wiki has raw/ and archive/ inside the wiki repository.
+// Only a wiki folder from --wiki outside of a Forge folder has raw/ and archive/ inside the wiki repository.
 const GITIGNORE = 'raw/\narchive/\n';
 const INDEX = '---\ntitle: Wiki index\ntype: index\n---\n# Wiki index\n\nOne line per page. The `wiki` skill keeps this list.\n';
 
 /**
  * Creates the Forge folder of a repository when it does not exist, and binds its wiki: the wiki (git init, index.md), raw/, archive/,
- * and the launcher. `pluginDir` is the plugin folder for the launcher. An older folder ../<repo>.wiki gets only its wiki parts.
+ * and the launcher. `pluginDir` is the plugin folder for the launcher. A wiki folder from --wiki outside of a Forge folder gets only its wiki parts.
  */
 export function initWiki(where, { pluginDir = '' } = {}) {
   const dir = where.wiki.path;
@@ -210,48 +210,6 @@ function furnish(home, pluginDir) {
   created.push(...writeLauncher(home).map((name) => `../${name}`));
   if (pluginDir && writePointer(home, pluginDir)) created.push(`../${POINTER_FILE}`);
   return created;
-}
-
-// The Markdown files below a folder that have a text, with the path of each file. It follows no link.
-function filesWith(folder, needle, found = [], limit = 2000) {
-  let entries = [];
-  try { entries = readdirSync(folder, { withFileTypes: true }); } catch { return found; }
-  for (const entry of entries) {
-    if (found.length >= limit) break;
-    if (entry.name === '.git') continue;
-    const file = path.join(folder, entry.name);
-    if (entry.isDirectory()) filesWith(file, needle, found, limit);
-    else if (entry.isFile() && /\.md$/i.test(entry.name)) {
-      try { if (readFileSync(file, 'utf8').includes(needle)) found.push(file); } catch { /* A file that cannot be read has no link to report. */ }
-    }
-  }
-  return found;
-}
-
-/**
- * Moves an older folder ../<repo>.wiki to the Forge folder ../<repo>.forge: the wiki becomes <forge>/wiki (its git repository stays
- * as it is), and raw/ and archive/ go one level up, next to the wiki. It changes no file: a ticket document keeps its links, and the
- * link reader (pageOf in wiki.mjs) accepts their old depth. `links` are the files with an absolute path to the old folder.
- * `serverRuns` is true when a live server of the old folder runs: then nothing moves.
- */
-export function move(where, { dryRun = false, pluginDir = '', serverRuns = false } = {}) {
-  const repo = where.repo.path;
-  const from = `${repo}.wiki`;
-  const home = `${repo}${FORGE_SUFFIX}`;
-  const wiki = path.join(home, WIKI_NAME);
-  if (!existsSync(from)) throw new ForgeError(existsSync(home) ? `${home} is the Forge folder already, and no folder ${from} is there. Nothing moves.` : `No folder ${from}: nothing moves. Run "forge.mjs init" for a new Forge folder.`, 'no-wiki');
-  if (lstatSync(from).isSymbolicLink() || !lstatSync(from).isDirectory()) throw new ForgeError(`${from} must be a folder, not a link.`, 'bad-wiki');
-  if (existsSync(home)) throw new ForgeError(`${home} exists already. Look at the two folders, and remove or rename one of them.`, 'exists');
-  if (serverRuns) throw new ForgeError('The live server of this repository runs. Stop it first: forge.mjs open --stop.', 'server-runs');
-  const parts = ['raw', 'archive'].filter((name) => existsSync(path.join(from, name)));
-  const steps = [`${from} -> ${wiki}`, ...parts.map((name) => `${path.join(wiki, name)} -> ${path.join(home, name)}`)];
-  const links = filesWith(from, from).map((file) => path.relative(from, file).split(path.sep).join('/'));
-  if (dryRun) return { from, forge: home, wiki, steps, links, moved: false, created: [] };
-  mkdirSync(home);
-  renameSync(from, wiki);
-  for (const name of parts) renameSync(path.join(wiki, name), path.join(home, name));
-  const created = furnish(home, pluginDir);
-  return { from, forge: home, wiki, steps, links, moved: true, created };
 }
 
 /** Writes <wiki>/forge/repo.json. Refuses to rebind a wiki of another remote. */

@@ -28,8 +28,8 @@ before(() => {
   worktree = path.join(root, 'app.worktrees', 'feat');
   git(app, 'worktree', 'add', '-q', '-b', 'feat', worktree);
   mkdirSync(path.join(worktree, 'sub'));
-  wiki = path.join(root, 'app.wiki');
-  mkdirSync(wiki);
+  wiki = path.join(root, 'app.forge', 'wiki');
+  mkdirSync(wiki, { recursive: true });
   git(wiki, 'init', '-q');
   outside = path.join(root, 'plain');
   mkdirSync(outside);
@@ -64,7 +64,7 @@ test('a linked worktree resolves to the main checkout, not to the worktree', () 
 test('an unbound sibling wiki resolves back to its repo and warns', () => {
   const r = resolve({ cwd: wiki, env });
   assert.equal(r.repo.path, app);
-  assert.equal(r.wiki.source, 'legacy-sibling');
+  assert.equal(r.wiki.source, 'sibling');
   assert.equal(r.wiki.bound, false);
   assert.match(r.warnings.join('\n'), /no forge\/repo\.json/);
 });

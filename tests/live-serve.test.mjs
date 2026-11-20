@@ -5,15 +5,17 @@ import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { BOARD_SCRIPT } from '../plugins/forge/scripts/lib/board-page.mjs';
-import { CANVAS_SCRIPT } from '../plugins/forge/scripts/lib/canvas-page.mjs';
+import { CANVAS_SCRIPT, canvasLine, canvasMessage } from '../plugins/forge/scripts/lib/canvas-page.mjs';
+import { buildCanvas, renderCanvas } from '../plugins/forge/scripts/lib/canvas.mjs';
 import { pickServer } from '../plugins/forge/scripts/lib/live-event.mjs';
 import { rawDir } from '../plugins/forge/scripts/lib/layout.mjs';
-import { RESUME_GAP_MS, keyFile, liveFile, liveList, liveRoots, liveStatus, newKey, serveLive } from '../plugins/forge/scripts/lib/live-serve.mjs';
+import { COMMENTS_FILE, PLUGIN_VERSION, RESUME_GAP_MS, checkRequest, defaultPort, keyFile, liveFile, liveList, liveRoots, liveStatus, newKey, readSend, sameToken, serveLive } from '../plugins/forge/scripts/lib/live-serve.mjs';
 import { boardStamp, needsCount, ticketStamp } from '../plugins/forge/scripts/lib/live-stamp.mjs';
 import { ERROR_POLICY } from '../plugins/forge/scripts/lib/ui.mjs';
 import { readSessions, recordEnd, recordStart, sessionsFile } from '../plugins/forge/scripts/lib/sessions.mjs';
@@ -90,7 +92,7 @@ test('the server starts on 127.0.0.1 with two tokens and a state file that only 
   const s = await start(t);
   assert.match(s.text(), /^live: serving http:\/\/127\.0\.0\.1:\d+\/board\?t=[0-9a-f]{32}\n {2}wiki {2}http:\/\/127\.0\.0\.1:\d+\/wiki\?t=[0-9a-f]{32}\n {2}state .+live[\\/][0-9a-f]{16}\.json\n$/);
   // Forge 8.4: one state file for each repository, with the folders that the reporter compares with the folder of a session.
-  assert.deepEqual(Object.keys(s.state).sort(), ['home', 'page', 'pid', 'port', 'repo', 'roots', 'token', 'v', 'wiki']);
+  assert.deepEqual(Object.keys(s.state).sort(), ['home', 'page', 'pid', 'port', 'repo', 'roots', 'token', 'v', 'version', 'wiki']);
   assert.deepEqual([s.state.v, s.state.home, s.state.repo, s.state.roots], [2, s.wiki, '/code/app', ['/code/app', '/code/app.worktrees', s.wiki]]);
   assert.equal(s.state.page, s.page);
   assert.notEqual(s.event, s.page, 'the token of a page cannot send an event');
@@ -98,7 +100,7 @@ test('the server starts on 127.0.0.1 with two tokens and a state file that only 
   if (process.platform !== 'win32') assert.equal(statSync(liveFile(s.env, s.wiki)).mode & 0o777, 0o600);
   assert.deepEqual(liveStatus(s.env, s.wiki), {
     pid: process.pid, port: s.port, link: `http://127.0.0.1:${s.port}/board?t=${s.page}`, wikiLink: `http://127.0.0.1:${s.port}/wiki?t=${s.page}`,
-    file: liveFile(s.env, s.wiki), home: s.wiki, repo: '/code/app',
+    file: liveFile(s.env, s.wiki), home: s.wiki, repo: '/code/app', version: PLUGIN_VERSION,
   });
   assert.equal(liveStatus(s.env, path.join(s.root, 'other')), null, 'another repository has no server');
   const status = spawnSync(process.execPath, [cli, 'live', '--status', '--cwd', cwd, '--wiki', s.wiki], { encoding: 'utf8', env: s.env });
@@ -132,8 +134,8 @@ test('the server refuses each request without the right token, and a page cannot
   assert.equal((await post(s, JSON.stringify({ ...event, text: 'x'.repeat(20000) }))).status, 413);
   assert.deepEqual((await live(s)).sessions, [], 'a refused request changes nothing');
 
-  // The server gives no text to a session: the only route that takes an event is /event. POST /resume has its own test.
-  for (const url of ['/send', '/live', '/board', '/', '/message', '/ticket/app-9/send']) {
+  // The only route that takes an event is /event. POST /resume and POST /ticket/<folder>/send take the page token, and have their own tests.
+  for (const url of ['/send', '/live', '/board', '/', '/message']) {
     const res = await request(s.port, { method: 'POST', url, body: '{}', headers: { 'Content-Type': 'application/json', 'X-Forge-Token': s.event } });
     assert.equal(res.status, 404, url);
   }
@@ -179,7 +181,7 @@ test('a page request for the state waits until an event comes, or until the time
   assert.equal(res.headers['access-control-allow-origin'], undefined);
 });
 
-test('the pages of the live server: the board and each canvas with the live part, and no page that can send', async (t) => {
+test('the pages of the live server: the board and each canvas with the live part and Send to agent', async (t) => {
   const s = await start(t);
   const root = await request(s.port, { url: `/?t=${s.page}` });
   assert.deepEqual([root.status, root.headers.location], [302, `/board?t=${s.page}`]);
@@ -206,7 +208,8 @@ test('the pages of the live server: the board and each canvas with the live part
   assert.ok(canvas.text.includes('"resume":"/resume"'));
   // Forge 9.2: the button has the kit class primary.
   assert.match(canvas.text, /<button type="button" class="primary" id="send-all" hidden>/,
-    'Send to agent stays hidden: the script shows it only without data.live');
+    'Send to agent is hidden until the script shows it: the page has the token');
+  assert.ok(canvas.text.includes(`"token":"${s.page}"`));
   assert.ok(canvas.text.includes(`href="/board?t=${s.page}"`));
   assert.equal(canvas.text.match(/<script\b/g).length, 2);
 
@@ -558,7 +561,7 @@ test('the page token is stable for a Forge folder: the key file keeps it over a 
   assert.ok(same(readFileSync(file, 'utf8'), `${first.page}\n`));
   assert.ok(KEY.test(first.page));
   if (process.platform !== 'win32') assert.equal(statSync(file).mode & 0o777, 0o600);
-  assert.deepEqual(Object.keys(first.state).sort(), ['home', 'page', 'pid', 'port', 'repo', 'roots', 'token', 'v', 'wiki'], 'the keys of the state file did not change');
+  assert.deepEqual(Object.keys(first.state).sort(), ['home', 'page', 'pid', 'port', 'repo', 'roots', 'token', 'v', 'version', 'wiki'], 'the keys of the state file did not change');
   await first.stop();
   assert.ok(existsSync(file), 'the key file stays when the server stops');
   const second = await start(t, { from: first });
@@ -687,6 +690,58 @@ test('open prints one line when no browser starts, and none when the browser ope
   text = '';
   await openForge({ cli, repo: cwd, wiki: f.wiki, env: f.env, out, browser: false });
   assert.doesNotMatch(text, /No browser started/, 'no browser was asked for');
+});
+
+test('open stops a server of another plugin version, and a server on another port than --port, and starts a new one', async (t) => {
+  const f = wiki(t);
+  const { openForge, stopForge } = await import('../plugins/forge/scripts/lib/open.mjs');
+  const out = { write: () => {} };
+  const open = (extra = {}) => openForge({ cli, repo: cwd, wiki: f.wiki, env: f.env, out, browser: false, ...extra });
+  t.after(() => stopForge({ wiki: f.wiki, env: f.env }));
+  const first = await open({ port: 0 });
+  assert.equal(first.version, PLUGIN_VERSION, 'the state file holds the plugin version');
+  const same = await open();
+  assert.deepEqual([same.started, same.pid], [false, first.pid], 'the same version and no port: the server stays');
+  assert.equal((await open({ port: 0 })).started, false, 'port 0 means any port');
+  // A server of an older version (here: a state file with another version) is replaced.
+  const file = liveFile(f.env, f.wiki);
+  writeFileSync(file, JSON.stringify({ ...JSON.parse(readFileSync(file, 'utf8')), version: '9.0.0' }));
+  const upgraded = await open({ port: 0 });
+  assert.equal(upgraded.started, true);
+  assert.notEqual(upgraded.pid, first.pid);
+  assert.equal(upgraded.version, PLUGIN_VERSION);
+  // A state file with no version (a 9.x server) is replaced too.
+  const state = JSON.parse(readFileSync(file, 'utf8'));
+  delete state.version;
+  writeFileSync(file, JSON.stringify(state));
+  const old = await open({ port: 0 });
+  assert.equal(old.started, true);
+  assert.notEqual(old.pid, upgraded.pid);
+  // --port that differs from the running port restarts the server on that port, and the link keeps its key.
+  const probe = await new Promise((resolve) => { const server = net.createServer(); server.listen(0, '127.0.0.1', () => { const { port } = server.address(); server.close(() => resolve(port)); }); });
+  const moved = await open({ port: probe });
+  assert.equal(moved.started, true);
+  assert.equal(moved.port, probe);
+  assert.equal(moved.link.split('?t=')[1], old.link.split('?t=')[1]);
+  assert.equal((await open({ port: probe })).started, false, 'the same port: the server stays');
+});
+
+test('POST /ticket/<folder>/send does not write through a link or into a folder', { skip: process.platform === 'win32' }, async (t) => {
+  const s = await start(t);
+  const dir = path.join(s.wiki, 'raw', 'tickets', 'app-9');
+  const file = path.join(dir, COMMENTS_FILE);
+  const outside = path.join(s.root, 'outside.md');
+  writeFileSync(outside, 'keep\n');
+  symlinkSync(outside, file);
+  const body = JSON.stringify({ comments: [{ id: 'plan-step-2', file: 'plan.md', section: 'Steps', title: 'Step', text: 'Why?' }] });
+  const send = () => request(s.port, { method: 'POST', url: '/ticket/app-9/send', headers: { 'Content-Type': 'application/json', 'X-Forge-Token': s.page }, body });
+  assert.equal((await send()).status, 409);
+  assert.equal(readFileSync(outside, 'utf8'), 'keep\n', 'nothing is written through the link');
+  rmSync(file);
+  mkdirSync(file);
+  assert.equal((await send()).status, 409, 'a folder is no comment file');
+  rmSync(file, { recursive: true });
+  assert.equal((await send()).status, 200, 'a missing file is made');
 });
 
 test('an error answer is a page of the kit for a browser and the plain text for each other caller', async (t) => {
@@ -928,3 +983,187 @@ test('a page of the live server has the command for the notice, the stamp, and t
   assert.equal(launcherCommand(odd, 'linux'), '', 'a character that a shell reads inside quotes gives no command');
   assert.equal(launcherCommand(plain, 'win32'), '', 'Windows has the file forge.cmd');
 });
+
+const TOKEN = 'a'.repeat(32);
+const char = (code) => String.fromCharCode(code);
+const canvasWiki = (t) => {
+  const f = wiki(t);
+  f.put('raw/tickets/app-9/plan.md', '---\ntype: plan\n---\n# Plan APP-9\n\nCause: the wrong key. See [the note](evidence/note.md).\n');
+  f.put('raw/tickets/app-9/evidence/note.md', '# Note\n\nThe key is `Retry.Timeout`.\n');
+  return { ...f, dir: path.join(f.wiki, 'raw', 'tickets', 'app-9') };
+};
+
+test('the comment message has one line shape for each comment tool', () => {
+  const step = { id: 'plan-step-2', file: 'plan.md', section: 'Steps', title: '2. Add the timeout case' };
+  const message = canvasMessage('APP-9', [
+    { ...step, text: 'Why 30 s?' },
+    { ...step, text: '', label: 'unclear' },
+    { id: 'plan-risks', file: 'plan.md', section: 'Risks', title: 'Risks', text: 'The limit is 10 s.', label: 'wrong', quote: 'tenants with the "old" key' },
+    { id: 'story-scope', file: 'story.md', section: 'Scope', title: 'Scope', text: '', kind: 'remove', quote: 'The sender' },
+    { id: 'plan-step-3', file: 'plan.md', section: 'Steps', title: '3. Remove the old key', text: '', kind: 'remove' },
+    { ...step, text: '   ' },
+    { ...step, text: '', label: 'approved' },
+  ], 'Too\nlong.');
+  assert.equal(message, [
+    'Canvas comments for APP-9:',
+    '1. plan.md, Steps, "2. Add the timeout case": Why 30 s?',
+    '2. plan.md, Steps, "2. Add the timeout case": [unclear]',
+    '3. plan.md, Risks, on "tenants with the \'old\' key": [wrong] The limit is 10 s.',
+    '4. story.md, Scope, on "The sender": remove this',
+    '5. plan.md, Steps, "3. Remove the old key": remove this',
+    '6. Whole ticket: Too long.',
+  ].join('\n'));
+  // A comment of forge 7.0 has no quote, label, or kind: its line does not change.
+  assert.equal(canvasMessage('APP-9', [{ ...step, text: 'First line\n  second line' }], ''),
+    'Canvas comments for APP-9:\n1. plan.md, Steps, "2. Add the timeout case": First line second line');
+  assert.equal(canvasMessage('APP-9', [], ''), 'Canvas comments for APP-9:', 'no comment gives only the first line');
+  assert.equal(canvasLine({ ...step, text: '' }), null);
+});
+
+test('the comment message cuts a long quote and removes control characters', () => {
+  const long = `${'start '.repeat(40)}MIDDLE ${'end '.repeat(40)}`;
+  const { quote } = canvasLine({ file: 'a.md', section: 'S', title: 'S', text: 'x', quote: long });
+  assert.ok(quote.length < 240, String(quote.length));
+  assert.match(quote, /^start .* \[\.\.\.\] .*end$/);
+  assert.doesNotMatch(quote, /MIDDLE/);
+  // An escape sequence, a line end, or a Unicode line separator cannot start a new line or a terminal command.
+  const dirty = `a${char(27)}[31mb\r\nc${char(0x2028)}d${char(0x9b)}e${char(0)}f`;
+  const message = canvasMessage(`K${char(10)}EY`, [{ file: dirty, section: dirty, title: dirty, text: dirty, quote: dirty }], dirty);
+  assert.equal(message.split('\n').length, 3);
+  assert.doesNotMatch(message.replace(/\n/g, ''), /[\u0000-\u001f\u007f-\u009f]/);
+  assert.ok(!message.includes(char(0x2028)));
+  assert.match(message, /^Canvas comments for K EY:\n1\. a \[31mb c d e f, /);
+});
+
+test('the page script has the message functions, LF line ends, and only requests to its own server', () => {
+  assert.doesNotThrow(() => new Function(CANVAS_SCRIPT));
+  assert.ok(!CANVAS_SCRIPT.includes('\r'), 'a CR changes the hash of the script in the browser');
+  assert.ok(!CANVAS_SCRIPT.includes('`'));
+  for (const name of ['function canvasClean(', 'function canvasLine(', 'function canvasMessage(']) assert.ok(CANVAS_SCRIPT.includes(name), name);
+  // Forge 7.2 adds one request: before a served page goes to another page, it asks its own server for that page (a relative link).
+  // Forge 7.6 adds one more: a page of the live server asks that server for the state of the sessions (data.live, a link of its own server).
+  // Forge 9.1 adds one more: the Resume button of a closed session in the Live panel (data.resume, a route of the live server).
+  assert.equal(CANVAS_SCRIPT.match(/\bfetch\(/g).length, 4);
+  assert.match(CANVAS_SCRIPT, /if \(data\.token\) \{\n    sendButton\.hidden = false;/, 'a page with the token can send');
+  assert.match(CANVAS_SCRIPT, /fetch\(href, \{ cache: 'no-store' \}\)/);
+  assert.match(CANVAS_SCRIPT, /fetch\('send', \{ method: 'POST'/);
+  assert.doesNotMatch(CANVAS_SCRIPT, /XMLHttpRequest|WebSocket|sendBeacon|EventSource|https?:\/\/(?!www\.w3\.org\/2000\/svg)/);
+});
+
+test('only a served page has the token, and its relative links carry it', (t) => {
+  const f = canvasWiki(t);
+  const model = buildCanvas(f.dir);
+  const file = renderCanvas(model);
+  assert.doesNotMatch(file, /"token"/);
+  assert.match(file, /<button type="button" class="primary" id="send-all" hidden>Send to agent<\/button>/); // Forge 9.2: the button has the kit class primary
+  assert.match(file, /href="story\.md"/);
+  assert.match(file, /href="evidence\/note\.md"/);
+  const served = renderCanvas(model, { serve: { token: TOKEN } });
+  assert.match(served, new RegExp(`"token":"${TOKEN}"`));
+  assert.match(served, new RegExp(`href="story\\.md\\?t=${TOKEN}"`));
+  assert.match(served, new RegExp(`href="evidence/note\\.md\\?t=${TOKEN}"`));
+  assert.equal(served.match(/<script\b/g).length, 2);
+  for (const id of ['pop', 'general', 'send-all', 'copy-all', 'tray-hint']) assert.ok(served.includes(`id="${id}"`), id);
+  assert.throws(() => renderCanvas(model, { serve: { token: '"><script>' } }), /canvas token/);
+});
+
+test('the first port of a ticket is stable, and a request needs a loopback name, the token, and a JSON body', () => {
+  assert.equal(defaultPort('APP-9'), defaultPort('APP-9'));
+  for (const key of ['APP-9', 'APP-10', 'X', '']) assert.ok(defaultPort(key) >= 41000 && defaultPort(key) < 43000, key);
+  const get = (headers = {}, url = `/?t=${TOKEN}`) => checkRequest({ method: 'GET', url, headers: { host: '127.0.0.1:41000', ...headers } }, TOKEN);
+  const post = (headers = {}) => checkRequest({
+    method: 'POST', url: '/send', headers: { host: '127.0.0.1:41000', 'x-forge-token': TOKEN, 'content-type': 'application/json', ...headers },
+  }, TOKEN);
+  assert.equal(get(), 0);
+  assert.equal(get({ host: 'localhost:9000' }), 0, 'a forwarded port has another number');
+  assert.equal(get({ host: 'evil.test' }), 403);
+  assert.equal(get({ host: '127.0.0.1.evil.test:41000' }), 403);
+  assert.equal(get({ host: undefined }), 403);
+  assert.equal(get({}, '/'), 403);
+  assert.equal(get({}, `/?t=${'b'.repeat(32)}`), 403);
+  assert.equal(get({}, `/?t=${TOKEN}0`), 403);
+  assert.equal(checkRequest({ method: 'PUT', url: `/?t=${TOKEN}`, headers: { host: '127.0.0.1:41000' } }, TOKEN), 405);
+  assert.equal(post(), 0);
+  assert.equal(post({ origin: 'http://127.0.0.1:41000', 'sec-fetch-site': 'same-origin', 'content-type': 'application/json; charset=utf-8' }), 0);
+  assert.equal(post({ 'x-forge-token': 'no' }), 403);
+  assert.equal(post({ 'x-forge-token': undefined }), 403);
+  assert.equal(post({ origin: 'https://evil.test' }), 403);
+  assert.equal(post({ origin: 'null' }), 403);
+  assert.equal(post({ 'sec-fetch-site': 'cross-site' }), 403);
+  assert.equal(post({ 'content-type': 'text/plain' }), 415, 'a plain form of another site cannot send JSON');
+  assert.equal(post({ 'content-type': undefined }), 415);
+
+  assert.deepEqual(readSend({ comments: [{ id: 'a', file: 'plan.md', text: 'x', title: null, extra: 1 }], general: 'g' }),
+    { comments: [{ id: 'a', file: 'plan.md', text: 'x' }], general: 'g' });
+  assert.deepEqual(readSend({}), { comments: [], general: '' });
+  for (const bad of [null, [], 'x', { comments: 'x' }, { comments: [1] }, { comments: [{ text: 5 }] }, { general: 5 }, { comments: Array.from({ length: 201 }, () => ({})) }]) {
+    assert.equal(readSend(bad), null, JSON.stringify(bad)?.slice(0, 40));
+  }
+});
+
+test('a token is compared in constant time with the same length', () => {
+  assert.equal(sameToken(TOKEN, TOKEN), true);
+  assert.equal(sameToken('b'.repeat(32), TOKEN), false);
+  assert.equal(sameToken(TOKEN.slice(1), TOKEN), false, 'another length is no match');
+  assert.equal(sameToken('', TOKEN), false);
+  assert.equal(sameToken(undefined, TOKEN), false);
+});
+
+test('POST /ticket/<folder>/send adds the comment message to the ticket folder, and each bad request is refused', async (t) => {
+  const s = await start(t);
+  const dir = path.join(s.wiki, 'raw', 'tickets', 'app-9');
+  const file = path.join(dir, COMMENTS_FILE);
+  const host = `127.0.0.1:${s.port}`;
+  const json = { 'Content-Type': 'application/json', 'X-Forge-Token': s.page };
+  const post = (headers, body, url = '/ticket/app-9/send') => request(s.port, { method: 'POST', url, headers, body });
+  const good = JSON.stringify({
+    comments: [
+      { id: 'plan-step-2', file: 'plan.md', section: 'Steps', title: '2. Add the timeout case', text: 'Why 30 s?' },
+      { id: 'story-scope', file: 'story.md', section: 'Scope', title: 'Scope', text: '', kind: 'remove', quote: 'The retry job' },
+    ],
+    general: `Too long.${char(27)}[2J`,
+  });
+  assert.equal((await post({ ...json, 'X-Forge-Token': 'x' }, good)).status, 403);
+  assert.equal((await post({ 'Content-Type': 'application/json' }, good)).status, 403);
+  assert.equal((await post({ ...json, 'X-Forge-Token': s.event }, good)).status, 403, 'the event token cannot send comments');
+  assert.equal((await post({ ...json, Origin: 'https://evil.test' }, good)).status, 403);
+  assert.equal((await post({ ...json, 'Sec-Fetch-Site': 'cross-site' }, good)).status, 403);
+  assert.equal((await post({ ...json, Host: 'evil.test' }, good)).status, 403);
+  assert.equal((await post({ ...json, 'Content-Type': 'text/plain' }, good)).status, 415);
+  assert.equal((await post(json, good, '/ticket/nope/send')).status, 404, 'a folder that is not a ticket');
+  assert.equal((await post(json, good, '/ticket/..%2F..%2Fx/send')).status, 404);
+  assert.equal((await post(json, '{not json')).status, 400);
+  assert.equal((await post(json, '{"comments":"x"}')).status, 400);
+  assert.equal((await post(json, '{"comments":[],"general":"  "}')).status, 400, 'a message without a comment is refused');
+  assert.equal((await post(json, JSON.stringify({ general: 'x'.repeat(300 * 1024) }))).status, 413);
+  assert.equal(existsSync(file), false, 'a refused request writes nothing');
+
+  const sent = await post({ ...json, Origin: `http://${host}`, 'Sec-Fetch-Site': 'same-origin' }, good);
+  assert.equal(sent.status, 200);
+  assert.deepEqual(JSON.parse(sent.text), { ok: true });
+  const message = [
+    'Canvas comments for APP-9:',
+    '1. plan.md, Steps, "2. Add the timeout case": Why 30 s?',
+    '2. story.md, Scope, on "The retry job": remove this',
+    '3. Whole ticket: Too long. [2J',
+    '',
+    '',
+  ].join('\n');
+  assert.equal(readFileSync(file, 'utf8'), message);
+  // The server keeps running, and a second Send adds a second message to the file.
+  assert.equal((await post(json, good)).status, 200);
+  assert.equal(readFileSync(file, 'utf8'), message + message);
+  assert.equal(s.note(), '');
+  assert.equal((await request(s.port, { url: `/board?t=${s.page}` })).status, 200, 'the server still answers');
+  if (process.platform !== 'win32') assert.equal(statSync(file).mode & 0o077, 0, 'only the user can read the comments');
+  // The key of the message is the key of the ticket of the route, and the file page is a type that the server gives as plain text.
+  assert.equal((await post(json, good, '/ticket/app-2/send')).status, 200);
+  assert.match(readFileSync(path.join(s.wiki, 'raw', 'tickets', 'app-2', COMMENTS_FILE), 'utf8'), /^Canvas comments for APP-2:\n/);
+  assert.equal((await request(s.port, { url: `/ticket/app-9/canvas-comments.md?t=${s.page}` })).status, 200);
+  // A link of the ticket folder is never followed.
+  writeFileSync(path.join(s.root, 'outside.md'), '# Outside\n');
+  let linked = true;
+  try { symlinkSync(path.join(s.root, 'outside.md'), path.join(dir, 'link.md')); } catch { linked = false; }
+  if (linked) assert.equal((await request(s.port, { url: `/ticket/app-9/link.md?t=${s.page}` })).status, 404, 'the server never follows a link');
+});
+

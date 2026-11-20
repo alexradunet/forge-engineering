@@ -1,7 +1,7 @@
-// The folders of one repository, from the path of its wiki. This file is the only place that knows the two layouts.
-// - The Forge folder (from Forge 9): ../<repo>.forge with wiki/, raw/, and archive/ next to each other. The wiki is its own git repository.
-// - The older folder: ../<repo>.wiki, with raw/ and archive/ inside the wiki and ignored by git. There the Forge folder and the wiki are one folder.
-// A wiki folder that the user gives with --wiki follows the same rule: only a folder with the name wiki inside a <name>.forge folder has its raw/ next to it.
+// The folders of one repository, from the path of its wiki. This file is the only place that knows where they are.
+// The Forge folder is ../<repo>.forge with wiki/, raw/, and archive/ next to each other. The wiki is its own git repository.
+// A wiki folder that the user gives with --wiki: only a folder with the name wiki inside a <name>.forge folder has its raw/ next to it.
+// Any other folder has raw/ and archive/ inside it, and the Forge folder and the wiki are one folder.
 import path from 'node:path';
 
 export const FORGE_SUFFIX = '.forge';
@@ -19,7 +19,7 @@ export function homeOf(wikiPath) {
   return isForgeLayout(wiki) ? path.dirname(wiki) : wiki;
 }
 
-/** The folder of the working files: the tickets, the board, the pages, the sync notes, and the daily recaps. It stays on this machine. */
+/** The folder of the working files: the tickets, the board, the pages and the sync notes. It stays on this machine. */
 export const rawDir = (wikiPath) => path.join(homeOf(wikiPath), 'raw');
 /** The folder of the closed ticket folders. It stays on this machine. */
 export const archiveDir = (wikiPath) => path.join(homeOf(wikiPath), 'archive');

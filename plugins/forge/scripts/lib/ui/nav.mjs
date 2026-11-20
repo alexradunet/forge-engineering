@@ -21,11 +21,11 @@ export function gateLine(item) {
 /**
  * The links between the pages of one wiki, for a page at `from` ('board', 'wiki', or the folder of a ticket).
  * A file page uses relative links: raw/board.html, raw/wiki.html, and raw/tickets/<folder>/canvas.html.
- * A served page (token) uses the routes of the canvas server. `home` is the ticket of that server.
+ * A served page (token) uses the routes of the live server.
  * `broken` names the folders without a canvas: their link goes to the README.
  * `closed` (buildWiki in wiki.mjs) gives the closed tickets: each one has a summary page in the wiki.
  */
-export function buildNav(board, { from = 'board', token = '', home = '', broken = [], closed = [] } = {}) {
+export function buildNav(board, { from = 'board', token = '', broken = [], closed = [] } = {}) {
   const seg = encodeURIComponent;
   const hash = (relative) => relative.split('/').map(seg).join('/');
   const top = from === 'board' || from === 'wiki';
@@ -35,7 +35,7 @@ export function buildNav(board, { from = 'board', token = '', home = '', broken 
     ? `/ticket/${seg(folder)}/${name.split('/').map(seg).join('/')}?t=${token}`
     : `${up}${seg(folder)}/${name.split('/').map(seg).join('/')}`);
   const page = (folder) => {
-    if (token) return folder === home ? `/?t=${token}` : `/ticket/${seg(folder)}/?t=${token}`;
+    if (token) return `/ticket/${seg(folder)}/?t=${token}`;
     return file(folder, broken.includes(folder) ? 'README.md' : 'canvas.html');
   };
   const tickets = board.groups.flatMap((group) => group.tickets.map((item) => ({
@@ -50,7 +50,7 @@ export function buildNav(board, { from = 'board', token = '', home = '', broken 
     page: (relative) => `${wiki}#${hash(relative)}`,
     closed: closed.map((item) => ({ key: item.key, title: item.title, updated: item.updated, path: item.path, href: `${wiki}#${hash(item.path)}` })),
     current: top ? '' : from,
-    home, tickets, file,
+    tickets, file,
     prev: at > 0 ? tickets[at - 1] : null,
     next: at >= 0 && at < tickets.length - 1 ? tickets[at + 1] : null,
   };
@@ -67,7 +67,7 @@ const links = client(function () {
   // so a stopped server does not replace the page and its comments with a browser error.
   var nav = data.nav || {};
   var offline = false;
-  // A page of the live server has data.open: the command that starts the server again. A page of the canvas server has none.
+  // A page of the live server has data.open: the command that starts the server again. A page of the file has none.
   var LIVE_PAGE = typeof data.open === 'string';
   var OPEN_NOW = data.open || 'forge.mjs open';
   function setOffline() { offline = true; document.body.classList.add('offline'); }
@@ -81,7 +81,7 @@ const links = client(function () {
     setOffline();
     if (!data.token) return;
     var copy = { text: 'Copy command', copy: OPEN_NOW };
-    if (!LIVE_PAGE) notice('warn', 'This page is old, or its server stopped. Ask the ticket session for a new link.', [], { tag: 'old' });
+    if (!LIVE_PAGE) notice('warn', 'This page is old, or its server stopped. Run "forge.mjs open --new-link" for a new link.', [], { tag: 'old' });
     else if (status === 403) notice('warn', 'This link is old. Run the command for the new link:', [copy], { code: OPEN_NOW, tag: 'old' });
     else notice('bad', 'The live server does not answer. Start it with this command:', [copy, { text: 'Try again', run: tryAgain }], { code: OPEN_NOW, tag: 'lost' });
   }

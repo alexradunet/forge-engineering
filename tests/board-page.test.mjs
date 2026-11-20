@@ -103,9 +103,9 @@ test('the links between the pages are relative in a file page and use the server
   assert.equal(buildNav(board, { from: 'app-9' }).prev, null);
   assert.equal(buildNav(board, { from: 'app-2' }).next, null);
 
-  const served = buildNav(board, { from: 'app-10', token: TOKEN, home: 'app-9' });
+  const served = buildNav(board, { from: 'app-10', token: TOKEN });
   assert.equal(served.board, `/board?t=${TOKEN}`);
-  assert.equal(served.prev.href, `/?t=${TOKEN}`, 'the ticket of the server stays at the root, where it can send');
+  assert.equal(served.prev.href, `/ticket/app-9/?t=${TOKEN}`);
   assert.equal(served.next.href, `/ticket/app-11/?t=${TOKEN}`);
   assert.equal(served.file('app-11', 'README.md'), `/ticket/app-11/README.md?t=${TOKEN}`);
 });
@@ -124,7 +124,7 @@ test('the board page is one self-contained file: the tickets that wait first, on
   assert.equal(html.match(/<script\b/g).length, 2, 'one data block and one script');
   assert.equal(html.match(/<\/script>/g).length, 2, 'ticket text cannot close a script block');
   assert.ok(html.includes('A &lt;/script&gt;&lt;script&gt;alert(1)&lt;/script&gt; &quot;title&quot; &amp; more'));
-  assert.equal(/<script>([\s\S]*)<\/script>/.exec(html)[1], BOARD_SCRIPT, 'the canvas server names this script by its hash');
+  assert.equal(/<script>([\s\S]*)<\/script>/.exec(html)[1], BOARD_SCRIPT, 'the live server names this script by its hash');
 
   const at = (text) => { const index = html.indexOf(text); assert.ok(index >= 0, text); return index; };
   assert.ok(at('id="lane-needs-me"') < at('id="lane-blocked"') && at('id="lane-blocked"') < at('id="lane-active"') && at('id="lane-active"') < at('<details class="frame sunk lane st-done" id="lane-done"'));
@@ -202,10 +202,6 @@ test('the canvas with the links has the board link, the switcher, and the previo
   assert.match(html, /"nav":\{"board":"\.\.\/\.\.\/board\.html","wiki":"\.\.\/\.\.\/wiki\.html","prev":"\.\.\/app-9\/canvas\.html","next":"\.\.\/app-11\/canvas\.html"\}/);
   assert.match(html, /<span class="pill st-blocked">Blocked<\/span>/); // Forge 9.2: the bar of the canvas uses pillHtml (the kit pill has no emoji), with the page label
   assert.equal(html.match(/<script\b/g).length, 2);
-  // A served page of another ticket names the ticket of the server, and then it cannot send.
-  const other = renderCanvas(model, { serve: { token: TOKEN, home: 'APP-9' } });
-  assert.match(other, /"home":"APP-9"/);
-  assert.doesNotMatch(renderCanvas(model, { serve: { token: TOKEN, home: 'APP-10' } }), /"home"/);
 });
 
 test('writeViews writes the board page and the canvas of each ticket, and it keeps a page that did not change', (t) => {

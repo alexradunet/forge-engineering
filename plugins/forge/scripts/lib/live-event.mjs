@@ -12,6 +12,8 @@ export const LIVE_HOSTS = ['claude', 'copilot-cli', 'vscode'];
 export const LIVE_FILE = 'live.json';
 /** The folder of the state files in the forge data folder: one file for the live server of each repository. */
 export const LIVE_DIR = 'live';
+/** The file in the ticket folder that holds the comments of Send to agent, until the prompt hook or the ticket session takes them. */
+export const COMMENTS_FILE = 'canvas-comments.md';
 
 /**
  * The live server for a session, from the state of each server that runs: the server with the longest root folder

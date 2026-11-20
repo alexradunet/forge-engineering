@@ -6,7 +6,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "node --test tests/repo.test.mjs tests/config.test.mjs tests/config-write.test.mjs tests/cred.test.mjs tests/setup.test.mjs tests/trust.test.mjs tests/learning-mode.test.mjs tests/writing.test.mjs tests/validation.test.mjs tests/approve.test.mjs tests/board.test.mjs tests/board-page.test.mjs tests/wiki-page.test.mjs tests/layout.test.mjs tests/worktree.test.mjs tests/hook.test.mjs tests/reading.test.mjs tests/canvas.test.mjs tests/canvas-serve.test.mjs tests/live.test.mjs tests/live-serve.test.mjs tests/sessions.test.mjs tests/terminal.test.mjs tests/guard.test.mjs tests/context-budget.test.mjs tests/scenarios.test.mjs tests/agents.test.mjs tests/components.test.mjs tests/packaging.test.mjs tests/profile.test.mjs tests/evals.test.mjs tests/ui-kit.test.mjs tests/doctor.test.mjs",
+    "test": "node --test tests/repo.test.mjs tests/config.test.mjs tests/config-write.test.mjs tests/cred.test.mjs tests/setup.test.mjs tests/trust.test.mjs tests/writing.test.mjs tests/validation.test.mjs tests/approve.test.mjs tests/board.test.mjs tests/board-page.test.mjs tests/wiki-page.test.mjs tests/layout.test.mjs tests/worktree.test.mjs tests/hook.test.mjs tests/reading.test.mjs tests/canvas.test.mjs tests/live.test.mjs tests/live-serve.test.mjs tests/sessions.test.mjs tests/terminal.test.mjs tests/guard.test.mjs tests/context-budget.test.mjs tests/scenarios.test.mjs tests/agents.test.mjs tests/components.test.mjs tests/packaging.test.mjs tests/profile.test.mjs tests/evals.test.mjs tests/ui-kit.test.mjs tests/doctor.test.mjs",
     "eval": "node tests/evals/run.mjs",
     "shots": "node tests/shots/run.mjs"
   }

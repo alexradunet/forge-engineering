@@ -11,9 +11,7 @@
 //   lint    [--wiki <dir>] [--json] [--fix]   validate tickets, approvals and wiki metadata
 //   detect  [--wiki <dir>]   host, CLIs, login, inferred values (JSON, read-only)
 //   init    [--wiki <dir>] create the Forge folder ../<repo>.forge of the repository and bind its wiki: wiki/ (git init, index.md), raw/, archive/,
-//            and the launcher (forge, forge.cmd). The old name init-wiki does the same.
-//   move    [--dry-run] [--json]   move an older folder ../<repo>.wiki to the Forge folder ../<repo>.forge: the wiki becomes <forge>/wiki,
-//            and raw/ and archive/ go next to it. It changes no file.
+//            and the launcher (forge, forge.cmd).
 //   bind    [--wiki <dir>]   write <wiki>/forge/repo.json
 //   seed [--force]   copy the profile templates to <wiki>/forge/config
 //   board   [--json] [--dry-run] [--today <date>] [--links vscode|file]   write <forge>/raw/board.md, the tickets grouped by state,
@@ -24,10 +22,8 @@
 //   diff    <key> <gate> [--json]   the summary (or the ⚡ card) on a first review, else the sections changed since the last snapshot
 //   canvas  <key> [--json] [--links vscode|file]   write <ticket>/canvas.html, the whole ticket on one board (--json prints its model),
 //           and raw/board.html, so the page has a link to the board and to each other ticket
-//   canvas  <key> --serve [--port <n>] [--links vscode|file]   show the canvas on http://127.0.0.1 until the user sends the comments
-//            from the page; then print the comment message and stop. Exit 0 after a Send, and not 0 when it stops without comments.
 //   live    [--port <n>] [--links vscode|file]   show the board and the canvases on http://127.0.0.1 with the live state of the agent sessions
-//            (the session hooks send their events to this server). It gives no text to a session: its one action is Resume, which opens a terminal for a closed session. It stops at a signal,
+//            (the session hooks send their events to this server). Its two actions for a page are Send to agent (it adds the canvas comments to <ticket>/canvas-comments.md) and Resume (it opens a terminal for a closed session). It stops at a signal,
 //            or after 8 hours with no event and no request of a page. The links stay the same after a restart: its page token is in a key file.
 //            One server runs for each repository, and a session reports to the server of its repository.
 //   live --status   print the link of the live server of this repository, or exit 1 when none runs
@@ -58,7 +54,7 @@ import { resolve, ForgeError, normalizeRemote } from './lib/repo.mjs';
 import { loadConfig, KINDS } from './lib/config.mjs';
 import { setValues, upsertRow } from './lib/config-write.mjs';
 import { createStore } from './lib/cred.mjs';
-import { detect, initWiki, bind, move, seed } from './lib/setup.mjs';
+import { detect, initWiki, bind, seed } from './lib/setup.mjs';
 import { approve, assertTrusted, status as trustStatus } from './lib/trust.mjs';
 import { lint } from './lib/validation.mjs';
 import { findTicket } from './lib/tickets.mjs';
@@ -71,7 +67,6 @@ import { diffGate, gateName, renderDiff, saveSnapshot } from './lib/reading.mjs'
 import { LINK_MODES, buildCanvas } from './lib/canvas.mjs';
 import { writeViews } from './lib/views.mjs';
 import { renderStyleguide } from './lib/ui/styleguide.mjs';
-import { serveCanvas } from './lib/canvas-serve.mjs';
 import { homeOf, rawDir } from './lib/layout.mjs';
 import { liveStatus, serveLive } from './lib/live-serve.mjs';
 import { listForge, openForge, renewLink, stopForge } from './lib/open.mjs';
@@ -180,7 +175,6 @@ export function parseArgs(argv) {
     else if (a === '--fix') out.fix = true;
     else if (a === '--dry-run') out.dryRun = true;
     else if (a === '--create') out.create = true;
-    else if (a === '--serve') out.serve = true;
     else if (a === '--status') out.status = true;
     else if (a === '--list') out.list = true;
     else if (a === '--stop') out.stop = true;
@@ -257,10 +251,12 @@ export function doctor({ cwd, wiki, env = process.env, credStore, run = runQuiet
   }
   add('repo', 'ok', where.repo.path + (where.repo.worktree ? ` (worktree ${where.repo.worktree})` : ''));
   add('repo:remote', where.repo.remote ? 'ok' : 'warn', where.repo.remote ?? 'No origin remote.');
-  add('wiki', where.wiki.exists ? 'ok' : 'fail', where.wiki.exists ? `${where.wiki.path} (${where.wiki.source})` : `Not found: ${where.wiki.path}. Run "forge.mjs init", or say "set up forge".`);
+  // Forge 10 does not read the older folder ../<repo>.wiki.
+  const older = !where.wiki.exists && !existsSync(where.forge.path) && existsSync(`${where.repo.path}.wiki`);
+  add('wiki', where.wiki.exists ? 'ok' : 'fail', where.wiki.exists ? `${where.wiki.path} (${where.wiki.source})` : older
+    ? 'Forge 10 does not read ../<repo>.wiki. Make ../<repo>.forge, move the wiki into wiki/, and move raw/ and archive/ next to it.'
+    : `Not found: ${where.wiki.path}. Run "forge.mjs init", or say "set up forge".`);
   if (where.wiki.exists) add('wiki:binding', where.wiki.bound ? 'ok' : 'warn', where.wiki.bound ? 'forge/repo.json' : 'No forge/repo.json. Run "forge.mjs bind".');
-  // An older folder still works. The Forge folder gives the launcher, and it keeps raw/ and archive/ out of the wiki repository.
-  if (where.wiki.exists && where.wiki.source !== 'override') add('forge folder', where.forge.layout === 'forge' ? 'ok' : 'warn', where.forge.layout === 'forge' ? where.forge.path : `${where.wiki.path} is an older folder. Run "forge.mjs move --dry-run", then "forge.mjs move", to get the Forge folder ${where.repo.path}.forge.`);
   for (const w of where.warnings.filter((x) => !x.includes('has no forge/repo.json'))) add('warning', 'warn', w);
   if (where.forge.layout === 'forge') {
     const seen = readPointer(where.forge.path);
@@ -448,31 +444,8 @@ export function main(argv = process.argv.slice(2)) {
       return report.summary.errors ? 1 : 0;
     } else if (cmd === 'detect') {
       console.log(JSON.stringify(detect(resolve(opts)), null, 2));
-    } else if (cmd === 'init' || cmd === 'init-wiki') {
+    } else if (cmd === 'init') {
       console.log(JSON.stringify(initWiki(resolve(opts), { pluginDir: path.dirname(path.dirname(fileURLToPath(import.meta.url))) }), null, 2));
-    } else if (cmd === 'move') {
-      if (args._.length !== 1) throw new ForgeError('Usage: forge.mjs move [--dry-run] [--json].', 'bad-args');
-      // The move starts from the code repository: the convention gives the old and the new folder.
-      const where = resolve({ cwd: opts.cwd });
-      const result = move(where, {
-        dryRun: args.dryRun, pluginDir: path.dirname(path.dirname(fileURLToPath(import.meta.url))),
-        serverRuns: Boolean(liveStatus(process.env, `${where.repo.path}.wiki`)),
-      });
-      if (args.json) console.log(JSON.stringify(result, null, 2));
-      else {
-        console.log(`${result.moved ? 'moved' : 'would move'}:`);
-        for (const step of result.steps) console.log(`  ${step}`);
-        if (result.links.length) {
-          console.log(`  ${result.links.length} file${result.links.length === 1 ? ' has' : 's have'} a link with the old path ${result.from}. ${result.moved ? 'These links' : 'After the move, these links'} do not work:`);
-          for (const file of result.links.slice(0, 20)) console.log(`    ${file}`);
-          if (result.links.length > 20) console.log(`    and ${result.links.length - 20} more`);
-        }
-        if (result.moved) {
-          console.log(`  Start each agent session of this repository again: an open session has the old paths.`);
-          console.log(`  Give the folder ${result.wiki} to an automation that had the old wiki folder.`);
-          console.log(`  open  ${path.join(result.forge, process.platform === 'win32' ? 'forge.cmd' : 'forge')} open`);
-        }
-      }
     } else if (cmd === 'bind') {
       console.log(JSON.stringify(bind(resolve(opts)), null, 2));
     } else if (cmd === 'seed') {
@@ -555,24 +528,14 @@ export function main(argv = process.argv.slice(2)) {
       else if (cmd === 'diff') console.log(renderDiff(result));
       else console.log(`${result.gate} ${result.written ? 'saved' : 'unchanged'}: ${result.snapshot}`);
     } else if (cmd === 'canvas') {
-      // --port 0 lets the system select a free port. A fixed port is for a browser on another machine (a forwarded port).
-      const port = args.port === undefined ? undefined : Number(args.port);
-      const badPort = args.port !== undefined && (!/^\d{1,5}$/.test(args.port) || (port !== 0 && (port < 1024 || port > 65535)));
-      if (args._.length !== 2 || (args.links !== undefined && !LINK_MODES.includes(args.links))
-        || (args.serve && args.json) || (args.port !== undefined && !args.serve) || badPort) {
-        throw new ForgeError(`Usage: forge.mjs canvas <key> [--json] [--links ${LINK_MODES.join('|')}] [--serve [--port <n>]]. A port is 0, or 1024 to 65535.`, 'bad-args');
+      if (args._.length !== 2 || (args.links !== undefined && !LINK_MODES.includes(args.links)) || args.port !== undefined) {
+        throw new ForgeError(`Usage: forge.mjs canvas <key> [--json] [--links ${LINK_MODES.join('|')}].`, 'bad-args');
       }
       const where = resolve(opts);
       try {
         const { dir, folder } = findTicket(where.wiki.path, args._[1]);
         if (args.json) console.log(JSON.stringify(buildCanvas(dir), null, 2));
-        else if (args.serve) {
-          // The server runs after main() returns. The exit code comes when the user sends the comments or the server stops.
-          serveCanvas(dir, { links: args.links, port, wiki: where.wiki.path, folder }).then(
-            (code) => { process.exitCode = code; },
-            (err) => { console.error(`forge: ${err.message}`); process.exitCode = 1; },
-          );
-        } else {
+        else {
           // The page links to the board page and to the canvas of each other ticket, so this command writes those that are missing.
           const views = writeViews(where.wiki.path, { links: args.links, focus: folder, all: false });
           const result = views.focus;
@@ -642,7 +605,7 @@ export function main(argv = process.argv.slice(2)) {
       if (args._[1] === 'approve') console.log(JSON.stringify(approve(where, args._.slice(2)), null, 2));
       else console.log(JSON.stringify(trustStatus(where), null, 2));
     } else {
-      console.error('Usage: node forge.mjs <where|config|doctor|lint|detect|init|move|bind|seed|board|styleguide|worktree|snapshot|diff|canvas|live|open|gate-approve|hook|context|trust|run> [--wiki <dir>] [--cwd <dir>] [--json]');
+      console.error('Usage: node forge.mjs <where|config|doctor|lint|detect|init|bind|seed|board|styleguide|worktree|snapshot|diff|canvas|live|open|gate-approve|hook|context|trust|run> [--wiki <dir>] [--cwd <dir>] [--json]');
       return 2;
     }
     return 0;

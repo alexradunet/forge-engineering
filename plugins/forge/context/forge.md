@@ -9,7 +9,7 @@ The first lines of the Forge session context give the paths. When they are missi
 
 - `<repo>`: the main checkout. Worktrees are in `../<repo>.worktrees`.
 - `<forge>`: `../<repo>.forge`, the Forge folder. It has `wiki/`, and the local folders `raw/` (tickets, pages) and `archive/`.
-- `<wiki>`: `<forge>/wiki`, the memory of the user and the agents. A rule for each session goes into a `<wiki>/rules/` page. An older folder `../<repo>.wiki` is `<forge>` and `<wiki>` in one.
+- `<wiki>`: `<forge>/wiki`, the memory of the user and the agents. A rule for each session goes into a `<wiki>/rules/` page.
 - `<config>`: `<wiki>/forge/config`. `<file>.<key>` means the frontmatter key `<key>` of `<config>/<file>.md`. A step rule for tickets goes into a section of `policy.md`.
 
 When `where` fails, or the wiki or config is missing, tell the user to say "set up forge".

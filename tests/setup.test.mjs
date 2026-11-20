@@ -67,17 +67,17 @@ test('detect does not offer a disabled public wiki', () => {
   assert.deepEqual(d.suggestion.wikiRemote.options, ['separate-private-repo', 'local-only']);
 });
 
-test('initWiki keeps an older ../<repo>.wiki folder: it ignores raw and archive inside the wiki, and adds no launcher', () => {
+test('initWiki for a --wiki folder outside of a Forge folder ignores raw and archive inside the wiki, and adds no launcher', () => {
   const other = path.join(root, 'old');
+  const given = path.join(root, 'given-wiki');
   mkdirSync(other);
   execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: other });
-  mkdirSync(`${other}.wiki`);
-  const where = resolve({ cwd: other, env });
-  assert.deepEqual([where.wiki.path, where.forge.path, where.forge.layout, where.raw], [`${other}.wiki`, `${other}.wiki`, 'wiki', path.join(`${other}.wiki`, 'raw')]);
+  const where = resolve({ cwd: other, wiki: given, env });
+  assert.deepEqual([where.wiki.path, where.forge.path, where.forge.layout, where.raw], [given, given, 'wiki', path.join(given, 'raw')]);
   const r = initWiki(where, { pluginDir: path.join(root, 'plugin') });
-  assert.match(readFileSync(path.join(`${other}.wiki`, '.gitignore'), 'utf8'), /^raw\/\narchive\/$/m);
-  assert.ok(!r.created.some((name) => name.startsWith('../')) && !existsSync(path.join(`${other}.wiki`, '.plugin')));
-  assert.deepEqual(initWiki(resolve({ cwd: other, env })).created, []);
+  assert.match(readFileSync(path.join(given, '.gitignore'), 'utf8'), /^raw\/\narchive\/$/m);
+  assert.ok(!r.created.some((name) => name.startsWith('../')) && !existsSync(path.join(given, '.plugin')));
+  assert.deepEqual(initWiki(resolve({ cwd: other, wiki: given, env })).created, []);
 });
 
 test('initWiki creates the Forge folder with its wiki, raw, archive, and launcher, binds it, and is idempotent', () => {
@@ -172,7 +172,6 @@ test('seed copies the profile templates, keeps existing files, and the result lo
   const { config } = loadConfig(first.configDir);
   const expected = loadConfig(templates).config;
   assert.deepEqual(config, expected);
-  assert.equal(config.policy.learningMode, false);
   assert.match(config.repo.branchPattern, /<user>/);
   writeFileSync(path.join(first.configDir, 'tracker.md'), '---\nprovider: local\n---\n');
   const second = seed(where, templates);
@@ -202,18 +201,18 @@ test('seed writes the rule pages only when <wiki>/rules is missing', () => {
   assert.doesNotMatch(readFileSync(path.join(first.configDir, 'policy.md'), 'utf8'), /^## (Toolkit|Data rules)$/m, 'The rules left policy.md.');
 });
 
-test('seed preserves an enabled learning policy, even with force', () => {
-  const wiki = path.join(root, 'learning.wiki');
+test('seed preserves an edited policy, even with force', () => {
+  const wiki = path.join(root, 'edited.wiki');
   const where = { wiki: { path: wiki } };
   const first = seed(where, templates);
   const policyFile = path.join(first.configDir, 'policy.md');
-  const policy = readFileSync(policyFile, 'utf8').replace('learningMode: false', 'learningMode: true');
+  const policy = readFileSync(policyFile, 'utf8').replace('qaHandover: false', 'qaHandover: true');
   writeFileSync(policyFile, policy);
   for (const force of [false, true]) {
     const result = seed(where, templates, { force });
     assert.ok(result.kept.includes('policy.md'));
     assert.equal(readFileSync(policyFile, 'utf8'), policy);
-    assert.equal(loadConfig(first.configDir).config.policy.learningMode, true);
+    assert.equal(loadConfig(first.configDir).config.policy.qaHandover, true);
   }
 });
 

@@ -55,7 +55,7 @@ export function daysSince(updated, today) {
   return Math.round((Date.parse(today) - Date.parse(updated)) / 86_400_000);
 }
 
-/** The sync note that the `board` skill or the maintenance automation writes: raw/sync/<key>.md frontmatter. */
+/** The sync note that the `board` skill writes: raw/sync/<key>.md frontmatter. */
 export function readSync(wikiPath, key) {
   const file = path.join(rawDir(wikiPath), 'sync', `${key}.md`);
   if (!existsSync(file)) return null;

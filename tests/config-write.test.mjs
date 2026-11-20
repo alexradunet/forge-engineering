@@ -73,13 +73,13 @@ test('config set keeps CRLF line endings and a BOM', () => {
   const file = path.join(dir, 'policy.md');
   const original = readFileSync(file, 'utf8');
   writeFileSync(file, `\uFEFF${original.replace(/\r?\n/g, '\r\n')}`);
-  setValues(dir, ['policy.learningMode=true', 'policy.noMergeWeekdays=[Thursday]']);
+  setValues(dir, ['policy.qaHandover=true', 'policy.noMergeWeekdays=[Thursday]']);
   const text = readFileSync(file, 'utf8');
   assert.ok(text.startsWith('\uFEFF---\r\n'));
   assert.ok(!/[^\r]\n/.test(text));
-  assert.match(text, /^learningMode: true\r$/m);
+  assert.match(text, /^qaHandover: true\r$/m);
   const { config } = loadConfig(dir);
-  assert.equal(config.policy.learningMode, true);
+  assert.equal(config.policy.qaHandover, true);
   assert.deepEqual(config.policy.noMergeWeekdays, ['Thursday']);
   writeFileSync(file, original);
 });

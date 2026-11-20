@@ -78,7 +78,7 @@ export function defaults() {
     tracker: { provider: null, queries: {} },
     repo: { provider: 'github', changeName: 'PR', branchPattern: '{KEY}-{slug}', baseBranch: 'master', checkouts: [] },
     ci: { provider: null },
-    policy: { noMergeWeekdays: [], evidenceOnDeployedEnv: false, qaHandover: false, learningMode: false, adversarialReviewModel: null, maxImplementers: 6, gateGuard: 'deny' },
+    policy: { noMergeWeekdays: [], evidenceOnDeployedEnv: false, qaHandover: false, adversarialReviewModel: null, maxImplementers: 6, gateGuard: 'deny' },
   };
 }
 
@@ -95,7 +95,7 @@ export function validate(config) {
   }
   if (!Number.isInteger(p.maxImplementers) || p.maxImplementers < 1) problems.push('policy.md: maxImplementers must be a whole number of 1 or more');
   if (!['deny', 'ask', 'off'].includes(p.gateGuard)) problems.push('policy.md: gateGuard must be deny, ask, or off');
-  for (const k of ['evidenceOnDeployedEnv', 'qaHandover', 'learningMode']) {
+  for (const k of ['evidenceOnDeployedEnv', 'qaHandover']) {
     if (typeof p[k] !== 'boolean') problems.push(`policy.md: ${k} must be true or false`);
   }
   return problems;

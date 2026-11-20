@@ -5,7 +5,6 @@
 // each tool call has its id, and a state change that is older than the last one is ignored.
 import { AGENT_TOOLS } from './live-event.mjs';
 
-export const LIVE_STATES = ['working', 'needs-you', 'idle', 'ended'];
 export const MAX_SESSIONS = 50;
 export const MAX_ITEMS = 200;
 export const MAX_AGENTS = 40;

@@ -4,7 +4,7 @@
 // The links of a repository stay the same after a restart (the key file of live-serve.mjs). `--new-link` (renewLink) makes a new key.
 import { spawn } from 'node:child_process';
 import { homeOf } from './layout.mjs';
-import { liveList, liveStatus, newKey } from './live-serve.mjs';
+import { PLUGIN_VERSION, liveList, liveStatus, newKey } from './live-serve.mjs';
 
 const START_MS = 8000;
 const STOP_MS = 5000;
@@ -33,11 +33,16 @@ export function openBrowser(link, { platform = process.platform, spawnFn = spawn
 /**
  * Gives the live server of the repository of `wiki`, and starts it first when none runs.
  * `cli` is the path of forge.mjs, and `repo` is the main checkout. The server is a process of its own: it runs on after this call.
+ * A server of another plugin version (or with no version), or on another port than a `port` above 0, is stopped and started again.
  */
-export async function openForge({ cli, repo, wiki, links, port, env = process.env, browser = true, out = process.stdout, waitMs = START_MS, platform = process.platform, spawnFn = spawn }) {
+export async function openForge({ cli, repo, wiki, links, port, env = process.env, browser = true, out = process.stdout, waitMs = START_MS, platform = process.platform, spawnFn = spawn, version = PLUGIN_VERSION }) {
   const home = homeOf(wiki);
   let running = liveStatus(env, home);
   let started = false;
+  if (running && ((version && running.version !== version) || (port && port !== running.port))) {
+    await stopForge({ wiki, env });
+    running = null;
+  }
   if (!running) {
     const args = [cli, 'live', '--cwd', repo, '--wiki', wiki, ...(links ? ['--links', links] : []), ...(port === undefined ? [] : ['--port', String(port)])];
     const child = spawnFn(process.execPath, args, { detached: true, stdio: 'ignore', env });

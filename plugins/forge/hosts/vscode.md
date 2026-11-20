@@ -19,7 +19,6 @@ A Forge skill names a host verb, for example `host.title`. Do the step of the ve
 | `host.open` | Run `code -r "<absolute path>"` with the shell tool in `async` mode: the command can block for 30 seconds or more. Open at most 3 documents at once, and give a link for each other file. |
 | `host.comments` | Read the comment threads of a document with `listComments`. Answer a question with `replyToComment`. Resolve a handled thread with `resolveComments`. Comments that the user sends with the comment submit button (`/act-on-feedback`) arrive the same way. |
 | `host.write` | Ask with `ask_user` first, and run the write command only after an explicit "yes": no check has shown yet that the plugin hook runs in a Copilot harness session. When `ask_user` says that the user is not available, give the user the exact command. |
-| `host.automation` | Use `configureAutomation` to create or change an automation, `listAutomations` for the IDs and the models, and `runAutomation` for a test run. |
 
 ## Ticket canvas
 
@@ -29,8 +28,8 @@ The ticket canvas is a local HTML page (`canvas.html` in the ticket folder, from
 - Tell the user one time to turn on `workbench.browser.autoReloadOnFileChange`. Then the page loads again after each `canvas` run.
 - The board page (`board.html` in `<forge>/raw`, from `forge.mjs board`) shows all tickets. The board page and each canvas have links to each other. The wiki page (`wiki.html`, in the same folder) shows the pages of the wiki and the summary pages of the closed tickets. Open it the same way. The user can make it a favorite with the star in the address bar of the integrated browser.
 - The first **Copy all** on the page can ask for the clipboard permission of the site. The page also shows the text for a manual copy.
-- For comments, run `forge.mjs canvas <KEY> --serve` with the shell tool in `async` mode, and give the `http://127.0.0.1` link from its output. VS Code opens the link in the integrated browser. When the user selects **Send to agent**, the command prints the comment message and stops. Tell the user to write `sent` if the session does not continue. Then read the output of the command.
-- The link works only in a browser on the machine of the session. For a browser on another machine, run it with `--port <n>`, and tell the user to forward that port. Never use another address than `127.0.0.1`.
+- For comments, run `forge.mjs open --no-browser` with the shell tool. Give the user the canvas link of the ticket (`http://127.0.0.1`, this machine only): take the board link that the command prints, and change `/board` to `/ticket/<folder>/` (the folder is the key in lower case, for example `app-9`). VS Code opens the link in the integrated browser. When the user selects **Send to agent**, the server adds the comment message to `canvas-comments.md` in the ticket folder, and it keeps running. This host has no prompt hook. Tell the user to write `sent` if the session does not continue. Then read that file, handle the comments, and delete the file.
+- The link works only in a browser on the machine of the session. For a browser on another machine, run `forge.mjs open --no-browser --port <n>`, and tell the user to forward that port. Never use another address than `127.0.0.1`.
 - For a comment on one element of a page, the user can also use **Add Element to Chat** in the toolbar of the integrated browser. It is native, but it gives no ticket file and no section.
 - A code link on the page opens the file in VS Code (`vscode://file/...`).
 - Do not use the native canvas tools of VS Code for the ticket canvas. They run only in a Copilot harness session, and the page must be the same in each host.
@@ -40,20 +39,19 @@ The ticket canvas is a local HTML page (`canvas.html` in the ticket folder, from
 
 - Give UI steps for the Agents window: the sessions list, the Changes panel, **Chat: Open Customizations**, and Command Palette commands.
 - VS Code changes each month. Your memory of a VS Code feature can be old.
-- Before you advise on, configure, or change a VS Code feature, read its current documentation page. This applies to sessions, worktrees, automations, agent plugins, MCP servers, settings, and harnesses.
+- Before you advise on, configure, or change a VS Code feature, read its current documentation page. This applies to sessions, worktrees, agent plugins, MCP servers, settings, and harnesses.
 - Once per session, before the first such step, read the latest release notes. Check for changes to the feature.
 - When the documentation and a forge file do not agree, follow the documentation. Tell the user the forge file and the difference.
-- Prefer a native feature (session tools, artifacts, automations, hooks, custom agents) to a Forge workaround.
+- Prefer a native feature (session tools, artifacts, hooks, custom agents) to a Forge workaround.
 
 | Topic | Documentation |
 |---|---|
 | Release notes (latest version) | https://code.visualstudio.com/updates |
 | Agents window | https://code.visualstudio.com/docs/agents/run/agents-window |
 | Agent Host | https://code.visualstudio.com/docs/agents/concepts/agent-host |
-| Automations | https://code.visualstudio.com/docs/agents/run/automations |
 | Agent harnesses | https://code.visualstudio.com/docs/agents/run/agent-harnesses |
 | Agent plugins | https://code.visualstudio.com/docs/agent-customization/agent-plugins |
-| Agent plugin reference (agents, hooks, automation templates) | https://code.visualstudio.com/docs/agents/reference/agent-plugin-reference |
+| Agent plugin reference (agents, hooks) | https://code.visualstudio.com/docs/agents/reference/agent-plugin-reference |
 | Manage sessions (groups, pins, move a chat, cleanup) | https://code.visualstudio.com/docs/agents/run/sessions/manage-sessions |
 | Session tools (coordinate work across sessions) | https://code.visualstudio.com/docs/agents/run/tools |
 | Artifacts panel | https://code.visualstudio.com/docs/agents/run/artifacts |

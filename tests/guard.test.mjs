@@ -39,8 +39,9 @@ function setup(t, { approved = [], workflow = 'full-v3' } = {}) {
   git(app, 'commit', '-q', '-m', 'init');
   const worktree = path.join(`${app}.worktrees`, 'app-7-doc-import');
   git(app, 'worktree', 'add', '-q', '-b', 'users/a/APP-7-doc-import', worktree);
-  const dir = path.join(root, 'app.wiki', 'raw', 'tickets', 'app-7');
+  const dir = path.join(root, 'app.forge', 'raw', 'tickets', 'app-7');
   mkdirSync(path.join(dir, 'approvals'), { recursive: true });
+  mkdirSync(path.join(root, 'app.forge', 'wiki'), { recursive: true });
   const gates = [];
   for (const [name, doc] of GATES) {
     writeFileSync(path.join(dir, doc), `# ${doc}\n\nText of ${name}\n`);
@@ -58,7 +59,7 @@ function setup(t, { approved = [], workflow = 'full-v3' } = {}) {
     `worktree: "${worktree.replaceAll('\\', '/')}"`, 'changes: []', 'people: []', 'gates:', ...gates, 'updated: 2026-11-17', '---',
     '# APP-7', '', '## Now', '', '- State: ▶️ active', '',
   ].join('\n'));
-  return { root, app, worktree, dir, readme, wiki: path.join(root, 'app.wiki') };
+  return { root, app, worktree, dir, readme, wiki: path.join(root, 'app.forge', 'wiki') };
 }
 
 const run = (cwd, command) => preTool({ cwd, command }, { env });
@@ -216,7 +217,7 @@ test('the guard finds the ticket from the folder of the command, and it ignores 
   assert.equal(run(os.tmpdir(), 'git push'), null, 'A folder outside a repository.');
   assert.equal(run(s.worktree, 'gh pr create -t T'), null, 'Without a trusted config, only git push is a ship action.');
   assert.equal(preTool(null, { env }), null);
-  rmSync(path.join(s.root, 'app.wiki'), { recursive: true, force: true });
+  rmSync(path.join(s.root, 'app.forge'), { recursive: true, force: true });
   assert.equal(run(s.worktree, 'git push'), null, 'No wiki, no ticket.');
 });
 

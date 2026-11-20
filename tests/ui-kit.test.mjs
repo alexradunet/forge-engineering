@@ -15,7 +15,7 @@ import { BREAK, COMPONENTS, GATE_TEXT, TOOLS_HTML, buildNav, PAIRS, TOKENS, UI_S
 import { gatesHtml, ingotHtml } from '../plugins/forge/scripts/lib/ui/gates.mjs';
 import { FONT, SPRITES, canPixel, iconHtml, pixelText, spritePath } from '../plugins/forge/scripts/lib/ui/pixel.mjs';
 import { renderStyleguide } from '../plugins/forge/scripts/lib/ui/styleguide.mjs';
-import { policy } from '../plugins/forge/scripts/lib/canvas-serve.mjs';
+import { policy } from '../plugins/forge/scripts/lib/live-serve.mjs';
 import { WIKI_SCRIPT, WIKI_STYLE, renderWikiPage } from '../plugins/forge/scripts/lib/wiki-page.mjs';
 import { buildWiki } from '../plugins/forge/scripts/lib/wiki.mjs';
 import { FULL_TICKET, seedDemo } from './fixtures/demo.mjs';
@@ -604,7 +604,7 @@ test('each page has the one notice: a hidden banner with a polite live region, a
   assert.ok(!/toast\([^)]*(server stopped|does not answer)/.test(UI_SCRIPT.replace(/copyCommand\([^;]*;/g, '')), 'no toast says that the server stopped');
   for (const text of [
     'The live server does not answer. Start it with this command:', 'This link is old. Run the command for the new link:',
-    'This page is old, or its server stopped. Ask the ticket session for a new link.', "text: 'Copy command', copy: OPEN_NOW", "text: 'Try again', run: tryAgain",
+    'This page is old, or its server stopped. Run "forge.mjs open --new-link" for a new link.', "text: 'Copy command', copy: OPEN_NOW", "text: 'Try again', run: tryAgain",
     "typeof data.open === 'string'", "data.open || 'forge.mjs open'", "'The board changed.'", "'This ticket changed.'", "text: 'Reload'", "text: 'Later'",
   ]) assert.ok(UI_SCRIPT.includes(text), text);
   // Reload goes through go() with the current address, so a stopped server does not replace the page. The page never loads again by itself.
@@ -654,8 +654,8 @@ test('the pages of a live server: the board and the canvas have the stamp, the c
   assert.ok(!('open' in file) && !('c' in file) && !('icons' in file), 'a file page has none of them');
   const c = dataOf(renderCanvas(buildCanvas(path.join(demo.forge, 'raw', 'tickets', FULL_TICKET), { now: new Date('2026-11-17T09:00:00Z') }), { serve }), 'canvas-data');
   assert.deepEqual([c.open, c.c, typeof c.hot, Object.keys(c.icons)], ['"/x y.forge/forge" open', 'abcdef012345', 'boolean', ['calm', 'needs']]);
-  const canvasServer = dataOf(renderCanvas(buildCanvas(path.join(demo.forge, 'raw', 'tickets', FULL_TICKET), { now: new Date('2026-11-17T09:00:00Z') }), { serve: { token: 'a'.repeat(32) } }), 'canvas-data');
-  assert.ok(!('open' in canvasServer) && !('c' in canvasServer), 'a page of the canvas server has no command: its notice says to ask the ticket session');
+  const tokenPage = dataOf(renderCanvas(buildCanvas(path.join(demo.forge, 'raw', 'tickets', FULL_TICKET), { now: new Date('2026-11-17T09:00:00Z') }), { serve: { token: 'a'.repeat(32) } }), 'canvas-data');
+  assert.ok(!('open' in tokenPage) && !('c' in tokenPage), 'a page with a token and no open command has none of them');
   // The board script sets the title and swaps the icon from the data block. Nothing in a script draws, and no script holds an address.
   assert.ok(BOARD_SCRIPT.includes("document.title = state.needs ? '(' + state.needs + ') Forge board' : 'Forge board';") && BOARD_SCRIPT.includes('setIcon(state.needs > 0);'));
   assert.ok(CANVAS_SCRIPT.includes("setIcon(data.hot || worst === 'needs-you');"));

@@ -1,6 +1,6 @@
 ---
 name: forge-setup
-description: Set up, check, repair, resume, or refresh forge for the repository of the plugin profile. Detects the CLIs and their login, the MCP servers of the profile, the default branch, your branch pattern, and your main clone; creates or binds the Forge folder of the repository (../<repo>.forge, with its wiki); seeds the profile config (tracker, repository, CI, policy) and the rule pages; sets your personal values; stores the credentials of the profile in the OS credential store; checks each capability with a live read; and offers the optional extras (learning mode, daily recap, automations). Use when the user says "set up forge", "configure forge", "check forge", "repair forge", "finish forge setup", "resume forge setup", or "refresh the forge config".
+description: Set up, check, repair, resume, or refresh forge for the repository of the plugin profile. Detects the CLIs and their login, the MCP servers of the profile, the default branch, your branch pattern, and your main clone; creates or binds the Forge folder of the repository (../<repo>.forge, with its wiki); seeds the profile config (tracker, repository, CI, policy) and the rule pages; sets your personal values; stores the credentials of the profile in the OS credential store; checks each capability with a live read; and offers the optional extras (policy values and the VS Code check). Use when the user says "set up forge", "configure forge", "check forge", "repair forge", "finish forge setup", "resume forge setup", or "refresh the forge config".
 disable-model-invocation: true
 ---
 
@@ -42,7 +42,6 @@ resolved path in each command. All commands run on Windows, macOS, and Linux.
 | `<F> detect` | Host, visibility, CLIs and login, default branch, key hints, your branch pattern, wiki state, and suggested values | nothing |
 | `<F> doctor [--fetch]` | Read-only check of the whole setup: placeholders, credentials, the `gh` login, the session start hook, and the plugin version (`--fetch` runs `git fetch` in the plugin clone) | nothing |
 | `<F> init` | Create the Forge folder `../<repo>.forge`: the wiki (`git init`, `index.md`, the binding), `raw/`, `archive/`, and the launcher | the Forge folder |
-| `<F> move [--dry-run]` | Move an older folder `../<repo>.wiki` to the Forge folder. It changes no file | the two folders |
 | `<F> bind` | Write `<wiki>/forge/repo.json` | the wiki folder |
 | `<F> seed [--force]` | Copy the profile templates to `<wiki>/forge/config`, and the rule pages to `<wiki>/rules` | the wiki folder |
 | `<F> config set <file>.<key>=<value> ...` | Set frontmatter values. Validates first; writes nothing on a problem | the wiki folder |
@@ -73,7 +72,7 @@ State the progress at each step, for example "step 4 of 10 done".
 ## ✅ Check or repair
 
 1. Run `doctor`. Report each `fail` and `warn` line with its fix.
-2. Read the latest VS Code release notes (see "VS Code features" in `<plugin>/hosts/vscode.md`). Report each change that affects plugins, sessions, worktrees, automations, hooks, custom agents, or MCP servers.
+2. Read the latest VS Code release notes (see "VS Code features" in `<plugin>/hosts/vscode.md`). Report each change that affects plugins, sessions, worktrees, hooks, custom agents, or MCP servers.
 3. Check the plugin version: run `<F> doctor --fetch` and read the `plugin:version` line. When it says that the clone is behind, tell the user to update (README, "Update forge").
    An uninstall and a new install from source can reuse the old clone, so a reinstall is not an update.
 4. When a line needs a fix, continue with ⏯️ Resume.
@@ -104,7 +103,6 @@ A missing CLI never blocks setup. Continue, and tell the user that those capabil
 
 When `wiki.exists` is false, show the path and the remote, and ask for approval (see **📚 Wiki remote**).
 Clone the team wiki to that path (`../<repo>.forge/wiki`) when the team already shares one. Then run `init`: it adds `raw/`, `archive/`, and the launcher, and it changes no file of the clone. Without a team wiki, `init` also creates the wiki.
-When `forge.layout` of `where` is `wiki`, the repository has an older folder `../<repo>.wiki`. It still works. Show the steps of `<F> move --dry-run`, and run `<F> move` only after a "yes". Tell the user to update the plugin in each host first, and to start each session again after the move.
 Run `bind` after a clone, or when an existing wiki is not bound.
 Add the remote with `git -C <wiki> remote add origin <url>` only after approval.
 A cloned wiki usually has its config already. Then skip to step 5, and set only your personal values.
@@ -218,46 +216,9 @@ The profile `policy.md` already holds the hook sections and the values. Show the
 Write a change with `config set`, for example `"policy.maxImplementers=4"`.
 A hook can add steps and make rules stricter. It can never weaken a core rule.
 
-### Learning mode
-
-Ask whether forge offers optional lessons from artifact questions. The default is `false`.
-Write the answer with `<F> config set "policy.learningMode=true"` (or `false`). The `learning-mode` skill describes the use.
-
-### Daily recap
-
-Ask whether the user wants a daily recap. When yes, use the `daily-recap` skill to write
-`<forge>/raw/daily-recap/settings.json` (time zone, work days, daily meeting, and the `mine` query).
-Then offer a scheduled VS Code Automation "Prepare my daily":
-
-1. Read the [Automations](https://code.visualstudio.com/docs/agents/run/automations) page first. Its UI and settings change.
-2. Tell the user to select **Automations** in the Agents window sidebar, then the forge template **Prepare my daily** under **Templates from Plugins** (see Automations below). Without the template, create a **Local** automation.
-3. Check the prompt "Prepare my daily" and the repository as the workspace. Set the schedule time to `preparationTime` from `settings.json`.
-4. Tell the user to review the permissions, and to enable the automation only after the review.
-5. When **Automations** is not visible, the user turns on `chat.automations.enabled`.
-
 ### Board
 
 Tell the user: say "show the board" in any session. The `board` skill shows the state of each ticket and keeps the ticket session titles and state groups current. There is nothing to set up.
-
-### Automations
-
-The forge plugin has two automation templates. VS Code shows them under **Templates from Plugins**. A template does not create or enable an automation.
-
-| Template | Schedule | What it does |
-|---|---|---|
-| **Forge maintenance** | 09:00, 11:00, 13:00, 15:00, 17:00, Monday to Friday | Board, sync notes, lint report, people waits, titles, and state groups |
-| **Prepare my daily** | 10:20, Monday to Friday | The draft daily recap of the `daily-recap` skill |
-
-1. Read the [Automations](https://code.visualstudio.com/docs/agents/run/automations) page first.
-2. Tell the user to select **Automations** in the Agents window sidebar, expand **Templates from Plugins**, and select a forge template.
-3. In the **New Automation** dialog: **Run in the Cloud** off, the main checkout as the workspace, not **New Worktree**, and the default **Agent**. In VS Code 1.145, a run with a plugin agent has no workspace and does not get the agent instructions.
-   Select a model that defers MCP tools, for example Claude Sonnet. Also read **Automations** in `profile.md`. A model that loads all MCP tools in full can exceed its context budget before the run starts. In **Advanced** > **Customizations**, keep **forge** selected. Review the prompt, the schedule, and the permissions. With **Interactive**, each run stops at its first command until you approve it. For runs without you, select **Allow all**.
-4. Select **Run now** one time, and review the run in **History**. Then select **Enabled**, and save.
-5. A run writes only in `<forge>/raw/` and changes only session titles and groups. It reads the tracker, the repository host, and CI.
-6. Never create, change, or enable an automation without explicit approval. When the user asks you to create one, use `host.automation` with:
-   the template prompt, the template schedule as a cron expression, the main checkout as a folder workspace (not a worktree),
-   and a Claude Sonnet model from the list of automation models, not Haiku.
-   Save it disabled, and ask the user for the permission level. Get the ID from the automation list, then start one test run.
 
 ### VS Code check
 

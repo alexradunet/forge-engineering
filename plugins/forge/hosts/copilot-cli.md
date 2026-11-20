@@ -19,7 +19,6 @@ A Forge skill names a host verb, for example `host.title`. Do the step of the ve
 | `host.open` | Give a Markdown link with the absolute path of each file. Do not run an editor command: VS Code can be missing. |
 | `host.comments` | There are no document comments. Ask the user to paste the comments into the chat. |
 | `host.write` | Ask with `ask_user` first, and run the write command only after an explicit "yes": no check has shown yet that the Forge hook runs here. The hook can then ask again. In a prompt mode run or in autopilot, give the user the exact command. |
-| `host.automation` | There are no automations. Give the manual steps: a headless `copilot -p "<prompt>"` run that the operating system scheduler starts. |
 
 ## Ticket canvas
 
@@ -27,8 +26,8 @@ The ticket canvas is a local HTML page (`canvas.html` in the ticket folder, from
 
 - Give the user the `file://` link that the command prints. The user opens it in a browser, and loads the page again after each `canvas` run.
 - The board page (`board.html` in `<forge>/raw`, from `forge.mjs board`) shows all tickets. The board page and each canvas have links to each other. The wiki page (`wiki.html`, in the same folder) shows the pages of the wiki and the summary pages of the closed tickets. Give its `file://` link in the same way.
-- For comments, run `forge.mjs canvas <KEY> --serve` as a background shell command, and give the `http://127.0.0.1` link from its output. When the user selects **Send to agent**, the command prints the comment message and stops, and the CLI tells the session. Then read the output of the command. Tell the user to write `sent` if the session does not continue.
-- The link works only in a browser on the machine of the session. For a browser on another machine, run it with `--port <n>`, and tell the user to forward that port. Never use another address than `127.0.0.1`.
+- For comments, run `forge.mjs open --no-browser` (see Live view). Give the user the canvas link of the ticket (`http://127.0.0.1`, this machine only): take the board link that the command prints, and change `/board` to `/ticket/<folder>/` (the folder is the key in lower case, for example `app-9`). When the user selects **Send to agent**, the server adds the comment message to `canvas-comments.md` in the ticket folder, and it keeps running. This host has no prompt hook. The user tells the session `sent`. Then read that file, handle the comments, and delete the file.
+- The link works only in a browser on the machine of the session. For a browser on another machine, run `forge.mjs open --no-browser --port <n>`, and tell the user to forward that port. Never use another address than `127.0.0.1`.
 - A code link on the page opens the file in VS Code (`vscode://file/...`). When the user has no VS Code, run `forge.mjs canvas <KEY> --links file`.
 
 ## Live view

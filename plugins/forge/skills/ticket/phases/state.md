@@ -29,12 +29,12 @@ The ticket README starts with YAML frontmatter (`type: ticket`), see [templates/
 ### 👥 People
 
 The README `people` list holds every person you work with on the ticket, in every phase.
-It is the source for the people on the canvas, the board, and the daily recap.
+It is the source for the people on the canvas and the board.
 
 - Add people when they appear: reporter and experts at Start, the PO or domain owner at the interview, reviewers at the change request, QA at the QA handover.
 - Write a name or tracker handle only. Never store email addresses, phone numbers, or other personal data.
 - Keep one entry per person. Put all open asks for that person in one `ask` line.
-- Set `since` to today on each status change. The board and the recap show waits from this date.
+- Set `since` to today on each status change. The board shows waits from this date.
 - The README is outside approval manifests. A people change never reopens a gate.
 
 | Status | Meaning | Who acts |
@@ -81,7 +81,7 @@ The user asked for these titles. The ticket skill owns the title of a ticket ses
 - Use only these emoji in the title. Do not end the title with `?`: some hosts remove a final `?`. Keep the title under 60 characters.
 - Set the title (`host.title`) first, before any other tool call or question, when the session starts or resumes a ticket. Follow the extra steps of the host row.
 - Set it again at each change of the state emoji or the goal. Before a `host.ask` question that waits for the user, set 🟡 first.
-- The `board` skill and the maintenance automation can fix a stale title of a ticket session.
+- The `board` skill can fix a stale title of a ticket session.
 
 ### 📌 Artifacts panel
 

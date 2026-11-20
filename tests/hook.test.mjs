@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { CLAUDE_PARTS, END_MARKER, PROMPT_HEAD, buildContext, detectHost, promptSubmit, readEvent, resolveHost, ruleBody, sessionEnd, sessionStart, splitParts } from '../plugins/forge/scripts/lib/hook.mjs';
+import { CLAUDE_PARTS, END_MARKER, MAX_COMMENTS_CONTEXT, PROMPT_HEAD, buildContext, detectHost, promptSubmit, readEvent, resolveHost, ruleBody, sessionEnd, sessionStart, splitParts } from '../plugins/forge/scripts/lib/hook.mjs';
 import { OWN_TURN_STARTS, ownTurn } from '../plugins/forge/scripts/lib/own-turn.mjs';
 import { readSessions } from '../plugins/forge/scripts/lib/sessions.mjs';
 import { status as trustStatus, approve } from '../plugins/forge/scripts/lib/trust.mjs';
@@ -40,16 +40,18 @@ function setup(t, { workflow = 'full-v3', worktree = '', branch = '' } = {}) {
   writeFileSync(path.join(app, 'a.txt'), 'a\n');
   git(app, 'add', 'a.txt');
   git(app, 'commit', '-q', '-m', 'init');
-  const wiki = path.join(root, 'app.wiki');
-  const readme = path.join(wiki, 'raw', 'tickets', 'app-7', 'README.md');
+  const home = path.join(root, 'app.forge');
+  const wiki = path.join(home, 'wiki');
+  const readme = path.join(home, 'raw', 'tickets', 'app-7', 'README.md');
   mkdirSync(path.dirname(readme), { recursive: true });
+  mkdirSync(wiki, { recursive: true });
   writeFileSync(readme, [
     '---', 'type: ticket', 'key: APP-7', 'title: Doc import error telemetry for the long title', 'short: Doc import error telemetry',
     `workflow: ${workflow}`, 'phase: plan', 'state: needs-me', 'next: Approve Planned?', 'waiting_on: "you: Planned?"',
     `branch: "${branch}"`, `worktree: "${worktree.replaceAll('\\', '/')}"`, 'changes: []', 'people: []', 'gates: []', 'updated: 2026-10-05', '---',
     '# 🎫 APP-7', '', '## 📍 Now', '', '- **State:** 🟡 needs-me', '- **Phase:** plan', '- **Next:** Approve Planned?', '', '## Files', '',
   ].join('\n'));
-  return { root, app, wiki, readme };
+  return { root, app, home, wiki, readme };
 }
 
 const run = (event) => sessionStart(event, { cli, env });
@@ -102,7 +104,7 @@ test('a Folder session in the main checkout finds a key in the prompt or offers 
   const s = setup(t, { worktree: 'C:/elsewhere/app-7' });
   const known = run({ cwd: s.app, prompt: 'Resume app-7 please' }).additionalContext;
   assert.match(known, /The ticket worktree is C:\/elsewhere\/app-7\. Confirm with the user, then call set_workspace/);
-  assert.match(known, /A board request \(the `board` skill\) and Forge automations ignore this context\./);
+  assert.match(known, /A board request \(the `board` skill\) ignores this context\./);
   const fresh = run({ cwd: s.app, prompt: 'APP-241223 Doc import fails for big files' }).additionalContext;
   assert.match(fresh, /names APP-241223, and the wiki has no ticket folder/);
   assert.match(fresh, /rename_chat with "APP-241223 - ▶️ - <summary>"/);
@@ -325,6 +327,29 @@ test('the Claude Code prompt hook gives the ticket part and title once, when the
   assert.deepEqual(promptSubmit({ cwd: s.app, prompt: 'what is the board status', title: '' }, { cli, env }), {});
 });
 
+test('the prompt hook brings the canvas comments of the ticket of the session, and takes the file', (t) => {
+  const s = setup(t);
+  const folder = path.join(`${s.app}.worktrees`, 'app-7-doc-import');
+  git(s.app, 'worktree', 'add', '-q', '-b', 'APP-7-doc-import', folder);
+  writeFileSync(s.readme, readFileSync(s.readme, 'utf8').replace('worktree: ""', `worktree: "${folder.replaceAll('\\', '/')}"`));
+  const file = path.join(path.dirname(s.readme), 'canvas-comments.md');
+  const call = (prompt) => promptSubmit({ cwd: folder, prompt, title: 'My own name' }, { cli, env });
+  assert.deepEqual(call('sent'), {}, 'no file: no change');
+  writeFileSync(file, 'Canvas comments for APP-7:\n1. [unclear] README.md, Now: text\n\n');
+  assert.deepEqual(call('<task-notification>\n<task-id>a1</task-id>'), {}, 'a turn that Claude Code starts: the file stays');
+  assert.ok(existsSync(file));
+  const out = call('sent').hookSpecificOutput;
+  assert.equal(out.hookEventName, 'UserPromptSubmit');
+  assert.match(out.additionalContext, /^The user sent these comments from the ticket canvas:\n\nCanvas comments for APP-7:\n1\. \[unclear\]/);
+  assert.equal(out.sessionTitle, undefined);
+  assert.ok(!existsSync(file) && !existsSync(`${file}.taking`), 'the hook removes the file');
+  assert.deepEqual(call('sent'), {}, 'the file is taken once');
+  writeFileSync(file, 'x'.repeat(MAX_COMMENTS_CONTEXT + 1));
+  const big = call('sent').hookSpecificOutput.additionalContext;
+  assert.equal(big, `Canvas comments wait in ${file}. Read that file, handle the comments, and delete it.`);
+  assert.ok(existsSync(file), 'a large file stays');
+});
+
 // A setup with the tracker prefix APP approved, so a later prompt can start a new ticket.
 function withPrefix(t) {
   const s = setup(t);
@@ -366,7 +391,7 @@ test('a closed ticket is not a new ticket: the prompt hook gives {}, and the ses
   const s = withPrefix(t);
   mkdirSync(path.join(s.wiki, 'tickets'), { recursive: true });
   writeFileSync(path.join(s.wiki, 'tickets', 'app-8.md'), '# APP-8 Done work\n');
-  mkdirSync(path.join(s.wiki, 'archive', 'tickets', 'app-9'), { recursive: true });
+  mkdirSync(path.join(s.home, 'archive', 'tickets', 'app-9'), { recursive: true });
   for (const key of ['APP-8', 'APP-9']) {
     assert.deepEqual(promptSubmit({ cwd: s.app, prompt: `start ${key}`, title: '' }, { cli, env }), {}, key);
     const out = sessionStart({ cwd: s.app, source: 'startup', prompt: `start ${key}` }, { cli, env, host: 'claude', part: 1 }).hookSpecificOutput;
@@ -433,7 +458,7 @@ test('a full-v3 ticket gets the plain Now card and Resume', (t) => {
 
 test('the hooks of a terminal harness write the start and the end of a session to the session list, and VS Code writes nothing', (t) => {
   const s = setup(t);
-  const raw = path.join(s.wiki, 'raw');
+  const raw = path.join(s.home, 'raw');
   const file = path.join(raw, 'sessions.jsonl');
   const lines = () => (existsSync(file) ? readFileSync(file, 'utf8').trim().split('\n').map((line) => JSON.parse(line)) : []);
   const id = '11111111-2222-4333-8444-555555555555';

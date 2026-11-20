@@ -125,7 +125,7 @@ export function defaultBackend(platform = process.platform, env = process.env) {
   return linuxBackend();
 }
 
-/** A store over a backend. Scripts use getSecret(); nothing here prints a secret. */
+/** A store over a backend. Nothing here prints a secret. */
 export function createStore(backend = defaultBackend()) {
   return {
     backend: backend.id,
@@ -144,8 +144,4 @@ export function createStore(backend = defaultBackend()) {
       return v;
     },
   };
-}
-
-export function getSecret(name) {
-  return createStore().getSecret(name);
 }

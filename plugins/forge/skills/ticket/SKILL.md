@@ -76,7 +76,6 @@ This skill does not repeat other tools. Use them:
 | Tracker, repository host, and CI actions | the capabilities in `<config>` (see [tools.md](../../context/tools.md)) |
 | Build, run, deploy, and company tools | the repository's own instructions and skills, and the company rules (`<wiki>/rules/`) |
 | Human review of ticket documents | comment threads of the host, or comments that the user sends from the canvas (see Review gates) |
-| Optional lessons from artifact questions | the `learning-mode` skill when `policy.learningMode` is `true` |
 | Tickets of other sessions and titles | the `board` skill, in any session |
 
 ## 🧭 Workflow

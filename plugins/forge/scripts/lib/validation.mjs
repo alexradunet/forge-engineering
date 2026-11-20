@@ -23,10 +23,6 @@ const ACTION_GATES = {
   write: [],
   close: ['Scoped?', 'Planned?', 'Shippable?', 'Learned?'],
 };
-/** The gates that a phase needs. */
-export function phaseGates(phase) {
-  return PREREQUISITES[phase] ?? [];
-}
 const SHA = /^[a-f0-9]{64}$/;
 const MAX_BYTES = 1024 * 1024;
 export const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
@@ -283,7 +279,7 @@ export function lint({ wikiPath, repoPath, fix = false }) {
   inspect(report.wikiPath, () => {
     if (!lstatSync(report.wikiPath).isDirectory()) throw new Error('Wiki path must be a directory.');
     let ticketRoot = null;
-    // The tickets are in the raw folder of the Forge folder: inside the wiki for an older folder, and next to the wiki from Forge 9.
+    // The tickets are in the raw folder of the Forge folder.
     try { ticketRoot = within(homeOf(report.wikiPath), 'raw\\tickets'); }
     catch (error) {
       if (error.code !== 'ENOENT') add(path.join(rawDir(report.wikiPath), 'tickets'), 'invalid-input', error.message, 'Inspect the ticket path explicitly; lint does not follow links.');
