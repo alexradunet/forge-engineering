@@ -7,12 +7,14 @@
 // so the text goes in parts. Each host gets its verb table from <plugin>/hosts/<host>.md.
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { loadConfig } from './config.mjs';
 import { harness } from './harness.mjs';
+import { archiveDir } from './layout.mjs';
 import { writeLauncher, writePointer } from './launcher.mjs';
 import { resolve, samePath } from './repo.mjs';
+import { ownTurn } from './own-turn.mjs';
 import { recordEnd, recordStart } from './sessions.mjs';
 import { STATE_EMOJI, nowCard, sessionTitle } from './ticket.mjs';
 import { listTickets } from './tickets.mjs';
@@ -22,6 +24,9 @@ import { AGENTS_BRANCH } from './worktree.mjs';
 const KEY_TOKEN = /[A-Za-z][A-Za-z0-9]*-\d+/g;
 // A new key in a later prompt: a whole word, so "CVE-2024-1234" and "APP-7x" give no key.
 const STRICT_KEY = /(?<![A-Za-z0-9-])[A-Z][A-Z0-9]*-\d+(?![A-Za-z0-9]|-\d)/g;
+// A user names the ticket at the start of a prompt, and a long text names keys in passing (a report of a subagent,
+// a pasted log). A later prompt is searched only in its first characters.
+export const PROMPT_HEAD = 600;
 const MAX_CONTEXT = 2400;
 const MAX_WIKI_RULES = 8000;
 const RULE_FILES = ['forge.md', 'style.md'];
@@ -197,6 +202,19 @@ export function hostTable(pluginDir, host) {
   return `${text.slice(0, next).trimEnd()}\n\nMore steps for this host are in \`${file}\`: the ticket canvas, the board page, and the feature documentation. Read that file before you show a canvas or a board page, start the canvas server, or advise on a feature of the host.`;
 }
 
+/**
+ * The file of the closed ticket with this key, or ''. A closed ticket has a summary page in the wiki (tickets/<key>.md,
+ * the rule of buildWiki in wiki.mjs), or a folder in the archive. It checks only the files of this key.
+ */
+function closedFile(wikiPath, key) {
+  const names = [...new Set([key.toLowerCase(), key.toUpperCase(), key])];
+  const places = [
+    ...names.map((name) => path.join(wikiPath, 'tickets', `${name}.md`)),
+    ...names.map((name) => path.join(archiveDir(wikiPath), 'tickets', name)),
+  ];
+  return places.find((file) => existsSync(file)) ?? '';
+}
+
 /** Step 1 of the ticket part: the session title of a known ticket. */
 function titleLine(host, title) {
   if (host === 'claude') return `1. The Forge hook set the session title to "${title}", unless the session already had a custom title. You cannot see the title, so do not ask the user to rename the session now. At a later state change, tell the user to run \`/rename <new title>\`.`;
@@ -251,9 +269,11 @@ function ticketPart(event, where, forge, env, { host = 'vscode', promptOnly = fa
   const candidates = promptOnly ? [...String(event.prompt).matchAll(STRICT_KEY)].map((m) => m[0]) : tokens(event.prompt);
   const fresh = candidates.find((token) => /^[A-Z][A-Z0-9]*-\d+$/.test(token) && (!prefix || token.startsWith(`${prefix}-`)));
   if (!fresh) return { lines: [], key: '', title: '' };
+  const closed = closedFile(where.wiki.path, fresh);
+  if (closed) return { lines: [`Forge: ${fresh} is a closed ticket. Its summary page is ${closed}. Do not start it again unless the user asks.`], key: '', title: '', closed: true };
   const title = `${fresh} - ▶️ - Start ticket`;
   lines.push(
-    `Forge: the first prompt names ${fresh}, and the wiki has no ticket folder for it yet.`,
+    `Forge: the ${promptOnly ? '' : 'first '}prompt names ${fresh}, and the wiki has no ticket folder for it yet.`,
     freshTitleLine(host, fresh, title),
     `2. Load the ticket skill and follow Start. Name the worktree and branch with \`${forge} worktree ${fresh} --summary "<goal>"\`.`,
   );
@@ -407,14 +427,17 @@ export function sessionStart(event, { cli, env = process.env, host = 'vscode', p
 /**
  * The Claude Code UserPromptSubmit result, or {}. When the prompt names a ticket key and the session
  * has no custom title yet, it gives the ticket part and sets the session title.
+ * A turn that Claude Code started by itself (ownTurn), a key after the first PROMPT_HEAD characters, and a closed ticket give {}.
  */
 export function promptSubmit(event, { cli, env = process.env } = {}) {
-  if (!event || !cli || !tokens(event.prompt).length || event.title) return {};
+  if (!event || !cli || event.title || ownTurn(event.prompt)) return {};
+  const head = { ...event, prompt: String(event.prompt).slice(0, PROMPT_HEAD) };
+  if (!tokens(head.prompt).length) return {};
   const where = locate(event, env);
   if (!where?.wiki.exists) return {};
   const forge = `node "${cli}"`;
   let found;
-  try { found = ticketPart(event, where, forge, env, { host: 'claude', promptOnly: true }); } catch { return {}; }
-  if (!found.lines.length) return {};
+  try { found = ticketPart(head, where, forge, env, { host: 'claude', promptOnly: true }); } catch { return {}; }
+  if (!found.lines.length || found.closed) return {};
   return { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: `# Forge ticket context\n\n${ticketText(found.lines, forge)}`, sessionTitle: found.title } };
 }

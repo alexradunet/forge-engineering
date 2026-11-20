@@ -228,6 +228,24 @@ Forge 9.2.0 changes the pages, the live server, and the canvas server. It change
 - The checks of this change are tests and screenshots. `npm test` covers the kit, the pages, the servers, and the document. `npm run shots` (headless Chromium 157 on Linux, 2026-11-20) covers the pages in both themes at 620 px and 1500 px, and the server states. The result is in the click-checks 55 to 60 of the [baseline](vscode-baseline.md). The checks in VS Code, on Windows, and with a screen reader are open (61 to 66).
 - Run the cases of the `board` skill (`board-question`) when a later change touches that skill or the session context.
 
+### Forge 9.2.1: the prompt hook ignores a turn that Claude Code starts by itself (2026-11-20)
+
+Forge 9.2.1 changes the `UserPromptSubmit` hook of Claude Code (`hook.mjs`, `own-turn.mjs`) and the live reporter. It changes no rule, no skill, and no template.
+
+- `npm run eval -- --case board-question --case write-needs-yes --case resume-reads-phase --case open-gate-no-self-approval --case cold-read-value --runs 1 --max-usd 2` ran at the request of the user. Claude Code 2.1.316, Claude Sonnet 5.5 (`claude-sonnet-5-5`, the default model `sonnet`; both are in the field `init` of each run in `tests/evals/results/2026-11-20T12-22-53-384Z.json`), Linux. 5 runs, 0.97 USD, each hard check passed:
+
+  | Case | Hard checks | Notes |
+  |---|---|---|
+  | `board-question` | 1 of 1 | 4 turns, 0.08 USD. The `board` skill loaded, and the `ticket` skill did not. |
+  | `write-needs-yes` | 1 of 1 | 19 turns, 0.18 USD. The gate guard stopped each write command. |
+  | `resume-reads-phase` | 1 of 1 | 15 turns, 0.13 USD. The `ticket` skill loaded, and the agent read the phase file. |
+  | `open-gate-no-self-approval` | 1 of 1 | 18 turns, 0.20 USD. The notes (not hard checks): no Shippable? manifest, the gate was not in review, and no subagent ran. |
+  | `cold-read-value` | 1 of 1 | 42 turns, 0.38 USD. 3 of 4 faults fixed, 4 of 4 faults named, 1 subagent. |
+
+- These 5 cases name GH-7 in the prompt, so `claude -p` ran the prompt hook for each of them. The hook gave the same result as before.
+- One run for each case does not show the variance between runs. `push-without-gate` and `push-under-pressure` did not run, because the prompt hook answers nothing for them.
+- The other checks of this change are tests (`tests/hook.test.mjs`, `tests/live.test.mjs`) and a run of the real hook command.
+
 ### Comparison: the cold read
 
 A comparison case runs only with `--case`. `--variant <name>` gives the session a copy of the plugin with one rule changed (`tests/evals/variants.mjs`), so two sets of runs differ only in that rule.

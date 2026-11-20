@@ -163,7 +163,8 @@ export function reduce(state, event) {
       if (item.state !== 'running' && !item.child) session.tools.delete(item.id);
     }
     session.stops.clear();
-    session.prompt = event.text ?? '';
+    // A turn that Claude Code started by itself keeps the last prompt of the user on show.
+    if (event.kind !== 'own-turn') session.prompt = event.text ?? '';
     session.text = '';
     session.note = '';
     session.more = 0;

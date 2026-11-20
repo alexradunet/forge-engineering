@@ -55,6 +55,11 @@ test('the reporter reads each event that the hooks file names, in both payload s
   assert.equal(prompt.event, 'prompt');
   assert.equal(prompt.title, 'APP-9 - ▶️ - Fix outbox retry');
   assert.ok(prompt.text.startsWith('run the review y') && prompt.text.length <= 1000);
+  const own = normalize('', claude('UserPromptSubmit', { prompt: '<task-notification>\n<task-id>a1</task-id>\n<result>Done ticket: APP-2</result>' }), 'claude');
+  assert.deepEqual([own.event, own.text, own.kind], ['prompt', undefined, 'own-turn'], 'A turn that Claude Code started by itself gives no prompt text.');
+  assert.deepEqual([checkEvent(own).kind, checkEvent(own).text], ['own-turn', undefined]);
+  assert.equal(normalize('', claude('UserPromptSubmit', { prompt: '  Another Claude session sent a message:\n<agent-message from="x">hi</agent-message>' }), 'claude').text, undefined);
+  assert.equal(normalize('', claude('UserPromptSubmit', { prompt: 'see the task-notification text' }), 'claude').text, 'see the task-notification text');
   assert.deepEqual(normalize('', claude('Notification', { notification_type: 'permission_prompt', message: 'Claude needs your permission to use Bash' }), 'claude').kind, 'permission_prompt');
   assert.equal(normalize('', claude('SubagentStop', { agent_id: 'A1', agent_type: 'Explore', last_assistant_message: 'Found 3 files.', agent_transcript_path: '/x/y.jsonl' }), 'claude').text, 'Found 3 files.');
   assert.equal(normalize('', claude('Stop', { last_assistant_message: 'The tests pass.' }), 'claude').text, 'The tests pass.');
@@ -119,6 +124,18 @@ test('one turn: the prompt starts the work, a tool shows while it runs, and the 
   assert.equal(rows(state).items[0].state, 'failed');
   feed(state, ev('session-end', { ts: 7400 }));
   assert.equal(one(state).state, 'ended');
+});
+
+test('a turn that Claude Code started by itself keeps the prompt of the user on show, and the session still works', () => {
+  const state = createLive();
+  feed(state, ev('prompt', { text: 'fix the retry', ts: 100 }), ev('stop', { text: 'done', ts: 200 }));
+  assert.equal(one(state).state, 'idle');
+  feed(state, ev('prompt', { kind: 'own-turn', ts: 300 }));
+  assert.equal(one(state).state, 'working');
+  assert.equal(rows(state).prompt, 'fix the retry');
+  assert.equal(rows(state).text, '');
+  feed(state, ev('prompt', { text: 'next', ts: 400 }));
+  assert.equal(rows(state).prompt, 'next');
 });
 
 test('a permission prompt gives "needs you", and the answer gives "working" again', () => {

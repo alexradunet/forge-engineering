@@ -1,7 +1,8 @@
 // The live event: the small record that a session hook sends to the live server (forge.mjs live).
 // The reporter (live-hook.mjs) makes it from a hook payload with normalize(), and the server checks it again with checkEvent().
 // It holds only what the pages show: short text, no tool result, and no file content.
-// This file has no import, so the reporter starts fast.
+// This file imports only own-turn.mjs, which has no import, so the reporter starts fast.
+import { ownTurn } from './own-turn.mjs';
 
 export const EVENT_VERSION = 1;
 export const EVENTS = ['session-start', 'prompt', 'tool-start', 'tool-end', 'notify', 'agent-start', 'agent-stop', 'stop', 'session-end'];
@@ -30,6 +31,8 @@ export function pickServer(states, cwd, win = false) {
   }
   return best;
 }
+/** The kind of a prompt event for a turn that Claude Code started by itself. */
+export const OWN_KIND = 'own-turn';
 export const MAX_EVENT = 16 * 1024;
 const LIMIT = { session: 128, cwd: 1024, title: 200, agentId: 128, agentType: 120, toolId: 128, toolName: 80, label: 160, text: 1000, kind: 40 };
 
@@ -141,7 +144,9 @@ export function normalize(name, payload, host, now = Date.now()) {
       if (child && AGENT_TOOLS.includes(toolName.toLowerCase())) out.tool.child = child;
     }
   } else if (event === 'prompt') {
-    out.text = cleanText(maskSecrets(cleanText(p.prompt, 4000)), LIMIT.text);
+    // A turn that Claude Code started by itself (a report of a subagent) still starts the work, but its text is not the prompt of the user.
+    if (ownTurn(p.prompt)) out.kind = OWN_KIND;
+    else out.text = cleanText(maskSecrets(cleanText(p.prompt, 4000)), LIMIT.text);
   } else if (event === 'notify') {
     out.kind = cleanText(str(p.notification_type) || str(p.notificationType), LIMIT.kind);
     out.text = cleanText(p.message, LIMIT.text);

@@ -5,7 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { CLAUDE_PARTS, END_MARKER, buildContext, detectHost, promptSubmit, readEvent, resolveHost, ruleBody, sessionEnd, sessionStart, splitParts } from '../plugins/forge/scripts/lib/hook.mjs';
+import { CLAUDE_PARTS, END_MARKER, PROMPT_HEAD, buildContext, detectHost, promptSubmit, readEvent, resolveHost, ruleBody, sessionEnd, sessionStart, splitParts } from '../plugins/forge/scripts/lib/hook.mjs';
+import { OWN_TURN_STARTS, ownTurn } from '../plugins/forge/scripts/lib/own-turn.mjs';
 import { readSessions } from '../plugins/forge/scripts/lib/sessions.mjs';
 import { status as trustStatus, approve } from '../plugins/forge/scripts/lib/trust.mjs';
 import { resolve } from '../plugins/forge/scripts/lib/repo.mjs';
@@ -322,6 +323,73 @@ test('the Claude Code prompt hook gives the ticket part and title once, when the
   assert.equal(fresh('Resume APP-7', 'My own name'), undefined, 'A custom title stays.');
   assert.deepEqual(promptSubmit({ cwd: s.app, prompt: 'Compare with APP-7', title: 'APP-9 - ▶️ - Other' }, { cli, env }), {}, 'A ticket session keeps its title.');
   assert.deepEqual(promptSubmit({ cwd: s.app, prompt: 'what is the board status', title: '' }, { cli, env }), {});
+});
+
+// A setup with the tracker prefix APP approved, so a later prompt can start a new ticket.
+function withPrefix(t) {
+  const s = setup(t);
+  const where = resolve({ cwd: s.app, env });
+  setValues(seed(where, templates).configDir, ['tracker.prefix=APP']);
+  approve(where, trustStatus(where, { env }).files.filter((f) => f.rel.startsWith('config/')).map((f) => `${f.rel}=${f.sha.slice(0, 12)}`), { env });
+  return s;
+}
+
+test('ownTurn knows the turns that Claude Code starts by itself, and only by their first words', () => {
+  for (const start of OWN_TURN_STARTS) {
+    assert.equal(ownTurn(`${start}rest of the text`), true, start);
+    assert.equal(ownTurn(`\n  \t${start}rest`), true, `leading white space: ${start}`);
+  }
+  assert.equal(ownTurn('<task-notification>\n<task-id>a1</task-id>\n<status>completed</status>'), true);
+  assert.equal(ownTurn('Another Claude session sent a message:\n<agent-message from="x">Done ticket: GH-2</agent-message>'), true);
+  for (const text of ['please read the task-notification text', 'I saw <task-notification> in a log', 'Another session sent a message', 'Resume APP-7', '', undefined, null, 5]) {
+    assert.equal(ownTurn(text), false, String(text));
+  }
+});
+
+test('the prompt hook gives {} for a turn that Claude Code started by itself', (t) => {
+  const s = withPrefix(t);
+  const call = (prompt) => promptSubmit({ cwd: s.app, prompt, title: '' }, { cli, env });
+  assert.equal(call('Start APP-12').hookSpecificOutput.sessionTitle, 'APP-12 - ▶️ - Start ticket', 'A typed prompt with a new key still starts it.');
+  assert.equal(call('Resume app-7 please').hookSpecificOutput.sessionTitle, 'APP-7 - 🟡 - Doc import error telemetry', 'A typed prompt with a known key still resumes it.');
+  const body = '<task-id>a1</task-id>\n<status>completed</status>\n<summary>Agent done</summary>\n<result>Done ticket: APP-12 and APP-7</result>';
+  for (const prompt of [
+    `<task-notification>\n${body}\n</task-notification>`,
+    `  \n<task-notification>\n${body}`,
+    `Another Claude session sent a message:\n<agent-message from="x">Open: APP-7. New: APP-12</agent-message>`,
+    `\n\nAnother Claude session sent a message: APP-12`,
+    '<agent-message from="x">APP-12</agent-message>',
+    '<cross-session-message from="x">APP-7</cross-session-message>',
+  ]) assert.deepEqual(call(prompt), {}, prompt.slice(0, 50));
+});
+
+test('a closed ticket is not a new ticket: the prompt hook gives {}, and the session start gives one line and no title', (t) => {
+  const s = withPrefix(t);
+  mkdirSync(path.join(s.wiki, 'tickets'), { recursive: true });
+  writeFileSync(path.join(s.wiki, 'tickets', 'app-8.md'), '# APP-8 Done work\n');
+  mkdirSync(path.join(s.wiki, 'archive', 'tickets', 'app-9'), { recursive: true });
+  for (const key of ['APP-8', 'APP-9']) {
+    assert.deepEqual(promptSubmit({ cwd: s.app, prompt: `start ${key}`, title: '' }, { cli, env }), {}, key);
+    const out = sessionStart({ cwd: s.app, source: 'startup', prompt: `start ${key}` }, { cli, env, host: 'claude', part: 1 }).hookSpecificOutput;
+    assert.equal(out.sessionTitle, undefined, 'A closed ticket sets no title.');
+    const ticket = out.additionalContext.match(/# Forge ticket context\n\n([^\n]*)/)[1];
+    assert.match(ticket, new RegExp(`^Forge: ${key} is a closed ticket\\. Its summary page is .*${key.toLowerCase()}.* Do not start it again unless the user asks\\.$`));
+    assert.ok(ticket.length < 300, 'The line is short.');
+  }
+  assert.equal(promptSubmit({ cwd: s.app, prompt: 'start APP-10', title: '' }, { cli, env }).hookSpecificOutput.sessionTitle, 'APP-10 - ▶️ - Start ticket');
+  assert.match(sessionStart({ cwd: s.app, source: 'startup', prompt: 'start APP-10' }, { cli, env, host: 'claude', part: 1 }).hookSpecificOutput.additionalContext, /Forge: the first prompt names APP-10/);
+});
+
+test('a later prompt names a ticket only in its first characters', (t) => {
+  const s = withPrefix(t);
+  const call = (prompt) => promptSubmit({ cwd: s.app, prompt, title: '' }, { cli, env });
+  const fill = (n) => 'x'.repeat(n);
+  for (const key of ['APP-7', 'APP-12']) {
+    assert.deepEqual(call(`${fill(PROMPT_HEAD)} ${key}`), {}, `${key} after the limit`);
+    assert.ok(call(`${fill(PROMPT_HEAD - 20)} ${key}`).hookSpecificOutput, `${key} inside the limit`);
+  }
+  const start = call(`Start APP-12 ${fill(5000)}`).hookSpecificOutput;
+  assert.match(start.additionalContext, /Forge: the prompt names APP-12, and the wiki has no ticket folder for it yet\./, 'A later prompt says "the prompt names".');
+  assert.doesNotMatch(start.additionalContext, /first prompt/);
 });
 
 test('forge.mjs context prints the context for a host without the hook, and the Claude hook options are strict', (t) => {
