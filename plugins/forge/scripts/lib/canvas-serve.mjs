@@ -14,7 +14,7 @@ import { buildCanvas, renderCanvas, writeCanvas } from './canvas.mjs';
 import { CANVAS_SCRIPT, canvasMessage } from './canvas-page.mjs';
 import { MERMAID_ROUTE, needsMermaid, readMermaid } from './mermaid.mjs';
 import { ticketRoot } from './tickets.mjs';
-import { buildNav } from './ui.mjs';
+import { ERROR_POLICY, buildNav, errorPage } from './ui.mjs';
 import { writeViews } from './views.mjs';
 import { WIKI_SCRIPT, renderWikiPage } from './wiki-page.mjs';
 import { buildWiki, wikiLinks } from './wiki.mjs';
@@ -34,9 +34,9 @@ const TYPES = {
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp',
 };
 export const BASE_HEADERS = { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff' };
-// A page can run only its own script, and it can connect only to this server.
+// A page can run only its own script, and it can connect only to this server. It can show an image from a data address only: the icon of its tab.
 // With `self`, the page can also load a script file of this server: the Mermaid file of the wiki page.
-export const policy = (script, self = false) => `default-src 'none'; script-src 'sha256-${createHash('sha256').update(script).digest('base64')}'${self ? " 'self'" : ''}; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'`;
+export const policy = (script, self = false) => `default-src 'none'; script-src 'sha256-${createHash('sha256').update(script).digest('base64')}'${self ? " 'self'" : ''}; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; base-uri 'none'; form-action 'none'`;
 /** The answer for the Mermaid file of forge: the bytes and the headers. The browser can keep the file for one run of the server. */
 export function mermaidAnswer() {
   return { body: readMermaid(), headers: { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'private, max-age=86400' } };
@@ -49,13 +49,32 @@ const BOARD_POLICY = policy(BOARD_SCRIPT);
 const WIKI_POLICY = policy(WIKI_SCRIPT);
 const WIKI_POLICY_MERMAID = policy(WIKI_SCRIPT, true);
 const OLD_LINK = 'This link is old or not complete. Ask the ticket session for the new canvas link.\n';
+const OLD_PAGE = { title: 'This link is old', text: 'The link is old or not complete. Ask the ticket session for the new canvas link.' };
+
+/** True for a GET that a browser makes for a page: its Accept header names text/html. A script, a hook reporter, or curl does not send that. */
+export const wantsHtml = (req) => req.method === 'GET' && /text\/html/i.test(String(req.headers.accept ?? ''));
+
+/**
+ * Answers a 403, a 404, or a 500. A request that wants a page gets the error page of the kit with ERROR_POLICY (no script, no connection).
+ * Each other caller gets `text` as plain text, as before. `page` is { title, text, command, links } for errorPage. The headers of a plain answer stay.
+ */
+export function errorAnswer(req, res, status, text, page) {
+  const html = wantsHtml(req);
+  const body = html ? errorPage({ status, ...page }) : text;
+  res.writeHead(status, {
+    ...BASE_HEADERS, 'Content-Type': html ? 'text/html; charset=utf-8' : 'text/plain; charset=utf-8', 'Content-Length': Buffer.byteLength(body),
+    ...(html ? { 'Content-Security-Policy': ERROR_POLICY } : {}),
+  });
+  res.end(body);
+}
 
 /** The first port that the server tries for a ticket. The same ticket gets the same port, so the browser keeps the view and the comments. */
 export function defaultPort(key) {
   return PORT_BASE + createHash('sha256').update(String(key)).digest().readUInt32BE(0) % PORT_SPAN;
 }
 
-function sameToken(given, token) {
+/** True when the two tokens are the same. The comparison takes the same time for each wrong token of the same length. */
+export function sameToken(given, token) {
   const a = Buffer.from(String(given));
   const b = Buffer.from(String(token));
   return a.length === b.length && timingSafeEqual(a, b);
@@ -175,18 +194,25 @@ export async function serveCanvas(dir, { links = 'vscode', port, limitMs = LIMIT
     res.end(body);
   };
   const plain = (res, status, text) => send(res, status, 'text/plain; charset=utf-8', text);
+  // After the token check, a page has a link to the board (or to this ticket) with the token: the user holds the token already.
+  const back = [{ text: linked ? 'Open the board' : 'Open the ticket', href: linked ? `/board?t=${token}` : `/?t=${token}` }];
+  const missing = (req, res) => errorAnswer(req, res, 404, 'Not found.\n', { title: 'Not found', text: 'This server has no page at this address.', links: back });
 
   const server = http.createServer(async (req, res) => {
+    // The links of an error page hold the token, so only a request that passed the token check gets them.
+    let checked = false;
     try {
       const status = checkRequest(req, token);
       if (status) {
         req.resume();
-        plain(res, status, status === 403 ? OLD_LINK : `Refused (${status}).\n`);
+        if (status === 403) errorAnswer(req, res, 403, OLD_LINK, OLD_PAGE);
+        else plain(res, status, `Refused (${status}).\n`);
         return;
       }
+      checked = true;
       const url = new URL(req.url, `http://${SERVE_HOST}`);
       if (req.method === 'POST') {
-        if (url.pathname !== '/send') { req.resume(); plain(res, 404, 'Not found.\n'); return; }
+        if (url.pathname !== '/send') { req.resume(); missing(req, res); return; }
         const text = await readBody(req);
         if (text === null) { plain(res, 413, 'The comments are too large.\n'); return; }
         let body = null;
@@ -234,7 +260,7 @@ export async function serveCanvas(dir, { links = 'vscode', port, limitMs = LIMIT
         let name = '';
         try { name = decodeURIComponent(other[1]); } catch { name = ''; }
         const known = board.groups.some((group) => group.tickets.some((item) => item.folder === name));
-        if (!known) { plain(res, 404, 'Not found.\n'); return; }
+        if (!known) { missing(req, res); return; }
         const there = path.join(ticketRoot(wiki), name);
         if (other[2] === undefined || (other[2] === '/' && name === folder)) {
           const target = name === folder ? `/?t=${token}` : `/ticket/${encodeURIComponent(name)}/?t=${token}`;
@@ -250,15 +276,17 @@ export async function serveCanvas(dir, { links = 'vscode', port, limitMs = LIMIT
           return;
         }
         const file = ticketFile(there, other[2]);
-        if (!file) { plain(res, 404, 'Not found.\n'); return; }
+        if (!file) { missing(req, res); return; }
         send(res, 200, file.type, readFileSync(file.file), { 'Content-Security-Policy': "default-src 'none'; sandbox" });
         return;
       }
       const found = ticketFile(dir, url.pathname);
-      if (!found) { plain(res, 404, 'Not found.\n'); return; }
+      if (!found) { missing(req, res); return; }
       send(res, 200, found.type, readFileSync(found.file), { 'Content-Security-Policy': "default-src 'none'; sandbox" });
     } catch (error) {
-      if (!res.headersSent) plain(res, 500, `The canvas server cannot show the ticket: ${error.message}\n`);
+      if (!res.headersSent) {
+        errorAnswer(req, res, 500, `The canvas server cannot show the ticket: ${error.message}\n`, { title: 'Something went wrong', text: `The canvas server cannot show the ticket: ${error.message}`, links: checked ? back : [] });
+      }
       else res.destroy();
     }
   });

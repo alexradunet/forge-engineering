@@ -52,7 +52,8 @@ function fill(w) {
 
 test('the design system gives each page the same tokens, both themes, and a script that sits in the page', () => {
   for (const token of ['--bg', '--panel', '--card', '--rail', '--ink', '--muted', '--faint', '--line', '--accent', '--amber', '--green', '--red', '--violet',
-    '--t-xs', '--t-md', '--t-2xl', '--s-1', '--s-7', '--r-1', '--r-pill', '--sh-1', '--sh-2', '--font', '--mono']) {
+    '--t-xs', '--t-md', '--t-2xl', '--s-1', '--s-7', '--px', '--ember', '--steel', '--shade', '--glow', '--sh-1', '--sh-2', '--font', '--mono']) {
+    // Forge 9.2: the corners are square, so the radius tokens are gone, and the pixel tokens are new.
     assert.ok(UI_STYLE.includes(`${token}:`), token);
   }
   assert.match(UI_STYLE, /@media \(prefers-color-scheme: dark\) \{ :root:not\(\[data-theme="light"\]\) \{ --bg:/, 'the system setting gives the dark theme');
@@ -90,7 +91,7 @@ test('the links between the pages are relative in a file page and use the server
   assert.deepEqual(fromBoard.tickets.map((item) => [item.key, item.href]), [
     ['APP-9', 'tickets/app-9/canvas.html'], ['APP-10', 'tickets/app-10/canvas.html'], ['APP-11', 'tickets/app-11/canvas.html'], ['APP-2', 'tickets/app-2/canvas.html'],
   ]);
-  assert.equal(fromBoard.tickets[0].gate, 'Planned? waits for you');
+  assert.equal(fromBoard.tickets[0].gate, 'Planned? needs you'); // Forge 9.2: the one word for a gate in review is "needs you"
   assert.equal(fromBoard.file('app-9', 'evidence/a b.md'), 'tickets/app-9/evidence/a%20b.md');
 
   const fromTicket = buildNav(board, { from: 'app-10', broken: ['app-11'] });
@@ -116,26 +117,42 @@ test('the board page is one self-contained file: the tickets that wait first, on
   const board = buildBoard(w.root, { today: TODAY });
   const html = renderBoardPage(board, { wiki: w.root });
   assert.match(html, /^<!doctype html>/);
-  assert.doesNotMatch(html, /<script[^>]+src=|<link\b|<img\b|<iframe\b|@import|url\(\s*["']?https?:/i, 'nothing loads from a network or from another file');
+  assert.doesNotMatch(html, /<script[^>]+src=|<img\b|<iframe\b|@import|url\(\s*["']?https?:/i, 'nothing loads from a network or from another file');
+  // Forge 9.2: the one <link> is the icon of the tab. Its address is data (no file and no network), so the old ban on a link holds for any other link.
+  assert.equal(html.match(/<link\b/g).length, 1, 'one link');
+  assert.match(html, /<link rel="icon" href="data:image\/svg\+xml,[^"]+">/);
   assert.equal(html.match(/<script\b/g).length, 2, 'one data block and one script');
   assert.equal(html.match(/<\/script>/g).length, 2, 'ticket text cannot close a script block');
   assert.ok(html.includes('A &lt;/script&gt;&lt;script&gt;alert(1)&lt;/script&gt; &quot;title&quot; &amp; more'));
   assert.equal(/<script>([\s\S]*)<\/script>/.exec(html)[1], BOARD_SCRIPT, 'the canvas server names this script by its hash');
 
   const at = (text) => { const index = html.indexOf(text); assert.ok(index >= 0, text); return index; };
-  assert.ok(at('id="lane-needs-me"') < at('id="lane-blocked"') && at('id="lane-blocked"') < at('id="lane-active"') && at('id="lane-active"') < at('<details class="lane st-done" id="lane-done"'));
+  assert.ok(at('id="lane-needs-me"') < at('id="lane-blocked"') && at('id="lane-blocked"') < at('id="lane-active"') && at('id="lane-active"') < at('<details class="frame sunk lane st-done" id="lane-done"'));
   assert.ok(!html.includes('id="lane-go"'), 'a state without a ticket has no lane');
-  assert.match(html, /<button type="button" class="chip st-go" data-state="go" aria-pressed="false" title="Show only Go \(3\)" disabled>/);
+  // Forge 9.2: the chip is the kit chip (chipHtml): its emoji, its page label, its number, and its attributes.
+  assert.match(html, /<button type="button" class="chip st-go" data-state="go" title="Show only Go \(3\)" aria-pressed="false" disabled><span aria-hidden="true">🟢<\/span> Go <b>0<\/b><\/button>/);
+  assert.match(html, /<button type="button" class="chip st-needs-me" data-state="needs-me" title="Show only Needs you \(1\)" aria-pressed="false"><span aria-hidden="true">🟡<\/span> Needs you <b>1<\/b><\/button>/);
   // A ticket with a gate in review opens at the document of that gate.
   assert.match(html, /<a class="open" href="tickets\/app-9\/canvas\.html#zone-plan" data-nav title="Title of APP-9">Fix outbox retry<\/a>/);
-  assert.match(html, /<p class="gate g-in-review"><span class="dots"><i class="d-approved" title="Scoped\? approved"><\/i><i class="d-in-review" title="Planned\? waits for you"><\/i><\/span><span>Planned\? waits for you<\/span><\/p>/);
-  assert.match(html, /class="tcard st-blocked stale" id="ticket-app-10"/, 'an open ticket without an update for 7 days has a mark');
+  // Forge 9.2: the gate row is the kit ingots (gatesHtml) with the words of the open gate. It has the key of the ticket and of each gate for the spark script.
+  assert.match(html, /<p class="tline"><span class="gates" data-gates="app-9"><span class="ingots" role="img" aria-label="Gates: Scoped\? approved, Planned\? needs you"><span class="ingot ig-approved" data-gate="Scoped\?" data-status="approved" title="Scoped\? approved"><\/span><span class="ig-line"><\/span><span class="ingot ig-in-review" data-gate="Planned\?" data-status="in-review" title="Planned\? needs you"><\/span><\/span><span class="gate-words">Planned\? needs you<\/span><\/span><\/p>/);
+  // The card is the kit frame with the edge of its state.
+  assert.match(html, /<article class="frame edge st-needs-me tcard" id="ticket-app-9"/);
+  assert.match(html, /<article class="frame edge st-blocked tcard stale" id="ticket-app-10"/, 'an open ticket without an update for 7 days has a mark');
   assert.match(html, /<span class="age" title="No update for 14 days">14 days<\/span>/);
-  assert.match(html, /<span class="tag">PR #12 open<\/span><span class="tag bad">CI red<\/span><span class="tag">Tracker In Progress<\/span>/);
-  assert.match(html, /<span class="tag wait">⏳ Ana, 8 working days<\/span>/);
+  // Forge 9.2: the tags are the kit tags, and the color of a tag is a tg-* class.
+  assert.match(html, /<span class="tag">PR #12 open<\/span><span class="tag tg-bad">CI red<\/span><span class="tag">Tracker In Progress<\/span>/);
+  assert.match(html, /<span class="tag tg-wait">⏳ Ana, 8 working days<\/span>/);
+  assert.match(html, /<p class="tline tclamp"><span class="eyebrow">Next<\/span> /);
   assert.match(html, /<li class="trow" id="ticket-app-2" data-state="done"[^>]*><span class="key">APP-2<\/span><a class="open" href="tickets\/app-2\/canvas\.html"/);
-  assert.match(html, /<section class="lane plain" id="waits"><h2>People waits <small>more than 3 working days<\/small><\/h2>/);
-  assert.match(html, /<section class="lane plain" id="errors"><h2>Read errors <span class="count">1<\/span><\/h2><ul class="errors"><li><code>empty<\/code> README\.md is missing\.<\/li>/);
+  // Forge 9.2: a section name that is not a state is in pixel letters (the real text is in a .sr span), in a sunk frame.
+  assert.match(html, /<section class="frame sunk bsec" id="waits"><h2 class="bhead"><span class="pxt pxt-3" style="--n:68"><svg [^>]*><path d="[^"]+"\/><\/svg><span class="sr">People waits<\/span><\/span><small>more than 3 working days<\/small><\/h2><table>/);
+  assert.match(html, /<section class="frame sunk bsec" id="errors"><h2 class="bhead"><span class="pxt pxt-3" style="--n:62"><svg [^>]*><path d="[^"]+"\/><\/svg><span class="sr">Read errors<\/span><\/span><span class="count">1<\/span><\/h2><ul class="errors"><li><code>empty<\/code> README\.md is missing\.<\/li>/);
+  // The foot is the kit foot, and it names the ? key. The filter notice is the kit banner.
+  assert.ok(html.includes('<p class="hint">Press ? for the keys</p>'));
+  // Forge 9.2: the banner starts hidden, so it is not a live region. The sr paragraph after it is the live region with the same words.
+  assert.ok(html.includes('<div class="banner bn-info" id="showing" hidden><p><span id="showing-text"></span></p><span class="bn-acts"><button type="button" id="show-all">Show all</button></span></div>'));
+  assert.match(html, /<header id="rail"><div class="bar"><h1><span class="brand">.*<span class="sr">Forge board<\/span><\/span><\/span><\/h1>/, 'the bar has one shape, and the title keeps its real text');
   // The editor links are for VS Code. The file mode keeps each link relative.
   assert.ok(html.includes(`href="vscode://file${path.join(w.root, 'raw', 'tickets', 'app-9', 'README.md').replaceAll('\\', '/').replace(/^(?!\/)/, '/')}"`));
   assert.match(html, /<a href="vscode:\/\/file\/code\/app\.worktrees\/APP-9" title="\/code\/app\.worktrees\/APP-9">Worktree<\/a>/);
@@ -145,7 +162,8 @@ test('the board page is one self-contained file: the tickets that wait first, on
   assert.throws(() => renderBoardPage(board, { links: 'web' }), /Unknown link mode/);
   // The switcher has each ticket in board order, and the page has the keys.
   assert.ok(at('<dialog id="switcher"') < at('<dialog id="help"'));
-  assert.match(html, /<li class="group">🟡 Needs me<\/li><li><a href="tickets\/app-9\/canvas\.html" data-nav data-text="app-9 fix outbox retry needs me plan planned\? waits for you">/);
+  assert.match(html, /<li class="group">🟡 Needs you<\/li><li><a href="tickets\/app-9\/canvas\.html" data-nav data-text="app-9 fix outbox retry needs you plan planned\? needs you">/);
+  // Forge 9.2: the pages say "needs you" for the state needs-me, and "Needs me" stays in raw/board.md.
   assert.equal(renderBoardPage(buildBoard(w.root, { today: TODAY }), { wiki: w.root }), html, 'the same input gives the same bytes');
 
   const served = renderBoardPage(board, { wiki: w.root, serve: { token: TOKEN } });
@@ -158,11 +176,12 @@ test('the board page is one self-contained file: the tickets that wait first, on
 test('a board without a waiting ticket says so, and an empty wiki gives an empty board page', (t) => {
   const w = wiki(t);
   const empty = renderBoardPage(buildBoard(w.root, { today: TODAY }));
-  assert.match(empty, /No tickets yet\./);
+  // Forge 9.2: the first run has the cold anvil, a sentence, and 3 numbered steps (emptyHtml).
+  assert.match(empty, /<div class="empty"><svg class="px"[^>]*>.*<\/svg><p>No tickets yet\.<\/p><ol><li>Start an agent session in the repository\.<\/li><li>Give it a work item key, for example APP-123\.<\/li><li>The ticket shows here after its first step\.<\/li><\/ol><\/div>/);
   assert.doesNotMatch(empty, /id="lane-needs-me"/);
   w.ticket('APP-1', { state: 'go' });
   const calm = renderBoardPage(buildBoard(w.root, { today: TODAY }));
-  assert.match(calm, /<section class="lane st-needs-me" id="lane-needs-me" data-state="needs-me">.*<p class="empty">No ticket waits for you\.<\/p><\/section>/);
+  assert.match(calm, /<section class="frame sunk lane st-needs-me" id="lane-needs-me" data-state="needs-me">.*<div class="empty"><svg class="px"[^>]*>.*<\/svg><p>No ticket needs you\.<\/p><\/div><\/section>/);
 });
 
 test('the canvas with the links has the board link, the switcher, and the previous and the next ticket', (t) => {
@@ -181,7 +200,7 @@ test('the canvas with the links has the board link, the switcher, and the previo
   assert.match(html, /<a href="\.\.\/app-10\/canvas\.html" data-nav data-text="[^"]*" aria-current="page">/);
   // Forge 8.1 adds the link to the wiki page (tests/wiki-page.test.mjs).
   assert.match(html, /"nav":\{"board":"\.\.\/\.\.\/board\.html","wiki":"\.\.\/\.\.\/wiki\.html","prev":"\.\.\/app-9\/canvas\.html","next":"\.\.\/app-11\/canvas\.html"\}/);
-  assert.match(html, /<span class="pill st-blocked"><span aria-hidden="true">🔴<\/span> Blocked<\/span>/);
+  assert.match(html, /<span class="pill st-blocked">Blocked<\/span>/); // Forge 9.2: the bar of the canvas uses pillHtml (the kit pill has no emoji), with the page label
   assert.equal(html.match(/<script\b/g).length, 2);
   // A served page of another ticket names the ticket of the server, and then it cannot send.
   const other = renderCanvas(model, { serve: { token: TOKEN, home: 'APP-9' } });
@@ -254,4 +273,37 @@ test('forge.mjs board writes the pages, and forge.mjs canvas writes the board pa
   const bad = run('board', '--links', 'web');
   assert.equal(bad.status, 1);
   assert.match(bad.stderr, /Usage: forge\.mjs board/);
+});
+
+test('the next strike strip: one banner above the lanes, with the key, the text, and one Open link to the canvas of the ticket', (t) => {
+  const w = wiki(t);
+  fill(w);
+  const html = renderBoardPage(buildBoard(w.root, { today: TODAY }), { wiki: w.root, links: 'file' });
+  // A gate in review: a warn banner, and the link goes to the part of the document of that gate (as the link of the card does).
+  assert.ok(html.includes('<div class="banner bn-warn" role="status" id="strike"><p><span class="key">APP-9</span> Planned? needs you. Read plan.md.</p>'
+    + '<span class="bn-acts"><a class="primary" href="tickets/app-9/canvas.html#zone-plan" data-nav aria-label="Open APP-9">Open</a></span></div>'));
+  assert.equal(html.match(/id="strike"/g).length, 1);
+  assert.equal(html.match(/class="primary"/g).length, 1, 'one primary link');
+  // The strip is above the lanes, and it is not a ticket: the filter and the chips (they read data-text and data-state) do not hide it.
+  assert.ok(html.indexOf('id="strike"') > html.indexOf('<main id="lanes">') && html.indexOf('id="strike"') < html.indexOf('id="lane-needs-me"'));
+  assert.doesNotMatch(/<div class="banner[^>]*id="strike"[^>]*>/.exec(html)[0], /data-text|data-state/);
+  assert.match(BOARD_SCRIPT, /var items = Array\.prototype\.slice\.call\(document\.querySelectorAll\('\.tcard, \.trow'\)\);/, 'the filter reads cards and rows only');
+  assert.doesNotMatch(BOARD_SCRIPT, /strike/);
+  // The strip is a banner of the kit: blocked is bad, and a ticket that can start is info.
+  const blocked = wiki(t);
+  blocked.ticket('APP-2', { state: 'blocked', short: 'Order export', extra: [] });
+  assert.match(renderBoardPage(buildBoard(blocked.root, { today: TODAY }), { wiki: blocked.root }), /<div class="banner bn-bad" role="status" id="strike"><p><span class="key">APP-2<\/span> Blocked: Next step for APP-2<\/p>/);
+  const go = wiki(t);
+  go.ticket('APP-3', { state: 'go' });
+  assert.match(renderBoardPage(buildBoard(go.root, { today: TODAY }), { wiki: go.root }), /<div class="banner bn-info" role="status" id="strike"><p><span class="key">APP-3<\/span> Can start: Next step for APP-3<\/p>/);
+  // No strip without a ticket for it. Text of a ticket is escaped.
+  const quiet = wiki(t);
+  quiet.ticket('APP-4', { state: 'active' });
+  assert.ok(!renderBoardPage(buildBoard(quiet.root, { today: TODAY }), { wiki: quiet.root }).includes('id="strike"'));
+  assert.ok(!renderBoardPage(buildBoard(wiki(t).root, { today: TODAY }), { wiki: quiet.root }).includes('id="strike"'), 'an empty board');
+  const loud = wiki(t);
+  loud.ticket('APP-5', { state: 'needs-me', extra: [] });
+  loud.put('raw/tickets/app-5/README.md', readFileSync(path.join(loud.root, 'raw', 'tickets', 'app-5', 'README.md'), 'utf8').replace('Next step for APP-5', 'Reply to <b>Mara</b>'));
+  const strip = /<div class="banner[^>]*id="strike".*?<\/div>/.exec(renderBoardPage(buildBoard(loud.root, { today: TODAY }), { wiki: loud.root }))[0];
+  assert.ok(strip.includes('Reply to &lt;b&gt;Mara&lt;/b&gt;') && !strip.includes('<b>'));
 });

@@ -1,9 +1,10 @@
 // The command for a person: `forge.mjs open`. It starts the live server of one repository (live-serve.mjs) in the background
 // when none runs, prints the links of the board and the wiki, and opens the board in the browser of the user.
 // More than one repository can have its server at the same time: each one has its own state file and its own port.
+// The links of a repository stay the same after a restart (the key file of live-serve.mjs). `--new-link` (renewLink) makes a new key.
 import { spawn } from 'node:child_process';
 import { homeOf } from './layout.mjs';
-import { liveList, liveStatus } from './live-serve.mjs';
+import { liveList, liveStatus, newKey } from './live-serve.mjs';
 
 const START_MS = 8000;
 const STOP_MS = 5000;
@@ -54,6 +55,8 @@ export async function openForge({ cli, repo, wiki, links, port, env = process.en
   out.write(`forge: serving ${running.link}\n  wiki   ${running.wikiLink}\n  folder ${home}\n`
     + (started ? '  The server runs in the background. To stop it: forge.mjs open --stop\n' : ''));
   const opened = browser ? await openBrowser(running.link, { platform, spawnFn }) : false;
+  // The browser command is not on each machine. The link is on the screen, so the user can open it by hand.
+  if (browser && !opened) out.write('  No browser started. Open the board link above by hand.\n');
   return { ...running, started, opened };
 }
 
@@ -66,6 +69,16 @@ export async function stopForge({ wiki, env = process.env, waitMs = STOP_MS }) {
   for (let waited = 0; waited < waitMs && liveStatus(env, home); waited += STEP_MS) await sleep(STEP_MS);
   if (liveStatus(env, home)) throw new Error(`The live server (process ${running.pid}) did not stop.`);
   return { stopped: true, pid: running.pid };
+}
+
+/**
+ * Writes a new page token for the repository of `wiki`, so each older link stops. A server that runs is stopped first and started again with the new key.
+ * Gives what openForge gives, and `stopped` (true when a server ran).
+ */
+export async function renewLink({ wiki, env = process.env, ...options }) {
+  const { stopped } = await stopForge({ wiki, env });
+  newKey(env, homeOf(wiki));
+  return { ...(await openForge({ wiki, env, ...options })), stopped };
 }
 
 /** The lines for `open --list`: each live server of this user that runs. */

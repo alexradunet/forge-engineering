@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
@@ -13,7 +13,9 @@ import { BOARD_SCRIPT } from '../plugins/forge/scripts/lib/board-page.mjs';
 import { CANVAS_SCRIPT } from '../plugins/forge/scripts/lib/canvas-page.mjs';
 import { pickServer } from '../plugins/forge/scripts/lib/live-event.mjs';
 import { rawDir } from '../plugins/forge/scripts/lib/layout.mjs';
-import { RESUME_GAP_MS, liveFile, liveList, liveRoots, liveStatus, serveLive } from '../plugins/forge/scripts/lib/live-serve.mjs';
+import { RESUME_GAP_MS, keyFile, liveFile, liveList, liveRoots, liveStatus, newKey, serveLive } from '../plugins/forge/scripts/lib/live-serve.mjs';
+import { boardStamp, needsCount, ticketStamp } from '../plugins/forge/scripts/lib/live-stamp.mjs';
+import { ERROR_POLICY } from '../plugins/forge/scripts/lib/ui.mjs';
 import { readSessions, recordEnd, recordStart, sessionsFile } from '../plugins/forge/scripts/lib/sessions.mjs';
 import { browserCommand, openBrowser } from '../plugins/forge/scripts/lib/open.mjs';
 import { MERMAID_INTEGRITY, MERMAID_ROUTE, mermaidPath } from '../plugins/forge/scripts/lib/mermaid.mjs';
@@ -43,12 +45,14 @@ function wiki(t) {
   put('tooling/build.md', '---\ntitle: Build\nupdated: 2026-11-10\nstatus: verified\n---\n# Build\n\nThe build uses npm.\n');
   put('tickets/app-1.md', '---\ntitle: "APP-1: First fix"\nupdated: 2026-11-01\nstatus: verified\n---\n# APP-1: First fix\n\nSee [build](../tooling/build.md).\n');
   put('raw/tickets/app-9/plan.md', '---\ntype: plan\n---\n# Plan APP-9\n\nCause: see [the build page](../../../tooling/build.md).\n');
-  return { root, wiki: path.join(root, 'wiki'), env: { ...process.env, FORGE_DATA_DIR: path.join(root, 'data') } };
+  return { root, wiki: path.join(root, 'wiki'), env: { ...process.env, FORGE_DATA_DIR: path.join(root, 'data') }, put, ticket };
 }
 
 // One live server in this process. It stops at the end of the test.
-async function start(t, options = {}) {
-  const f = wiki(t);
+// `from` is the fixture of an earlier server (the same wiki and the same data folder), and `before` changes the fixture before the server starts.
+async function start(t, { from, before, ...options } = {}) {
+  const f = from ?? wiki(t);
+  if (before) before(f);
   const signals = new EventEmitter();
   let text = '';
   let note = '';
@@ -182,12 +186,12 @@ test('the pages of the live server: the board and each canvas with the live part
 
   const board = await request(s.port, { url: `/board?t=${s.page}` });
   assert.equal(board.status, 200);
-  assert.equal(board.headers['content-security-policy'], `default-src 'none'; script-src 'sha256-${hash(BOARD_SCRIPT)}'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'`);
+  assert.equal(board.headers['content-security-policy'], `default-src 'none'; script-src 'sha256-${hash(BOARD_SCRIPT)}'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; base-uri 'none'; form-action 'none'`);
   assert.equal(/<script>([\s\S]*)<\/script>/.exec(board.text)[1], BOARD_SCRIPT);
   assert.ok(board.text.includes(`"live":"/live?t=${s.page}","resume":"/resume"`));
-  assert.match(board.text, /<section class="lane plain" id="live-other" hidden>/);
+  assert.match(board.text, /<section class="frame sunk bsec" id="live-other" hidden>/); // Forge 9.2: the list of other sessions is a sunk kit frame
   assert.match(board.text, /<ul class="rows" id="live-list"><\/ul><ul class="rows" id="past-list"><\/ul>/);
-  assert.match(board.text, /<p class="note" id="live-note">/);
+  assert.match(board.text, /<p class="note" id="live-note" aria-live="polite">/); // Forge 9.2: the live line is a live region
   assert.ok(board.text.includes(`href="/ticket/app-9/?t=${s.page}"`), 'each ticket has its canvas on this server');
   assert.equal(board.text.match(/<script\b/g).length, 2);
 
@@ -195,12 +199,14 @@ test('the pages of the live server: the board and each canvas with the live part
   assert.deepEqual([bare.status, bare.headers.location], [302, `/ticket/app-9/?t=${s.page}`]);
   const canvas = await request(s.port, { url: `/ticket/app-9/?t=${s.page}` });
   assert.equal(canvas.status, 200);
-  assert.equal(canvas.headers['content-security-policy'], `default-src 'none'; script-src 'sha256-${hash(CANVAS_SCRIPT)}'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'`);
+  assert.equal(canvas.headers['content-security-policy'], `default-src 'none'; script-src 'sha256-${hash(CANVAS_SCRIPT)}'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; base-uri 'none'; form-action 'none'`);
   assert.equal(/<script>([\s\S]*)<\/script>/.exec(canvas.text)[1], CANVAS_SCRIPT);
   assert.ok(canvas.text.includes(`"live":"/live?t=${s.page}\\u0026ticket=app-9"`) || canvas.text.includes(`"live":"/live?t=${s.page}&ticket=app-9"`));
   for (const id of ['live', 'live-toggle', 'live-close', 'live-hint', 'live-body', 'live-past']) assert.ok(canvas.text.includes(`id="${id}"`), id);
   assert.ok(canvas.text.includes('"resume":"/resume"'));
-  assert.match(canvas.text, /<button type="button" id="send-all" hidden>/, 'Send to agent stays hidden: the script shows it only without data.live');
+  // Forge 9.2: the button has the kit class primary.
+  assert.match(canvas.text, /<button type="button" class="primary" id="send-all" hidden>/,
+    'Send to agent stays hidden: the script shows it only without data.live');
   assert.ok(canvas.text.includes(`href="/board?t=${s.page}"`));
   assert.equal(canvas.text.match(/<script\b/g).length, 2);
 
@@ -209,7 +215,7 @@ test('the pages of the live server: the board and each canvas with the live part
   // The wiki page: each canonical page, and the closed tickets. The board and the canvas have the links to it.
   const wikiPage = await request(s.port, { url: `/wiki?t=${s.page}` });
   assert.equal(wikiPage.status, 200);
-  assert.equal(wikiPage.headers['content-security-policy'], `default-src 'none'; script-src 'sha256-${hash(WIKI_SCRIPT)}'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'`);
+  assert.equal(wikiPage.headers['content-security-policy'], `default-src 'none'; script-src 'sha256-${hash(WIKI_SCRIPT)}'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; base-uri 'none'; form-action 'none'`);
   assert.equal(/<script>([\s\S]*)<\/script>/.exec(wikiPage.text)[1], WIKI_SCRIPT);
   assert.match(wikiPage.text, /The build uses npm\./);
   assert.ok(wikiPage.text.includes(`<a href="/ticket/app-9/?t=${s.page}" data-nav><span class="key">APP-9</span>`), 'a page names the open ticket that uses it');
@@ -230,7 +236,7 @@ test('the wiki page of a wiki with a Mermaid block can load the Mermaid file of 
   mkdirSync(path.join(s.wiki, 'app'), { recursive: true });
   writeFileSync(path.join(s.wiki, 'app', 'flow.md'), '---\ntitle: Flow\nupdated: 2026-11-10\nstatus: verified\n---\n# Flow\n\n```mermaid\nflowchart LR\n  A --> B\n```\n');
   const page = await request(s.port, { url: `/wiki?t=${s.page}` });
-  assert.equal(page.headers['content-security-policy'], `default-src 'none'; script-src 'sha256-${hash(WIKI_SCRIPT)}' 'self'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'`);
+  assert.equal(page.headers['content-security-policy'], `default-src 'none'; script-src 'sha256-${hash(WIKI_SCRIPT)}' 'self'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; base-uri 'none'; form-action 'none'`);
   assert.ok(page.text.includes(`"mermaid":{"src":"${MERMAID_ROUTE}?t=${s.page}","integrity":"${MERMAID_INTEGRITY}"}`));
   const file = await request(s.port, { url: `${MERMAID_ROUTE}?t=${s.page}` });
   assert.deepEqual([file.status, file.headers['content-type'], file.headers['x-content-type-options'], file.headers['cache-control']], [200, 'text/javascript; charset=utf-8', 'nosniff', 'private, max-age=86400']);
@@ -240,7 +246,7 @@ test('the wiki page of a wiki with a Mermaid block can load the Mermaid file of 
   // A canvas with a Mermaid block in a card gets the same file and the same policy. A canvas without one keeps the policy of the page script alone.
   writeFileSync(path.join(s.wiki, 'raw', 'tickets', 'app-9', 'story.md'), '---\ntype: story\n---\n# Story APP-9\n\nProblem: retries stop.\n\n## Flow\n\n```mermaid\nflowchart LR\n  A --> B\n```\n');
   const canvas = await request(s.port, { url: `/ticket/app-9/?t=${s.page}` });
-  assert.equal(canvas.headers['content-security-policy'], `default-src 'none'; script-src 'sha256-${hash(CANVAS_SCRIPT)}' 'self'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'`);
+  assert.equal(canvas.headers['content-security-policy'], `default-src 'none'; script-src 'sha256-${hash(CANVAS_SCRIPT)}' 'self'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; base-uri 'none'; form-action 'none'`);
   assert.ok(canvas.text.includes(`"mermaid":{"src":"${MERMAID_ROUTE}?t=${s.page}","integrity":"${MERMAID_INTEGRITY}"}`));
   const other = await request(s.port, { url: `/ticket/app-2/?t=${s.page}` });
   assert.ok(!other.headers['content-security-policy'].includes("' 'self'; style-src") && !other.text.includes('"mermaid":{'));
@@ -258,7 +264,8 @@ test('only one live server runs for a repository, and it stops when no event com
   await new Promise((resolve) => { setTimeout(resolve, 300); });
   assert.ok(existsSync(liveFile(s.env, s.wiki)), 'the server still runs');
   assert.equal(await s.done, 3);
-  assert.match(s.note(), /no session sent an event/);
+  // Forge 9.2: a page request also starts the time again, so the message names both.
+  assert.match(s.note(), /no session sent an event and no page asked for the state for a long time/);
   assert.ok(!existsSync(liveFile(s.env, s.wiki)));
 });
 
@@ -533,4 +540,391 @@ test('POST /resume opens a terminal for one session of the list, and only for a 
   assert.equal(JSON.parse((await resume({ id: UUID_B })).text).ok, true, 'after its end, the session can continue');
   assert.equal(calls.length, count + 1);
   assert.equal(ok.headers['access-control-allow-origin'], undefined);
+});
+
+// --- Forge 9.2, stage 5: the stable link, the error pages, the idle time, the change stamp, and the needs count ---
+
+const wait = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
+const KEY = /^[0-9a-f]{32}$/;
+const HTML = { Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' };
+// The tokens are random values of a temporary server. The checks below compare them without printing them.
+const same = (a, b) => a === b;
+
+test('the page token is stable for a Forge folder: the key file keeps it over a restart, and the event token is new at each start', async (t) => {
+  const first = await start(t);
+  const file = keyFile(first.env, first.wiki);
+  assert.match(file, /live[\\/][0-9a-f]{16}\.key$/);
+  assert.equal(path.dirname(file), path.dirname(liveFile(first.env, first.wiki)), 'the key file is next to the state file');
+  assert.ok(same(readFileSync(file, 'utf8'), `${first.page}\n`));
+  assert.ok(KEY.test(first.page));
+  if (process.platform !== 'win32') assert.equal(statSync(file).mode & 0o777, 0o600);
+  assert.deepEqual(Object.keys(first.state).sort(), ['home', 'page', 'pid', 'port', 'repo', 'roots', 'token', 'v', 'wiki'], 'the keys of the state file did not change');
+  await first.stop();
+  assert.ok(existsSync(file), 'the key file stays when the server stops');
+  const second = await start(t, { from: first });
+  assert.ok(same(second.page, first.page), 'the same link after a restart');
+  assert.ok(!same(second.event, first.event), 'the event token is new at each start');
+  assert.ok(!same(second.event, second.page));
+  assert.equal(second.state.page, second.page);
+  assert.equal((await request(second.port, { url: `/board?t=${first.page}` })).status, 200, 'the old bookmark opens the board of the new server');
+  assert.equal((await request(second.port, { url: `/board?t=${first.event}` })).status, 403, 'the old event token opens nothing');
+  // A key with a Windows line end is still a key. Another repository gets another key file.
+  await second.stop();
+  writeFileSync(file, `${first.page}\r\n`, { mode: 0o600 });
+  const third = await start(t, { from: first });
+  assert.ok(same(third.page, first.page));
+  assert.notEqual(keyFile(first.env, path.join(first.root, 'other')), file);
+});
+
+test('a key file that is damaged, too wide, or a link gives a new key, and the new file is a regular file with the mode 0600', async (t) => {
+  const base = await start(t);
+  const file = keyFile(base.env, base.wiki);
+  const good = base.page;
+  await base.stop();
+  const damaged = ['', 'abc', `${good}0`, good.toUpperCase(), `${good.slice(0, 31)}g`, `${good}\n\n`, ` ${good}`, `${good}x\n`, 'x'.repeat(200)];
+  for (const text of damaged) {
+    writeFileSync(file, text, { mode: 0o600 });
+    const run = await start(t, { from: base });
+    assert.ok(KEY.test(run.page) && !same(run.page, good), `a new key for ${JSON.stringify(text.length)} characters`);
+    assert.ok(same(readFileSync(file, 'utf8'), `${run.page}\n`));
+    await run.stop();
+    writeFileSync(file, `${good}\n`, { mode: 0o600 });
+  }
+  // A directory in the place of the file: the server still starts, with a key for this run.
+  rmSync(file, { force: true });
+  mkdirSync(file);
+  const dir = await start(t, { from: base });
+  assert.ok(KEY.test(dir.page));
+  assert.ok(statSync(file).isDirectory(), 'the server removes nothing that it does not own');
+  await dir.stop();
+  rmSync(file, { recursive: true });
+  if (process.platform === 'win32') return;
+  for (const mode of [0o644, 0o640, 0o604, 0o660, 0o666, 0o602, 0o620]) {
+    writeFileSync(file, `${good}\n`, { mode: 0o600 });
+    chmodSync(file, mode);
+    const run = await start(t, { from: base });
+    assert.ok(KEY.test(run.page) && !same(run.page, good), `a new key for the mode ${mode.toString(8)}`);
+    assert.equal(statSync(file).mode & 0o777, 0o600);
+    await run.stop();
+  }
+  // A link to a good key file is not read, and the link is replaced (not followed): the target stays as it was.
+  const target = path.join(base.root, 'elsewhere.key');
+  writeFileSync(target, `${good}\n`, { mode: 0o600 });
+  rmSync(file, { force: true });
+  try { symlinkSync(target, file); } catch { return; }
+  const linked = await start(t, { from: base });
+  assert.ok(!same(linked.page, good));
+  assert.equal(lstatSync(file).isSymbolicLink(), false, 'the key file is a regular file now');
+  assert.ok(same(readFileSync(target, 'utf8'), `${good}\n`), 'the target of the link was not written');
+  assert.equal(statSync(file).mode & 0o777, 0o600);
+});
+
+test('newKey writes a new page token, and the next server uses it', async (t) => {
+  const first = await start(t);
+  await first.stop();
+  const key = newKey(first.env, first.wiki);
+  assert.ok(KEY.test(key) && !same(key, first.page));
+  assert.ok(same(readFileSync(keyFile(first.env, first.wiki), 'utf8'), `${key}\n`));
+  if (process.platform !== 'win32') assert.equal(statSync(keyFile(first.env, first.wiki)).mode & 0o777, 0o600);
+  const next = await start(t, { from: first });
+  assert.ok(same(next.page, key));
+});
+
+test('forge.mjs open --new-link starts a new key: a running server is stopped and started again, and the old link stops', { skip: process.platform === 'win32' }, async (t) => {
+  const f = wiki(t);
+  const run = (...args) => spawnSync(process.execPath, [cli, 'open', ...args, '--cwd', cwd, '--wiki', f.wiki], { encoding: 'utf8', env: f.env, timeout: 20000 });
+  t.after(() => { run('--stop'); });
+  const links = (result) => /^forge: serving http:\/\/127\.0\.0\.1:(\d+)\/board\?t=([0-9a-f]{32})\n/.exec(result.stdout)?.slice(1);
+  const first = run('--no-browser', '--port', '0');
+  assert.equal(first.status, 0, first.stderr);
+  const [port1, page1] = links(first);
+  // The key stays over a stop and a start.
+  assert.equal(run('--stop').status, 0);
+  const again = run('--no-browser', '--port', '0');
+  assert.equal(again.status, 0, again.stderr);
+  const [port2, page2] = links(again);
+  assert.ok(same(page2, page1), 'open --stop keeps the key');
+  // A new link: the running server stops, and the new server has another key.
+  const renewed = run('--new-link', '--no-browser', '--port', '0');
+  assert.equal(renewed.status, 0, renewed.stderr);
+  const [port3, page3] = links(renewed);
+  assert.ok(KEY.test(page3) && !same(page3, page1), 'a new page token');
+  assert.match(renewed.stdout, /\n {2}wiki {3}http:\/\/127\.0\.0\.1:\d+\/wiki\?t=[0-9a-f]{32}\n {2}folder .+\n {2}The server runs in the background/);
+  assert.equal((await request(Number(port3), { url: `/board?t=${page3}` })).status, 200);
+  assert.equal((await request(Number(port3), { url: `/board?t=${page1}` })).status, 403, 'the old link stops');
+  assert.ok(Number(port2) > 0 && Number(port1) > 0);
+  // The link of a later open is the new one. With no server, --new-link starts one with a new key too.
+  assert.ok(same(links(run('--no-browser'))[1], page3));
+  assert.equal(run('--stop').status, 0);
+  const none = run('--new-link', '--no-browser', '--port', '0');
+  assert.equal(none.status, 0, none.stderr);
+  assert.ok(!same(links(none)[1], page3));
+  for (const args of [['--new-link', '--stop'], ['--new-link', '--status'], ['--new-link', '--list']]) {
+    const result = run(...args);
+    assert.equal(result.status, 1, args.join(' '));
+    assert.match(result.stderr, /Usage: forge\.mjs open \[--no-browser\] \[--new-link\]/);
+  }
+  assert.equal(spawnSync(process.execPath, [cli, 'live', '--new-link', '--cwd', cwd], { encoding: 'utf8', env: f.env }).status, 1, 'live has no such flag');
+});
+
+test('open prints one line when no browser starts, and none when the browser opens', async (t) => {
+  const f = wiki(t);
+  const { openForge, stopForge } = await import('../plugins/forge/scripts/lib/open.mjs');
+  let text = '';
+  const out = { write: (chunk) => { text += chunk; } };
+  const noBrowser = () => { const child = new EventEmitter(); child.unref = () => {}; setImmediate(() => child.emit('error', new Error('ENOENT'))); return child; };
+  const opens = () => { const child = new EventEmitter(); child.unref = () => {}; setImmediate(() => child.emit('spawn')); return child; };
+  // The fake start command answers for the browser only: the live server is started by the real spawn.
+  const fake = (browser) => (command, args, options) => (command === process.execPath ? spawn(command, args, options) : browser(command, args, options));
+  t.after(() => stopForge({ wiki: f.wiki, env: f.env }));
+  const first = await openForge({ cli, repo: cwd, wiki: f.wiki, port: 0, env: f.env, out, spawnFn: fake(noBrowser) });
+  assert.equal(first.opened, false);
+  assert.match(text, /\n {2}No browser started\. Open the board link above by hand\.\n$/);
+  text = '';
+  const second = await openForge({ cli, repo: cwd, wiki: f.wiki, env: f.env, out, spawnFn: fake(opens) });
+  assert.equal(second.opened, true);
+  assert.doesNotMatch(text, /No browser started/);
+  text = '';
+  await openForge({ cli, repo: cwd, wiki: f.wiki, env: f.env, out, browser: false });
+  assert.doesNotMatch(text, /No browser started/, 'no browser was asked for');
+});
+
+test('an error answer is a page of the kit for a browser and the plain text for each other caller', async (t) => {
+  const s = await start(t);
+  assert.equal(ERROR_POLICY, "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'");
+  const check = (res, status) => {
+    assert.equal(res.status, status);
+    assert.equal(res.headers['content-type'], 'text/html; charset=utf-8');
+    assert.equal(res.headers['content-security-policy'], "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'");
+    assert.equal(res.headers['x-content-type-options'], 'nosniff');
+    assert.equal(res.headers['cache-control'], 'no-store');
+    assert.equal(res.headers['referrer-policy'], 'no-referrer');
+    assert.equal(res.headers['access-control-allow-origin'], undefined);
+    assert.equal(Number(res.headers['content-length']), Buffer.byteLength(res.text));
+    assert.ok(res.text.startsWith('<!doctype html>') && !/<script/i.test(res.text) && !res.text.includes('on' + 'click'), 'a page without a script');
+    assert.match(res.text, /<link rel="icon" href="data:image\/svg\+xml,/);
+    assert.ok(res.text.includes('class="px"'), 'the cold anvil');
+  };
+
+  // 403: no token, a wrong token, the event token, and a wrong Host. The page echoes nothing of the request and names no folder.
+  const wrong = '0'.repeat(32);
+  for (const [url, headers] of [['/board', {}], [`/board?t=${wrong}&marker=ZZQ-MARK`, {}], [`/wiki?t=${s.event}`, {}], [`/board?t=${s.page}`, { Host: 'evil.test' }], ['/ticket/app-9/ZZQ-MARK', {}]]) {
+    const res = await request(s.port, { url, headers: { ...HTML, ...headers } });
+    check(res, 403);
+    assert.match(res.text, /<title>This link is old<\/title>/);
+    assert.ok(res.text.includes('The link is old or not complete.') && res.text.includes('<code class="err-cmd">forge open</code>'));
+    for (const part of ['ZZQ-MARK', wrong, s.page, s.event, s.root, s.wiki, 'forge-live-', 'evil.test', os.tmpdir(), '/code/app']) assert.ok(!res.text.includes(part), `the 403 page holds ${part.slice(0, 6)}`);
+    assert.doesNotMatch(res.text, /<a [^>]*href=/, 'no link on the page of a refused request');
+    const plain = await request(s.port, { url, headers });
+    assert.equal(plain.status, 403);
+    assert.equal(plain.headers['content-type'], 'text/plain; charset=utf-8');
+    assert.equal(plain.text, 'This link is old or not complete. Run "forge.mjs open --status" for the link of the live server.\n');
+    assert.equal(plain.headers['content-security-policy'], undefined);
+  }
+  // A caller that does not ask for a page keeps the plain text: a script of a page (Accept: */*), curl, and a request of another kind.
+  const star = await request(s.port, { url: '/live', headers: { Accept: '*/*' } });
+  assert.deepEqual([star.status, star.headers['content-type']], [403, 'text/plain; charset=utf-8']);
+  const json = await request(s.port, { url: '/live', headers: { Accept: 'application/json' } });
+  assert.equal(json.headers['content-type'], 'text/plain; charset=utf-8');
+  const refused = await request(s.port, { method: 'POST', url: '/event', body: '{}', headers: { ...HTML, 'Content-Type': 'application/json', 'X-Forge-Token': wrong } });
+  assert.deepEqual([refused.status, refused.headers['content-type']], [403, 'text/plain; charset=utf-8'], 'only a GET gets a page');
+  assert.equal((await request(s.port, { method: 'PUT', url: `/board?t=${s.page}`, headers: HTML })).headers['content-type'], 'text/plain; charset=utf-8', 'a 405 keeps its plain answer');
+
+  // 404: after the token check, so it has a link to the board with the token. It echoes nothing of the address.
+  for (const url of [`/nope-ZZQ-MARK?t=${s.page}`, `/ticket/nope/?t=${s.page}`, `/ticket/app-9/page.html?t=${s.page}`, `/ticket/app-9/%3Cscript%3E.md?t=${s.page}`]) {
+    const res = await request(s.port, { url, headers: HTML });
+    check(res, 404);
+    assert.match(res.text, /<title>Not found<\/title>/);
+    assert.ok(res.text.includes(`<a class="primary" href="/board?t=${s.page}">Open the board</a>`));
+    assert.ok(!res.text.includes('ZZQ-MARK') && !res.text.includes('%3Cscript'));
+    const plain = await request(s.port, { url });
+    assert.deepEqual([plain.status, plain.headers['content-type'], plain.text], [404, 'text/plain; charset=utf-8', 'Not found.\n']);
+  }
+  const post = await request(s.port, { method: 'POST', url: '/send', body: '{}', headers: { ...HTML, 'Content-Type': 'application/json', 'X-Forge-Token': s.event } });
+  assert.deepEqual([post.status, post.headers['content-type']], [404, 'text/plain; charset=utf-8']);
+
+  // 500: a file that the server cannot read. The page has the escaped message of the error and the link to the board.
+  if (process.platform === 'win32' || process.getuid?.() === 0) return;
+  const story = path.join(s.wiki, 'raw', 'tickets', 'app-9', 'story.md');
+  chmodSync(story, 0);
+  t.after(() => { try { chmodSync(story, 0o644); } catch { /* The folder is gone already. */ } });
+  const url = `/ticket/app-9/story.md?t=${s.page}`;
+  const broken = await request(s.port, { url, headers: HTML });
+  check(broken, 500);
+  assert.match(broken.text, /<title>Something went wrong<\/title>/);
+  assert.match(broken.text, /The live server cannot show the page: EACCES/);
+  assert.ok(broken.text.includes(`<a class="primary" href="/board?t=${s.page}">Open the board</a>`));
+  const plain500 = await request(s.port, { url });
+  assert.deepEqual([plain500.status, plain500.headers['content-type']], [500, 'text/plain; charset=utf-8']);
+  assert.match(plain500.text, /^The live server cannot show the page: EACCES/);
+});
+
+test('a page request and a state request with the token start the idle time again, and a refused request does not', async (t) => {
+  const s = await start(t, { idleMs: 1000 });
+  await wait(600);
+  assert.equal((await request(s.port, { url: `/board?t=${s.page}` })).status, 200);
+  await wait(600);
+  assert.ok(existsSync(liveFile(s.env, s.wiki)), 'a page request started the time again: the server runs after 1200 ms');
+  assert.equal((await request(s.port, { url: `/live?t=${s.page}` })).status, 200);
+  const last = Date.now();
+  await wait(600);
+  assert.ok(existsSync(liveFile(s.env, s.wiki)), 'a state request started the time again: the server runs after 1800 ms');
+  assert.equal((await request(s.port, { url: '/live' })).status, 403);
+  assert.equal((await request(s.port, { url: `/board?t=${s.event}` })).status, 403);
+  assert.equal(await s.done, 3);
+  assert.ok(Date.now() - last < 1400, 'the refused requests did not start the time again');
+  assert.match(s.note(), /no session sent an event and no page asked for the state/);
+});
+
+test('the answer has the change stamp c: it agrees with the page, a changed file changes it, and a held request gets the change', async (t) => {
+  const s = await start(t, { sweepMs: 60, holdMs: 5000 });
+  // The board page and the first answer have the same stamp.
+  const board = await request(s.port, { url: `/board?t=${s.page}` });
+  const boardC = /"c":"([0-9a-f]{12})"/.exec(board.text)[1];
+  const first = await live(s);
+  assert.equal(first.c, boardC);
+  assert.match(first.c, /^[0-9a-f]{12}$/);
+  // The ticket page and the answer for its ticket agree. The ticket stamp is not the board stamp.
+  const canvas = await request(s.port, { url: `/ticket/app-9/?t=${s.page}` });
+  const ticketC = /"c":"([0-9a-f]{12})"/.exec(canvas.text)[1];
+  const before = await live(s, '&ticket=app-9');
+  assert.equal(before.c, ticketC);
+  assert.notEqual(ticketC, boardC);
+  assert.equal((await live(s, '&ticket=nope')).c, boardC, 'a name that is no ticket gives the stamp of the board');
+  assert.ok(!(await request(s.port, { url: `/wiki?t=${s.page}` })).text.includes('"c":'), 'the wiki page has no stamp and no live view');
+  assert.equal((await live(s, '&ticket=app-9')).c, ticketC, 'the stamp does not change by itself');
+
+  // A change of a file of the ticket: a held request for the ticket gets its answer at the next sweep, and the stamp differs.
+  const held = live(s, `&ticket=app-9&v=${before.v}`);
+  await wait(100);
+  const started = Date.now();
+  writeFileSync(path.join(s.wiki, 'raw', 'tickets', 'app-9', 'story.md'), '---\ntype: story\n---\n# Story APP-9\n\nProblem: retries stop after 30 s, and the page changed.\n');
+  const next = await held;
+  assert.ok(Date.now() - started < 1500, 'the answer came with the sweep, not at the end of the hold time');
+  assert.notEqual(next.c, ticketC);
+  assert.ok(next.v > before.v);
+  // A page that renders again has the new stamp, and the board stamp did not change for a story file.
+  assert.equal(/"c":"([0-9a-f]{12})"/.exec((await request(s.port, { url: `/ticket/app-9/?t=${s.page}` })).text)[1], next.c);
+  assert.equal((await live(s)).c, boardC);
+
+  // A change that the board shows (the README of a ticket) changes the board stamp: a held request of the board gets it.
+  const now = await live(s);
+  const heldBoard = live(s, `&v=${now.v}`);
+  await wait(100);
+  s.put('raw/tickets/app-9/README.md', readFileSync(path.join(s.wiki, 'raw', 'tickets', 'app-9', 'README.md'), 'utf8').replace('Next step for APP-9', 'A new next step for APP-9'));
+  const answer = await heldBoard;
+  assert.notEqual(answer.c, boardC);
+  assert.ok(answer.v > now.v);
+  assert.equal(/"c":"([0-9a-f]{12})"/.exec((await request(s.port, { url: `/board?t=${s.page}` })).text)[1], answer.c);
+  await s.stop();
+});
+
+test('the end of a tool reads the board again, so a change of a ticket file by a session shows fast (one time in a second at most)', async (t) => {
+  // The sweep is long, and the board cache lasts 5 seconds: only the event can give the answer in time.
+  const s = await start(t, { holdMs: 6000 });
+  const first = await live(s);
+  const held = live(s, `&v=${first.v}`);
+  await wait(100);
+  s.put('raw/tickets/app-9/README.md', readFileSync(path.join(s.wiki, 'raw', 'tickets', 'app-9', 'README.md'), 'utf8').replace('Next step for APP-9', 'Another step'));
+  const started = Date.now();
+  assert.equal((await post(s, ev('tool-start', { tool: { id: 'T9', name: 'Edit', label: 'README.md' } }))).status, 204);
+  assert.equal((await post(s, ev('tool-end', { tool: { id: 'T9', name: 'Edit', label: 'README.md' } }))).status, 204);
+  const next = await held;
+  assert.ok(Date.now() - started < 2500, 'the answer came with the event');
+  assert.notEqual(next.c, first.c, 'the board has the new README');
+});
+
+test('the stamps: the board stamp ignores its time, a ticket stamp follows the Markdown files and the row, and the count is of tickets and sessions', (t) => {
+  const board = { version: 1, generated: '2026-11-17', total: 1, groups: [{ state: 'active', tickets: [{ key: 'A-1', folder: 'a-1', next: 'x' }] }], errors: [] };
+  assert.match(boardStamp(board), /^[0-9a-f]{12}$/);
+  assert.equal(boardStamp({ ...board, generated: '2026-11-18' }), boardStamp(board));
+  assert.notEqual(boardStamp({ ...board, total: 2 }), boardStamp(board));
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'forge-stamp-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const row = board.groups[0].tickets[0];
+  const empty = ticketStamp(dir, row);
+  writeFileSync(path.join(dir, 'story.md'), 'a');
+  const one = ticketStamp(dir, row);
+  assert.notEqual(one, empty);
+  assert.equal(ticketStamp(dir, row), one, 'the same files give the same stamp');
+  writeFileSync(path.join(dir, 'note.txt'), 'not a Markdown file');
+  assert.equal(ticketStamp(dir, row), one, 'a file that is not Markdown does not count');
+  mkdirSync(path.join(dir, 'evidence'));
+  writeFileSync(path.join(dir, 'evidence', 'note.md'), 'b');
+  assert.notEqual(ticketStamp(dir, row), one, 'a Markdown file in a folder below counts');
+  writeFileSync(path.join(dir, 'story.md'), 'ab');
+  const two = ticketStamp(dir, row);
+  assert.notEqual(ticketStamp(dir, { ...row, next: 'y' }), two, 'the row counts');
+  assert.match(ticketStamp(path.join(dir, 'missing'), null), /^[0-9a-f]{12}$/, 'a folder that is gone still gives a stamp');
+  // The count: a ticket that needs the user, and a session that needs the user. A ticket is counted one time.
+  const list = [{ folder: 'a-1', state: 'needs-me' }, { folder: 'a-2', state: 'active' }, { folder: 'a-3', state: 'needs-me' }];
+  const need = (ticket) => ({ state: 'needs-you', ticket });
+  assert.equal(needsCount(list, []), 2);
+  assert.equal(needsCount([], []), 0);
+  assert.equal(needsCount(list, [need('a-1')]), 2, 'the session of a ticket that is counted adds nothing');
+  assert.equal(needsCount(list, [need('a-2')]), 3);
+  assert.equal(needsCount(list, [need('a-2'), need('a-2')]), 3, 'two sessions of one ticket count one time');
+  assert.equal(needsCount(list, [need('')]), 3, 'a session without a ticket counts for itself');
+  assert.equal(needsCount(list, [need(''), need('')]), 4);
+  assert.equal(needsCount(list, [{ state: 'working', ticket: 'a-2' }, { state: 'idle', ticket: '' }]), 2, 'only a session that needs the user counts');
+});
+
+test('the answer has needs: the tickets that need the user and the sessions that need the user, without a double count', async (t) => {
+  const notify = (session, cwd, extra = {}) => ev('notify', { session, cwd, kind: 'permission_prompt', text: 'Claude needs your permission to use Bash', ...extra });
+  // No ticket needs the user: 0. A session that needs the user, on a ticket that is not needs-me: 1.
+  const none = await start(t);
+  assert.equal((await live(none)).needs, 0);
+  assert.equal((await post(none, ev('prompt', { session: 'N1', cwd: '/code/app.worktrees/APP-9', text: 'go' }))).status, 204);
+  assert.equal((await live(none)).needs, 0, 'a session that works adds nothing');
+  assert.equal((await post(none, notify('N1', '/code/app.worktrees/APP-9'))).status, 204);
+  const waiting = await live(none);
+  assert.deepEqual(waiting.sessions.map((item) => [item.ticket, item.state]), [['app-9', 'needs-you']]);
+  assert.equal(waiting.needs, 1, 'one needs-you session of a ticket that is not needs-me');
+  assert.equal((await live(none, '&ticket=app-9')).needs, 1, 'the count is for the board also in a ticket answer');
+  await none.stop();
+
+  // One ticket that is needs-me: 1. A session of that ticket that needs the user: still 1. A second ticket with a session: 2. A session without a ticket: 3.
+  const one = await start(t, { before: (f) => f.ticket('APP-5', 'needs-me', ['worktree: /code/app.worktrees/APP-5']) });
+  assert.equal((await live(one)).needs, 1, 'one ticket in needs-me');
+  assert.equal((await post(one, notify('M1', '/code/app.worktrees/APP-5'))).status, 204);
+  const both = await live(one);
+  assert.deepEqual(both.sessions.map((item) => [item.ticket, item.state]), [['app-5', 'needs-you']]);
+  assert.equal(both.needs, 1, 'the ticket and its session count one time');
+  assert.equal((await post(one, notify('M2', '/code/app.worktrees/APP-9'))).status, 204);
+  assert.equal((await live(one)).needs, 2);
+  assert.equal((await post(one, notify('M3', '/code/app'))).status, 204);
+  assert.equal((await live(one)).needs, 3, 'a session without a ticket counts for itself');
+  await one.stop();
+});
+
+test('a page of the live server has the command for the notice, the stamp, and the icons, and the wiki page has no live view', async (t) => {
+  const s = await start(t);
+  const board = await request(s.port, { url: `/board?t=${s.page}` });
+  const data = (html, id) => JSON.parse(new RegExp(`<script type="application/json" id="${id}">([^<]*)</script>`).exec(html)[1]);
+  const b = data(board.text, 'board-data');
+  assert.equal(b.open, 'forge.mjs open', 'a folder without a launcher gives the plain name of the command');
+  assert.match(b.c, /^[0-9a-f]{12}$/);
+  assert.deepEqual(Object.keys(b.icons), ['calm', 'needs']);
+  assert.ok(b.icons.calm.startsWith('data:image/svg+xml,') && b.icons.needs.startsWith('data:image/svg+xml,') && b.icons.calm !== b.icons.needs);
+  const w = data((await request(s.port, { url: `/wiki?t=${s.page}` })).text, 'wiki-data');
+  assert.equal(w.open, 'forge.mjs open');
+  assert.ok(!('c' in w) && !('live' in w) && !('icons' in w));
+  const c = data((await request(s.port, { url: `/ticket/app-9/?t=${s.page}` })).text, 'canvas-data');
+  assert.deepEqual([c.open, c.hot, Object.keys(c.icons)], ['forge.mjs open', false, ['calm', 'needs']]);
+  // The launcher of a Forge folder gives its path.
+  const { launcherCommand } = await import('../plugins/forge/scripts/lib/launcher.mjs');
+  const home = path.join(s.root, 'my app.forge');
+  mkdirSync(home);
+  assert.equal(launcherCommand(home, 'linux'), '', 'no launcher file');
+  writeFileSync(path.join(home, 'forge'), '#!/bin/sh\n');
+  assert.equal(launcherCommand(home, 'linux'), `"${path.join(home, 'forge')}" open`, 'a path with a space gets quotes');
+  const plain = path.join(s.root, 'app.forge');
+  mkdirSync(plain);
+  writeFileSync(path.join(plain, 'forge'), '#!/bin/sh\n');
+  assert.equal(launcherCommand(plain, 'linux'), `${path.join(plain, 'forge')} open`);
+  const odd = path.join(s.root, 'a$b.forge');
+  mkdirSync(odd);
+  writeFileSync(path.join(odd, 'forge'), '#!/bin/sh\n');
+  assert.equal(launcherCommand(odd, 'linux'), '', 'a character that a shell reads inside quotes gives no command');
+  assert.equal(launcherCommand(plain, 'win32'), '', 'Windows has the file forge.cmd');
 });

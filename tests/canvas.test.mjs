@@ -148,11 +148,16 @@ test('the page is one self-contained file with the rail, the board, and the copy
   const html = readFileSync(result.file, 'utf8');
   assert.match(html, /^<!doctype html>/);
   // Nothing loads from a network or from another file.
-  assert.doesNotMatch(html, /<script[^>]+src=|<link\b|<img\b|<iframe\b|@import|url\(\s*["']?https?:/i);
+  assert.doesNotMatch(html, /<script[^>]+src=|<img\b|<iframe\b|@import|url\(\s*["']?https?:/i);
+  // Forge 9.2: the one <link> is the icon of the tab. Its address is data (no file and no network), so the old ban on a link holds for any other link.
+  assert.equal(html.match(/<link\b/g).length, 1, 'one link');
+  assert.match(html, /<link rel="icon" href="data:image\/svg\+xml,[^"]+">/);
   assert.equal(html.match(/<script\b/g).length, 2, 'one data block and one script');
   assert.equal(html.match(/<\/script>/g).length, 2, 'ticket text cannot close a script block');
   assert.match(html, /<title>APP-9 · Fix outbox retry on timeout<\/title>/);
-  assert.match(html, /<li class="g-in-review"><span class="mark">🟡<\/span> Planned <small>waits for you<\/small><\/li>/);
+  // Forge 9.2: the gates of the bar are the kit list with names: an ingot, the name, and the words of a gate that needs attention ("needs you").
+  // The list items have the name and the status of the gate for the spark script.
+  assert.match(html, /<li class="gi-in-review" data-gate="Planned\?" data-status="in-review" title="Planned\? needs you"><span class="ingot ig-in-review" aria-hidden="true"><\/span><span class="gate-name">Planned\?<\/span><span class="gate-words">needs you<\/span><\/li>/);
   for (const id of ['zone-story', 'zone-code', 'zone-plan', 'zone-review', 'zone-journal', 'plan-step-2', 'node-retryjob', 'proof-check-1', 'person-ana']) {
     assert.ok(html.includes(`id="${id}"`), id);
   }
@@ -248,11 +253,15 @@ test('the page has the views and the fold data of each card', (t) => {
   assert.deepEqual([...html.matchAll(/<button type="button" data-view="([a-z]+)" aria-pressed="false" title="[^"]+">([^<]+)<\/button>/g)].map((match) => [match[1], match[2]]),
     [['focus', 'Now: Scoped'], ['must', 'Must read'], ['good', '+ Good to know'], ['all', 'All']]);
   assert.match(html, /"focus":"Scoped\?","focusZone":"story"/);
-  assert.match(html, /<section class="zone z-story z-now" id="zone-story"/);
-  assert.match(html, /<section class="zone z-plan" id="zone-plan"/);
-  assert.match(html, /<h2>Story <span class="zgate g-in-review" title="Scoped\? waits for you"><span aria-hidden="true">🟡<\/span> waits for you<\/span> /);
+  // Forge 9.2: a zone is a sunk kit frame (frameHtml), so the class list starts with "frame sunk".
+  assert.match(html, /<section class="frame sunk zone z-story z-now" id="zone-story"/);
+  assert.match(html, /<section class="frame sunk zone z-plan" id="zone-plan"/);
+  // Forge 9.2: the title is in bitmap letters (the real text is in .sr), and the gate mark is one kit ingot and the words ("needs you", GATE_TEXT in the kit).
+  // Forge 9.2: a part title has tabindex 0, so the keyboard can use it.
+  assert.match(html, /<h2 tabindex="0"><span class="pxt pxt-3"[^>]*><svg [^>]*>.*?<\/svg><span class="sr">Story<\/span><\/span> <span class="zgate g-in-review" title="Scoped\? needs you"><span class="ingot ig-in-review" aria-hidden="true"><\/span> needs you<\/span> /);
   assert.match(html, /id="story-scope" data-file="story\.md" data-section="Scope" data-title="Scope" data-tier="must" data-gate="Scoped\?" data-words="\d+"><h3><span class="meta" title="Must read">must · \d+ w<\/span>Scope<\/h3>/);
-  assert.match(html, /id="code-graph" data-title="Components and flow" data-tier="must" data-gate="Planned\?" data-words="\d+"><h3><span class="meta" title="Must read">must · 4 components<\/span>/);
+  // Forge 9.2: the title of the code map is a kit eyebrow label.
+  assert.match(html, /id="code-graph" data-title="Components and flow" data-tier="must" data-gate="Planned\?" data-words="\d+"><h3 class="eyebrow"><span class="meta" title="Must read">must · 4 components<\/span>/);
   assert.match(html, /id="proof-check-1" [^>]*data-tier="good" data-gate="Learned\?" data-words="4" data-bundle="verified checks">/);
   assert.match(html, /id="journal-1" [^>]*data-tier="ai" data-gate="" data-words="\d+" data-bundle="journal entries">/);
   assert.match(html, /id="person-ana" [^>]*data-tier="good" data-gate="" data-words="\d+">/);

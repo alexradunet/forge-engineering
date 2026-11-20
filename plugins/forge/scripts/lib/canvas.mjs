@@ -11,7 +11,7 @@ import { STATE_EMOJI, parseTicket } from './ticket.mjs';
 import { STATE_LABEL } from './board.mjs';
 import { listSnapshots, sections, summaryBlock } from './reading.mjs';
 import { CANVAS_SCRIPT, CANVAS_STYLE } from './canvas-page.mjs';
-import { GATE_TEXT, TOOLS_HTML, esc, helpHtml, navData, switcherHtml } from './ui.mjs';
+import { GATE_TEXT, TOOLS_HTML, emptyHtml, esc, faviconUri, footHtml, frameHtml, gatesHtml, helpHtml, iconHtml, ingotHtml, navData, pageHtml, pageLabel, pillHtml, pixelText, switcherHtml, tagHtml } from './ui.mjs';
 
 export const CANVAS_FILE = 'canvas.html';
 export const LINK_MODES = ['vscode', 'file'];
@@ -401,9 +401,8 @@ export function markdown(text, ctx = { links: 'vscode' }) {
 
 // --- The page ---
 
-const GATE_MARK = { approved: '✔', 'in-review': '🟡', todo: '○', blocked: '🔴', skipped: '–' };
 const STEP_TEXT = { planned: 'planned', done: 'done', verified: 'verified' };
-const CHECK_TEXT = { verified: '🟢 verified', failed: '🔴 failed', gap: '⚪ not proven', open: 'open' };
+const CHECK_TEXT = { verified: 'verified', failed: 'failed', gap: 'not proven', open: 'open' };
 const TIER_TEXT = { must: 'Must read', good: 'Good to know', ai: 'AI artifact: a working note of the agent' };
 const PERSON_TEXT = { 'to-contact': 'to contact', drafted: 'draft ready', waiting: 'waiting', 'follow-up': 'follow up', 'reply-in': 'reply in', done: 'done' };
 
@@ -422,50 +421,54 @@ function metaHtml(item, size = `${item.words} w`) {
 
 function cardHtml(card, ctx, extra = '') {
   const state = card.state ? ` s-${esc(card.state)}` : '';
-  const badge = card.kind === 'step' ? `<span class="badge">${STEP_TEXT[card.state]}</span>`
-    : card.kind === 'check' ? `<span class="badge">${CHECK_TEXT[card.state]}</span>` : '';
+  // The tag has the color of the state: done and verified are green, a failed check is red.
+  const badge = card.kind === 'step' ? tagHtml(STEP_TEXT[card.state], ['done', 'verified'].includes(card.state) ? 'ok' : '')
+    : card.kind === 'check' ? tagHtml(CHECK_TEXT[card.state], card.state === 'verified' ? 'ok' : card.state === 'failed' ? 'bad' : '') : '';
   const bundle = card.alert ? '' : card.kind === 'check' && card.state === 'verified' ? 'verified checks' : card.kind === 'entry' ? 'journal entries' : '';
   return `<article class="card k-${esc(card.kind)}${state}" id="${esc(card.id)}" data-file="${esc(card.file)}" data-section="${esc(card.section)}" data-title="${esc(card.title)}"${foldAttrs(card, bundle)}>`
-    + `<h3>${badge}${metaHtml(card)}${esc(card.title)}</h3><div class="body">${markdown(card.markdown, ctx)}${extra}</div></article>`;
+    + `<h3>${badge}${metaHtml(card)}${esc(card.title)}</h3><div class="body prose">${markdown(card.markdown, ctx)}${extra}</div></article>`;
 }
 
 function graphHtml(graph, ctx) {
   if (!graph.nodes.length) return '';
-  const lanes = graph.lanes.map((lane) => {
+  const mlanes = graph.lanes.map((lane) => {
     const nodes = graph.nodes.filter((node) => node.layer === lane).map((node) => (
-      `<div class="node${node.change ? ` c-${node.change}` : ''}" id="${esc(node.id)}" data-file="map.md" data-section="Components" data-title="${esc(node.name)}">`
-      + `<h3>${node.change ? `<span class="badge">${node.change}</span>` : ''}${esc(node.name)}</h3>`
-      + `<div class="body">${node.role ? `<p>${inline(node.role, ctx)}</p>` : ''}${node.file ? `<p class="file">${inline(node.file, ctx)}</p>` : ''}</div></div>`
+      // A component can have the focus: Enter or Space shows its arrows, as a click does.
+      `<div class="node${node.change ? ` c-${node.change}` : ''}" id="${esc(node.id)}" tabindex="0" role="button" aria-label="${esc(node.name)}" data-file="map.md" data-section="Components" data-title="${esc(node.name)}">`
+      + `<h3>${node.change ? tagHtml(node.change, node.change === 'done' ? 'ok' : 'wait') : ''}${esc(node.name)}</h3>`
+      + `<div class="body prose">${node.role ? `<p>${inline(node.role, ctx)}</p>` : ''}${node.file ? `<p class="file">${inline(node.file, ctx)}</p>` : ''}</div></div>`
     )).join('');
-    return `<div class="lane"><h4>${esc(lane)}</h4>${nodes}</div>`;
+    return `<div class="mlane"><h4 class="eyebrow">${esc(lane)}</h4>${nodes}</div>`;
   }).join('');
   // The graph folds as one unit. A component is a part of it, so a component has no tier.
   const unit = { ...graph, words: graph.words || graph.nodes.length };
   return `<div class="unit k-graph" id="code-graph" data-title="Components and flow"${foldAttrs(unit)}>`
-    + `<h3>${metaHtml(unit, `${graph.nodes.length} ${graph.nodes.length === 1 ? 'component' : 'components'}`)}Components and flow</h3>`
-    + `<div class="graph" data-edges="${esc(JSON.stringify(graph.edges))}"><svg class="edges" aria-hidden="true"></svg><div class="lanes">${lanes}</div><svg class="labels" aria-hidden="true"></svg></div>`
+    + `<h3 class="eyebrow">${metaHtml(unit, `${graph.nodes.length} ${graph.nodes.length === 1 ? 'component' : 'components'}`)}Components and flow</h3>`
+    + `<div class="graph" data-edges="${esc(JSON.stringify(graph.edges))}"><svg class="edges" aria-hidden="true"></svg><div class="mlanes">${mlanes}</div><svg class="labels" aria-hidden="true"></svg></div>`
     + `<ul class="edge-list">${graph.edges.map((edge) => `<li>${esc(graph.nodes.find((node) => node.id === edge.from)?.name)} → ${esc(graph.nodes.find((node) => node.id === edge.to)?.name)}${edge.label ? `: ${esc(edge.label)}` : ''}</li>`).join('')}</ul></div>`;
 }
 
 function peopleHtml(zone) {
   const people = (zone.people ?? []).map((person) => (
     `<article class="card k-person s-${esc(person.status)}" id="person-${esc(slug(person.name))}" data-file="README.md" data-section="people" data-title="${esc(person.name)}"${foldAttrs(person)}>`
-    + `<h3><span class="badge">${PERSON_TEXT[person.status] ?? esc(person.status)}</span>${metaHtml(person)}${esc(person.name)}</h3>`
-    + `<div class="body"><p>${esc([person.role, person.ask].filter(Boolean).join(': '))}</p>${person.since ? `<p class="file">since ${esc(person.since)}</p>` : ''}</div></article>`
+    + `<h3>${tagHtml(PERSON_TEXT[person.status] ?? person.status)}${metaHtml(person)}${esc(person.name)}</h3>`
+    + `<div class="body prose"><p>${esc([person.role, person.ask].filter(Boolean).join(': '))}</p>${person.since ? `<p class="file">since ${esc(person.since)}</p>` : ''}</div></article>`
   )).join('');
-  return people ? `<h4 class="group">People</h4><div class="row">${people}</div>` : '';
+  return people ? `<h4 class="eyebrow sethead">People</h4><div class="row">${people}</div>` : '';
 }
 
 function zoneHtml(zone, ctx, width = 0) {
   const files = zone.files.map((name) => `<a class="src" href="${esc(withToken(name, ctx))}">${esc(name)}</a>`).join(' ');
   // The part that holds the document of a gate shows the status of that gate.
   const gate = (ctx.gates ?? []).find((item) => GATE_ZONE[item.name] === zone.id);
-  const chip = gate ? ` <span class="zgate g-${esc(gate.status)}" title="${esc(`${gate.name} ${GATE_TEXT[gate.status] ?? gate.status}`)}"><span aria-hidden="true">${GATE_MARK[gate.status] ?? ''}</span> ${esc(GATE_TEXT[gate.status] ?? gate.status)}</span>` : '';
+  // The mark of the gate: one ingot and the words of its status.
+  const chip = gate ? ` <span class="zgate g-${esc(gate.status)}" title="${esc(`${gate.name} ${GATE_TEXT[gate.status] ?? gate.status}`)}">${ingotHtml(gate.status)} ${esc(GATE_TEXT[gate.status] ?? gate.status)}</span>` : '';
   const now = ctx.focus && zone.gates?.includes(ctx.focus) ? ' z-now' : '';
-  const parts = [`<h2>${esc(zone.title)}${chip} ${files}</h2>`];
-  if (!zone.present) parts.push(`<p class="empty">No ${esc(zone.files.join(' or '))} yet.</p>`);
+  // The title is in bitmap letters. The real text is in the .sr span of pixelText. The title can have the focus: Enter or Space shows the part, as a click does.
+  const parts = [`<h2 tabindex="0">${pixelText(zone.title, { scale: 3 })}${chip} ${files}</h2>`];
+  if (!zone.present) parts.push(emptyHtml(`No ${zone.files.join(' or ')} yet.`));
   const column = (cards) => cards.map((card) => cardHtml(card, ctx)).join('');
-  const row = (label, cards, cls = '') => (cards?.length ? `<h4 class="group">${label}</h4><div class="row ${cls}">${cards.map((card) => cardHtml(card, ctx)).join('')}</div>` : '');
+  const row = (label, cards, cls = '') => (cards?.length ? `<h4 class="eyebrow sethead">${label}</h4><div class="row ${cls}">${cards.map((card) => cardHtml(card, ctx)).join('')}</div>` : '');
   if (zone.id === 'plan') {
     parts.push(column(zone.cards), row('Diagnosis', zone.hypotheses), row('Steps', zone.steps, 'path'), row('More', zone.more));
   } else if (zone.id === 'code') {
@@ -477,7 +480,7 @@ function zoneHtml(zone, ctx, width = 0) {
     if (zone.questions?.length) parts.push(row('Open questions', zone.questions));
     parts.push(peopleHtml(zone));
   }
-  return `<section class="zone z-${esc(zone.id)}${now}" id="zone-${esc(zone.id)}" data-zone="${esc(zone.id)}"${width ? ` style="width:${width}px"` : ''}>${parts.join('')}</section>`;
+  return frameHtml(parts.join(''), { sunk: true, tag: 'section', cls: `zone z-${zone.id}${now}`, attrs: `id="zone-${esc(zone.id)}" data-zone="${esc(zone.id)}"${width ? ` style="width:${width}px"` : ''}` });
 }
 
 function railHtml(model, nav, live = false, wiki = null) {
@@ -487,17 +490,14 @@ function railHtml(model, nav, live = false, wiki = null) {
     + wiki.refs.map((ref) => `<li><a href="${esc(ref.href)}" data-nav><span class="what">${esc(ref.title)}</span><small>${esc(ref.path)}</small></a></li>`).join('')
     + (wiki.refs.length ? '' : '<li class="none">This ticket names no wiki page.</li>')
     + `<li class="all"><a href="${esc(wiki.home)}" data-nav>All wiki pages</a></li></ul></details>`;
-  const gates = model.gates.filter((gate) => gate.name !== 'Sendable?' || gate.status === 'in-review').map((gate) => {
-    const note = gate.status === 'approved' && gate.date ? `approved ${gate.date}` : GATE_TEXT[gate.status] ?? gate.status;
-    // The mark says "approved" and "not open". Only a gate that needs attention shows its words.
-    const quiet = ['approved', 'todo'].includes(gate.status);
-    return `<li class="g-${esc(gate.status)}"${quiet ? ` title="${esc(`${gate.name} ${note}`)}"` : ''}><span class="mark">${GATE_MARK[gate.status] ?? ''}</span> ${esc(gate.name.replace(/\?$/, ''))} <small${quiet ? ' class="sr"' : ''}>${esc(note)}</small></li>`;
-  }).join('');
+  // The kit shows each gate as an ingot with its name. Only a gate that needs attention shows its words. An approved gate has its date as the hover text.
+  const gates = gatesHtml(model.gates.filter((gate) => gate.name !== 'Sendable?' || gate.status === 'in-review')
+    .map((gate) => ({ name: gate.name, status: gate.status, note: gate.status === 'approved' && gate.date ? `approved ${gate.date}` : '' })), { names: true, folder: nav?.current || ticket.key });
   // The views: the first view opens the cards that the user must read for the gate in focus.
   const view = (name, label, title) => `<button type="button" data-view="${name}" aria-pressed="false" title="${esc(title)}">${esc(label)}</button>`;
   const focusGate = model.gates.find((gate) => gate.name === model.focus);
-  const views = `<div class="views" role="group" aria-label="View"><span>View</span>`
-    + (focusGate ? view('focus', `Now: ${focusGate.name.replace(/\?$/, '')}`, `The cards that you must read for ${focusGate.name}, which ${focusGate.status === 'in-review' ? 'waits for you' : 'is the next gate'}. The other parts show their summary (v)`) : '')
+  const views = `<div class="views" role="group" aria-label="View"><span class="eyebrow">View</span>`
+    + (focusGate ? view('focus', `Now: ${focusGate.name.replace(/\?$/, '')}`, `The cards that you must read for ${focusGate.name}, which ${focusGate.status === 'in-review' ? 'needs you' : 'is the next gate'}. The other parts show their summary (v)`) : '')
     + view('must', 'Must read', 'The cards that you must read and understand, of each part (v)')
     + view('good', '+ Good to know', 'Also the cards that help. The working notes of the agent stay folded (v)')
     + view('all', 'All', 'Each card (v)') + '</div>';
@@ -512,14 +512,14 @@ function railHtml(model, nav, live = false, wiki = null) {
       + `<button type="button" class="crumb" id="switch-open" aria-haspopup="dialog" title="Go to a ticket (t)"><span class="key">${esc(ticket.key)}</span></button>`
     : `<strong class="key">${esc(ticket.key)}</strong>`;
   return `<header id="rail">`
-    + `<div class="bar">${where}<h1 title="${esc(ticket.title)}">${esc(ticket.short || ticket.title)}</h1>`
-    + `<span class="pill st-${esc(ticket.state)}"><span aria-hidden="true">${ticket.emoji ?? ''}</span> ${esc(STATE_LABEL[ticket.state] ?? ticket.state)}</span><span class="phase">${esc(ticket.phase)}</span>`
+    + `<div class="bar">${iconHtml('anvil', { size: 32 })}${where}<h1 title="${esc(ticket.title)}">${esc(ticket.short || ticket.title)}</h1>`
+    + `${pillHtml(pageLabel(ticket.state, STATE_LABEL[ticket.state] ?? ticket.state), ticket.state)}<span class="phase">${esc(ticket.phase)}</span>`
     + `<div class="tools">${nav ? hop(nav.prev, 'prev', '‹', '[') + hop(nav.next, 'next', '›', ']') : ''}`
     + (live ? '<button type="button" id="live-toggle" class="lv-idle" aria-pressed="false" title="What the session of this ticket does now (l)"><span class="lv-state">Live</span></button>' : '')
     + refs
-    + `<button type="button" id="tray-toggle" title="Your comments on this ticket">Comments <span id="comment-count">0</span></button>${TOOLS_HTML}</div></div>`
-    + `<div class="sub"><ol class="gates" aria-label="Gates">${gates}</ol>`
-    + `<div class="next" title="${esc(`Next: ${ticket.next}${ticket.waitingOn ? `. Waiting on: ${ticket.waitingOn}` : ''}`)}"><span>Next</span> ${esc(ticket.next)}${ticket.waitingOn ? ` <span>· Waiting on</span> ${esc(ticket.waitingOn)}` : ''} ${changes}</div>`
+    + `<button type="button" id="tray-toggle" title="Your comments on this ticket">Comments <span id="comment-count" aria-live="polite">0</span></button>${TOOLS_HTML}</div></div>`
+    + `<div class="sub">${gates}`
+    + `<div class="next" title="${esc(`Next: ${ticket.next}${ticket.waitingOn ? `. Waiting on: ${ticket.waitingOn}` : ''}`)}"><span class="eyebrow">Next</span> ${esc(ticket.next)}${ticket.waitingOn ? ` <span class="eyebrow">Waiting on</span> ${esc(ticket.waitingOn)}` : ''} ${changes}</div>`
     + `${views}<nav aria-label="Parts of the ticket">${zones}</nav></div>`
     + `</header>`;
 }
@@ -549,9 +549,13 @@ const HELP = [
   [['Esc'], 'Close a dialog, the toolbar of selected words, or the comments'],
 ];
 
+// The zoom tools at the end of the foot.
+const ZOOMER = '<div class="zoomer" role="group" aria-label="Zoom"><button type="button" class="quiet icon" id="zoom-out" title="Zoom out (-)" aria-label="Zoom out">−</button><output id="zoom-level">100%</output>'
+  + '<button type="button" class="quiet icon" id="zoom-in" title="Zoom in (+)" aria-label="Zoom in">+</button><button type="button" class="quiet" id="zoom-fit" title="Show the whole ticket (0)">Fit</button></div>';
+
 // The Live panel. Only a page of the live server has it, and the page script fills it.
-const LIVE_HTML = '<aside id="live" aria-label="Live" hidden><h2>Live <button type="button" class="quiet icon" id="live-close" title="Hide the Live panel (l)" aria-label="Hide the Live panel">×</button></h2>'
-  + '<p class="hint" id="live-hint">No answer from the live server yet.</p><div id="live-body"></div><div id="live-past"></div></aside>';
+const LIVE_HTML = `<aside id="live" aria-label="Live" hidden><h2>${pixelText('Live', { scale: 3 })} <button type="button" class="quiet icon" id="live-close" title="Hide the Live panel (l)" aria-label="Hide the Live panel">×</button></h2>`
+  + '<p class="thint" id="live-hint" aria-live="polite">No answer from the live server yet.</p><div id="live-body"></div><div id="live-past"></div></aside>';
 
 /**
  * The self-contained HTML page of a canvas model. With serve.token, the page can send its comments to the canvas server.
@@ -571,38 +575,38 @@ export function renderCanvas(model, { links = 'vscode', serve = null, nav = null
   const zone = (id) => model.zones.find((item) => item.id === id);
   // The code map sets the width of the middle column: each lane needs room for its components and its arrows.
   const lanes = zone('code')?.graph.lanes.length ?? 0;
-  const wide = Math.max(WIDE_ZONE, 42 + lanes * LANE_WIDTH + Math.max(0, lanes - 1) * LANE_GAP);
+  // 52: the padding of a zone (2 times 24) and its border (2 times 2).
+  const wide = Math.max(WIDE_ZONE, 52 + lanes * LANE_WIDTH + Math.max(0, lanes - 1) * LANE_GAP);
   const column = (...ids) => `<div class="column">${ids.map(zone).filter(Boolean).map((item) => zoneHtml(item, ctx, ['code', 'plan'].includes(item.id) ? wide : 0)).join('')}</div>`;
   const board = column('story') + column('code', 'plan') + column('review', 'close', 'journal');
   const note = model.missing.length ? `<p class="note">Not written yet: ${esc(model.missing.join(', '))}.</p>` : '';
   const home = token && serve.home && serve.home !== ticket.key ? String(serve.home) : '';
   const live = token && serve.live ? String(serve.live) : '';
   const resume = live && serve.resume ? String(serve.resume) : '';
+  // serve.open is the command that starts the live server again, and serve.c is the change stamp of this ticket (live-stamp.mjs).
+  const open = token && typeof serve.open === 'string' ? serve.open : null;
   const draw = !mermaid || !needsMermaid(board) ? null : token ? { src: `${MERMAID_ROUTE}?t=${token}`, integrity: MERMAID_INTEGRITY } : { src: `../../${MERMAID_FILE}` };
-  const data = JSON.stringify({ key: ticket.key, generated: model.generated, ...(draw ? { mermaid: draw } : {}), ...(model.focus ? { focus: model.focus, focusZone: model.focusZone } : {}), ...(token ? { token } : {}), ...(home ? { home } : {}), ...(live ? { live } : {}), ...(resume ? { resume } : {}), ...(nav ? { nav: navData(nav) } : {}) }).replace(/</g, '\\u003c');
-  return [
-    '<!doctype html>', '<html lang="en">', '<head>', '<meta charset="utf-8">',
-    '<meta name="viewport" content="width=device-width, initial-scale=1">',
-    `<title>${esc(ticket.key)} · ${esc(ticket.short || ticket.title)}</title>`,
-    `<style>${CANVAS_STYLE}</style>`, '</head>', `<body class="layout-${model.layout}">`,
+  const data = { key: ticket.key, generated: model.generated, ...(draw ? { mermaid: draw } : {}), ...(model.focus ? { focus: model.focus, focusZone: model.focusZone } : {}), ...(token ? { token } : {}), ...(home ? { home } : {}), ...(live ? { live } : {}), ...(resume ? { resume } : {}),
+    ...(open !== null ? { open } : {}), ...(live && serve.c ? { c: String(serve.c) } : {}), ...(live ? { icons: { calm: faviconUri('calm'), needs: faviconUri('needs') }, hot: ticket.state === 'needs-me' } : {}), ...(nav ? { nav: navData(nav) } : {}) };
+  const body = [
     railHtml(model, nav, Boolean(live), wiki),
     `<div id="stage"><main id="viewport"><div id="board">${board}</div></main>`,
     '<div id="pop" role="toolbar" aria-label="Selected words" hidden><button type="button" data-act="comment">Comment</button><button type="button" data-act="remove">Remove</button>'
       + '<button type="button" data-label="unclear">unclear</button><button type="button" data-label="wrong">wrong</button><button type="button" data-label="too much">too much</button></div>',
-    '<aside id="tray" hidden><h2>Comments</h2><p class="hint" id="tray-hint">Select words on a card, or use the Comment button of a card. Then copy the comments and paste them into the ticket session.</p><ol id="tray-list"></ol>'
+    `<aside id="tray" hidden><h2>${pixelText('Comments', { scale: 3 })}</h2><p class="thint" id="tray-hint">Select words on a card, or use the Comment button of a card. Then copy the comments and paste them into the ticket session.</p><ol id="tray-list"></ol>`
       + '<label for="general">Whole ticket</label><textarea id="general" rows="3" placeholder="A comment on the whole ticket."></textarea>'
-      + '<div class="tray-tools"><button type="button" id="send-all" hidden>Send to agent</button><button type="button" id="copy-all">Copy all</button><button type="button" id="clear-all">Delete all</button></div>'
+      + '<div class="tray-tools"><button type="button" class="primary" id="send-all" hidden>Send to agent</button><button type="button" id="copy-all">Copy all</button><button type="button" id="clear-all">Delete all</button></div>'
       + '<textarea id="copy-fallback" hidden readonly rows="6" aria-label="Comments to copy"></textarea></aside>'
       + (live ? LIVE_HTML : '') + '</div>',
-    `<footer id="foot">${note}<p>Generated ${esc(model.generated)} UTC by <code>forge.mjs canvas</code> from the ticket files. This page is a view: change the Markdown files, not this page. Press <kbd>?</kbd> for the keys.</p>`
-      + '<div class="zoomer" role="group" aria-label="Zoom"><button type="button" class="quiet icon" id="zoom-out" title="Zoom out (-)" aria-label="Zoom out">−</button><output id="zoom-level">100%</output>'
-      + '<button type="button" class="quiet icon" id="zoom-in" title="Zoom in (+)" aria-label="Zoom in">+</button><button type="button" class="quiet" id="zoom-fit" title="Show the whole ticket (0)">Fit</button></div></footer>',
+    footHtml(`Generated ${esc(model.generated)} UTC by <code>forge.mjs canvas</code> from the ticket files. This page is a view: change the Markdown files, not this page.`, { note, end: ZOOMER }),
     switcherHtml(nav), helpHtml([...(wiki ? HELP.flatMap((row) => (row[1] === 'Go to the board of all tickets' ? [row, [['w'], 'Go to the wiki of the repository']] : [row])) : HELP),
       ...(live ? ['Live', [['l'], 'Show or hide the Live panel: what the session of this ticket does now']] : [])]),
     '<div id="toast" role="status" hidden></div>',
-    `<script type="application/json" id="canvas-data">${data}</script>`,
-    `<script>${CANVAS_SCRIPT}</script>`, '</body>', '</html>', '',
   ].join('\n');
+  return pageHtml({
+    title: `${ticket.key} · ${ticket.short || ticket.title}`, bodyClass: `layout-${model.layout}`, style: CANVAS_STYLE, dataId: 'canvas-data', data, script: CANVAS_SCRIPT,
+    body, icon: ticket.state === 'needs-me' ? 'needs' : 'calm', main: 'viewport',
+  });
 }
 
 /**

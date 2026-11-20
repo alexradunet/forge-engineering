@@ -32,6 +32,7 @@ so your memory of a VS Code feature can be old.
 - Run `npm test` (Node 20 or later). It runs the test files in the `test` script of `package.json`.
 - `npm run eval` runs the behavioral cases of `tests/evals/` with a real agent session ([docs/evaluation.md](docs/evaluation.md)). Each run is a paid model run: ask the user first. Run the cases that a change of a rule, a skill, or a hook can affect, and write the result in `docs/evaluation.md`.
   Add each new test file to that script.
+- `npm run shots` takes screenshots of each page in 2 themes at 2 widths, in headless Chromium, with invented demo data. It is not part of `npm test`. It needs Chromium (`FORGE_CHROMIUM`) and Node 22 or later.
 - The CLI tests use `--cwd <repo root> --wiki <temporary folder>`.
 - Keep the strings that `tests/agents.test.mjs` and `tests/fixtures/scenarios.json` require,
   or change the test and give the reason.
@@ -50,8 +51,10 @@ so your memory of a VS Code feature can be old.
 - The ticket canvas (`scripts/lib/canvas.mjs`) reads the section names and the line shapes of the `full-v3` templates.
   Change a template and the canvas together (`tests/canvas.test.mjs`). The page loads nothing from a network.
   In serve mode (`scripts/lib/canvas-serve.mjs`), the page sends the comments only to the forge server on `127.0.0.1` (`tests/canvas-serve.test.mjs`).
-- The board page (`scripts/lib/board-page.mjs`), the wiki page (`scripts/lib/wiki-page.mjs`), and the ticket canvas share one design system: `scripts/lib/ui.mjs` and [docs/design-system.md](docs/design-system.md).
-  Change a token or a shared component and the document together (`tests/board-page.test.mjs`). Look at each page change in a browser, in the light and the dark theme.
+- The design system is the UI kit `scripts/lib/ui/`: one file for each component, the tokens as data in `tokens.mjs`, and the order lists in `index.mjs`. `scripts/lib/ui.mjs` only re-exports it. [docs/design-system.md](docs/design-system.md) is its document.
+  Change a token or a component and the document together (`tests/ui-kit.test.mjs`, `tests/board-page.test.mjs`).
+  A new page class has a page prefix, and no page class has the name of a kit class.
+  Look at each page change with `npm run shots` (or in a browser), in the light and the dark theme, at 620 px and at 1500 px.
 - Change the version in `plugins/forge/plugin.json`, `.github/plugin/marketplace.json`, and `.claude-plugin/marketplace.json` together (`tests/packaging.test.mjs`).
 - Never commit a `raw/` file of a Forge folder, a credential, or a personal path.
 - `scripts/lib/harness.mjs` is the only place that knows the resume command of a harness, and `scripts/lib/terminal.mjs` is the only place that knows a terminal program.

@@ -220,6 +220,14 @@ Forge 9.1.0 adds a session end hook, and part 1 of the session start hook writes
 - In 1 run, the folder in the input of the end hook was the ticket folder in `raw/`, not the folder of the session. After this result, the session list keeps the folder of the start or of the last resume (`scripts/lib/sessions.mjs`, `tests/sessions.test.mjs`).
 - The runs do not measure `POST /resume`, the pages, or a terminal: no case uses them.
 
+### Forge 9.2.0: the UI kit and the forge look (2026-11-20)
+
+Forge 9.2.0 changes the pages, the live server, and the canvas server. It changes no rule, no skill, no hook, and no template. It changes one line of `plugins/forge/hosts/claude.md`: the idle rule of the live server (8 hours with no event and no page request, before: no event).
+
+- No eval case ran, and `npm run eval` was not used. No case measures a page or a server, and the one changed line is a fact that no hard check reads. A run would be a paid model run with no new information.
+- The checks of this change are tests and screenshots. `npm test` covers the kit, the pages, the servers, and the document. `npm run shots` (headless Chromium 157 on Linux, 2026-11-20) covers the pages in both themes at 620 px and 1500 px, and the server states. The result is in the click-checks 55 to 60 of the [baseline](vscode-baseline.md). The checks in VS Code, on Windows, and with a screen reader are open (61 to 66).
+- Run the cases of the `board` skill (`board-question`) when a later change touches that skill or the session context.
+
 ### Comparison: the cold read
 
 A comparison case runs only with `--case`. `--variant <name>` gives the session a copy of the plugin with one rule changed (`tests/evals/variants.mjs`), so two sets of runs differ only in that rule.

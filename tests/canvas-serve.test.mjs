@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
 import os from 'node:os';
@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { BOARD_SCRIPT } from '../plugins/forge/scripts/lib/board-page.mjs';
 import { WIKI_SCRIPT } from '../plugins/forge/scripts/lib/wiki-page.mjs';
 import { CANVAS_SCRIPT, canvasLine, canvasMessage } from '../plugins/forge/scripts/lib/canvas-page.mjs';
-import { checkRequest, defaultPort, readSend } from '../plugins/forge/scripts/lib/canvas-serve.mjs';
+import { checkRequest, defaultPort, readSend, sameToken } from '../plugins/forge/scripts/lib/canvas-serve.mjs';
 import { buildCanvas, renderCanvas } from '../plugins/forge/scripts/lib/canvas.mjs';
 
 const cli = fileURLToPath(new URL('../plugins/forge/scripts/forge.mjs', import.meta.url));
@@ -104,7 +104,7 @@ test('only a served page has the token, and its relative links carry it', (t) =>
   const model = buildCanvas(f.dir);
   const file = renderCanvas(model);
   assert.doesNotMatch(file, /"token"/);
-  assert.match(file, /<button type="button" id="send-all" hidden>Send to agent<\/button>/);
+  assert.match(file, /<button type="button" class="primary" id="send-all" hidden>Send to agent<\/button>/); // Forge 9.2: the button has the kit class primary
   assert.match(file, /href="story\.md"/);
   assert.match(file, /href="evidence\/note\.md"/);
   const served = renderCanvas(model, { serve: { token: TOKEN } });
@@ -193,7 +193,8 @@ test('a run gives the page, refuses each bad request, prints the sent comments, 
   assert.equal(page.headers['cache-control'], 'no-store');
   assert.equal(page.headers['x-content-type-options'], 'nosniff');
   assert.equal(page.headers['access-control-allow-origin'], undefined);
-  assert.match(page.headers['content-security-policy'], /^default-src 'none'; script-src 'sha256-[A-Za-z0-9+/]+=*'; .*connect-src 'self'/);
+  // The icon of the tab is a data address, so the policy allows img-src data: and no other image.
+  assert.match(page.headers['content-security-policy'], /^default-src 'none'; script-src 'sha256-[A-Za-z0-9+/]+=*'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'/);
   assert.match(page.text, new RegExp(`"token":"${token}"`));
   assert.match(page.text, /retries stop after 3 s/);
   // The policy names the script by its hash: the hash must be the hash of the script in the page.
@@ -362,4 +363,84 @@ test('the server uses the stable port of the ticket, and a busy fixed port is an
   }
   first.child.kill('SIGTERM');
   await first.exit;
+});
+
+// --- Forge 9.2, stage 5: the error pages and the token comparison ---
+
+const HTML = { Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' };
+const POLICY = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'";
+
+test('the canvas server answers a browser with an error page of the kit, and each other caller with the plain text', async (t) => {
+  const f = wiki(t);
+  const run = start(t, f, '--port', '0');
+  const { port, token } = await run.ready;
+  const check = (res, status) => {
+    assert.equal(res.status, status);
+    assert.equal(res.headers['content-type'], 'text/html; charset=utf-8');
+    assert.equal(res.headers['content-security-policy'], POLICY);
+    assert.equal(res.headers['x-content-type-options'], 'nosniff');
+    assert.equal(res.headers['cache-control'], 'no-store');
+    assert.equal(res.headers['access-control-allow-origin'], undefined);
+    assert.ok(res.text.startsWith('<!doctype html>') && !/<script/i.test(res.text));
+  };
+  // 403: it echoes nothing of the request, and it names no folder. The canvas server has no command: the ticket session gives the new link.
+  for (const [url, headers] of [['/', {}], [`/?t=${'0'.repeat(32)}&marker=ZZQ-MARK`, {}], ['/evidence/ZZQ-MARK.md', {}], [`/?t=${token}`, { Host: 'evil.test' }]]) {
+    const res = await request(port, { url, headers: { ...HTML, ...headers } });
+    check(res, 403);
+    assert.match(res.text, /<title>This link is old<\/title>/);
+    assert.ok(res.text.includes('The link is old or not complete. Ask the ticket session for the new canvas link.'));
+    assert.ok(!res.text.includes('<code class="err-cmd">'));
+    for (const part of ['ZZQ-MARK', token, 'evil.test', f.root, 'forge-serve-', os.tmpdir()]) assert.ok(!res.text.includes(part), `the 403 page holds ${part.slice(0, 6)}`);
+    assert.doesNotMatch(res.text, /<a [^>]*href=/);
+    const plain = await request(port, { url, headers });
+    assert.deepEqual([plain.status, plain.headers['content-type'], plain.headers['content-security-policy']], [403, 'text/plain; charset=utf-8', undefined]);
+    assert.equal(plain.text, 'This link is old or not complete. Ask the ticket session for the new canvas link.\n');
+  }
+  const star = await request(port, { url: '/', headers: { Accept: '*/*' } });
+  assert.deepEqual([star.status, star.headers['content-type']], [403, 'text/plain; charset=utf-8'], 'a script of a page keeps the plain answer');
+  const refused = await request(port, { method: 'POST', url: '/send', body: '{}', headers: { ...HTML, 'Content-Type': 'application/json', 'X-Forge-Token': 'x' } });
+  assert.deepEqual([refused.status, refused.headers['content-type']], [403, 'text/plain; charset=utf-8'], 'only a GET gets a page');
+  // 404: after the token check, with a link to the board (this run has the wiki, so it has the board).
+  for (const url of [`/nope-ZZQ-MARK.md?t=${token}`, `/evidence/page.html?t=${token}`]) {
+    const res = await request(port, { url, headers: HTML });
+    check(res, 404);
+    assert.match(res.text, /<title>Not found<\/title>/);
+    assert.ok(res.text.includes(`<a class="primary" href="/board?t=${token}">Open the board</a>`) && !res.text.includes('ZZQ-MARK'));
+    const plain = await request(port, { url });
+    assert.deepEqual([plain.status, plain.headers['content-type'], plain.text], [404, 'text/plain; charset=utf-8', 'Not found.\n']);
+  }
+  // 500: a file that the server cannot read.
+  if (process.platform !== 'win32' && process.getuid?.() !== 0) {
+    const story = path.join(f.dir, 'story.md');
+    chmodSync(story, 0);
+    t.after(() => { try { chmodSync(story, 0o644); } catch { /* The folder is gone already. */ } });
+    const broken = await request(port, { url: `/story.md?t=${token}`, headers: HTML });
+    check(broken, 500);
+    assert.match(broken.text, /<title>Something went wrong<\/title>/);
+    assert.match(broken.text, /The canvas server cannot show the ticket: EACCES/);
+    assert.ok(broken.text.includes(`href="/board?t=${token}"`));
+    const plain = await request(port, { url: `/story.md?t=${token}` });
+    assert.deepEqual([plain.status, plain.headers['content-type']], [500, 'text/plain; charset=utf-8']);
+  }
+  run.child.kill('SIGTERM');
+  await run.exit;
+});
+
+test('the canvas server keeps one token for each run, and a token is compared in constant time with the same length', async (t) => {
+  assert.equal(sameToken(TOKEN, TOKEN), true);
+  assert.equal(sameToken('b'.repeat(32), TOKEN), false);
+  assert.equal(sameToken(TOKEN.slice(1), TOKEN), false, 'another length is no match');
+  assert.equal(sameToken('', TOKEN), false);
+  assert.equal(sameToken(undefined, TOKEN), false);
+  const f = wiki(t);
+  const first = start(t, f, '--port', '0');
+  const one = await first.ready;
+  first.child.kill('SIGTERM');
+  await first.exit;
+  const second = start(t, f, '--port', '0');
+  const two = await second.ready;
+  assert.notEqual(two.token === one.token, true, 'a new run has a new token');
+  assert.equal((await request(two.port, { url: `/?t=${one.token}` })).status, 403);
+  second.child.kill('SIGTERM');
+  await second.exit;
 });

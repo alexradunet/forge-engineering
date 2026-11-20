@@ -4,18 +4,20 @@
 // closed tickets are in the folder tickets/. It loads nothing from a network, and it is never a source.
 // A wiki with a Mermaid block is the one case of a second file: the page loads the Mermaid file of forge (mermaid.mjs)
 // from its own folder or from its own server, and draws the block.
-// The style and the components come from ui.mjs. The script uses no template literals: it sits in one.
+// The style and the components come from ui.mjs (the kit): this file has only the layout of the wiki. The script uses no template literals: it sits in one.
 import path from 'node:path';
+import { STATE_LABEL } from './board.mjs';
 import { LINK_MODES, linkTarget, markdown } from './canvas.mjs';
 import { MERMAID_FILE, MERMAID_INTEGRITY, MERMAID_ROUTE, needsMermaid } from './mermaid.mjs';
-import { TOOLS_HTML, UI_SCRIPT, UI_STYLE, buildNav, esc, helpHtml, navData, switcherHtml } from './ui.mjs';
+import { BREAK, TOOLS_HTML, UI_STYLE, bannerHtml, buildNav, countHtml, emptyHtml, esc, footHtml, helpHtml, iconHtml, navData, pageHtml as shellHtml, pageLabel, pageScript, pillHtml, pixelText, proseHtml, searchHtml, switcherHtml } from './ui.mjs';
 import { CLOSED_FOLDER, pageHash, pageOf } from './wiki.mjs';
 
 export const WIKI_PAGE = 'wiki.html';
 // The color of a page status is the color of a ticket state: no new token.
-const STATUS_CLASS = { verified: 'st-go', decided: 'st-active', 'needs-check': 'st-needs-me' };
+const STATUS_STATE = { verified: 'go', decided: 'active', 'needs-check': 'needs-me' };
 const STATUS_TEXT = { verified: 'verified', decided: 'decided', 'needs-check': 'needs a check' };
-const TICKET_TEXT = { 'needs-me': 'needs you', blocked: 'blocked', go: 'go', active: 'active', waiting: 'waiting', done: 'done' };
+// The words of a ticket state on a page: "needs you" for the state needs-me (pageLabel in ui.mjs).
+const ticketText = (state) => (STATE_LABEL[state] ? pageLabel(state, STATE_LABEL[state]).toLowerCase() : state);
 
 const groupTitle = (folder) => (folder === '' ? 'Wiki' : folder === CLOSED_FOLDER ? 'Closed tickets' : folder);
 
@@ -25,7 +27,7 @@ function treeHtml(model) {
       const page = model.byPath.get(relative);
       return `<li><a href="#${esc(pageHash(relative))}" title="${esc(relative)}">${esc(page.title)}</a></li>`;
     }).join('');
-    return `<section><h2>${esc(groupTitle(group.folder))} <span class="count">${group.pages.length}</span></h2><ul>${rows}</ul></section>`;
+    return `<section><h2 class="eyebrow">${esc(groupTitle(group.folder))} ${countHtml(group.pages.length)}</h2><ul>${rows}</ul></section>`;
   }).join('');
 }
 
@@ -46,7 +48,7 @@ function pageHtml(page, index, model, ctx) {
   };
   // A relative link to another file has no target on this page: its words stay as text.
   const body = markdown(page.body, { links: ctx.links, wiki, headings: 1, plain: true });
-  const status = page.status ? `<span class="pill ${STATUS_CLASS[page.status] ?? ''}">${esc(STATUS_TEXT[page.status] ?? page.status)}</span>` : '';
+  const status = page.status ? pillHtml(STATUS_TEXT[page.status] ?? page.status, STATUS_STATE[page.status] ?? '') : '';
   const file = linkTarget(path.join(root, ...page.path.split('/')), ctx.links);
   const meta = [
     status,
@@ -54,23 +56,23 @@ function pageHtml(page, index, model, ctx) {
     `<code>${esc(page.path)}</code>`,
     file ? `<a href="${esc(file)}" title="Open the Markdown file of this page">Open the file</a>` : '',
   ].filter(Boolean).join('');
-  const sources = page.sources.length ? `<section class="more"><h3>Sources</h3><ul>${page.sources.map((source) => `<li>${sourceHtml(source, wiki)}</li>`).join('')}</ul></section>` : '';
+  const sources = page.sources.length ? `<section class="wmore"><h3 class="eyebrow">Sources</h3><ul>${page.sources.map((source) => `<li>${sourceHtml(source, wiki)}</li>`).join('')}</ul></section>` : '';
   const used = [
     ...page.tickets.map((ticket) => {
       const href = ctx.nav.tickets.find((item) => item.folder === ticket.folder)?.href ?? '';
       const label = `<span class="key">${esc(ticket.key)}</span> ${esc(ticket.title)}`;
-      return `<li>${href ? `<a href="${esc(href)}" data-nav>${label}</a>` : label} <small>ticket, ${esc(TICKET_TEXT[ticket.state] ?? ticket.state)}</small></li>`;
+      return `<li>${href ? `<a href="${esc(href)}" data-nav>${label}</a>` : label} <small>ticket, ${esc(ticketText(ticket.state))}</small></li>`;
     }),
     ...page.usedBy.map((relative) => {
       const other = model.byPath.get(relative);
       return `<li><a href="#${esc(pageHash(relative))}">${esc(other.title)}</a> <small>${esc(other.folder === CLOSED_FOLDER ? 'closed ticket' : relative)}</small></li>`;
     }),
   ];
-  const usedBy = used.length ? `<section class="more"><h3>Used by</h3><ul>${used.join('')}</ul></section>` : '';
+  const usedBy = used.length ? `<section class="wmore"><h3 class="eyebrow">Used by</h3><ul>${used.join('')}</ul></section>` : '';
   return `<article class="wpage" id="p-${index}" data-title="${esc(page.title)}" hidden>`
-    + `<p class="where">${esc(page.folder ? `${groupTitle(page.folder)} / ` : '')}${esc(page.name)}</p>`
-    + `<h2>${esc(page.title)}</h2><p class="meta">${meta}</p>`
-    + `<div class="md">${body || '<p class="empty">This page has no text.</p>'}</div>${sources}${usedBy}</article>`;
+    + `<p class="wwhere">${esc(page.folder ? `${groupTitle(page.folder)} / ` : '')}${esc(page.name)}</p>`
+    + `<h2>${esc(page.title)}</h2><p class="wmeta">${meta}</p>`
+    + `${proseHtml(body || emptyHtml('This page has no text.'))}${sources}${usedBy}</article>`;
 }
 
 const HELP = [
@@ -96,86 +98,65 @@ export function renderWikiPage(model, { links = 'vscode', nav = null, serve = nu
   const ctx = { links, nav: nav ?? buildNav({ groups: [] }, { from: 'wiki', token, closed: model.closed }) };
   const pages = model.pages.map((page, index) => pageHtml(page, index, model, ctx)).join('\n');
   const errors = model.errors.length
-    ? `<section class="more" id="errors"><h3>Read errors</h3><ul>${model.errors.map((error) => `<li><code>${esc(error.path)}</code> ${esc(error.message)}</li>`).join('')}</ul></section>` : '';
+    ? `<section id="errors"><h3 class="eyebrow">Read errors</h3>${model.errors.map((error) => bannerHtml(`<code>${esc(error.path)}</code> ${esc(error.message)}`, { kind: 'bad' })).join('')}</section>` : '';
   // The page script loads the Mermaid file only when a page has a diagram block. A served page also checks the hash of the file.
   const mermaid = !needsMermaid(pages) ? null : token ? { src: `${MERMAID_ROUTE}?t=${token}`, integrity: MERMAID_INTEGRITY } : { src: MERMAID_FILE };
-  const data = JSON.stringify({ pages: model.pages.map((page) => page.path), ...(token ? { token } : {}), ...(mermaid ? { mermaid } : {}), nav: navData(ctx.nav) }).replace(/</g, '\\u003c');
-  return [
-    '<!doctype html>', '<html lang="en">', '<head>', '<meta charset="utf-8">',
-    '<meta name="viewport" content="width=device-width, initial-scale=1">',
-    '<title>Forge wiki</title>',
-    `<style>${UI_STYLE}${WIKI_STYLE}</style>`, '</head>', '<body class="page-wiki">',
-    `<header id="rail" class="bar"><a class="quiet" href="${esc(ctx.nav.board)}" data-nav title="The board of all tickets (b)">Board</a><span class="sep" aria-hidden="true">/</span><h1>Wiki</h1>`
-      + '<label class="search"><span class="sr">Filter the pages</span><input type="search" id="filter" placeholder="Filter the pages" autocomplete="off" spellcheck="false"><kbd>/</kbd></label>'
-      + `<div class="tools"><button type="button" id="switch-open" title="Go to a ticket (t)">Go to a ticket</button>${TOOLS_HTML}</div></header>`,
-    `<div id="wiki"><nav id="tree" aria-label="Pages of the wiki">${treeHtml(model)}<p class="empty" id="none" hidden>No page has these words.</p></nav>`,
-    '<main id="page"><p class="banner" id="missing" hidden>The wiki has no page <code id="missing-path"></code>. This is the first page.</p>',
-    model.pages.length ? pages : '<p class="empty">No wiki pages yet. The <code>wiki</code> skill records a page, and it shows here.</p>',
+  // serve.open is the command that starts the live server again: only a page of the live server has it.
+  const open = token && typeof serve.open === 'string' ? serve.open : null;
+  const data = { pages: model.pages.map((page) => page.path), ...(token ? { token } : {}), ...(open !== null ? { open } : {}), ...(mermaid ? { mermaid } : {}), nav: navData(ctx.nav) };
+  const body = [
+    `<header id="rail"><div class="bar">${iconHtml('anvil', { size: 32 })}<a class="quiet" href="${esc(ctx.nav.board)}" data-nav title="The board of all tickets (b)">Board</a><span class="sep" aria-hidden="true">/</span><h1>${pixelText('Wiki', { scale: 3 })}</h1>`
+      + searchHtml({ id: 'filter', label: 'Filter the pages', placeholder: 'Filter the pages' })
+      + `<div class="tools"><button type="button" id="switch-open" title="Go to a ticket (t)">Go to a ticket</button>${TOOLS_HTML}</div></div></header>`,
+    `<div id="wiki"><nav id="tree" aria-label="Pages of the wiki"><p class="sr" id="none-live" role="status"></p>${bannerHtml('No page has these words.', { kind: 'info', id: 'none', hidden: true, live: false, actions: '<button type="button" id="show-all">Show all</button>' })}${treeHtml(model)}</nav>`,
+    `<main id="page">${bannerHtml('The wiki has no page <code id="missing-path"></code>. This is the first page.', { kind: 'warn', id: 'missing', hidden: true })}`,
+    model.pages.length ? pages : emptyHtml('No wiki pages yet. The wiki skill records a page, and it shows here.', { icon: 'anvil-cold' }),
     errors, '</main></div>',
-    '<footer id="foot"><p>Written by <code>forge.mjs board</code> from the Markdown files of the wiki. This page is a view: change the Markdown files, not this page.</p></footer>',
+    footHtml('Written by <code>forge.mjs board</code> from the Markdown files of the wiki. This page is a view: change the Markdown files, not this page.'),
     switcherHtml(ctx.nav), helpHtml(HELP),
     '<div id="toast" role="status" hidden></div>',
-    `<script type="application/json" id="wiki-data">${data}</script>`,
-    `<script>${WIKI_SCRIPT}</script>`, '</body>', '</html>', '',
   ].join('\n');
+  return shellHtml({ title: 'Forge wiki', bodyClass: 'page-wiki', style: UI_STYLE + WIKI_STYLE, dataId: 'wiki-data', data, script: WIKI_SCRIPT, body, main: 'page' });
 }
 
+// The layout of the wiki. The look of a part (bar, search, banner, pill, count, prose, table, foot) is in the kit.
 export const WIKI_STYLE = String.raw`
 body { height: 100vh; display: flex; flex-direction: column; }
 #rail { flex: none; }
-.search { display: flex; align-items: center; gap: 6px; padding: 2px 8px; background: var(--card); border: 1px solid var(--line); border-radius: var(--r-1); }
-.search:focus-within { border-color: var(--accent); }
-.search input { width: 190px; font: inherit; color: inherit; background: transparent; border: 0; outline: none; }
 #wiki { flex: 1 1 auto; display: flex; min-height: 0; }
+/* The width of the list of pages: no token has this size. */
+/* A hairline between two parts is 1px, as in a table of the kit. */
 #tree { flex: none; width: 300px; max-width: 40%; overflow: auto; padding: var(--s-3) var(--s-2) var(--s-5); background: var(--panel); border-right: 1px solid var(--line); }
 #tree section + section { margin-top: var(--s-3); }
-#tree h2 { display: flex; align-items: center; gap: var(--s-2); margin: 0; padding: 4px 10px; font-size: var(--t-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); }
+#tree h2 { display: flex; align-items: center; gap: var(--s-2); margin: 0; padding: var(--s-1) var(--s-3); }
 #tree ul { list-style: none; margin: 0; padding: 0; }
-#tree a { display: block; padding: 4px 10px; color: inherit; text-decoration: none; overflow-wrap: anywhere; border-radius: var(--r-1); }
+#tree a { display: block; padding: var(--s-1) var(--s-3); color: inherit; text-decoration: none; overflow-wrap: anywhere; }
 #tree a:hover { background: color-mix(in srgb, var(--muted) 12%, transparent); }
-#tree a[aria-current] { font-weight: 600; background: color-mix(in srgb, var(--accent) 18%, transparent); }
-.count { padding: 0 7px; font-size: var(--t-xs); font-weight: 600; letter-spacing: 0; color: var(--muted); background: var(--card); border: 1px solid var(--line); border-radius: var(--r-pill); }
-.empty { margin: 0; padding: 4px 10px; color: var(--muted); }
+#tree a[aria-current] { font-weight: 600; background: color-mix(in srgb, var(--accent) 18%, transparent); box-shadow: inset var(--s-1) 0 0 var(--accent); }
+#none { margin: 0 var(--s-2) var(--s-3); }
 #page { flex: 1 1 0; min-width: 0; overflow: auto; padding: var(--s-5) var(--s-5) var(--s-7); }
-.banner { max-width: 820px; margin: 0 auto var(--s-4); padding: 6px var(--s-3); font-size: var(--t-sm); background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-2); }
+/* The width of a line of text to read: no token has this size. */
+#missing { max-width: 820px; margin: 0 auto var(--s-4); }
 .wpage, #errors { max-width: 820px; margin: 0 auto; }
-.where { margin: 0; font-size: var(--t-sm); color: var(--muted); }
-.wpage > h2 { margin: 2px 0 var(--s-2); font-size: var(--t-2xl); line-height: 1.25; overflow-wrap: anywhere; }
-.meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px var(--s-3); margin: 0 0 var(--s-5); padding-bottom: var(--s-3); font-size: var(--t-sm); color: var(--muted); border-bottom: 1px solid var(--line); }
-.md { overflow-wrap: anywhere; }
-.md h3 { margin: var(--s-5) 0 var(--s-2); font-size: var(--t-xl); line-height: 1.3; }
-.md h4 { margin: var(--s-4) 0 var(--s-2); font-size: var(--t-lg); }
-.md h5, .md h6 { margin: var(--s-4) 0 var(--s-1); font-size: var(--t-md); }
-.md p { margin: 0 0 var(--s-3); }
-.md ul, .md ol { margin: 0 0 var(--s-3); padding-left: 22px; }
-.md li { margin: 3px 0; }
-.md li > ul, .md li > ol { margin: 3px 0 0; }
-.md pre { margin: 0 0 var(--s-3); padding: var(--s-3); overflow: auto; background: var(--card); border: 1px solid var(--line); border-radius: var(--r-2); }
-.md pre code { padding: 0; background: transparent; overflow-wrap: normal; }
-.md blockquote { margin: 0 0 var(--s-3); padding: 2px var(--s-3); color: var(--muted); border-left: 3px solid var(--line-2); }
-.md table { display: block; max-width: 100%; overflow: auto; margin: 0 0 var(--s-3); border-collapse: collapse; font-size: var(--t-sm); }
-.md th, .md td { padding: 4px 10px; text-align: left; vertical-align: top; border: 1px solid var(--line); }
-.md th { font-weight: 600; color: var(--muted); background: var(--panel); }
-.more { margin-top: var(--s-5); padding-top: var(--s-3); border-top: 1px solid var(--line); }
-.more h3 { margin: 0 0 var(--s-2); font-size: var(--t-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); }
-.more ul { list-style: none; margin: 0; padding: 0; font-size: var(--t-sm); }
-.more li { margin: 4px 0; overflow-wrap: anywhere; }
-.more small { color: var(--muted); }
-@media (max-width: 760px) {
+#errors { display: grid; gap: var(--s-2); }
+#errors h3 { margin: 0; }
+.wwhere { margin: 0; font-size: var(--t-sm); color: var(--muted); }
+.wpage > h2 { margin: var(--px) 0 var(--s-2); font-size: var(--t-2xl); line-height: 1.25; overflow-wrap: anywhere; }
+.wmeta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-3); margin: 0 0 var(--s-5); padding-bottom: var(--s-3); font-size: var(--t-sm); color: var(--muted); border-bottom: 1px solid var(--line); }
+.wmore { margin-top: var(--s-5); padding-top: var(--s-3); border-top: 1px solid var(--line); }
+.wmore h3 { margin: 0 0 var(--s-2); }
+.wmore ul { list-style: none; margin: 0; padding: 0; font-size: var(--t-sm); }
+.wmore li { margin: var(--s-1) 0; overflow-wrap: anywhere; }
+.wmore small { color: var(--muted); }
+@media (max-width: ${BREAK.narrow}px) {
   body { height: auto; min-height: 100vh; }
   #wiki { flex-direction: column; }
   #tree { width: auto; max-width: none; max-height: 38vh; border-right: 0; border-bottom: 1px solid var(--line); }
   #page { overflow: visible; padding: var(--s-4) var(--s-3) var(--s-6); }
-  .search input { width: 120px; }
 }
 `;
 
-export const WIKI_SCRIPT = String.raw`
-(function () {
-  'use strict';
-  var data = JSON.parse(document.getElementById('wiki-data').textContent);
-${UI_SCRIPT}
-  var pages = Array.prototype.slice.call(document.querySelectorAll('.wpage'));
+export const WIKI_SCRIPT = pageScript('wiki-data', String.raw`  var pages = Array.prototype.slice.call(document.querySelectorAll('.wpage'));
   var links = Array.prototype.slice.call(document.querySelectorAll('#tree a'));
   var filter = byId('filter');
   var main = byId('page');
@@ -218,7 +199,11 @@ ${UI_SCRIPT}
     });
     each(document.querySelectorAll('#tree section'), function (group) { group.hidden = !group.querySelector('li:not([hidden])'); });
     byId('none').hidden = shown > 0 || !links.length;
+    // The banner starts hidden, so a screen reader does not read it. The live region next to it has the words of the filter.
+    byId('none-live').textContent = !words.length ? '' : shown ? shown + (shown === 1 ? ' page has' : ' pages have') + ' these words.' : 'No page has these words.';
   }
+
+  function showAll() { filter.value = ''; applyFilter(); filter.focus(); }
 
   function shownLinks() { return links.filter(function (link) { return !link.parentNode.hidden; }); }
   function open(link) { if (link) location.hash = link.getAttribute('href'); }
@@ -230,6 +215,7 @@ ${UI_SCRIPT}
   }
 
   filter.addEventListener('input', applyFilter);
+  byId('show-all').addEventListener('click', showAll);
   filter.addEventListener('keydown', function (event) {
     if (event.key === 'Enter') { open(shownLinks()[0]); event.preventDefault(); return; }
     if (event.key !== 'Escape') return;
@@ -247,5 +233,4 @@ ${UI_SCRIPT}
   });
 
   show();
-})();
-`;
+`);

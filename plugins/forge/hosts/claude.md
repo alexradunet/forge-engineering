@@ -47,7 +47,7 @@ The live view shows the board page and each ticket canvas with what each Claude 
 - A session shows after its next prompt or tool call. The hooks load at session start, so a session that started before an update of forge reports after a restart.
 - A "needs you" line is a report. Never answer that prompt for the user.
 - The rules of the canvas server apply: the link works only in a browser on the machine of the session, `--port <n>` gives a fixed port to forward, and the `Artifact` tool is never used.
-- The server stops after 8 hours without an event. To stop it before that, run `forge.mjs open --stop`.
+- The server stops after 8 hours with no event and no request of a page. To stop it before that, run `forge.mjs open --stop`.
 
 ## Claude Code features
 

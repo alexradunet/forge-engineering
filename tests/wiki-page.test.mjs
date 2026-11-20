@@ -111,15 +111,19 @@ test('the wiki page is one self-contained file: the list of the pages, each page
   const html = renderWikiPage(model, { nav: buildNav(board, { from: 'wiki', closed: model.closed }) });
   assert.equal(html.match(/<script\b/g).length, 2, 'the data block and one script');
   assert.equal(html.slice(html.lastIndexOf('<script>') + 8, html.lastIndexOf('</script>')), WIKI_SCRIPT);
-  assert.doesNotMatch(html, /<link\b|<img\b|<iframe\b|src=|@import|url\(/, 'the page loads no other file');
+  assert.doesNotMatch(html, /<img\b|<iframe\b|src=|@import|url\(/, 'the page loads no other file');
+  // Forge 9.2: the one <link> is the icon of the tab. Its address is data (no file and no network), so the old ban on a link holds for any other link.
+  assert.equal(html.match(/<link\b/g).length, 1, 'one link');
+  assert.match(html, /<link rel="icon" href="data:image\/svg\+xml,[^"]+">/);
   assert.ok(html.includes(UI_STYLE) && html.includes(WIKI_STYLE));
   assert.ok(!html.includes('<script>alert(1)</script>'), 'the text of a page is escaped');
   assert.match(html, /Retries stop after 3 s\. &lt;\/script&gt;&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
   assert.match(html, /<h2>Build &lt;fast&gt; &amp; &quot;safe&quot;<\/h2>/);
   // The list: one group for each folder, and the closed tickets by their name.
-  assert.match(html, /<section><h2>Wiki <span class="count">2<\/span><\/h2><ul><li><a href="#index\.md" title="index\.md">Wiki index<\/a><\/li>/);
-  assert.match(html, /<h2>Closed tickets <span class="count">2<\/span><\/h2>/);
-  assert.match(html, /<h2>app\/deep <span class="count">1<\/span><\/h2>/);
+  // Forge 9.2: a section name of the list has the kit eyebrow style, and its count is the kit count.
+  assert.match(html, /<section><h2 class="eyebrow">Wiki <span class="count">2<\/span><\/h2><ul><li><a href="#index\.md" title="index\.md">Wiki index<\/a><\/li>/);
+  assert.match(html, /<h2 class="eyebrow">Closed tickets <span class="count">2<\/span><\/h2>/);
+  assert.match(html, /<h2 class="eyebrow">app\/deep <span class="count">1<\/span><\/h2>/);
   assert.match(html, /"pages":\["index\.md","log\.md","app\/retry\.md","app\/deep\/queue\.md","tickets\/app-1\.md","tickets\/app-2\.md","tooling\/build\.md"\]/);
   assert.equal(html.match(/<article class="wpage"/g).length, 7);
   // The links of a page: a page of the wiki changes only the page in view, a web address opens a new tab, and each other relative link is text.
@@ -130,8 +134,8 @@ test('the wiki page is one self-contained file: the list of the pages, each page
   assert.match(build, /<h3>Steps<\/h3>\n<h4>Details<\/h4>/, 'the headings keep their levels below the title of the page');
   assert.match(build, /<pre data-lang="sh"><code>cat \[not a link\]\(app\/retry\.md\)<\/code><\/pre>/);
   assert.match(build, /<span class="pill st-go">verified<\/span><span>updated 2026-11-10<\/span><code>tooling\/build\.md<\/code><a href="vscode:\/\/file\/[^"]*tooling\/build\.md"/);
-  assert.match(build, /<h3>Sources<\/h3><ul><li><a href="https:\/\/example\.com\/build" target="_blank" rel="noopener noreferrer">https:\/\/example\.com\/build<\/a><\/li><li><a href="#app\/retry\.md"><code>app\/retry\.md<\/code><\/a><\/li><li><code>scripts\/build\.mjs:12<\/code><\/li>/);
-  assert.match(build, /<h3>Used by<\/h3><ul><li><a href="tickets\/app-9\/canvas\.html" data-nav><span class="key">APP-9<\/span> Fix outbox retry<\/a> <small>ticket, active<\/small><\/li><li><a href="#tickets\/app-2\.md">APP-2: Old fix<\/a> <small>closed ticket<\/small><\/li>/);
+  assert.match(build, /<h3 class="eyebrow">Sources<\/h3><ul><li><a href="https:\/\/example\.com\/build" target="_blank" rel="noopener noreferrer">https:\/\/example\.com\/build<\/a><\/li><li><a href="#app\/retry\.md"><code>app\/retry\.md<\/code><\/a><\/li><li><code>scripts\/build\.mjs:12<\/code><\/li>/);
+  assert.match(build, /<h3 class="eyebrow">Used by<\/h3><ul><li><a href="tickets\/app-9\/canvas\.html" data-nav><span class="key">APP-9<\/span> Fix outbox retry<\/a> <small>ticket, active<\/small><\/li><li><a href="#tickets\/app-2\.md">APP-2: Old fix<\/a> <small>closed ticket<\/small><\/li>/);
   assert.match(html, /<span class="pill st-needs-me">needs a check<\/span>/);
   // The links to the other pages.
   assert.match(html, /<a class="quiet" href="board\.html" data-nav title="The board of all tickets \(b\)">Board<\/a>/);
@@ -205,14 +209,15 @@ test('the board page has the link to the wiki and the closed tickets, and writeV
   assert.equal(buildNav(board, { from: 'app-9', token: TOKEN }).wiki, `/wiki?t=${TOKEN}`);
   const html = renderBoardPage(board, { wiki: w.root, nav });
   assert.match(html, /<a class="quiet" href="wiki\.html" data-nav title="The wiki of the repository \(w\)">Wiki<\/a>/);
-  assert.match(html, /<details class="lane plain st-done" id="lane-closed" data-state="closed"><summary><h2>Closed tickets <span class="count">2<\/span>/);
+  // Forge 9.2: the closed list is a sunk kit frame with a pixel name (the real text is in a .sr span) and a kit count.
+  assert.match(html, /<details class="frame sunk lane bsec st-done" id="lane-closed" data-state="closed"><summary><h2 class="bhead"><span class="pxt pxt-3" style="--n:\d+"><svg [^>]*><path d="[^"]+"\/><\/svg><span class="sr">Closed tickets<\/span><\/span><span class="count">2<\/span><small>their summary pages in the wiki<\/small><\/h2><\/summary>/);
   assert.match(html, /<li class="trow" data-state="closed" data-text="app-2 old fix closed"><span class="key">APP-2<\/span><a class="open" href="wiki\.html#tickets\/app-2\.md" data-nav title="Old fix">Old fix<\/a><span class="age">2026-11-12<\/span><\/li>/);
   assert.match(html, /"nav":\{"board":"","wiki":"wiki\.html","prev":"","next":""\}/);
   assert.doesNotMatch(renderBoardPage(board, { wiki: w.root }), /lane-closed/, 'a board without closed tickets has no such list');
   // A wiki with closed tickets only: the board says that no ticket is open.
   rmSync(path.join(w.root, 'raw', 'tickets'), { recursive: true });
   const none = buildBoard(w.root, { today: TODAY });
-  assert.match(renderBoardPage(none, { wiki: w.root, nav: buildNav(none, { closed: model.closed }) }), /<p class="empty">No open ticket\. Give a work item key/);
+  assert.match(renderBoardPage(none, { wiki: w.root, nav: buildNav(none, { closed: model.closed }) }), /<p>No open ticket\.<\/p><ol><li>Start an agent session in the repository\.<\/li>/);
 });
 
 test('writeViews writes the wiki page with the other pages, and it keeps a page that did not change', (t) => {
@@ -302,4 +307,33 @@ test('a ticket canvas draws the Mermaid block of a card with the same file, and 
   assert.deepEqual(views.wiki.mermaid, { file: path.join(w.root, 'raw', MERMAID_FILE), written: true });
   assert.match(readFileSync(path.join(dir, 'canvas.html'), 'utf8'), /"mermaid":\{"src":"\.\.\/\.\.\/mermaid\.tiny\.js"\}/);
   assert.deepEqual(writeViews(w.root, { today: TODAY }).canvases.written, [], 'the same ticket gives the same canvas');
+});
+
+test('the wiki page is built from the kit: the bar shape, a pixel title, the prose, the status pill, and the notices', (t) => {
+  const w = wiki(t);
+  w.put('big.md', `# Big\n\n${'word '.repeat(120000)}\n`);
+  const board = buildBoard(w.root, { today: TODAY });
+  const model = buildWiki(w.root, { board });
+  const html = renderWikiPage(model, { nav: buildNav(board, { from: 'wiki', closed: model.closed }) });
+  // The bar: the anvil (a decoration), the Board link, the separator, the title in pixel letters with its real text, the search field, and the tools.
+  assert.match(html, /<header id="rail"><div class="bar"><svg class="px"[^>]*aria-hidden="true">.*<\/svg><a class="quiet" href="board\.html" data-nav title="The board of all tickets \(b\)">Board<\/a><span class="sep" aria-hidden="true">\/<\/span><h1><span class="pxt pxt-3" style="--n:\d+"><svg [^>]*><path d="[^"]+"\/><\/svg><span class="sr">Wiki<\/span><\/span><\/h1><label class="search"><span class="sr">Filter the pages<\/span><input type="search" id="filter"/);
+  // A page: the text is one kit prose box, and the facts line is .wmeta (the canvas keeps .meta for another thing).
+  assert.match(html, /<p class="wmeta"><span class="pill st-go">verified<\/span>/);
+  assert.match(html, /<div class="prose">/);
+  assert.doesNotMatch(html, /class="md"|class="meta"/);
+  // The filter notice has the Show all button, and the unknown-page notice is a warn banner.
+  // Forge 9.2: this banner starts hidden, so it is not a live region. The sr paragraph before it is the live region with the same words.
+  assert.ok(html.includes('<p class="sr" id="none-live" role="status"></p><div class="banner bn-info" id="none" hidden><p>No page has these words.</p><span class="bn-acts"><button type="button" id="show-all">Show all</button></span></div>'));
+  assert.ok(html.includes('<div class="banner bn-warn" role="status" id="missing" hidden><p>The wiki has no page <code id="missing-path"></code>. This is the first page.</p></div>'));
+  // A page that cannot be read is a bad banner under the name Read errors.
+  assert.match(html, /<section id="errors"><h3 class="eyebrow">Read errors<\/h3><div class="banner bn-bad" role="status"><p><code>big\.md<\/code> /);
+  assert.ok(html.includes('<p class="hint">Press ? for the keys</p>'));
+  // The current page is marked by its shape (a bar and a bold name), set in the style and not only by color.
+  assert.match(WIKI_STYLE, /#tree a\[aria-current\] \{ font-weight: 600;[^}]*box-shadow: inset/);
+  // An empty wiki: the cold anvil and the sentence.
+  const empty = mkdtempSync(path.join(os.tmpdir(), 'forge-wiki-'));
+  t.after(() => rmSync(empty, { recursive: true, force: true }));
+  assert.match(renderWikiPage(buildWiki(empty)), /<div class="empty"><svg class="px"[^>]*>.*<\/svg><p>No wiki pages yet\. The wiki skill records a page, and it shows here\.<\/p><\/div>/);
+  // The script has the Show all button.
+  assert.match(WIKI_SCRIPT, /byId\('show-all'\)\.addEventListener\('click', showAll\)/);
 });

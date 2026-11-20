@@ -92,3 +92,14 @@ export function writePointer(home, pluginDir) {
   writeFileSync(path.join(home, POINTER_FILE), `${next}\n`);
   return true;
 }
+
+/**
+ * The command that starts the live server from a terminal: the launcher file of a Forge folder, then `open`. It gives '' when the folder has no launcher
+ * (an older folder ../<repo>.wiki), or when its path has a character that a shell reads inside quotes. A path with a space gets double quotes.
+ * PowerShell needs a call operator before a quoted path: the page shows this text, and the user changes it there.
+ */
+export function launcherCommand(home, platform = process.platform) {
+  const file = path.join(path.resolve(home), platform === 'win32' ? 'forge.cmd' : 'forge');
+  if (!existsSync(file) || /["`$%\r\n]/.test(file)) return '';
+  return `${/[^A-Za-z0-9_@%+=:,./\\-]/.test(file) ? `"${file}"` : file} open`;
+}

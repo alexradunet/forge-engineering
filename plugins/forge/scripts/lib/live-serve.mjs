@@ -5,21 +5,25 @@
 // it opens a terminal of the user with the command that continues a closed session of the session list (sessions.mjs, terminal.mjs).
 // The events stay in memory. It writes its state file in the forge data folder (the port, the tokens, and the folders of its repository,
 // for the reporter of the same user), and lines of the session list. It has no CORS header. A page needs the page token, and an event needs the event token.
+// The page token is stable for each Forge folder: it is in a key file next to the state file, so a bookmark of the board works after a restart.
+// The event token is new at each start. A page answer has a change stamp (c) and the count of what needs the user (needs): see live-stamp.mjs.
 // One server runs for each repository: the state file has the name of the Forge folder (a hash), and the reporter sends an event
 // to the server whose folders hold the folder of the session.
 import http from 'node:http';
 import net from 'node:net';
 import { createHash, randomBytes } from 'node:crypto';
-import { mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { buildBoard } from './board.mjs';
 import { BOARD_SCRIPT, renderBoardPage } from './board-page.mjs';
 import { buildCanvas, renderCanvas } from './canvas.mjs';
-import { BASE_HEADERS, SERVE_HOST, bind, canvasPolicy, checkRequest, mermaidAnswer, policy, readBody, ticketFile } from './canvas-serve.mjs';
+import { BASE_HEADERS, SERVE_HOST, bind, canvasPolicy, checkRequest, errorAnswer, mermaidAnswer, policy, readBody, sameToken, ticketFile } from './canvas-serve.mjs';
 import { dataDir } from './data-dir.mjs';
 import { harness, resumeArgv, resumeText } from './harness.mjs';
 import { homeOf, rawDir } from './layout.mjs';
+import { launcherCommand } from './launcher.mjs';
 import { LIVE_DIR, LIVE_FILE, MAX_EVENT, checkEvent } from './live-event.mjs';
+import { boardStamp, needsCount, ticketStamp } from './live-stamp.mjs';
 import { createLive, detail, prune, reduce, summary } from './live.mjs';
 import { MERMAID_ROUTE, needsMermaid } from './mermaid.mjs';
 import { pastSessions, readSessions, recordEnd, recordLabel, recordStart, sessionsFile } from './sessions.mjs';
@@ -29,7 +33,7 @@ import { buildNav } from './ui.mjs';
 import { WIKI_SCRIPT, renderWikiPage } from './wiki-page.mjs';
 import { buildWiki, wikiLinks } from './wiki.mjs';
 
-/** The server stops after this time without an event. */
+/** The server stops after this time without an event and without a request of a page. */
 export const IDLE_MS = 8 * 60 * 60 * 1000;
 /** A page request for the state gets its answer after this time at the latest. */
 export const HOLD_MS = 25 * 1000;
@@ -47,17 +51,82 @@ const BOARD_POLICY = policy(BOARD_SCRIPT);
 const WIKI_POLICY = policy(WIKI_SCRIPT);
 const WIKI_POLICY_MERMAID = policy(WIKI_SCRIPT, true);
 const OLD_LINK = 'This link is old or not complete. Run "forge.mjs open --status" for the link of the live server.\n';
+// The page for a 403 echoes nothing of the request and names no folder: the command is the one that the launcher of the Forge folder has.
+const OLD_PAGE = { title: 'This link is old', text: 'The link is old or not complete. Run this command in the Forge folder of the repository for the new link:', command: 'forge open' };
 
 /** The folder of the state files: one file for the live server of each repository. */
 export function liveDir(env = process.env) {
   return path.join(dataDir(env), LIVE_DIR);
 }
 
+// The name of the files of one Forge folder in the folder of the state files: a hash of the folder.
+function liveId(home) {
+  const folder = path.resolve(home);
+  return createHash('sha256').update(process.platform === 'win32' ? folder.toLowerCase() : folder).digest('hex').slice(0, 16);
+}
+
 /** The state file of the live server of one Forge folder. */
 export function liveFile(env = process.env, home = '') {
-  const folder = path.resolve(home);
-  const id = createHash('sha256').update(process.platform === 'win32' ? folder.toLowerCase() : folder).digest('hex').slice(0, 16);
-  return path.join(liveDir(env), `${id}.json`);
+  return path.join(liveDir(env), `${liveId(home)}.json`);
+}
+
+/** The key file of one Forge folder: the page token of its live server, next to the state file. It stays when the server stops. */
+export function keyFile(env = process.env, home = '') {
+  return path.join(liveDir(env), `${liveId(home)}.key`);
+}
+
+// The page token is stable: the same key file gives the same links after a restart, so a bookmark of the board still works.
+// Known limit: the stable link is in the browser history, and in the argument of the command that starts the browser (open.mjs), so another program
+// of this user can read it. The Host check, the Origin check of POST /resume, and the missing CORS header still stop a page of another site.
+// "forge.mjs open --new-link" writes a new key: that is the answer to a link that leaked.
+const KEY_TEXT = /^[0-9a-f]{32}(?:\r?\n)?$/;
+
+// The key of a key file, or null when the file is not there, is not a regular file (a link is not one), has more than a key, is not owned by this user,
+// or can be read or written by group or other (not checked on Windows, which has no such mode). The file is opened without following a link.
+function readKey(file) {
+  let fd = -1;
+  try {
+    if (lstatSync(file).isSymbolicLink()) return null;
+    fd = openSync(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+    const info = fstatSync(fd);
+    if (!info.isFile() || info.size > 64) return null;
+    if (process.platform !== 'win32') {
+      if ((info.mode & 0o077) !== 0) return null;
+      if (typeof process.getuid === 'function' && info.uid !== process.getuid()) return null;
+    }
+    const buffer = Buffer.alloc(info.size);
+    if (readSync(fd, buffer, 0, info.size, 0) !== info.size) return null;
+    const text = buffer.toString('latin1');
+    return KEY_TEXT.test(text) ? text.slice(0, 32) : null;
+  } catch { return null; } finally {
+    if (fd >= 0) { try { closeSync(fd); } catch { /* The file is closed. */ } }
+  }
+}
+
+// Writes a key with a temporary file and a rename, with the mode that only the user can read. A rename replaces a link and does not follow it.
+function writeKey(file, key) {
+  mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+  const temp = `${file}.${process.pid}.tmp`;
+  rmSync(temp, { force: true });
+  writeFileSync(temp, `${key}\n`, { mode: 0o600, flag: 'wx' });
+  try { renameSync(temp, file); } catch (error) { rmSync(temp, { force: true }); throw error; }
+}
+
+/** Writes a new page token for the live server of a Forge folder, and gives it. The server that starts next uses it. */
+export function newKey(env = process.env, home = '') {
+  const key = randomBytes(16).toString('hex');
+  writeKey(keyFile(env, home), key);
+  return key;
+}
+
+// The key of the key file, or a new key when the file has none that can be used. A key that cannot be saved still works until the server stops.
+function pageKey(env, home) {
+  const file = keyFile(env, home);
+  const kept = readKey(file);
+  if (kept) return kept;
+  const key = randomBytes(16).toString('hex');
+  try { writeKey(file, key); } catch { /* The folder of the state files cannot be written: the link works for this run only. */ }
+  return key;
 }
 
 function alive(pid) {
@@ -117,13 +186,14 @@ function answers(port) {
  * Serves the board and the canvases of one wiki with the live state of the sessions, until a signal or the idle limit.
  * `repo` is the main checkout of the repository: with it, the sessions in the checkout and in its worktrees report to this server.
  * `openTerminalFn` opens the terminal for a Resume (terminal.mjs). A test gives its own function.
- * Gives the exit code: 130 or 143 after a signal, and 3 at the idle limit.
+ * Gives the exit code: 130 or 143 after a signal, and 3 at the idle limit (no event and no request of a page for `idleMs`).
+ * `sweepMs` is the time between two sweeps: a test gives a short one.
  */
-export async function serveLive(wiki, { links = 'vscode', port, repo = '', idleMs = IDLE_MS, holdMs = HOLD_MS, out = process.stdout, err = process.stderr, signals = process, env = process.env, openTerminalFn = openTerminal } = {}) {
+export async function serveLive(wiki, { links = 'vscode', port, repo = '', idleMs = IDLE_MS, holdMs = HOLD_MS, sweepMs = SWEEP_MS, out = process.stdout, err = process.stderr, signals = process, env = process.env, openTerminalFn = openTerminal } = {}) {
   const home = homeOf(wiki);
   const running = liveStatus(env, home);
   if (running && await answers(running.port)) throw new Error(`A live server runs already for this repository: ${running.link}. Stop it first (forge.mjs open --stop, or process ${running.pid}).`);
-  const pageToken = randomBytes(16).toString('hex');
+  const pageToken = pageKey(env, home);
   const eventToken = randomBytes(16).toString('hex');
   const live = createLive();
   const waiters = new Set();
@@ -133,15 +203,33 @@ export async function serveLive(wiki, { links = 'vscode', port, repo = '', idleM
   const ended = new Promise((resolve) => { finish = resolve; });
 
   // The tickets of the board, for the ticket of each session. A read error gives no ticket, and the sessions still show.
-  let cache = { at: 0, tickets: [] };
-  const tickets = () => {
-    if (Date.now() - cache.at < BOARD_CACHE_MS) return cache.tickets;
-    let found = [];
-    try { found = buildBoard(wiki).groups.flatMap((group) => group.tickets.map((item) => ({ key: item.key, folder: item.folder, worktree: item.worktree }))); } catch { found = []; }
-    cache = { at: Date.now(), tickets: found };
+  // The cache also holds the board model and its stamp. A page request gives its fresh model to the cache, so the stamp of the page and the stamp of the next answer agree.
+  let cache = { at: 0, model: null, tickets: [], stamp: '' };
+  const keep = (model) => {
+    const found = model ? model.groups.flatMap((group) => group.tickets.map((item) => ({ key: item.key, folder: item.folder, worktree: item.worktree, state: item.state }))) : [];
+    cache = { at: Date.now(), model, tickets: found, stamp: model ? boardStamp(model) : '' };
     // A new ticket worktree outside of the usual folders is a new root for the reporter.
     if (bound && JSON.stringify(liveRoots(home, repo, found)) !== JSON.stringify(roots)) writeState(found);
     return found;
+  };
+  const tickets = () => {
+    if (Date.now() - cache.at < BOARD_CACHE_MS) return cache.tickets;
+    try { return keep(buildBoard(wiki)); } catch { return keep(null); }
+  };
+
+  // The change stamps: one for the board, and one for each ticket that a page showed. `seen` holds the last stamp of each. A stamp that changed
+  // raises the version, so a held request of a page gets its answer (and the page shows that its data changed).
+  const rowOf = (folder) => cache.model?.groups.flatMap((group) => group.tickets).find((item) => item.folder === folder) ?? null;
+  const stampOf = (scope) => (scope ? ticketStamp(path.join(ticketRoot(wiki), scope), rowOf(scope)) : cache.stamp);
+  const seen = new Map();
+  const scan = (extra = '') => {
+    let moved = false;
+    for (const scope of new Set(['', extra, ...seen.keys()])) {
+      const now = stampOf(scope);
+      if (seen.has(scope) && seen.get(scope) !== now) moved = true;
+      seen.set(scope, now);
+    }
+    return moved;
   };
 
   // The session list of the repository: the sessions that are not live any more, with the command that continues each one.
@@ -166,7 +254,8 @@ export async function serveLive(wiki, { links = 'vscode', port, repo = '', idleM
     // A session that ended shows one time: as a row of the session list, with its buttons.
     const hidden = new Set(past.map((item) => live.sessions.get(item.id)?.sid).filter(Boolean));
     const sessions = summary(live, board, now).filter((item) => !hidden.has(item.id));
-    const body = { v: version, now, sessions, past: ticket ? past.filter((item) => item.ticket === ticket) : past };
+    // c: the stamp of the data of the page (the board, or one ticket). needs: the tickets and the sessions that wait for the user (the tab of the page shows it).
+    const body = { v: version, now, c: stampOf(ticket), needs: needsCount(board, sessions), sessions, past: ticket ? past.filter((item) => item.ticket === ticket) : past };
     if (ticket) body.detail = detail(live, sessions.filter((item) => item.ticket === ticket).map((item) => item.id));
     return JSON.stringify(body);
   };
@@ -202,7 +291,7 @@ export async function serveLive(wiki, { links = 'vscode', port, repo = '', idleM
   // Many events can come at one time. The pages get one answer for them.
   const changed = () => {
     version += 1;
-    flush ??= setTimeout(() => { flush = null; for (const waiter of [...waiters]) answer(waiter); }, FLUSH_MS);
+    flush ??= setTimeout(() => { flush = null; tickets(); scan(); for (const waiter of [...waiters]) answer(waiter); }, FLUSH_MS);
   };
 
   const file = liveFile(env, home);
@@ -216,6 +305,12 @@ export async function serveLive(wiki, { links = 'vscode', port, repo = '', idleM
   }
 
   let idle = null;
+  let lastClear = 0;
+  // The command that starts this server again: the launcher of the Forge folder, or the plain name of the command. The pages show it when the server stops.
+  const openText = launcherCommand(home) || 'forge.mjs open';
+  // After the token check, an error page has a link to the board with the token: the user holds the token already.
+  const back = [{ text: 'Open the board', href: `/board?t=${pageToken}` }];
+  const missing = (req, res) => errorAnswer(req, res, 404, 'Not found.\n', { title: 'Not found', text: 'This server has no page at this address.', links: back });
   const restIdle = () => { clearTimeout(idle); idle = setTimeout(() => finish({ code: 3 }), idleMs); };
 
   // The folder for a session that continues: its own folder when it is still a folder of this repository, else the main checkout.
@@ -257,6 +352,8 @@ export async function serveLive(wiki, { links = 'vscode', port, repo = '', idleM
   };
 
   const server = http.createServer(async (req, res) => {
+    // The links of an error page hold the token, so only a request that passed the token check gets them.
+    let checked = false;
     try {
       const post = req.method === 'POST';
       // POST /resume comes from a page, so it needs the page token. Each other POST needs the event token.
@@ -264,9 +361,14 @@ export async function serveLive(wiki, { links = 'vscode', port, repo = '', idleM
       const status = checkRequest(req, post && !toResume ? eventToken : pageToken);
       if (status) {
         req.resume();
-        plain(res, status, status === 403 ? OLD_LINK : `Refused (${status}).\n`);
+        if (status === 403) errorAnswer(req, res, 403, OLD_LINK, OLD_PAGE);
+        else plain(res, status, `Refused (${status}).\n`);
         return;
       }
+      checked = true;
+      // A page request or a state request with the page token shows that someone looks at the board: it starts the idle time again.
+      // A page in a hidden tab sends no request, so a forgotten tab does not keep the server.
+      if (!post) restIdle();
       const url = new URL(req.url, `http://${SERVE_HOST}`);
       if (toResume) {
         // This route starts a process on this machine. A browser gives the Origin of the page: without the Origin of this server, no start.
@@ -282,7 +384,7 @@ export async function serveLive(wiki, { links = 'vscode', port, repo = '', idleM
       }
       if (post) {
         // Only the reporter sends events. A browser adds one of these headers to a request of a page, so a page cannot send an event.
-        if (url.pathname !== '/event') { req.resume(); plain(res, 404, 'Not found.\n'); return; }
+        if (url.pathname !== '/event') { req.resume(); missing(req, res); return; }
         if (req.headers.origin !== undefined || req.headers['sec-fetch-site'] !== undefined) { req.resume(); plain(res, 403, 'Refused (403).\n'); return; }
         const text = await readBody(req, MAX_EVENT);
         if (text === null) { plain(res, 413, 'The event is too large.\n'); return; }
@@ -291,6 +393,8 @@ export async function serveLive(wiki, { links = 'vscode', port, repo = '', idleM
         if (!event) { plain(res, 400, 'The request has no event that the server can read.\n'); return; }
         reduce(live, event);
         note(event);
+        // A tool that ended can have changed a file of a ticket: the next answer reads the board again (one time in a second at most).
+        if (event.event === 'tool-end' && Date.now() - lastClear >= 1000) { lastClear = Date.now(); cache.at = 0; }
         restIdle();
         changed();
         res.writeHead(204, BASE_HEADERS);
@@ -301,6 +405,8 @@ export async function serveLive(wiki, { links = 'vscode', port, repo = '', idleM
         const board = tickets();
         const wanted = url.searchParams.get('ticket') ?? '';
         const ticket = board.some((item) => item.folder === wanted) ? wanted : '';
+        // A change that no event told (a file that the user edited) raises the version here, so this request gets its answer at once.
+        if (scan(ticket)) version += 1;
         if (url.searchParams.get('v') !== String(version)) { send(res, 200, 'application/json; charset=utf-8', snapshot(ticket)); return; }
         const waiter = { res, ticket, timer: null };
         waiter.timer = setTimeout(() => answer(waiter), holdMs);
@@ -322,44 +428,49 @@ export async function serveLive(wiki, { links = 'vscode', port, repo = '', idleM
       }
       // Each load reads the ticket files again, so a page shows the current tickets.
       const board = buildBoard(wiki);
+      keep(board);
       // The wiki model, for a page only: a request for a file of a ticket does not read the wiki.
       let pages = null;
       const model = () => (pages ??= buildWiki(wiki, { board }));
       if (url.pathname === '/board') {
-        const page = renderBoardPage(board, { links, wiki, serve: { token: pageToken, live: `/live?t=${pageToken}`, resume: '/resume' }, nav: buildNav(board, { token: pageToken, closed: model().closed }) });
+        if (scan()) changed();
+        const page = renderBoardPage(board, { links, wiki, serve: { token: pageToken, live: `/live?t=${pageToken}`, resume: '/resume', open: openText, c: cache.stamp }, nav: buildNav(board, { token: pageToken, closed: model().closed }) });
         send(res, 200, 'text/html; charset=utf-8', page, { 'Content-Security-Policy': BOARD_POLICY });
         return;
       }
       if (url.pathname === '/wiki') {
-        const page = renderWikiPage(model(), { links, serve: { token: pageToken }, nav: buildNav(board, { from: 'wiki', token: pageToken, closed: model().closed }) });
+        const page = renderWikiPage(model(), { links, serve: { token: pageToken, open: openText }, nav: buildNav(board, { from: 'wiki', token: pageToken, closed: model().closed }) });
         send(res, 200, 'text/html; charset=utf-8', page, { 'Content-Security-Policy': needsMermaid(page) ? WIKI_POLICY_MERMAID : WIKI_POLICY });
         return;
       }
       const match = /^\/ticket\/([^/]+)(\/.*)?$/.exec(url.pathname);
-      if (!match) { plain(res, 404, 'Not found.\n'); return; }
+      if (!match) { missing(req, res); return; }
       // Only the folder of a ticket on the board is a route. Another name, also a path that goes up, is not found.
       let name = '';
       try { name = decodeURIComponent(match[1]); } catch { name = ''; }
-      if (!board.groups.some((group) => group.tickets.some((item) => item.folder === name))) { plain(res, 404, 'Not found.\n'); return; }
+      if (!board.groups.some((group) => group.tickets.some((item) => item.folder === name))) { missing(req, res); return; }
       const dir = path.join(ticketRoot(wiki), name);
       if (match[2] === undefined) {
         send(res, 302, 'text/plain; charset=utf-8', 'See the new address.\n', { Location: `/ticket/${encodeURIComponent(name)}/?t=${pageToken}` });
         return;
       }
       if (match[2] === '/') {
+        if (scan(name)) changed();
         const page = renderCanvas(buildCanvas(dir), {
           links, nav: buildNav(board, { from: name, token: pageToken, closed: model().closed }),
-          serve: { token: pageToken, live: `/live?t=${pageToken}&ticket=${encodeURIComponent(name)}`, resume: '/resume' },
+          serve: { token: pageToken, live: `/live?t=${pageToken}&ticket=${encodeURIComponent(name)}`, resume: '/resume', open: openText, c: stampOf(name) },
           wiki: wikiLinks(model(), { from: name, token: pageToken, dir }), mermaid: true,
         });
         send(res, 200, 'text/html; charset=utf-8', page, { 'Content-Security-Policy': canvasPolicy(page) });
         return;
       }
       const file = ticketFile(dir, match[2]);
-      if (!file) { plain(res, 404, 'Not found.\n'); return; }
+      if (!file) { missing(req, res); return; }
       send(res, 200, file.type, readFileSync(file.file), { 'Content-Security-Policy': "default-src 'none'; sandbox" });
     } catch (error) {
-      if (!res.headersSent) plain(res, 500, `The live server cannot show the page: ${error.message}\n`);
+      if (!res.headersSent) {
+        errorAnswer(req, res, 500, `The live server cannot show the page: ${error.message}\n`, { title: 'Something went wrong', text: `The live server cannot show the page: ${error.message}`, links: checked ? back : [] });
+      }
       else res.destroy();
     }
   });
@@ -380,7 +491,8 @@ export async function serveLive(wiki, { links = 'vscode', port, repo = '', idleM
   restIdle();
   // The sweep also reads the board again, so the roots of the reporter stay current when no page is open.
   // It reads the session list again: a Copilot CLI session has no live event, only the lines of its start and its end.
-  const sweep = setInterval(() => { tickets(); const pruned = prune(live); if (loadRecords() || pruned) changed(); }, SWEEP_MS);
+  // It reads the board and the files of the tickets again too: a change of a file raises the version, so a held request of a page gets its answer.
+  const sweep = setInterval(() => { cache.at = 0; tickets(); const moved = scan(); const pruned = prune(live); if (loadRecords() || pruned || moved) changed(); }, sweepMs);
   out.write(`live: serving http://${SERVE_HOST}:${bound}/board?t=${pageToken}\n  wiki  http://${SERVE_HOST}:${bound}/wiki?t=${pageToken}\n  state ${file}\n`);
 
   const result = await ended;
@@ -390,9 +502,9 @@ export async function serveLive(wiki, { links = 'vscode', port, repo = '', idleM
   signals.off('SIGINT', onInt);
   signals.off('SIGTERM', onTerm);
   // Another server can own the file now: remove only the file of this server.
-  try { if (JSON.parse(readFileSync(file, 'utf8')).token === eventToken) rmSync(file, { force: true }); } catch { /* The file is gone. */ }
+  try { if (sameToken(JSON.parse(readFileSync(file, 'utf8')).token, eventToken)) rmSync(file, { force: true }); } catch { /* The file is gone. */ }
   for (const waiter of [...waiters]) { clearTimeout(waiter.timer); waiters.delete(waiter); }
   await new Promise((resolve) => { server.close(resolve); server.closeAllConnections(); });
-  err.write(result.code === 3 ? 'forge: the live server stopped: no session sent an event for a long time.\n' : 'forge: the live server stopped.\n');
+  err.write(result.code === 3 ? 'forge: the live server stopped: no session sent an event and no page asked for the state for a long time.\n' : 'forge: the live server stopped.\n');
   return result.code;
 }

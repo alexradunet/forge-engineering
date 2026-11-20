@@ -277,7 +277,8 @@ The canvas and the [board page](#-ticket-overview) have links to each other, so 
 - The views **Must read**, **+ Good to know**, and **All** open more tiers, for each part (key `v`). A click on a title strip opens one card, and **Fold** on a card folds it again. A line such as `5 verified checks` or `3 more` shows the strips of its cards. The browser keeps the view and your choices until the next gate.
 - Scroll to move, hold Ctrl and scroll to zoom, and drag the background. Zoomed out, each card shows its title in a large size and its state as a tint. A click on a part name or a double-click on a card title zooms in to read.
 - Go to another ticket: **Board** opens the board page (key `b`), the ticket key opens a list of all tickets with a filter (key `t`), and the arrows go to the previous and the next ticket of the board (keys `[` and `]`). The browser keeps your view and your comments for each ticket.
-- The `?` key shows all keys. The theme button changes between the system theme, light, and dark.
+- The `?` key shows all keys. The foot of each page says so. The theme button changes between the system theme, light, and dark.
+- The keyboard reaches each part: a component of the code map, a part title, and a title strip work with `Enter` and `Space`, and the arrow keys move the board. The first key `Tab` shows a link that skips to the content.
 - A click on a component of the code map shows its arrows and their labels.
 - **Comment** on a card saves a note in the browser. Select words on a card to comment on those words only, to mark them with **Remove**, or to give them a label (`unclear`, `wrong`, `too much`). The Comments panel has one box for a comment on the whole ticket.
 - With `--serve`, **Send to agent** gives the comments to the ticket session: the command prints one message that starts with `Canvas comments for <KEY>:`, and stops. The server listens only on `127.0.0.1`, each run has a new link with a token, and `--port <n>` sets a fixed port for a forwarded port.
@@ -362,11 +363,14 @@ When `<forge>/raw/sync/<KEY>.md` exists, the row also shows the change request, 
 
 The same command writes the board page, `<forge>/raw/board.html`, and the canvas of each ticket. Open the page in a browser tab, or in VS Code with **Open in Integrated Browser**.
 
+- The look is a forge: square frames, hard shadows, a pixel anvil, pixel headings, and gate ingots. Text that you read keeps the system font. The pages say "needs you" for a ticket that waits for you. `raw/board.md` keeps "Needs me".
+- A strip at the top names the next step for you: the ticket with a gate in review first, then another ticket that needs you, a blocked ticket, or a ticket that can start. **Open** goes to its canvas.
+- The tab of the board says `(2) Forge board` when 2 tickets need you, and its icon has a hot spot. Each page has a pixel anvil as its tab icon.
 - The tickets that wait for you are first, in a lane with the full width. The other open states are side by side, and **Done** is a closed list.
 - A card shows the key, the title, the gates as steps, the next step, who the ticket waits on, and the change request, CI, and tracker status. A click on the card opens the ticket canvas. A ticket with a gate in review opens at the document of that gate.
 - The filter (key `/`) hides tickets by their words. A state chip or a number key shows one state. The keys `j` and `k` go from ticket to ticket, and `t` opens the list of all tickets.
 - An open ticket without an update for 7 days has a mark. Long waits for people and read errors have their own lists.
-- The page loads nothing from a network, and it is in `raw/`, so it is never committed. [design-system.md](docs/design-system.md) gives the tokens, the components, and the UX cases of both pages.
+- The page loads nothing from a network, and it is in `raw/`, so it is never committed. [design-system.md](docs/design-system.md) gives the tokens, the components, and the UX cases of the pages.
 `forge.mjs board --json` gives the same data to agents. Ticket README files remain the source of truth.
 
 The reader supports the [ticket template](plugins/forge/skills/ticket/templates/README.md):
@@ -427,6 +431,8 @@ Each repository has a launcher in its Forge folder. Run it in a terminal, from t
 - It starts the live server of that repository in the background, prints the links of the board and the wiki, and opens the board in your browser.
 - A second run starts no second server. `forge open --status` prints the links again, `forge open --stop` stops the server, and `forge open --list` shows the server of each repository that runs.
 - Each repository has its own server and port, so more than one repository can be open at the same time.
+- The link of the board stays the same after a restart, so a bookmark or a favorite works. The page token is in a key file in the forge data folder, which only you can read. The link is a secret of this machine: it is in your browser history. When a link leaks, run `forge open --new-link`. It stops a server that runs, makes a new link, starts the server again, and prints the new links. Each older link stops.
+- The server stops after 8 hours with no session event and no page view. A page that is open in a visible tab counts as a view. A page in a hidden tab does not.
 - The launcher runs each other `forge.mjs` command too, for example `../<repo>.forge/forge board`.
 - The path of the installed plugin changes at each plugin update. The session start of an agent session writes the current path into the Forge folder, so the launcher needs no change.
 
@@ -461,10 +467,11 @@ flowchart LR
 - A session shows on a ticket when it runs in the worktree of the ticket, or when its title starts with the ticket key.
 - The server has no route that sends text or a permission answer to a session, and its pages have no **Send to agent**. The route of **Resume** takes only the id of a session of the list, and only from a page of this server. The folder and the command come from the list and from the harness table (`scripts/lib/harness.mjs`).
 - The reporter sends only short text: the prompt (at most 1,000 characters), the tool name with a short label (the first 80 characters of a command, a file path, or a search pattern), and the last message. It never sends a tool result or a file. It puts a mask on the value after a word such as `token` or `password`.
-- The events stay in the memory of the server. The server writes its state file in the forge data folder, which only you can read: it holds the port and the tokens for the reporter. It also adds lines to the session list.
+- The events stay in the memory of the server. The server writes its state file in the forge data folder, which only you can read: it holds the port and the token for the reporter. The token of the reporter is new at each start. The token of the page link is in a key file next to the state file, and it stays (see **Open Forge**). A canvas server (`forge.mjs canvas <KEY> --serve`) still has a new token for each run. It also adds lines to the session list.
 - When no live server runs, the reporter stops at once, and a session gets no delay and no message.
+- A page tells you when its server changes. When the server stops, a notice shows the command that starts it (**Copy command**) and **Try again**, and it goes away when the server runs again. When the link is old, the notice says so and shows the command for a new link. When a ticket file changes, the notice says "This ticket changed." with **Reload** and **Later**. The page never loads again by itself. A wrong address gives an error page with a link to the board, not plain text.
 - One server runs for each repository, each on its own port, so more than one repository can be open at the same time. A session reports to the server of its repository: its folder is in the main checkout, in `<repo>.worktrees`, in the wiki folder, or in the worktree of a ticket. A session in another folder reports to no server.
-- `forge.mjs open --status` prints the links of the server of this repository, `forge.mjs open --list` prints each server that runs, and `forge.mjs open --stop` stops the server of this repository. The server also stops after 8 hours without an event.
+- `forge.mjs open --status` prints the links of the server of this repository, `forge.mjs open --list` prints each server that runs, and `forge.mjs open --stop` stops the server of this repository. The server also stops after 8 hours with no event and no page view.
 
 The live activity comes from Claude Code sessions. Copilot CLI and VS Code sessions send no activity yet: their hooks have no background option, so a reporter can slow each tool call (see the [baseline](docs/vscode-baseline.md)).
 A Copilot CLI session shows with its start and its end only, and with **Resume**. A VS Code session does not show.
@@ -523,6 +530,9 @@ Trust approvals and credentials stay outside the wiki. See [wiki.md](docs/wiki.m
 - Read [AGENTS.md](AGENTS.md) first. Before you change how forge uses a VS Code feature, read the release notes
   since the [VS Code baseline](docs/vscode-baseline.md) and the feature page. Use a native feature when one exists.
 - `npm test` runs the tests.
+- The pages use one UI kit, `plugins/forge/scripts/lib/ui/`. [design-system.md](docs/design-system.md) is its document: read it before a page change.
+- `node plugins/forge/scripts/forge.mjs styleguide` writes `<forge>/raw/styleguide.html`: each token, sprite, letter, and component in both themes.
+- `npm run shots` shoots each page in the light and the dark theme at 620 px and at 1500 px, in headless Chromium (`FORGE_CHROMIUM` names the program, Node 22 or later), with invented demo data and its own live server. It is not part of `npm test`.
 - [Behavioral evaluation](docs/evaluation.md) describes manual runs through the
   supported harness, trace evidence, and execution approval. Deterministic fixtures
   and document checks do not establish model compliance; do not claim a behavioral
