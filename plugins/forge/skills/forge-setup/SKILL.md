@@ -40,7 +40,7 @@ resolved path in each command. All commands run on Windows, macOS, and Linux.
 |---|---|---|
 | `<F> where --json` | Repository, worktree, wiki, and config folder | nothing |
 | `<F> detect` | Host, visibility, CLIs and login, default branch, key hints, your branch pattern, wiki state, and suggested values | nothing |
-| `<F> doctor` | Read-only check of the whole setup, with placeholders and credentials | nothing |
+| `<F> doctor [--fetch]` | Read-only check of the whole setup: placeholders, credentials, the `gh` login, the session start hook, and the plugin version (`--fetch` runs `git fetch` in the plugin clone) | nothing |
 | `<F> init` | Create the Forge folder `../<repo>.forge`: the wiki (`git init`, `index.md`, the binding), `raw/`, `archive/`, and the launcher | the Forge folder |
 | `<F> move [--dry-run]` | Move an older folder `../<repo>.wiki` to the Forge folder. It changes no file | the two folders |
 | `<F> bind` | Write `<wiki>/forge/repo.json` | the wiki folder |
@@ -74,8 +74,7 @@ State the progress at each step, for example "step 4 of 10 done".
 
 1. Run `doctor`. Report each `fail` and `warn` line with its fix.
 2. Read the latest VS Code release notes (see "VS Code features" in `<plugin>/hosts/vscode.md`). Report each change that affects plugins, sessions, worktrees, automations, hooks, custom agents, or MCP servers.
-3. Check the plugin version. When `<plugin>/../..` is a Git clone, run `git -C <plugin>/../.. fetch -q`, then
-   `git -C <plugin>/../.. log --oneline "HEAD..@{u}"` (keep the quotes; PowerShell needs them). When it lists commits, tell the user to update (README, "Update forge").
+3. Check the plugin version: run `<F> doctor --fetch` and read the `plugin:version` line. When it says that the clone is behind, tell the user to update (README, "Update forge").
    An uninstall and a new install from source can reuse the old clone, so a reinstall is not an update.
 4. When a line needs a fix, continue with ⏯️ Resume.
 5. Never print, read, or ask for a credential value.

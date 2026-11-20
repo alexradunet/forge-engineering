@@ -6,7 +6,8 @@
 //   config  [--wiki <dir>]   the forge config (JSON)
 //   config set <file>.<key>=<value> ...   set frontmatter values (validated; writes nothing on a problem)
 //   config row <checkouts|queries> <name> [cells...] [--delete]   add, replace, or delete a table row
-//   doctor  [--wiki <dir>] [--json]   read-only setup check; exit 1 on a failure
+//   doctor  [--wiki <dir>] [--json] [--fetch]   read-only setup check, with the login, hook, and plugin version checks; exit 1 on a failure
+//            (--fetch runs git fetch in the plugin clone, to count the commits behind)
 //   lint    [--wiki <dir>] [--json] [--fix]   validate tickets, approvals and wiki metadata
 //   detect  [--wiki <dir>]   host, CLIs, login, inferred values (JSON, read-only)
 //   init    [--wiki <dir>] create the Forge folder ../<repo>.forge of the repository and bind its wiki: wiki/ (git init, index.md), raw/, archive/,
@@ -52,6 +53,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { readPointer } from './lib/launcher.mjs';
 import { resolve, ForgeError, normalizeRemote } from './lib/repo.mjs';
 import { loadConfig, KINDS } from './lib/config.mjs';
 import { setValues, upsertRow } from './lib/config-write.mjs';
@@ -77,6 +79,8 @@ import { loadProfile, pluginRoot } from './lib/profile.mjs';
 
 // A tracker that uses an MCP server (see mcpGateway) has no CLI.
 const CLI_FOR = { github: 'gh' };
+// A command that exits 0 only while the CLI is logged in. Doctor uses the exit status, and never reads the output.
+const LOGIN_CHECK = { gh: ['auth', 'status'] };
 
 export { loadProfile };
 
@@ -172,6 +176,7 @@ export function parseArgs(argv) {
       out[a.slice(2)] = argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[++i] : '';
     }
     else if (a === '--force') out.force = true;
+    else if (a === '--fetch') out.fetch = true;
     else if (a === '--fix') out.fix = true;
     else if (a === '--dry-run') out.dryRun = true;
     else if (a === '--create') out.create = true;
@@ -196,7 +201,34 @@ export function onPath(cmd, env = process.env) {
   return dirs.some((d) => exts.some((e) => existsSync(path.join(d, cmd + e.toLowerCase())) || existsSync(path.join(d, cmd + e))));
 }
 
-export function doctor({ cwd, wiki, env = process.env, credStore } = {}) {
+const runQuiet = (cmd, args) => spawnSync(cmd, args, { stdio: 'ignore', timeout: 5000, shell: false }).status === 0;
+const gitOut = (clone, args, timeout = 5000) => {
+  const r = spawnSync('git', ['-C', clone, ...args], { encoding: 'utf8', timeout, shell: false });
+  return r.status === 0 ? r.stdout.trim() : null;
+};
+const samePath = (a, b) => (process.platform === 'win32' ? path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase() : path.resolve(a) === path.resolve(b));
+
+/** The plugin version line: the Git clone of the plugin, and the commits that it is behind its upstream. */
+function pluginVersion(plugin, fetch) {
+  const found = [];
+  let version = '';
+  try { version = JSON.parse(readFileSync(path.join(plugin, 'plugin.json'), 'utf8')).version ?? ''; } catch { /* plugin:plugin.json reports it */ }
+  const clone = path.resolve(plugin, '..', '..');
+  const top = gitOut(clone, ['rev-parse', '--show-toplevel']);
+  const upstream = top && samePath(top, clone) ? gitOut(clone, ['rev-parse', '--abbrev-ref', '@{u}']) : null;
+  if (!upstream) {
+    found.push({ status: 'ok', check: 'plugin:version', detail: `${version} (not a Git clone: the host updates it)` });
+    return found;
+  }
+  if (fetch && gitOut(clone, ['fetch', '-q'], 15000) === null) found.push({ status: 'warn', check: 'plugin:fetch', detail: `git fetch failed in ${clone}. Check the network, then run: git -C "${clone}" fetch` });
+  const behind = Number.parseInt(gitOut(clone, ['rev-list', '--count', 'HEAD..@{u}']) ?? '0', 10) || 0;
+  found.push(behind
+    ? { status: 'warn', check: 'plugin:version', detail: `${behind} commits behind ${upstream}. Run: git -C "${clone}" pull. Then start a new session.` }
+    : { status: 'ok', check: 'plugin:version', detail: `${version} (Git clone, up to date)` });
+  return found;
+}
+
+export function doctor({ cwd, wiki, env = process.env, credStore, run = runQuiet, plugin = pluginRoot, fetch = false } = {}) {
   const results = [];
   const add = (check, status, detail = '') => results.push({ status, check, detail });
 
@@ -225,22 +257,35 @@ export function doctor({ cwd, wiki, env = process.env, credStore } = {}) {
   }
   add('repo', 'ok', where.repo.path + (where.repo.worktree ? ` (worktree ${where.repo.worktree})` : ''));
   add('repo:remote', where.repo.remote ? 'ok' : 'warn', where.repo.remote ?? 'No origin remote.');
-  add('wiki', where.wiki.exists ? 'ok' : 'fail', where.wiki.exists ? `${where.wiki.path} (${where.wiki.source})` : `Not found: ${where.wiki.path}. Run the forge-setup skill.`);
-  if (where.wiki.exists) add('wiki:binding', where.wiki.bound ? 'ok' : 'warn', where.wiki.bound ? 'forge/repo.json' : 'No forge/repo.json. Run the forge-setup skill.');
+  add('wiki', where.wiki.exists ? 'ok' : 'fail', where.wiki.exists ? `${where.wiki.path} (${where.wiki.source})` : `Not found: ${where.wiki.path}. Run "forge.mjs init", or say "set up forge".`);
+  if (where.wiki.exists) add('wiki:binding', where.wiki.bound ? 'ok' : 'warn', where.wiki.bound ? 'forge/repo.json' : 'No forge/repo.json. Run "forge.mjs bind".');
   // An older folder still works. The Forge folder gives the launcher, and it keeps raw/ and archive/ out of the wiki repository.
   if (where.wiki.exists && where.wiki.source !== 'override') add('forge folder', where.forge.layout === 'forge' ? 'ok' : 'warn', where.forge.layout === 'forge' ? where.forge.path : `${where.wiki.path} is an older folder. Run "forge.mjs move --dry-run", then "forge.mjs move", to get the Forge folder ${where.repo.path}.forge.`);
   for (const w of where.warnings.filter((x) => !x.includes('has no forge/repo.json'))) add('warning', 'warn', w);
+  if (where.forge.layout === 'forge') {
+    const seen = readPointer(where.forge.path);
+    if (!seen) add('hook', 'warn', 'No session start seen. Install the plugin in your host, then start a session in this repository.');
+    else if (!existsSync(path.join(seen, 'scripts', 'forge.mjs'))) add('hook', 'warn', `The plugin folder in .plugin is gone: ${seen}. Start a session to update it.`);
+    else add('hook', 'ok', seen);
+  }
+  results.push(...pluginVersion(plugin, fetch));
   if (!where.wiki.exists) return results;
 
   try {
     const { config } = loadConfig(where.configDir);
+    const logins = new Set();
     for (const kind of KINDS) {
       const file = path.join(where.configDir, `${kind}.md`);
-      if (!existsSync(file)) { add(`config:${kind}.md`, 'warn', 'Missing. forge uses the defaults. Run the forge-setup skill.'); continue; }
+      if (!existsSync(file)) { add(`config:${kind}.md`, 'warn', 'Missing. forge uses the defaults. Run "forge.mjs seed".'); continue; }
       const provider = config[kind].provider;
       add(`config:${kind}.md`, 'ok', provider ? `provider: ${provider}` : '');
       const tool = CLI_FOR[provider];
       if (tool && !onPath(tool, env)) add(`config:${kind}.md`, 'warn', `${tool} is not on PATH. The ${provider} commands need it.`);
+      else if (tool && LOGIN_CHECK[tool] && !logins.has(tool)) {
+        logins.add(tool);
+        const ok = run(tool, LOGIN_CHECK[tool]);
+        add(`tool:${tool} login`, ok ? 'ok' : 'warn', ok ? '' : `Not logged in, or no network. Run "${tool} auth login".`);
+      }
     }
     results.push(...completeness(where.configDir, config, { credStore }));
   } catch (err) {
@@ -382,7 +427,7 @@ export function main(argv = process.argv.slice(2)) {
       assertTrusted(where, ['config/']);
       console.log(JSON.stringify({ ...loadConfig(where.configDir), warnings: where.warnings }, null, 2));
     } else if (cmd === 'doctor') {
-      const results = doctor(opts);
+      const results = doctor({ ...opts, fetch: args.fetch });
       if (args.json) console.log(JSON.stringify(results, null, 2)); else print(results);
       return results.some((r) => r.status === 'fail') ? 1 : 0;
     } else if (cmd === 'lint') {

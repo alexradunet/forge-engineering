@@ -53,7 +53,7 @@ At the end, it offers the optional extras: learning mode, daily recap, and autom
 | "refresh the forge config" | Copy the new profile templates after an update, and keep your personal values |
 | "finish forge setup" | Resume after a stop |
 
-`forge.mjs doctor` warns while `<user>` remains in `repo.branchPattern`, while the main checkout path is missing, or while a credential is missing.
+`forge.mjs doctor` warns while `<user>` remains in `repo.branchPattern`, while the main checkout path is missing, or while a credential is missing. It also checks the login of `gh` (`tool:gh login`), whether a session start hook ran (`hook`), and whether the plugin clone is behind its remote (`plugin:version`). Each `warn` line gives one exact fix command. `forge.mjs doctor --fetch` runs `git fetch` in the plugin clone first.
 
 forge targets the VS Code Agents window. VS Code changes each month. So the VS Code host file (`plugins/forge/hosts/vscode.md`) tells the agent
 to read the current [VS Code documentation](https://code.visualstudio.com/docs/agents/run/agents-window) and the
