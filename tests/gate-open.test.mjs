@@ -9,14 +9,16 @@ import { parseTicket } from '../plugins/forge/scripts/lib/ticket.mjs';
 import { checkAction, lint, sha256 } from '../plugins/forge/scripts/lib/validation.mjs';
 import { approveGate } from '../plugins/forge/scripts/lib/approve.mjs';
 import { openReview } from '../plugins/forge/scripts/lib/gate-open.mjs';
+import { execFileSync } from 'node:child_process';
+import { codeBinding } from '../plugins/forge/scripts/lib/code-bind.mjs';
 
 const cli = fileURLToPath(new URL('../plugins/forge/scripts/forge.mjs', import.meta.url));
 const cwd = fileURLToPath(new URL('..', import.meta.url));
 const TODAY = '2026-11-01';
 
-const GOOD_PROOF = '---\ntype: proof\n---\n# Proof SYN-4\n\n## Checks\n\n1. 🟢 verified: the synthetic behavior\n';
+const GOOD_PROOF = '---\ntype: proof\n---\n# Proof SYN-4\n\n## Checks\n\n1. 🟢 verified: the synthetic behavior\n   - Observed: fine ([evidence](evidence/proof-001.md))\n';
 
-function fixture(t, { gates = {}, plan = '# Plan SYN-4\n\nThe plan.\n' } = {}) {
+function fixture(t, { gates = {}, plan = '# Plan SYN-4\n\nThe plan.\n', frontmatter = [] } = {}) {
   const wiki = mkdtempSync(path.join(os.tmpdir(), 'forge-gate-open-'));
   t.after(() => rmSync(wiki, { recursive: true, force: true }));
   const dir = path.join(wiki, 'raw', 'tickets', 'syn-4');
@@ -30,10 +32,11 @@ function fixture(t, { gates = {}, plan = '# Plan SYN-4\n\nThe plan.\n' } = {}) {
   put('plan.md', plan);
   put('review.md', '# Review SYN-4\n\nThe review.\n');
   put('proof.md', GOOD_PROOF);
+  put('evidence/proof-001.md', 'The output.\n');
   const record = (name, doc) => `  - { name: ${name}, doc: ${doc}, need: required, status: ${gates[name] ?? 'todo'} }`;
   const readme = [
     '---', 'type: ticket', 'key: SYN-4', 'title: Synthetic gate-open ticket', 'short: Synthetic open',
-    'workflow: full-v4', 'phase: start', 'state: active', 'next: Review the scope', 'waiting_on: ""', 'changes: []', 'people: []',
+    'workflow: full-v4', 'phase: start', 'state: active', 'next: Review the scope', 'waiting_on: ""', 'changes: []', 'people: []', ...frontmatter,
     'gates:', record('Planned?', 'plan.md'), record('Sendable?', 'outbox/'), record('Shippable?', 'review.md'), record('Learned?', 'close.md'),
     'updated: 2026-10-01', '---', '# SYN-4: Synthetic', '', '## Now', '', '- State: ▶️ active', '- Phase: start', '- Open gate: none', '- Next: Review the scope', '- Waiting on: nobody', '- Updated: 2026-10-01', '', '## Files', '', '- [story.md](story.md)', '',
   ].join('\r\n');
@@ -288,4 +291,71 @@ test('the command prints the set and opens the gate (--json too)', (t) => {
   assert.equal(bad.status, 1);
   assert.match(bad.stderr, /forge: Sendable\? has its own steps/);
   assert.equal(run('SYN-4').status, 1);
+});
+
+// A fixture ticket with a branch in a real repository: main has one commit and the branch has one more.
+function branchFixture(t) {
+  const tree = mkdtempSync(path.join(os.tmpdir(), 'forge-gate-open-repo-'));
+  t.after(() => rmSync(tree, { recursive: true, force: true }));
+  const run = (...args) => execFileSync('git', ['-C', tree, ...args], { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  execFileSync('git', ['init', '-q', '-b', 'main', tree], { windowsHide: true });
+  for (const [k, v] of [['user.name', 'T'], ['user.email', 't@example.com'], ['commit.gpgsign', 'false'], ['core.hooksPath', '/dev/null']]) run('config', k, v);
+  writeFileSync(path.join(tree, 'a.txt'), 'one\n');
+  run('add', '.');
+  run('commit', '-q', '-m', 'base');
+  run('checkout', '-q', '-b', 'feat');
+  writeFileSync(path.join(tree, 'a.txt'), 'one\ntwo\n');
+  run('commit', '-q', '-am', 'change');
+  const f = fixture(t, { frontmatter: ['branch: feat', `worktree: ${tree}`] });
+  open(f, 'Planned?'); approve(f, 'Planned?');
+  const options = { repoPath: tree, baseBranch: 'main' };
+  const writeReview = (code, name = 'code-review-001.md') => f.put(`evidence/${name}`, `---\ntype: evidence\nticket: SYN-4\nhead: ${code.head}\npatch-id: ${code.patchId}\nreviewer: m\n---\n# Code review\n`);
+  return { ...f, tree, run, options, writeReview };
+}
+
+test('Shippable? with a branch: the dry run prints the code values while the code review is missing, then the manifest holds the binding', (t) => {
+  const f = branchFixture(t);
+  const before = listing(f.dir);
+  let message = '';
+  try { open(f, 'Shippable?', { ...f.options, dryRun: true }); } catch (error) { message = error.message; }
+  const code = codeBinding({ worktree: f.tree, branch: 'feat', baseBranch: 'main' });
+  assert.match(message, /needs a code review/);
+  assert.ok(message.includes(`Code now: head ${code.head} patch-id ${code.patchId}`), message);
+  assert.deepEqual(listing(f.dir), before, 'A refusal writes nothing.');
+  f.writeReview(code);
+  const withReview = listing(f.dir);
+  const dry = open(f, 'Shippable?', { ...f.options, dryRun: true });
+  assert.deepEqual(dry.code, code);
+  assert.deepEqual(dry.documents.map((doc) => doc.path), ['review.md', 'proof.md', 'evidence/code-review-001.md']);
+  assert.deepEqual(listing(f.dir), withReview);
+  const result = open(f, 'Shippable?', f.options);
+  assert.deepEqual(JSON.parse(readFileSync(path.join(f.dir, result.manifest), 'utf8')).code, code);
+  assert.equal(approve(f, 'Shippable?').status, 'approved');
+  assert.equal(checkAction(parseTicket(readFileSync(f.file, 'utf8')), f.file, 'ship').allowed, true);
+});
+
+test('Shippable? with a branch refuses a dirty worktree, an empty diff, and an unknown base branch, and notes a later commit', (t) => {
+  const f = branchFixture(t);
+  const code = codeBinding({ worktree: f.tree, branch: 'feat', baseBranch: 'main' });
+  f.writeReview(code);
+  writeFileSync(path.join(f.tree, 'a.txt'), 'dirty\n');
+  assert.throws(() => open(f, 'Shippable?', f.options), /changes that are not committed/);
+  f.run('commit', '-q', '-am', 'fix round');
+  const later = open(f, 'Shippable?', { ...f.options, dryRun: true });
+  assert.ok(later.notes.some((note) => /fix round: not read by a reviewer/.test(note)), later.notes.join('|'));
+  assert.notEqual(later.code.head, code.head);
+  assert.throws(() => open(f, 'Shippable?', { ...f.options, baseBranch: 'nope' }), /Forge cannot read the code/);
+  f.run('checkout', '-q', 'main');
+  f.run('branch', '-f', 'feat', 'main');
+  assert.throws(() => open(f, 'Shippable?', f.options), /no code change/);
+});
+
+test('lint warns when Shippable? is approved with a code binding and the README branch is empty', (t) => {
+  const f = branchFixture(t);
+  f.writeReview(codeBinding({ worktree: f.tree, branch: 'feat', baseBranch: 'main' }));
+  open(f, 'Shippable?', f.options); approve(f, 'Shippable?');
+  const codes = () => lint({ wikiPath: f.wiki, repoPath: f.tree, baseBranch: 'main' }).findings.map((item) => item.code);
+  assert.equal(codes().includes('code-branch-cleared'), false);
+  writeFileSync(f.file, readFileSync(f.file, 'utf8').replace('branch: feat', 'branch: '));
+  assert.equal(codes().includes('code-branch-cleared'), true);
 });

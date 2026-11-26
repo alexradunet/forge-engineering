@@ -39,7 +39,9 @@ Rules:
    - Options: "Add an automated test", "Manual evidence only", "Not now". Record the answer in **Automated test** of `proof.md`.
    - A new test is a code change. It needs a new commit and a new review. When Shippable? is approved, it needs Shippable? again before the push.
 9. Add the regression evidence to **Regression**: unit tests, regression and suite runs (job, run number, result, link), and old failures with their first failing run.
-10. Mark a check `🟢 verified`, `🔴 failed`, or `⚪ not proven: <why>`. Do not leave `open` as a final state: with `false`, `gate-open` refuses an `open` or a `failed` check. A check that is not possible needs the explicit acceptance of the user in **Accepted gaps**.
+10. Mark a check `🟢 verified`, `🔴 failed`, or `⚪ not proven: <why>`. Do not leave `open` as a final state: with `false`, `gate-open` refuses an `open` or a `failed` check. Two more rules apply to `proof.md`:
+   - A `🟢 verified` check links one file in `evidence/` (a Markdown link to a regular file). A check with no link is refused.
+   - A `⚪ not proven` check needs its own line in **Accepted gaps**: `- ⚪ Check <n>: <why>. Accepted by the user on <yyyy-mm-dd>.` Ask the user first. A `proof.md` with no numbered check is refused.
 11. Ask the user before each deploy, CI trigger, or database write. Show the job or the exact steps first. Never write to a database without approval. Do not escalate access (for example secret store or firewall changes) on your own.
 12. A failed check goes to `journal.md` as a `problem` entry, and back to Implement.
 13. The step is done when every check is `🟢 verified` (or an accepted `⚪`). Add a `step <n> verified` entry to `journal.md` for each step that a check proves. Then:

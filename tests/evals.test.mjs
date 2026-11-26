@@ -415,3 +415,11 @@ test('baseline-run-value: the case is explicit, with the limits of the plan revi
   assert.equal(plannedInReview(view()), true);
   assert.equal(measures()['Planned? is in review (1 yes, 0 no)'], 1);
 });
+
+test('review-ready opens Shippable? with its code review file and the binding of its commit', (t) => {
+  const f = fixture(t, 'review-ready');
+  const result = openReview(f.dir, { gate: 'Shippable?', repoPath: f.app, baseBranch: 'main', dryRun: true, today: '2026-11-17' });
+  assert.ok(result.documents.some((doc) => doc.path === 'evidence/code-review-001.md'));
+  assert.equal(result.code.branch, BRANCH);
+  assert.deepEqual(result.notes, []);
+});

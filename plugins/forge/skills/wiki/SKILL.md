@@ -40,7 +40,7 @@ canonical pages cannot.
 
 | Knowledge | Put it in |
 |---|---|
-| One short fact that only one tool needs | Built-in memory (`store_memory`) |
+| One short fact that only one tool needs | Built-in memory (Claude Code: the file memory, Copilot CLI: `store_memory`) |
 | A topic, a gotcha with a cause, a decision, or how parts connect | This wiki |
 | Company engineering guidance | Nowhere. Use the company source (the company rules in `<wiki>/rules/` can name it). |
 | Repository conventions | Nowhere. Use the repository instructions and skills. |

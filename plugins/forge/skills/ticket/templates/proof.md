@@ -25,7 +25,7 @@ Environment: <the deployed environment type, or the reason for a local run>
 
 ## Accepted gaps
 
-- ⚪ <check>: <why it is not possible>. Accepted by the user on <yyyy-mm-dd>.
+- ⚪ Check <n>: <why it is not possible>. Accepted by the user on <yyyy-mm-dd>.
 
 ## Automated test
 

@@ -9,6 +9,7 @@ import { plannedChecks, shippableChecks } from './gate-checks.mjs';
 import { barredFromManifest, checkGate, isChangeDraft, regular, sha256, within } from './validation.mjs';
 import { diffGate, gateName, renderDiff, saveSnapshot, sections } from './reading.mjs';
 import { rewriteFrontmatter } from './readme-write.mjs';
+import { dirty } from './code-bind.mjs';
 
 // The files that a review set never holds, besides the files that a manifest must not list.
 // canvas.html is a stale page that an older ticket folder can still hold (Forge 11 removed the ticket canvas).
@@ -87,10 +88,10 @@ function setCardState(text, state) {
 /**
  * Checks, and unless dryRun, opens the review of one gate: it writes the manifest, saves the snapshot, and sets the gate to in-review.
  * @param {string} dir the ticket folder
- * @param {{ gate: string, extra?: string[], policy?: object|null, repoPath?: string, checkouts?: object[], today?: string, dryRun?: boolean }} options
- * @returns {{ gate: string, key: string, manifest: string, hash: string, documents: {path: string, sha256: string}[], diff: string, carried: string|null, notes: string[], review: {file: string, openBlockers: string, concerns: string}|null, dryRun: boolean }}
+ * @param {{ gate: string, extra?: string[], policy?: object|null, repoPath?: string, checkouts?: object[], baseBranch?: string, today?: string, dryRun?: boolean }} options
+ * @returns {{ gate: string, key: string, manifest: string, hash: string, documents: {path: string, sha256: string}[], code: {head: string, base: string, patchId: string, branch: string}|null, diff: string, carried: string|null, notes: string[], review: {file: string, openBlockers: string, concerns: string}|null, dryRun: boolean }}
  */
-export function openReview(dir, { gate, extra = [], policy = null, repoPath = '', checkouts = [], today = new Date().toISOString().slice(0, 10), dryRun = false }) {
+export function openReview(dir, { gate, extra = [], policy = null, repoPath = '', checkouts = [], baseBranch = '', today = new Date().toISOString().slice(0, 10), dryRun = false }) {
   if (/^sendable\??$/i.test(String(gate).trim())) throw new Error('Sendable? has its own steps: the host prompt that the gate guard asks for is the "yes" for each write. Use the Sendable? steps of the ticket skill.');
   const name = gateName(gate);
   if (!validDate(today)) throw new Error(`Invalid date: ${today}.`);
@@ -111,9 +112,21 @@ export function openReview(dir, { gate, extra = [], policy = null, repoPath = ''
 
   // The document set, in order, with no duplicates.
   const planned = name === 'Planned?' ? plannedChecks(dir, ticket, { policy, repoPath, checkouts }) : null;
-  const shippable = name === 'Shippable?' ? shippableChecks(dir, ticket, { policy }) : null;
-  if (shippable?.findings.length) throw new Error(`${name} is not ready for review:\n${shippable.findings.map((item) => `- ${item.message} ${item.remedy}`).join('\n')}`);
+  const shippable = name === 'Shippable?' ? shippableChecks(dir, ticket, { policy, repoPath, baseBranch }) : null;
+  if (shippable) {
+    // The code values show in the refusal text too, so a session can use them before the reviewer runs (also with --dry-run).
+    const lines = shippable.findings.map((item) => `- ${item.message} ${item.remedy}`);
+    if (ticket.branch && !shippable.codeError) {
+      try { if (dirty(ticket.worktree || repoPath)) lines.push('- The worktree has changes that are not committed. Commit them, then open the gate again.'); }
+      catch (error) { lines.push(`- Forge cannot read the worktree status: ${error.message}`); }
+    }
+    if (lines.length) {
+      const code = shippable.code ? `\nCode now: head ${shippable.code.head} patch-id ${shippable.code.patchId}` : '';
+      throw new Error(`${name} is not ready for review:\n${lines.join('\n')}${code}`);
+    }
+  }
   const notes = [];
+  if (shippable?.later.length) notes.push(...shippable.later.map((item) => `Commit ${item.sha} ${item.subject}: not read by a reviewer (the code review is of an older head).`));
   const drafts = name === 'Shippable?' ? changeDrafts(dir) : [];
   if (drafts.length > 1) notes.push(`${drafts.length} change drafts exist: none is in the set.`);
   const names = [];
@@ -121,7 +134,7 @@ export function openReview(dir, { gate, extra = [], policy = null, repoPath = ''
     const relative = documentPath(dir, value);
     if (!names.some((item) => item.toLowerCase() === relative.toLowerCase())) names.push(relative);
   };
-  for (const item of [...(GATE_DOCS[name] ?? []), ...(shippable?.proof ? [shippable.proof] : []), ...(planned?.evidence ?? []), ...(planned?.review ? [planned.review] : []), ...(drafts.length === 1 ? drafts : []), ...extra]) add(item);
+  for (const item of [...(GATE_DOCS[name] ?? []), ...(shippable?.proof ? [shippable.proof] : []), ...(shippable?.review ? [shippable.review] : []), ...(planned?.evidence ?? []), ...(planned?.review ? [planned.review] : []), ...(drafts.length === 1 ? drafts : []), ...extra]) add(item);
   const documents = names.map((relative) => ({ path: relative, sha256: sha256(readDocument(dir, relative)) }));
 
   // The plan checks. A review that the recorded manifest does not list is no finding here: the new manifest lists it.
@@ -159,7 +172,7 @@ export function openReview(dir, { gate, extra = [], policy = null, repoPath = ''
   const stem = name.replace(/\?$/, '').toLowerCase();
   const last = Math.max(0, ...(existsSync(path.join(dir, 'approvals')) ? readdirSync(path.join(dir, 'approvals')) : []).map((item) => Number(new RegExp(`^${stem}-(\\d+)\\.json$`).exec(item)?.[1] ?? 0)));
   const manifestPath = `approvals/${stem}-${String(last + 1).padStart(3, '0')}.json`;
-  const manifestBytes = Buffer.from(`${JSON.stringify({ version: 1, gate: name, documents }, null, 2)}\n`);
+  const manifestBytes = Buffer.from(`${JSON.stringify({ version: 1, gate: name, documents, ...(shippable?.code ? { code: shippable.code } : {}) }, null, 2)}\n`);
   const hash = sha256(manifestBytes);
   const diff = renderDiff(diffGate(dir, ticket, name));
   let reviewText = null;
@@ -169,7 +182,7 @@ export function openReview(dir, { gate, extra = [], policy = null, repoPath = ''
     reviewText = { file: review, openBlockers: reviewSection(body, 'open blockers'), concerns: reviewSection(body, 'concerns') };
   }
   if (carry && dryRun) notes.push(`Would write ${carry.relative}.`);
-  const result = { gate: name, key: ticket.key, manifest: manifestPath, hash, documents, diff, carried: carry?.relative ?? null, notes, review: reviewText, dryRun };
+  const result = { gate: name, key: ticket.key, manifest: manifestPath, hash, documents, code: shippable?.code ?? null, diff, carried: carry?.relative ?? null, notes, review: reviewText, dryRun };
   if (dryRun) return result;
 
   // One write for the README. Forge runs one session per ticket, so nothing is locked: on any failure the steps are undone.

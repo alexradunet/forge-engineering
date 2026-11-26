@@ -29,7 +29,7 @@ flowchart LR
 |---|---|---|
 | Implement an approved plan in a suitable current worktree | continue here after the checks below | the current session |
 | Implement without a suitable current worktree, or delegate an independent task | a new session (`host.spawn`) after the checks below | a new session |
-| Quick review, research, or a check | a subagent (`task` tool) | nothing; the result comes back here |
+| Quick review, research, or a check | a subagent (Claude Code: `Agent`, Copilot CLI: `task`) | nothing; the result comes back here |
 | Test a gate document on a reader without the session history | a cold read subagent (see "Cold read") | nothing; the result comes back here |
 | Test if the plan of `plan.md` is right | a plan review subagent (see "Plan review") | nothing; the result comes back here |
 | Give more work or a correction to a running session | `host.message` | a message in that session |
@@ -102,7 +102,7 @@ Use a subagent for a quick review. It stays inside the current session.
 
 Required before each review gate of a `full-v4` ticket (Planned?, Shippable?, Learned?). The session that wrote a gate document knows more than the document says. The user reads the document later, without that knowledge. A subagent without the session history reads it the same way and shows what is missing.
 
-1. Start a subagent with `task` (a `general-purpose` or read-only research agent). When the host lets you select a model, a model family different from your own finds more.
+1. Start a subagent with the subagent tool (Claude Code: `Agent`, Copilot CLI: `task`; a `general-purpose` or read-only research agent). When the host lets you select a model, a model family different from your own finds more.
 2. Give it only this, and nothing from the session:
    - the absolute path of the gate document (for Planned?, the paths of `story.md` and `plan.md`), and for Planned? also the path of `map.md`
    - "Read this document and the files that it links. Do not read other ticket files. Read-only: no edits, no commits."
@@ -178,20 +178,21 @@ Run it before Planned?, after the cold read, only when `policy.planReview` is `a
 Required before every change request, including a draft, and before a push to the base branch when the repository has no change requests. It is a second, hostile read of the change. It tries to break it.
 
 1. Run it after the tests pass and before you write the final `review.md`. Do not run it on a half-done change.
-2. Start a `rubber-duck` subagent with `task` (when that agent type is missing, use `code-review` or `general-purpose` with a review-only prompt). Use the model in `policy.adversarialReviewModel` unless the user names another model. When it is not set, pick a model family different from your own. A model different from the author finds different bugs.
-3. Give it a complete prompt (the subagent has no memory of this session):
-   - the repository path, and how to see the change (`git status`, `git diff`, untracked files)
-   - the goal and the acceptance criteria
-   - what was changed and why, and the decisions the user already made
-   - where the evidence is (ticket folder: `story.md`, `plan.md`, `map.md`, `evidence/`)
+2. Before the run, get the code values from Forge: `<F> gate-open <key> shippable --dry-run` prints the `head` and the `patch-id`. Write them down. The reviewer does not give them.
+3. Start a read-only reviewer subagent with the subagent tool (Claude Code: `Agent`, Copilot CLI: `task`). Use the `rubber-duck` agent type (Copilot CLI) or a `code-review` or `general-purpose` agent with a review-only prompt. Use the model in `policy.adversarialReviewModel` unless the user names another model. When it is not set, pick a model family different from your own. A model different from the author finds different bugs.
+4. Give it a complete prompt (the subagent has no memory of this session). The reviewer is blind: it gets only this, and nothing about what was changed, why, or which decisions the user made:
+   - the worktree path
+   - the base commit and the head commit
+   - the absolute paths of `story.md` and `plan.md`
    - specific attack questions: missed places, wrong assumptions, SDK or API behavior, tests that pass without the fix, flaky or order-dependent tests, side effects beyond the goal (EOL, BOM, accidental edits), CI and build risks
-4. Tell it: read-only, no edits, no commits, no style comments, rank findings by severity with file, line, and evidence.
-5. Run it in the background. Do not poll. Continue with independent work, or wait for the notification.
-6. Verify each finding yourself. Reject a finding with evidence, or fix it and add a test where it applies.
-7. Record the result in **Findings** of `review.md` (model, findings, what you fixed or rejected) and as a `check` entry in `journal.md`.
-8. If the review changes the code, run the affected tests again. If it changes the approved story or the approved plan, open Planned? again.
+5. Tell it: read-only, no edits, no commits, no style comments, rank findings by severity with file, line, and evidence. It returns its report.
+6. Run it in the background. Do not poll. Continue with independent work, or wait for the notification.
+7. Save the report word for word in `evidence/code-review-NNN.md` (the next number). Start the file with this frontmatter: `type: evidence`, `ticket`, `date`, `head` and `patch-id` (the values of step 2), and `reviewer` (the model). Do not edit the saved report.
+8. Verify each finding yourself. Reject a finding with evidence, or fix it and add a test where it applies.
+9. Write what you did with each finding (fixed or rejected, and why) in **Findings** of `review.md`, with a link to the code review file, and add a `check` entry in `journal.md`.
+10. If the review changes the code, commit the fixes and run the affected tests again. You do not need a second review for the fixes: `gate-open <key> shippable` lists each commit after the reviewed `head` as "not read by a reviewer", so the user sees them. If it changes the approved story or the approved plan, open Planned? again.
 
-Never create a change request until step 7 is done.
+Never create a change request until step 9 is done.
 
 ## 🔁 Hand-off
 

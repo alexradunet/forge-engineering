@@ -160,6 +160,17 @@ test('the style rule loads unless the trusted policy says styleRules: false', (t
   assert.ok(run({ cwd: os.tmpdir(), prompt: 'hello' }).additionalContext.includes('\n# forge style\n'), 'Outside a repository the style rule stays.');
 });
 
+test('the Memory rule stays when styleRules is false', (t) => {
+  const s = setup(t);
+  const where = resolve({ cwd: s.app, env });
+  const { configDir } = seed(where, templates);
+  setValues(configDir, ['policy.styleRules=false']);
+  approve(where, trustStatus(where, { env }).files.filter((f) => f.rel.startsWith('config/')).map((f) => `${f.rel}=${f.sha.slice(0, 12)}`), { env });
+  const text = run({ cwd: s.app, prompt: 'hello' }).additionalContext;
+  assert.ok(!text.includes('\n# forge style\n'), 'The style rule is off.');
+  assert.ok(text.includes('## 🧠 Memory'), 'The Memory rule stays.');
+});
+
 test('ruleBody removes the frontmatter and comments and leaves out a page with only headings', () => {
   assert.equal(ruleBody('---\r\ntitle: Data\r\n---\r\n\r\n# Data\r\n\r\n- No dumps.\r\n'), '# Data\n\n- No dumps.');
   assert.equal(ruleBody('---\ntitle: Toolkit\n---\n\n# Toolkit\n\n<!-- Write a table. -->\n'), '');

@@ -5,6 +5,9 @@
 // so the prompt of the host is the "yes" for this one write (GH-2). In a mode with no prompt, it denies instead.
 // One exception: a new change request, when its draft is the one `target: change` file of the approved Shippable? set.
 // The approval of that exact set is the yes, so the guard gives no verdict, also in a mode with no prompt.
+// The 2 approval commands (`forge.mjs gate-approve` and `forge.mjs trust approve`) get `ask` in each folder and each policy,
+// also with `policy.gateGuard: off`: an approval is the yes of the user, so the agent must not give it alone.
+// In a mode with no prompt, they are denied, and the user runs them in a terminal.
 // It reads the words of the command, so it is a net and not a wall: a script that pushes is not seen.
 // A ticket whose README cannot be read stops a push and a new change request too: the gates are unknown (policy.gateGuard sets deny or ask).
 // It never stops other work: a folder with no ticket, no wiki, or a config that cannot be read lets the command run.
@@ -13,7 +16,9 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { resolve, samePath } from './repo.mjs';
 import { listTickets } from './tickets.mjs';
-import { approvedDrafts, checkAction, isChangeDraft } from './validation.mjs';
+import { approvedDrafts, checkAction, isChangeDraft, regular, within } from './validation.mjs';
+import { baseBranchOf, codeBinding, resolveCommit } from './code-bind.mjs';
+import { FORGE_VALUE_OPTIONS } from './cli-options.mjs';
 import { ticketOfFolder, trustedConfig } from './hook.mjs';
 
 export const GUARD_MODES = ['deny', 'ask', 'off'];
@@ -27,6 +32,8 @@ const METHOD_OPTIONS = new Set(['-X', '--method']);
 // The shells that run the text of a heredoc or a pipe as commands.
 const SHELLS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'fish', 'pwsh', 'powershell']);
 const HELP = new Set(['--help', '-h']);
+// The time budget of one preTool call (the hook limit is 30 s).
+const DEADLINE_MS = 20000;
 // The capabilities that change something outside the workspace. The core holds the names; the trusted config gives the commands.
 export const WRITE_CAPABILITIES = ['tracker.comment', 'tracker.create', 'tracker.transition', 'tracker.link', 'repo.open-change', 'repo.update-change', 'repo.reply', 'ci.trigger'];
 // Permission modes in which a host runs a command with no prompt, also after a hook `ask` (GH-2: Claude Code bypassPermissions).
@@ -144,6 +151,38 @@ function toolWords(words) {
 
 const toolName = (word) => String(word ?? '').split(/[\\/]/).pop().replace(/\.exe$/i, '').toLowerCase();
 
+/**
+ * The approval action of a forge call, or null. The call is `node <...>/forge.mjs` or a launcher (`forge`, `forge.cmd`).
+ * `gate-approve` is an action, except with `--dry-run` or a help word. `trust approve` is an action; `trust` alone is not.
+ */
+function approveCall(words, cwd) {
+  const tool = toolName(words[0]);
+  const base = (word) => String(word).split(/[\\/]/).pop().toLowerCase();
+  let rest;
+  if (tool === 'node') {
+    const at = words.findIndex((word, i) => i > 0 && base(word) === 'forge.mjs');
+    if (at === -1) return null;
+    rest = words.slice(at + 1);
+  } else if (['forge.mjs', 'forge', 'forge.cmd'].includes(base(words[0]))) rest = words.slice(1);
+  else return null;
+  // Plain words and option values: a value option takes the next word, so a quoted --answer is one word.
+  const plain = [];
+  let answer = '';
+  let flags = false;
+  for (let i = 0; i < rest.length; i++) {
+    const word = rest[i];
+    const joined = /^(--[a-z-]+)=(.*)$/s.exec(word);
+    if (joined && FORGE_VALUE_OPTIONS.has(joined[1])) { if (joined[1] === '--answer') answer = joined[2]; continue; }
+    if (FORGE_VALUE_OPTIONS.has(word)) { if (word === '--answer') answer = rest[i + 1] ?? ''; i++; continue; }
+    if (word === '--dry-run' || HELP.has(word)) { flags = true; continue; }
+    if (!word.startsWith('-')) plain.push(word);
+  }
+  const [sub, first, second] = plain;
+  if (sub === 'gate-approve' && !flags) return { kind: 'approve', cwd, command: 'gate-approve', key: first ?? '', gate: second ?? '', answer };
+  if (sub === 'trust' && first === 'approve' && !flags) return { kind: 'approve', cwd, command: 'trust approve', files: plain.slice(2) };
+  return null;
+}
+
 /** The subcommand of a git call, its arguments, and the folder that `-C` selects. */
 function gitCall(words, cwd) {
   let folder = cwd;
@@ -247,24 +286,39 @@ function matches(words, command) {
 }
 
 /**
- * The branches that a `git push` names: { refs, all }. The first plain word is the remote, and each other word is a
+ * The branches that a `git push` names: { refs, all, sources, deletes }. The first plain word is the remote, and each other word is a
  * refspec `[+]<source>[:<target>]`. `all` is true for `--all`, `--mirror`, and `--branches`.
+ * `sources` lists what the push sends: the source of each refspec, or `HEAD` for a push with no refspec (it is empty for a push of
+ * all branches, of tags only, and of a pattern). `deletes` is true when the push only deletes refs (`--delete`, `-d`, or `:<target>`): it sends no code.
  * A push of a ticket branch can run from each folder of the repository, so the folder alone does not show the ticket.
  */
 function pushTargets(args) {
   const plain = [];
   let all = false;
+  let tags = false;
+  let del = false;
   for (let i = 0; i < args.length; i++) {
     if (['--all', '--mirror', '--branches'].includes(args[i])) all = true;
+    else if (args[i] === '--tags') tags = true;
+    else if (args[i] === '--delete' || args[i] === '-d') del = true;
     else if (PUSH_VALUE_OPTIONS.has(args[i])) i++;
     else if (!args[i].startsWith('-')) plain.push(args[i]);
   }
-  const refs = plain.slice(1).map((spec) => spec.replace(/^\+/, '').split(':')[0].replace(/^refs\/heads\//, '')).filter(Boolean);
-  return { refs, all };
+  const specs = plain.slice(1).map((spec) => spec.replace(/^\+/, ''));
+  const refs = specs.map((spec) => spec.split(':')[0].replace(/^refs\/heads\//, '')).filter(Boolean);
+  const pieces = specs.filter((spec) => !del && spec.split(':')[0]);
+  let sources = pieces.map((spec) => spec.split(':')[0]);
+  const noSource = all || sources.some((source) => source.includes('*'));
+  if (noSource) sources = [];
+  else if (!specs.length && !del && !tags) sources = ['HEAD'];
+  const deletes = del || (specs.length > 0 && specs.every((spec) => spec.startsWith(':')));
+  return { refs, all, sources, deletes };
 }
 
 /**
  * The guarded actions of a shell line. Each action has the folder where it runs: `cd` and `git -C` change it.
+ * - `approve`: a `forge.mjs gate-approve` or `forge.mjs trust approve` call (not with `--dry-run` or a help word), with its
+ *   `command`, and the `key`, `gate`, and `answer` (gate-approve) or the `files` (trust approve).
  * - `push`: each `git push` (not a dry run), with the branches that it names (`refs`, `all`).
  * - `change`: a command that starts with one of the change commands (word lists).
  * - `write`: a command that matches one of the write commands ({ capability, words, method }), with its
@@ -282,6 +336,8 @@ export function guardActions(line, cwd, { changes = [], writes = [] } = {}) {
       if (target) folder = path.resolve(folder, target);
       continue;
     }
+    const approval = approveCall(words, folder);
+    if (approval) { actions.push(approval); continue; }
     if (tool === 'git') {
       const call = gitCall(words, folder);
       if (call.sub === 'push' && !call.args.some((arg) => arg === '--dry-run' || arg === '-n')) actions.push({ kind: 'push', cwd: call.cwd, ...pushTargets(call.args) });
@@ -364,6 +420,57 @@ function writeVerdict(match, action) {
   };
 }
 
+/** The ask verdict for an approval command: the reason names the command and what it approves. */
+function approveVerdict(action) {
+  const what = action.command === 'gate-approve'
+    ? `\`forge.mjs gate-approve\` records the approval of ${action.gate || '(no gate)'} for ${action.key || '(no key)'} with the answer ${JSON.stringify(action.answer)}`
+    : `\`forge.mjs trust approve\` trusts the config and rule files ${action.files.length ? action.files.join(', ') : '(no file named)'}`;
+  const key = action.key ?? '';
+  const question = `this command is an approval: ${what}.`;
+  return { decision: 'ask', key, question, reason: `Forge gate guard: ${question} Allow it only if you gave this answer yourself.` };
+}
+
+/** The message for a git error of the code check: the time limit and a missing base branch have their own text. */
+function gitProblem(error, ticket, baseBranch) {
+  if (error.code === 'deadline') return `Forge ran out of time while it read the code of ${ticket.branch} (the hook has a limit of ${DEADLINE_MS / 1000} s). Try again.`;
+  if (error.code === 'base-missing') return `base branch ${error.baseBranch ?? baseBranch} not found: set repo.baseBranch.`;
+  return `Forge cannot read the code of ${ticket.branch} to compare it with the Shippable? approval: ${error.message} Run \`git fetch\`, then try again.`;
+}
+
+/**
+ * The message of the code binding check at a push, or '' when the code is the code of the Shippable? approval.
+ * The approved manifest holds `code` ({ head, base, patchId, branch }). The branch of the README must be that branch (also when the README
+ * branch is empty), the push must send the head of that branch (each source of the refspecs of `action`), and the patch-id of the
+ * diff from the merge base must be the same. A clean rebase keeps the patch-id. A git error gives its own message: it is not a mismatch.
+ * A push that only deletes refs, and a closed ticket (its work is merged), get no check. `deadline` is the end of the time budget of the call.
+ */
+function codeMismatch(match, where, config, action, deadline) {
+  const ticket = match.ticket;
+  if (ticket.phase === 'closed' || action.deletes) return '';
+  const gate = ticket.gates.find((item) => item.name === 'Shippable?');
+  let code = null;
+  try { code = JSON.parse(regular(within(path.dirname(match.file), gate.manifest)).toString('utf8'))?.code; } catch { /* No readable code is the same as no code. */ }
+  const bound = code && typeof code === 'object' && code.patchId && code.branch;
+  if (!bound) {
+    return ticket.branch ? 'The Shippable? approval has no code binding: it was approved before Forge 13.1.0 or without a code binding. Open Shippable? again.' : '';
+  }
+  if (!ticket.branch) return `the README branch is empty, but the Shippable? approval binds the branch ${code.branch}. Open Shippable? again.`;
+  if (code.branch !== ticket.branch) return `The README branch (${ticket.branch}) is not the branch of the Shippable? approval (${code.branch}). Open Shippable? again.`;
+  if (!config) return 'the Forge config is not trusted (run `forge.mjs trust`).';
+  const baseBranch = baseBranchOf(config, where.repo.path);
+  let now;
+  try { now = codeBinding({ worktree: ticket.worktree || where.repo.path, branch: ticket.branch, baseBranch, deadline }); }
+  catch (error) { return gitProblem(error, ticket, baseBranch); }
+  for (const source of action.sources ?? []) {
+    let sent = '';
+    try { sent = resolveCommit(action.cwd, source, { deadline }); }
+    catch (error) { return gitProblem(error, ticket, baseBranch); }
+    if (sent !== now.head) return `this push sends ${sent ? sent.slice(0, 12) : `${source} (no commit)`}, not the head of the ticket branch ${ticket.branch} (${now.head.slice(0, 12)}). Push the branch itself.`;
+  }
+  if (now.patchId !== code.patchId) return `The code changed after the Shippable? approval (patch-id ${now.patchId.slice(0, 12)}, approved ${String(code.patchId).slice(0, 12)}). Review the new code and open Shippable? again.`;
+  return '';
+}
+
 /** A host that does not show a prompt in this mode runs an `ask` with no "yes", so the guard denies instead. */
 function noPrompt(verdict, mode) {
   if (verdict?.decision !== 'ask' || !NO_PROMPT_MODES.has(mode)) return verdict;
@@ -382,10 +489,14 @@ function noPrompt(verdict, mode) {
  *   A new change request with valid gates gets `ask` too, unless its draft is the one `target: change` file of the approved
  *   Shippable? set and no draft or open change request exists: then it gets no verdict.
  *   In a mode with no prompt (NO_PROMPT_MODES), each `ask` becomes `deny`.
+ * - An approval command (`gate-approve`, `trust approve`) gets `ask` in each folder, also with `gateGuard: off`,
+ *   and `deny` in a mode with no prompt.
  * - A `deny` wins over an `ask`. Only a trusted config can change the mode or add commands.
  */
-export function preTool(event, { env = process.env } = {}) {
+export function preTool(event, { env = process.env, deadlineMs = DEADLINE_MS } = {}) {
   if (!event?.command) return null;
+  // One time budget for all git calls of the code checks of this call: the hook has a limit of 30 s.
+  const deadline = Date.now() + deadlineMs;
   const base = event.cwd || process.cwd();
   const home = locate(base, env);
   const homeConfig = home?.wiki.exists ? trustedConfig(home, env) : null;
@@ -406,6 +517,8 @@ export function preTool(event, { env = process.env } = {}) {
     } catch { return []; }
   };
   for (const action of guardActions(event.command, base, { changes, writes })) {
+    // An approval needs no ticket, no wiki, and no trusted config, and no gateGuard mode turns it off.
+    if (action.kind === 'approve') { verdicts.push(approveVerdict(action)); continue; }
     let where = samePath(action.cwd, base) ? home : locate(action.cwd, env);
     let config = where === home ? homeConfig : (where?.wiki.exists ? trustedConfig(where, env) : null);
     let found = ticketsAt(where, config, action, action.cwd);
@@ -442,6 +555,17 @@ export function preTool(event, { env = process.env } = {}) {
             ? { decision: 'ask', key, question, reason: `Forge gate guard: ${question} Allow this command only if you accept the step without the gate.` }
             : { decision: 'deny', key, reason: `Forge gate guard: ${question} Open the gate as the ticket skill says (Review gates), and wait for the answer of the user. Do not run the command in another form. Tell the user which approval is missing, and offer to open the gate.` });
           continue;
+        }
+        if (action.kind === 'push') {
+          const problem = codeMismatch(match, where, config, action, deadline);
+          if (problem) {
+            const key = match.ticket.key;
+            const question = `${key}: ${problem}`;
+            verdicts.push(mode === 'ask'
+              ? { decision: 'ask', key, question, reason: `Forge gate guard: ${question} Allow this push only if you accept the step without the code check.` }
+              : { decision: 'deny', key, reason: `Forge gate guard: ${question} Do not run the command in another form. Tell the user what is wrong.` });
+            continue;
+          }
         }
         if (action.kind === 'push' || (action.kind === 'change' && changeApproved(match))) continue;
       }

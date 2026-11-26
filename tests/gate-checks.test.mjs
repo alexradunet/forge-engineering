@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { plannedChecks, shippableChecks } from '../plugins/forge/scripts/lib/gate-checks.mjs';
 
 function setup(t) {
@@ -18,7 +19,8 @@ function setup(t) {
   };
   return { root, dir, put, main: path.join(root, 'main'), tree: path.join(root, 'tree') };
 }
-const plan = (steps = '', checks = '') => `---\ntype: plan\n---\n# Plan\n\n## Steps\n\n${steps}\n## Checks\n\n${checks}\n## Risks\n\n- none\n`;
+const PASSING = '1. Check\n   - Action: a\n   - Expected: b\n   - Baseline: not run: x\n   - Control: not run: x\n';
+const plan = (steps = '', checks = PASSING) => `---\ntype: plan\n---\n# Plan\n\n## Steps\n\n${steps}\n## Checks\n\n${checks}\n## Risks\n\n- none\n`;
 const sha = (text) => createHash('sha256').update(text).digest('hex');
 const codes = (result) => result.findings.map((item) => item.code);
 
@@ -149,12 +151,13 @@ test('a missing plan.md gives nothing, and a plan.md link is not read', (t) => {
   assert.deepEqual(plannedChecks(f.dir, {}, {}).findings, []);
 });
 
-const proof = (checks) => `---\ntype: proof\n---\n# Proof\n\nResult: x.\n\n## Checks\n\n${checks}\n## Regression\n\n- none\n`;
+const proof = (checks, gaps = '- none\n') => `---\ntype: proof\n---\n# Proof\n\nResult: x.\n\n## Checks\n\n${checks}\n## Regression\n\n- none\n\n## Accepted gaps\n\n${gaps}`;
 const OFF = { evidenceOnDeployedEnv: false };
 
 test('shippableChecks: the key true checks nothing, even with no proof.md', (t) => {
   const f = setup(t);
-  assert.deepEqual(shippableChecks(f.dir, {}, { policy: { evidenceOnDeployedEnv: true } }), { findings: [], proof: null });
+  const result = shippableChecks(f.dir, {}, { policy: { evidenceOnDeployedEnv: true } });
+  assert.deepEqual([result.findings, result.proof, result.code], [[], null, null]);
 });
 
 test('shippableChecks: a missing proof.md is one finding, with the key false or with no policy', (t) => {
@@ -180,28 +183,155 @@ test('shippableChecks: a link in place of proof.md counts as missing', (t) => {
 
 test('shippableChecks: verified and not proven pass, with or without the emoji and in any case', (t) => {
   const f = setup(t);
-  f.put('proof.md', proof('1. 🟢 verified: a\n2. verified: b\n3. ⚪ not proven: c\n4. Not Proven: d\n5. VERIFIED - e\n'));
-  assert.deepEqual(shippableChecks(f.dir, {}, { policy: OFF }), { findings: [], proof: 'proof.md' });
+  f.put('evidence/a.md', 'x');
+  const ev = '   - Observed: ok ([evidence](evidence/a.md))\n';
+  f.put('proof.md', proof(`1. 🟢 verified: a\n${ev}2. verified: b\n${ev}3. ⚪ not proven: c\n4. Not Proven: d\n5. VERIFIED - e\n${ev}`, '- ⚪ Check 3: no way. Accepted by the user on 2026-11-26.\n- Check 4: no way.\n'));
+  const result = shippableChecks(f.dir, {}, { policy: OFF });
+  assert.deepEqual([result.findings, result.proof], [[], 'proof.md']);
 });
 
 test('shippableChecks: an open check, a check with no state word, and a failed check are findings with a line', (t) => {
   const f = setup(t);
-  f.put('proof.md', proof('1. 🟢 verified: a\n2. open: b\n3. the behavior c\n4. 🔴 failed: d\n5. ⚪ Not proven: e\n'));
+  f.put('proof.md', proof('1. 🟢 verified: a\n   - [e](evidence/a.md)\n2. open: b\n3. the behavior c\n4. 🔴 failed: d\n5. ⚪ Not proven: e\n', '- ⚪ Check 5: no way. Accepted by the user on 2026-11-26.\n'));
+  f.put('evidence/a.md', 'x');
   const result = shippableChecks(f.dir, {}, { policy: OFF });
   assert.equal(result.proof, null);
   assert.deepEqual(result.findings.map((item) => [item.code, item.message, item.line]), [
-    ['proof-open', 'Check 2 of proof.md is still open.', 11],
-    ['proof-open', 'Check 3 of proof.md is still open.', 12],
-    ['proof-failed', 'Check 4 of proof.md failed.', 13],
+    ['proof-open', 'Check 2 of proof.md is still open.', 12],
+    ['proof-open', 'Check 3 of proof.md is still open.', 13],
+    ['proof-failed', 'Check 4 of proof.md failed.', 14],
   ]);
   assert.equal(result.findings[0].remedy, 'Run the check, then mark it verified, failed, or not proven with the reason.');
   assert.equal(result.findings[2].remedy, 'Go back to Implement. Shippable? opens when no check failed.');
 });
 
-test('shippableChecks: a proof.md with no numbered check passes', (t) => {
+test('shippableChecks: a proof.md with no numbered check is proof-empty', (t) => {
   const f = setup(t);
   f.put('proof.md', '# Proof\n\nResult: no behavior changed.\n');
-  assert.deepEqual(shippableChecks(f.dir, {}, { policy: OFF }), { findings: [], proof: 'proof.md' });
+  assert.deepEqual(codes(shippableChecks(f.dir, {}, { policy: OFF })), ['proof-empty']);
   f.put('proof.md', proof(''));
-  assert.deepEqual(shippableChecks(f.dir, {}, { policy: OFF }), { findings: [], proof: 'proof.md' });
+  assert.deepEqual(codes(shippableChecks(f.dir, {}, { policy: OFF })), ['proof-empty']);
+  f.put('evidence/a.md', 'x');
+  f.put('proof.md', proof('1. 🟢 verified: a\n   - [e](evidence/a.md)\n'));
+  assert.deepEqual(shippableChecks(f.dir, {}, { policy: OFF }).findings, []);
+});
+
+test('shippableChecks: a verified check needs a link to a regular file in evidence/', (t) => {
+  const f = setup(t);
+  f.put('evidence/a.md', 'x');
+  f.put('proof.md', proof('1. 🟢 verified: a\n   - Observed: fine\n2. 🟢 verified: b\n   - [x](evidence/missing.md)\n3. 🟢 verified: c\n   - [x](https://example.com/x.md)\n4. 🟢 verified: d\n   - [x](other/a.md)\n'));
+  assert.deepEqual(codes(shippableChecks(f.dir, {}, { policy: OFF })), ['proof-no-evidence', 'proof-no-evidence', 'proof-no-evidence', 'proof-no-evidence']);
+  f.put('proof.md', proof('1. 🟢 verified: a\n   - Observed: ok ([evidence](evidence/a.md))\n'));
+  assert.deepEqual(shippableChecks(f.dir, {}, { policy: OFF }).findings, []);
+});
+
+test('shippableChecks: a not proven check needs its own line in Accepted gaps', (t) => {
+  const f = setup(t);
+  f.put('proof.md', proof('1. ⚪ not proven: a\n2. ⚪ not proven: b\n', '- ⚪ Check 1: no traffic. Accepted by the user on 2026-11-26.\n- ⚪ Check 12: other.\n'));
+  const result = shippableChecks(f.dir, {}, { policy: OFF });
+  assert.deepEqual(result.findings.map((item) => [item.code, item.message]), [['proof-no-gap', 'Check 2 of proof.md is not proven and has no line in Accepted gaps.']]);
+  f.put('proof.md', proof('1. ⚪ not proven: a\n', '- none\n'));
+  assert.deepEqual(codes(shippableChecks(f.dir, {}, { policy: OFF })), ['proof-no-gap']);
+});
+
+test('plannedChecks: a plan with a Files line and no check is plan-no-check, a plan with a check or no Files line passes', (t) => {
+  const f = setup(t);
+  const real = f.put('src/A.cs', 'x', f.main);
+  f.put('plan.md', plan(`1. Edit\n   - Files: [A.cs](${real})\n`, ''));
+  assert.deepEqual(codes(plannedChecks(f.dir, {}, { repoPath: f.main })), ['plan-no-check']);
+  f.put('plan.md', plan(`1. Edit\n   - Files: [A.cs](${real})\n`));
+  assert.deepEqual(plannedChecks(f.dir, {}, { repoPath: f.main }).findings, []);
+  f.put('plan.md', plan('1. Think\n   - Why: none\n', ''));
+  assert.deepEqual(plannedChecks(f.dir, {}, { repoPath: f.main }).findings, []);
+});
+
+// A real repository: main has one commit, and the branch "feat" has one more.
+function repo(t, { rebased = false } = {}) {
+  const f = setup(t);
+  const run = (...args) => execFileSync('git', ['-C', f.tree, ...args], { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  mkdirSync(f.tree, { recursive: true });
+  execFileSync('git', ['init', '-q', '-b', 'main', f.tree], { windowsHide: true });
+  for (const [k, v] of [['user.name', 'T'], ['user.email', 't@example.com'], ['commit.gpgsign', 'false'], ['core.hooksPath', '/dev/null']]) run('config', k, v);
+  writeFileSync(path.join(f.tree, 'a.txt'), 'one\n');
+  run('add', '.');
+  run('commit', '-q', '-m', 'base');
+  run('checkout', '-q', '-b', 'feat');
+  writeFileSync(path.join(f.tree, 'a.txt'), 'one\ntwo\n');
+  run('commit', '-q', '-am', 'change');
+  return { ...f, run, ticket: { branch: 'feat', worktree: f.tree } };
+}
+const review = (head, patchId) => `---\ntype: evidence\nticket: X-1\nhead: ${head}\npatch-id: ${patchId}\nreviewer: m\n---\n# Code review\n`;
+const NOPROOF = { evidenceOnDeployedEnv: true };
+
+test('shippableChecks: a ticket with a branch needs a code review file', (t) => {
+  const f = repo(t);
+  const result = shippableChecks(f.dir, f.ticket, { policy: NOPROOF, baseBranch: 'main' });
+  assert.deepEqual(codes(result), ['code-review-missing']);
+  assert.equal(result.code.head, f.run('rev-parse', 'HEAD'));
+  assert.match(result.code.patchId, /^[0-9a-f]{40,}$/);
+  const none = shippableChecks(f.dir, { ...f.ticket, branch: '' }, { policy: NOPROOF, baseBranch: 'main' });
+  assert.deepEqual([none.findings, none.code], [[], null]);
+});
+
+test('shippableChecks: the review covers the code with the same patch-id, also after a clean rebase', (t) => {
+  const f = repo(t);
+  const first = shippableChecks(f.dir, f.ticket, { policy: NOPROOF, baseBranch: 'main' }).code;
+  f.put('evidence/code-review-001.md', review(first.head, first.patchId));
+  assert.deepEqual(shippableChecks(f.dir, f.ticket, { policy: NOPROOF, baseBranch: 'main' }).findings, []);
+  // Main moves on, and the branch is rebased: the head changes, the patch-id stays.
+  f.run('checkout', '-q', 'main');
+  writeFileSync(path.join(f.tree, 'b.txt'), 'x\n');
+  f.run('add', '.');
+  f.run('commit', '-q', '-m', 'other');
+  f.run('checkout', '-q', 'feat');
+  f.run('rebase', '-q', 'main');
+  const result = shippableChecks(f.dir, f.ticket, { policy: NOPROOF, baseBranch: 'main' });
+  assert.notEqual(result.code.head, first.head);
+  assert.equal(result.code.patchId, first.patchId);
+  assert.deepEqual([result.findings, result.later], [[], []]);
+  assert.equal(result.review, 'evidence/code-review-001.md');
+});
+
+test('shippableChecks: a later commit on the reviewed head is a note, not a finding; a rebase with a code change is stale', (t) => {
+  const f = repo(t);
+  const first = shippableChecks(f.dir, f.ticket, { policy: NOPROOF, baseBranch: 'main' }).code;
+  f.put('evidence/code-review-001.md', review(first.head, first.patchId));
+  writeFileSync(path.join(f.tree, 'a.txt'), 'one\ntwo\nthree\n');
+  f.run('commit', '-q', '-am', 'fix round');
+  const later = shippableChecks(f.dir, f.ticket, { policy: NOPROOF, baseBranch: 'main' });
+  assert.deepEqual(later.findings, []);
+  assert.deepEqual(later.later.map((item) => item.subject), ['fix round']);
+  // The review names a commit that is not in the history of the branch.
+  f.put('evidence/code-review-002.md', review('0123456789abcdef0123456789abcdef01234567', '0'.repeat(40)));
+  assert.deepEqual(codes(shippableChecks(f.dir, f.ticket, { policy: NOPROOF, baseBranch: 'main' })), ['code-review-stale']);
+  // The newest file counts: an older good file does not.
+  f.put('evidence/code-review-003.md', 'no frontmatter\n');
+  assert.deepEqual(codes(shippableChecks(f.dir, f.ticket, { policy: NOPROOF, baseBranch: 'main' })), ['code-review-stale']);
+});
+
+test('shippableChecks: a git error is a finding and the function never throws', (t) => {
+  const f = repo(t);
+  const missingBase = shippableChecks(f.dir, f.ticket, { policy: NOPROOF, baseBranch: 'nope' });
+  assert.deepEqual(codes(missingBase), ['code-review-git']);
+  assert.match(missingBase.findings[0].remedy, /git fetch/);
+  assert.deepEqual(codes(shippableChecks(f.dir, { ...f.ticket, worktree: path.join(f.root, 'gone') }, { policy: NOPROOF, baseBranch: 'main' })), ['code-review-git']);
+  assert.deepEqual(codes(shippableChecks(f.dir, f.ticket, { policy: NOPROOF, baseBranch: '' })), ['code-review-git']);
+});
+
+test('shippableChecks: evidenceOnDeployedEnv skips only the proof part', (t) => {
+  const f = repo(t);
+  assert.deepEqual(codes(shippableChecks(f.dir, f.ticket, { policy: NOPROOF, baseBranch: 'main' })), ['code-review-missing']);
+  assert.deepEqual(codes(shippableChecks(f.dir, f.ticket, { policy: OFF, baseBranch: 'main' })), ['proof-missing', 'code-review-missing']);
+});
+
+test('M1: a code review whose head is the merge base (or older) is stale', (t) => {
+  const f = repo(t);
+  const code = shippableChecks(f.dir, f.ticket, { policy: NOPROOF, baseBranch: 'main' }).code;
+  const base = f.run('rev-parse', 'main');
+  assert.equal(base, code.base);
+  f.put('evidence/code-review-001.md', review(base, 'a'.repeat(40)));
+  assert.deepEqual(codes(shippableChecks(f.dir, f.ticket, { policy: NOPROOF, baseBranch: 'main' })), ['code-review-stale']);
+  // The same with a head that holds ticket work: it is a note.
+  f.put('evidence/code-review-001.md', review(code.head, 'a'.repeat(40)));
+  assert.deepEqual(codes(shippableChecks(f.dir, f.ticket, { policy: NOPROOF, baseBranch: 'main' })), []);
 });

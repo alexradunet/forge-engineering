@@ -11,7 +11,9 @@ import { status as trustStatus, approve } from '../plugins/forge/scripts/lib/tru
 import { resolve } from '../plugins/forge/scripts/lib/repo.mjs';
 import { seed } from '../plugins/forge/scripts/lib/setup.mjs';
 import { setValues } from '../plugins/forge/scripts/lib/config-write.mjs';
-import { hookArgs } from '../plugins/forge/scripts/forge.mjs';
+import { hookArgs, parseArgs } from '../plugins/forge/scripts/forge.mjs';
+import { FORGE_VALUE_OPTIONS } from '../plugins/forge/scripts/lib/cli-options.mjs';
+import { codeBinding } from '../plugins/forge/scripts/lib/code-bind.mjs';
 
 // The gate guard is the preToolUse hook: a push or a new change request in a ticket worktree
 // needs the gates of checkAction('ship'). All other commands, folders, and failures let the tool run.
@@ -22,13 +24,14 @@ const env = { ...process.env, FORGE_WIKI_ROOT: '', FORGE_DATA_DIR: mkdtempSync(p
 const GATES = [['Planned?', ['story.md', 'plan.md']], ['Shippable?', ['review.md']]];
 
 function git(cwd, ...args) {
-  const result = spawnSync('git', ['-C', cwd, '-c', 'user.name=Forge Test', '-c', 'user.email=forge@example.test', ...args], { encoding: 'utf8' });
+  const result = spawnSync('git', ['-C', cwd, '-c', 'user.name=Forge Test', '-c', 'user.email=forge@example.test', '-c', 'core.hooksPath=/dev/null', '-c', 'commit.gpgsign=false', ...args], { encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);
   return result.stdout.trim();
 }
 
 /** A repository with a ticket worktree, and a wiki with one full-v4 ticket. `approved` lists the approved gates. */
-function setup(t, { approved = [], workflow = 'full-v4' } = {}) {
+// With Shippable? approved, the branch has one commit and the manifest binds its code (`code: 'none'` leaves the binding out), and the config is trusted with the base branch main.
+function setup(t, { approved = [], workflow = 'full-v4', code = 'bound' } = {}) {
   const root = mkdtempSync(path.join(os.tmpdir(), 'forge-guard-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const app = path.join(root, 'app');
@@ -39,6 +42,13 @@ function setup(t, { approved = [], workflow = 'full-v4' } = {}) {
   git(app, 'commit', '-q', '-m', 'init');
   const worktree = path.join(`${app}.worktrees`, 'app-7-doc-import');
   git(app, 'worktree', 'add', '-q', '-b', 'users/a/APP-7-doc-import', worktree);
+  let binding = null;
+  if (approved.includes('Shippable?')) {
+    writeFileSync(path.join(worktree, 'b.txt'), 'change\n');
+    git(worktree, 'add', 'b.txt');
+    git(worktree, 'commit', '-q', '-m', 'change');
+    if (code === 'bound') binding = codeBinding({ worktree, branch: 'users/a/APP-7-doc-import', baseBranch: 'main' });
+  }
   const dir = path.join(root, 'app.forge', 'raw', 'tickets', 'app-7');
   mkdirSync(path.join(dir, 'approvals'), { recursive: true });
   mkdirSync(path.join(root, 'app.forge', 'wiki'), { recursive: true });
@@ -48,7 +58,7 @@ function setup(t, { approved = [], workflow = 'full-v4' } = {}) {
     for (const item of docs) writeFileSync(path.join(dir, item), `# ${item}\n\nText of ${name}\n`);
     if (!approved.includes(name)) { gates.push(`  - { name: ${name}, doc: ${doc}, need: required, status: todo }`); continue; }
     const manifest = `approvals/${name.replace('?', '').toLowerCase()}-001.json`;
-    const bytes = JSON.stringify({ version: 1, gate: name, documents: docs.map((item) => ({ path: item, sha256: sha256(readFileSync(path.join(dir, item))) })) });
+    const bytes = JSON.stringify({ version: 1, gate: name, documents: docs.map((item) => ({ path: item, sha256: sha256(readFileSync(path.join(dir, item))) })), ...(name === 'Shippable?' && binding ? { code: binding } : {}) });
     writeFileSync(path.join(dir, manifest), bytes);
     gates.push(`  - { name: ${name}, doc: ${doc}, need: required, status: approved, date: 2026-11-17, manifest: ${manifest}, hash: ${sha256(bytes)} }`);
   }
@@ -60,7 +70,9 @@ function setup(t, { approved = [], workflow = 'full-v4' } = {}) {
     `worktree: "${worktree.replaceAll('\\', '/')}"`, 'changes: []', 'people: []', 'gates:', ...gates, 'updated: 2026-11-17', '---',
     '# APP-7', '', '## Now', '', '- State: ▶️ active', '',
   ].join('\n'));
-  return { root, app, worktree, dir, readme, wiki: path.join(root, 'app.forge', 'wiki') };
+  const made = { root, app, worktree, dir, readme, wiki: path.join(root, 'app.forge', 'wiki'), binding };
+  if (approved.includes('Shippable?')) trustConfig(made, ['repo.baseBranch=main']);
+  return made;
 }
 
 const run = (cwd, command) => preTool({ cwd, command }, { env });
@@ -146,9 +158,9 @@ test('shipActions finds each push and each change request command, with its fold
   assert.deepEqual(kinds('gh pr create -R a/b -t "T" -F body.md --draft'), ['change']);
   assert.deepEqual(kinds('git push -u origin x && gh pr create -t T'), ['push', 'change']);
   assert.deepEqual(shipActions('gh pr create -t T', base, []), [], 'Without a trusted config there is no change command.');
-  assert.deepEqual(shipActions('git -C ../wt push', base, []), [{ kind: 'push', cwd: path.resolve(base, '../wt'), refs: [], all: false }]);
+  assert.deepEqual(shipActions('git -C ../wt push', base, []), [{ kind: 'push', cwd: path.resolve(base, '../wt'), refs: [], all: false, sources: ['HEAD'], deletes: false }]);
   assert.deepEqual(shipActions('cd sub/dir && git push; cd .. && gh pr create', base, changes), [
-    { kind: 'push', cwd: path.resolve(base, 'sub/dir'), refs: [], all: false }, { kind: 'change', cwd: path.resolve(base, 'sub') },
+    { kind: 'push', cwd: path.resolve(base, 'sub/dir'), refs: [], all: false, sources: ['HEAD'], deletes: false }, { kind: 'change', cwd: path.resolve(base, 'sub') },
   ]);
   // A push names its branches: the first plain word is the remote, and each other word is a refspec.
   const targets = (line) => shipActions(line, base, []).map(({ refs, all }) => ({ refs, all }));
@@ -156,6 +168,15 @@ test('shipActions finds each push and each change request command, with its fold
   assert.deepEqual(targets('git push origin :old -o ci.skip HEAD'), [{ refs: ['HEAD'], all: false }]);
   assert.deepEqual(targets('git push --all origin'), [{ refs: [], all: true }]);
   assert.deepEqual(targets('git push --mirror'), [{ refs: [], all: true }]);
+  // What a push sends: the source of each refspec, HEAD for no refspec, nothing for a delete, all branches, or a pattern.
+  const sent = (line) => shipActions(line, base, []).map(({ sources, deletes }) => ({ sources, deletes }));
+  assert.deepEqual(sent('git push'), [{ sources: ['HEAD'], deletes: false }]);
+  assert.deepEqual(sent('git push origin HEAD:main +abc123:refs/heads/x'), [{ sources: ['HEAD', 'abc123'], deletes: false }]);
+  assert.deepEqual(sent('git push origin --delete old'), [{ sources: [], deletes: true }]);
+  assert.deepEqual(sent('git push -d origin old'), [{ sources: [], deletes: true }]);
+  assert.deepEqual(sent('git push origin :old'), [{ sources: [], deletes: true }]);
+  assert.deepEqual(sent('git push --all'), [{ sources: [], deletes: false }]);
+  assert.deepEqual(sent('git push origin refs/heads/*:refs/heads/*'), [{ sources: [], deletes: false }]);
 });
 
 test('a push that names a ticket branch is checked from each folder of the repository', (t) => {
@@ -389,7 +410,7 @@ function approveDrafts(s, drafts, { listed = Object.keys(drafts) } = {}) {
   mkdirSync(path.join(s.dir, 'outbox'), { recursive: true });
   for (const [name, target] of Object.entries(drafts)) writeFileSync(path.join(s.dir, 'outbox', name), `---\nstatus: draft\ntarget: ${target}\n---\n# Title\n\nText\n`);
   const documents = ['review.md', ...listed.map((name) => `outbox/${name}`)].map((doc) => ({ path: doc, sha256: sha256(readFileSync(path.join(s.dir, ...doc.split('/')))) }));
-  const bytes = JSON.stringify({ version: 1, gate: 'Shippable?', documents });
+  const bytes = JSON.stringify({ version: 1, gate: 'Shippable?', documents, ...(s.binding ? { code: s.binding } : {}) });
   writeFileSync(path.join(s.dir, 'approvals', 'shippable-001.json'), bytes);
   writeFileSync(s.readme, readFileSync(s.readme, 'utf8').replace(/(name: Shippable\?.*hash: )[a-f0-9]{64}/, `$1${sha256(bytes)}`));
 }
@@ -498,4 +519,215 @@ test('forge.mjs hook pre-tool always exits 0 with JSON', (t) => {
     assert.equal(quiet.status, 0);
     assert.deepEqual(JSON.parse(quiet.stdout), {});
   }
+});
+
+const APPROVE = () => `node ${cli} gate-approve app-7 planned --answer approve`;
+
+test('guardActions gives an approve action for gate-approve and trust approve, in each launcher form', () => {
+  const cwd = '/x';
+  const kinds = (line) => guardActions(line, cwd).map((a) => a.kind);
+  assert.deepEqual(guardActions('node /p/scripts/forge.mjs gate-approve app-7 planned --answer "approve planned" --method chat', cwd),
+    [{ kind: 'approve', cwd, command: 'gate-approve', key: 'app-7', gate: 'planned', answer: 'approve planned' }]);
+  assert.deepEqual(guardActions('node /p/forge.mjs --wiki /w trust approve config/repo.md=abcdef123456', cwd),
+    [{ kind: 'approve', cwd, command: 'trust approve', files: ['config/repo.md=abcdef123456'] }]);
+  assert.deepEqual(kinds('forge gate-approve app-7 planned --answer approve'), ['approve']);
+  assert.deepEqual(kinds('/home/a/bin/forge.cmd gate-approve app-7 planned --answer approve'), ['approve']);
+  assert.deepEqual(kinds('C:\\forge\\forge.mjs gate-approve app-7 planned --answer approve'), ['approve']);
+  assert.deepEqual(kinds('FORGE_X=1 sudo node /p/forge.mjs trust approve a=12345678'), ['approve']);
+  // No verdict for a dry run, a help call, the status call of trust, and a command that only names the words.
+  assert.deepEqual(kinds('node /p/forge.mjs gate-approve app-7 planned --answer approve --dry-run'), []);
+  assert.deepEqual(kinds('node /p/forge.mjs gate-approve --help'), []);
+  assert.deepEqual(kinds('forge trust approve -h'), []);
+  assert.deepEqual(kinds('node /p/forge.mjs trust'), []);
+  assert.deepEqual(kinds('node /p/forge.mjs trust --json'), []);
+  assert.deepEqual(kinds('grep gate-approve plugins/forge/scripts/forge.mjs'), []);
+  assert.deepEqual(kinds('node /p/forge.mjs lint app-7'), []);
+  // A quoted --answer that holds "--dry-run" is one word, so it is still an approval.
+  assert.deepEqual(kinds('node /p/forge.mjs gate-approve app-7 planned --answer "approve --dry-run"'), ['approve']);
+});
+
+test('preTool asks for an approval command in a ticket worktree, in the main checkout, with an untrusted config, and with gateGuard off', (t) => {
+  const s = setup(t);
+  const check = (verdict, text) => {
+    assert.equal(verdict?.decision, 'ask');
+    assert.match(verdict.reason, /^Forge gate guard: /);
+    assert.match(verdict.reason, text);
+    assert.match(verdict.reason, /Allow it only if you gave this answer yourself\./);
+  };
+  // The config is not trusted yet, and the folder is a ticket worktree or the main checkout.
+  check(run(s.worktree, APPROVE()), /gate-approve.*planned.*app-7.*"approve"/);
+  check(run(s.app, APPROVE()), /gate-approve/);
+  check(run(s.worktree, 'forge gate-approve app-7 planned --answer approve'), /gate-approve/);
+  check(run(s.worktree, 'forge.cmd gate-approve app-7 planned --answer approve'), /gate-approve/);
+  check(run(s.worktree, `node ${cli} trust approve config/repo.md=abcdef123456`), /trust approve.*config\/repo\.md=abcdef123456/);
+  // A folder with no repository, no ticket, and no wiki.
+  const bare = mkdtempSync(path.join(os.tmpdir(), 'forge-guard-bare-'));
+  t.after(() => rmSync(bare, { recursive: true, force: true }));
+  check(run(bare, APPROVE()), /gate-approve/);
+  // policy.gateGuard: off does not turn it off.
+  const off = setup(t);
+  trustConfig(off, ['policy.gateGuard=off']);
+  assert.equal(run(off.worktree, `git push origin users/a/APP-7-doc-import`), null, 'Control: the push guard is off.');
+  check(run(off.worktree, APPROVE()), /gate-approve/);
+  check(run(off.app, `node ${cli} trust approve config/repo.md=abcdef123456`), /trust approve/);
+});
+
+test('preTool denies an approval command in bypassPermissions and gives no verdict for the read forms', (t) => {
+  const s = setup(t);
+  const verdict = preTool({ cwd: s.worktree, command: APPROVE(), mode: 'bypassPermissions' }, { env });
+  assert.equal(verdict.decision, 'deny');
+  assert.match(verdict.reason, /gate-approve/);
+  assert.match(verdict.reason, /run it in a terminal/);
+  assert.equal(preTool({ cwd: s.worktree, command: APPROVE(), mode: 'default' }, { env }).decision, 'ask');
+  for (const command of [
+    `node ${cli} gate-approve app-7 planned --answer approve --dry-run`,
+    `node ${cli} gate-approve --help`,
+    `node ${cli} trust`,
+    `node ${cli} trust --json`,
+    'grep gate-approve plugins/forge/scripts/forge.mjs',
+  ]) assert.equal(run(s.worktree, command), null, command);
+  assert.equal(run(s.worktree, `node ${cli} gate-approve app-7 planned --answer "approve --dry-run"`)?.decision, 'ask');
+});
+
+test('a push is bound to the code of the Shippable? approval: a new commit is denied, a clean rebase and an unchanged branch pass', (t) => {
+  const push = 'git push -u origin users/a/APP-7-doc-import';
+  const s = setup(t, { approved: ['Planned?', 'Shippable?'] });
+  assert.equal(run(s.worktree, push), null, 'The approved code pushes.');
+  // A clean rebase: main moves on, the branch is rebased, and the patch-id stays.
+  writeFileSync(path.join(s.app, 'c.txt'), 'other\n');
+  git(s.app, 'add', 'c.txt');
+  git(s.app, 'commit', '-q', '-m', 'other');
+  git(s.worktree, 'rebase', '-q', 'main');
+  assert.notEqual(git(s.worktree, 'rev-parse', 'HEAD'), s.binding.head);
+  assert.equal(run(s.worktree, push), null, 'A clean rebase keeps the patch-id.');
+  assert.equal(run(s.app, push), null, 'Also from the main checkout.');
+  // A new commit after the approval.
+  writeFileSync(path.join(s.worktree, 'b.txt'), 'changed after GO\n');
+  git(s.worktree, 'commit', '-q', '-am', 'late fix');
+  const late = run(s.worktree, push);
+  assert.equal(late.decision, 'deny');
+  assert.match(late.reason, /The code changed after the Shippable\? approval/);
+  assert.equal(run(s.app, push).decision, 'deny', 'Also from the main checkout.');
+});
+
+test('a push is denied with no code binding, with a read error (own message), and with another branch in the manifest', (t) => {
+  const push = 'git push -u origin users/a/APP-7-doc-import';
+  const old = setup(t, { approved: ['Planned?', 'Shippable?'], code: 'none' });
+  const noCode = run(old.worktree, push);
+  assert.equal(noCode.decision, 'deny');
+  assert.match(noCode.reason, /approved before Forge 13\.1\.0 or without a code binding.*Open Shippable\? again/);
+  // A base branch that does not exist: the binding cannot be read, which is not a mismatch.
+  const gone = setup(t, { approved: ['Planned?', 'Shippable?'] });
+  trustConfig(gone, ['repo.baseBranch=nope']);
+  const error = run(gone.worktree, push);
+  assert.equal(error.decision, 'deny');
+  assert.match(error.reason, /base branch nope not found: set repo\.baseBranch/);
+  assert.doesNotMatch(error.reason, /git fetch/);
+  assert.doesNotMatch(error.reason, /code changed after/);
+  // The missing worktree is the same kind of error.
+  const away = setup(t, { approved: ['Planned?', 'Shippable?'] });
+  rmSync(away.worktree, { recursive: true, force: true });
+  assert.match(run(away.app, push).reason, /Forge cannot read the code/);
+  // The manifest names another branch than the README.
+  const other = setup(t, { approved: ['Planned?', 'Shippable?'] });
+  const manifest = path.join(other.dir, 'approvals', 'shippable-001.json');
+  const bytes = JSON.stringify({ ...JSON.parse(readFileSync(manifest, 'utf8')), code: { ...other.binding, branch: 'users/a/other' } });
+  writeFileSync(manifest, bytes);
+  writeFileSync(other.readme, readFileSync(other.readme, 'utf8').replace(/(name: Shippable\?.*hash: )[a-f0-9]{64}/, `$1${sha256(bytes)}`));
+  const branch = run(other.worktree, push);
+  assert.equal(branch.decision, 'deny');
+  assert.match(branch.reason, /is not the branch of the Shippable\? approval/);
+  // policy.gateGuard ask keeps its meaning, and off skips the check.
+  const asks = setup(t, { approved: ['Planned?', 'Shippable?'], code: 'none' });
+  trustConfig(asks, ['policy.gateGuard=ask']);
+  assert.equal(run(asks.worktree, push).decision, 'ask');
+  const off = setup(t, { approved: ['Planned?', 'Shippable?'], code: 'none' });
+  trustConfig(off, ['policy.gateGuard=off']);
+  assert.equal(run(off.worktree, push), null);
+});
+
+test('H1: the approval parser reads the same value options as parseArgs', () => {
+  const cwd = path.resolve('/wt');
+  const commands = (line) => guardActions(line, cwd).map((action) => action.command);
+  assert.deepEqual(commands('node /p/scripts/forge.mjs --base x gate-approve L-1 Shippable? --answer yes'), ['gate-approve']);
+  assert.deepEqual(commands('node /p/scripts/forge.mjs --summary s trust approve config/a.md=1'), ['trust approve']);
+  assert.deepEqual(commands('node /p/scripts/forge.mjs --port 80 --out o gate-approve L-1 Planned? --answer yes'), ['gate-approve']);
+  const first = guardActions('node /p/scripts/forge.mjs --base x gate-approve L-1 Shippable? --answer yes', cwd)[0];
+  assert.deepEqual([first.key, first.gate, first.answer], ['L-1', 'Shippable?', 'yes']);
+  // Each value option of parseArgs is a value option of the guard: the next word is not the subcommand.
+  for (const option of FORGE_VALUE_OPTIONS) {
+    assert.deepEqual(parseArgs([option, 'v', 'gate-approve'])._, ['gate-approve'], option);
+    assert.deepEqual(commands(`node /p/forge.mjs ${option} v gate-approve L-1 Planned?`), ['gate-approve'], option);
+  }
+});
+
+test('H2: a push must send the head of the approved ticket branch', (t) => {
+  const s = setup(t, { approved: ['Planned?', 'Shippable?'] });
+  const branch = 'users/a/APP-7-doc-import';
+  assert.equal(run(s.worktree, `git push origin ${branch}:main`), null, 'The branch itself passes.');
+  assert.equal(run(s.worktree, `git push origin ${s.binding.head}:main`), null, 'Its sha passes.');
+  assert.equal(run(s.worktree, 'git push origin HEAD:main'), null, 'HEAD is the branch head here.');
+  // Another sha: the first commit of main.
+  const other = git(s.app, 'rev-parse', 'main');
+  const denied = run(s.worktree, `git push origin ${other}:main`);
+  assert.equal(denied.decision, 'deny');
+  assert.match(denied.reason, new RegExp(`this push sends ${other.slice(0, 12)}, not the head of the ticket branch ${branch}`));
+  assert.equal(run(s.worktree, 'git push origin main').decision, 'deny', 'Another branch name.');
+  // A detached HEAD with a new commit: the branch ref has not moved, but the push sends new code.
+  git(s.worktree, 'checkout', '-q', '--detach');
+  assert.equal(run(s.worktree, 'git push origin HEAD:main'), null, 'A detached HEAD on the branch head is the approved code.');
+  writeFileSync(path.join(s.worktree, 'c.txt'), 'new\n');
+  git(s.worktree, 'add', 'c.txt');
+  git(s.worktree, 'commit', '-q', '-m', 'detached');
+  const detached = run(s.worktree, 'git push origin HEAD:main');
+  assert.equal(detached.decision, 'deny');
+  assert.match(detached.reason, /this push sends [0-9a-f]{12}, not the head of the ticket branch/);
+  assert.equal(run(s.worktree, 'git push').decision, 'deny', 'A push with no refspec sends HEAD.');
+  assert.equal(run(s.worktree, `git push origin ${git(s.worktree, 'rev-parse', 'HEAD')}:main`).decision, 'deny');
+  // A delete sends no code.
+  assert.equal(run(s.worktree, `git push origin --delete ${branch}`), null);
+  assert.equal(run(s.worktree, `git push origin :${branch}`), null);
+});
+
+test('H3: an empty README branch does not turn the code binding off', (t) => {
+  const s = setup(t, { approved: ['Planned?', 'Shippable?'] });
+  const push = 'git push -u origin users/a/APP-7-doc-import';
+  assert.equal(run(s.worktree, push), null);
+  writeFileSync(s.readme, readFileSync(s.readme, 'utf8').replace('branch: "users/a/APP-7-doc-import"', 'branch: ""'));
+  const denied = run(s.worktree, 'git push origin HEAD:main');
+  assert.equal(denied?.decision, 'deny');
+  assert.match(denied.reason, /the README branch is empty, but the Shippable\? approval binds the branch users\/a\/APP-7-doc-import/);
+});
+
+test('M2: an untrusted config and a missing base branch have their own message, a closed ticket and a delete get no binding check', (t) => {
+  const push = 'git push -u origin users/a/APP-7-doc-import';
+  const untrusted = setup(t, { approved: ['Planned?', 'Shippable?'] });
+  setValues(resolveConfigDir(untrusted), ['repo.baseBranch=develop']);
+  const a = run(untrusted.worktree, push);
+  assert.equal(a.decision, 'deny');
+  assert.match(a.reason, /the Forge config is not trusted \(run \`forge\.mjs trust\`\)/);
+  assert.doesNotMatch(a.reason, /git fetch/);
+  const gone = setup(t, { approved: ['Planned?', 'Shippable?'] });
+  trustConfig(gone, ['repo.baseBranch=nope']);
+  assert.match(run(gone.worktree, push).reason, /base branch nope not found: set repo\.baseBranch/);
+  assert.equal(run(gone.worktree, 'git push origin --delete users/a/APP-7-doc-import'), null, 'A delete is not checked.');
+  // A closed ticket: its work is merged, so the binding does not apply.
+  const closed = setup(t, { approved: ['Planned?', 'Shippable?'] });
+  writeFileSync(path.join(closed.worktree, 'b.txt'), 'changed after GO\n');
+  git(closed.worktree, 'commit', '-q', '-am', 'late fix');
+  assert.equal(run(closed.worktree, push).decision, 'deny');
+  writeFileSync(closed.readme, readFileSync(closed.readme, 'utf8').replace('phase: start', 'phase: closed').replace('state: active', 'state: done'));
+  assert.equal(run(closed.worktree, push), null, 'A closed ticket gets no binding check.');
+});
+
+function resolveConfigDir(s) {
+  return seed(resolve({ cwd: s.app, env }), templates).configDir;
+}
+
+test('M3: one deadline for the whole call: an over deadline denies with a clear message', (t) => {
+  const s = setup(t, { approved: ['Planned?', 'Shippable?'] });
+  const push = 'git push -u origin users/a/APP-7-doc-import';
+  assert.equal(preTool({ cwd: s.worktree, command: push }, { env, deadlineMs: 0 }).decision, 'deny');
+  assert.match(preTool({ cwd: s.worktree, command: push }, { env, deadlineMs: 0 }).reason, /ran out of time/);
+  assert.equal(preTool({ cwd: s.worktree, command: push }, { env }), null, 'The default budget is enough.');
 });

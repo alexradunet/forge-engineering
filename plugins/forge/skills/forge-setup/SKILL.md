@@ -183,6 +183,7 @@ Run `git -C <wiki> status --short` and `git -C <wiki> diff -- forge rules`. Show
 Run `trust`. Show each `new` or `changed` file with the first 12 characters of its hash.
 After the user says yes, run `trust approve <path>=<hash> ...` for exactly those files.
 A rule page shows as `../rules/<name>.md`. The hook gives a rule page to each session only after approval.
+The gate guard asks before `trust approve`. In `bypassPermissions` mode it denies the command: the user runs `trust approve` in a terminal.
 
 ### Step 10. Live read
 

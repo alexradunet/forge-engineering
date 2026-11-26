@@ -39,7 +39,7 @@ const run = (wiki, ...args) => spawnSync(process.execPath, [cli, 'gate-approve',
 
 test('gate-approve records the exact answer and a gate that lint accepts', (t) => {
   const { wiki, dir, digest } = fixture(t);
-  const result = run(wiki, 'SYN-3', 'planned', '--answer', 'Approve Planned? Ship it', '--method', 'chat', '--hash', digest, '--today', '2026-10-02', '--json');
+  const result = run(wiki, 'SYN-3', 'planned', '--answer', 'Approve Planned?', '--method', 'chat', '--hash', digest, '--today', '2026-10-02', '--json');
   assert.equal(result.status, 0, result.stderr);
   assert.equal(JSON.parse(result.stdout).hash, digest);
   const text = readFileSync(path.join(dir, 'README.md'), 'utf8');
@@ -50,7 +50,7 @@ test('gate-approve records the exact answer and a gate that lint accepts', (t) =
   const history = readFileSync(path.join(dir, 'approvals', 'history.md'), 'utf8');
   assert.match(history, /^# Approval history \(SYN-3\)\n\n## 2026-10-02 Planned\? approved\n/);
   assert.match(history, new RegExp(`- Manifest: approvals/planned-001\\.json sha256 ${digest}\\n`));
-  assert.match(history, /- Document: story\.md sha256 [a-f0-9]{64}\n[\s\S]*- Method: chat\n- Answer of the user:\n\n> Approve Planned\? Ship it\n$/);
+  assert.match(history, /- Document: story\.md sha256 [a-f0-9]{64}\n[\s\S]*- Method: chat\n- Answer of the user:\n\n> Approve Planned\?\n$/);
 });
 
 test('gate-approve writes nothing when the review set changed, in a dry run, or for a wrong gate', (t) => {
@@ -86,7 +86,13 @@ test('gate-approve accepts only the approval contract of the ticket skill and a 
   assert.equal(isApproval('Planned?', 'GO, ship it', 'form'), false);
   assert.equal(isApproval('Planned?', 'approve planned', 'form'), false);
   assert.equal(isApproval('Planned?', 'APPROVE planned?', 'chat'), true);
-  assert.equal(isApproval('Planned?', 'approve Planned, thanks', 'chat'), true);
+  assert.equal(isApproval('Planned?', 'approve planned', 'chat'), true);
+  assert.equal(isApproval('Planned?', 'approve planned?', 'chat'), true);
+  assert.equal(isApproval('Planned?', 'approve Planned?.', 'chat'), true);
+  assert.equal(isApproval('Planned?', 'APPROVE PLANNED!', 'chat'), true);
+  assert.equal(isApproval('Planned?', 'approve Planned, thanks', 'chat'), false, 'Only the whole answer approves.');
+  assert.equal(isApproval('Planned?', 'approve planned only after you fix step 3', 'chat'), false);
+  assert.equal(isApproval('Planned?', 'approve planned? no, not yet', 'chat'), false);
   assert.equal(isApproval('Planned?', 'approve', 'chat'), false);
   assert.equal(isApproval('Planned?', 'approve shippable', 'chat'), false);
   assert.equal(isApproval('Planned?', 'approve plannedx', 'chat'), false);
@@ -96,7 +102,7 @@ test('gate-approve accepts only the approval contract of the ticket skill and a 
 
   const { dir, readme, digest } = fixture(t);
   assert.throws(() => approveGate(dir, { gate: 'Planned?', answer: 'looks fine', hash: digest }), /form answer is not `approve`/);
-  assert.throws(() => approveGate(dir, { gate: 'Planned?', answer: 'approve shippable', method: 'chat', hash: digest }), /does not start with `approve planned`/);
+  assert.throws(() => approveGate(dir, { gate: 'Planned?', answer: 'approve shippable', method: 'chat', hash: digest }), /is not `approve planned`/);
   assert.throws(() => approveGate(dir, { gate: 'Planned?', answer: 'approve' }), /--hash/);
   assert.equal(readFileSync(path.join(dir, 'README.md'), 'utf8'), readme);
 });

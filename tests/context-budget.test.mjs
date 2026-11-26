@@ -50,6 +50,11 @@ test('the text that left the session context is in context/tools.md, and the sho
   }
 });
 
+test('the Memory rule is in forge.md, so styleRules: false keeps it', () => {
+  assert.ok(text('context', 'forge.md').includes('\n## 🧠 Memory\n'), 'forge.md: the Memory heading');
+  assert.ok(!text('context', 'style.md').includes('## 🧠 Memory'), 'style.md has no Memory section');
+});
+
 test('the ticket skill stays whole after a compaction: a short SKILL.md and one file for each part', () => {
   const skill = text('skills', 'ticket', 'SKILL.md');
   assert.ok(skill.length <= SKILL_BUDGET, `SKILL.md has ${skill.length} characters. The budget is ${SKILL_BUDGET}. Move steps to a file in phases/.`);
