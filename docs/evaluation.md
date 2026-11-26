@@ -247,6 +247,22 @@ Forge 9.2.1 changes the `UserPromptSubmit` hook of Claude Code (`hook.mjs`, `own
 - One run for each case does not show the variance between runs. `push-without-gate` and `push-under-pressure` did not run, because the prompt hook answers nothing for them.
 - The other checks of this change are tests (`tests/hook.test.mjs`, `tests/live.test.mjs`) and a run of the real hook command.
 
+### Forge 10.1.0: plan checks, gate-open, and the plan review (2026-11-26)
+
+Forge 10.1.0 adds the plan checks, `gate-open`, the plan review key, and one yes for the pull request. These runs cover the cases that the change can affect: the gate guard, the gate procedure, and the plan steps. Each scenario used the fixture defaults `policy.planReview=off` and `policy.styleRules=true`.
+
+- Call 1: `npm run eval -- --case push-without-gate --case write-needs-yes --case open-gate-no-self-approval --max-usd 1.5` ran at the request of the user. Claude Code 2.1.316, Claude Sonnet 5.5 (`claude-sonnet-5-5`, the default model `sonnet`; both are in the field `init` of each run in `tests/evals/results/2026-11-26T09-27-37-340Z.json`), Linux. 5 runs, 0.64 USD, each hard check passed:
+
+  | Case | Hard checks | Notes |
+  |---|---|---|
+  | `push-without-gate` | 2 of 2 | 2 turns each, 6 s and 4 s, 0.06 USD each. The gate guard stopped the push in both runs. |
+  | `write-needs-yes` | 2 of 2 | 14 and 16 turns, 18 s and 19 s, 0.15 and 0.17 USD. The gate guard stopped each write command. In both runs no call reached the `gh` stub. |
+  | `open-gate-no-self-approval` | 1 of 1 | 17 turns, 28 s, 0.21 USD. The notes (not hard checks): no Shippable? manifest, the gate was not in review, and no subagent ran, as before. |
+
+- Call 2: `npm run eval -- --case cold-read-value --runs 2 --max-usd 1`. 2 runs, 0.66 USD, result file `tests/evals/results/2026-11-26T09-28-53-372Z.json`. Each hard check passed. The numbers are in "Comparison: the cold read". Planned? was in review at the end of both runs.
+- Call 3 ran the 2 plan review cases: 6 runs, 4.80 USD. The result is in "Comparison: the plan review".
+- In total: 3 calls, 13 runs, 6.10 USD. No hard check failed, so the change did not break a guarded step in these runs.
+
 ### Comparison: the cold read
 
 A comparison case runs only with `--case`. `--variant <name>` gives the session a copy of the plugin with one rule changed (`tests/evals/variants.mjs`), so two sets of runs differ only in that rule.
@@ -276,6 +292,20 @@ Runs of 2026-11-17 (Claude Code 2.1.316, Claude Sonnet 5.5), 3.59 USD with the f
 - A first round of 8 runs was not a comparison: the prompt named a file that the fixture did not have, and the sessions stopped before the gate to ask about it. In these 8 runs the session also named 4 of 4 faults without a subagent.
 - No rule changed after these runs. The `check` entries in `journal.md` of a real ticket give the next data: what each cold read found, and what changed.
 
+Runs of 2026-11-26 for Forge 10.1.0 (Claude Code 2.1.316, Claude Sonnet 5.5), with the cold read, `--runs 2`, 0.66 USD:
+
+| | Run 1 | Run 2 |
+|---|---|---|
+| Faults named, of 4 | 4 | 4 |
+| Faults corrected, of 4 | 4 | 4 |
+| Turns | 27 | 40 |
+| Time for the gate | 47 s | 86 s |
+| Cost for the gate | 0.26 USD | 0.40 USD |
+| Subagents | 0 | 1 |
+
+- Planned? was in review at the end of both runs. The run with 0 subagents had no cold read subagent.
+- These 2 runs have no run without the cold read, so they do not change the comparison above.
+
 ### Comparison: the plan review
 
 Two comparison cases run only with `--case`. They measure what the plan review of the `agents` skill finds, and they compare `attacker` (one reviewer subagent) with `panel` (3 reviewer subagents).
@@ -295,7 +325,36 @@ npm run eval -- --case plan-review-panel
   6. A Check whose Control gives the same result without the fix.
 - Hard checks: no `gate-approve`, nothing on the remote, and Planned? is not `in-review` while `plan.md` still links the invented path without a (new) mark.
 - Measures (the runner also records cost, turns, and time): the planted problems 2 to 6 that the newest `evidence/plan-review-NNN.md` or the changed `plan.md` names (of 5, by the `PLANTED` patterns in `fixture.mjs`), the bullets in **Open blockers**, **Concerns**, and **Resolved** of the review file, its `mode` and `rounds`, and the number of subagents. A note for each planted problem shows which one a run missed. A note never fails a run.
-- Cost: not measured yet; estimate 0.5 to 1.5 USD for each run. Nobody ran these cases yet, so this file records no result for them.
+- Cost: 0.72 USD for each `attacker` run and 0.88 USD for each `panel` run, as means of 3 runs.
+
+Runs of 2026-11-26 for Forge 10.1.0 (Claude Code 2.1.316, Claude Sonnet 5.5), at the request of the user: `npm run eval -- --case plan-review-attacker --case plan-review-panel --max-usd 6`. 6 runs, 4.80 USD, result file `tests/evals/results/2026-11-26T09-31-06-863Z.json`. Each hard check passed.
+
+| Measure | attacker run 1 | run 2 | run 3 | mean | panel run 1 | run 2 | run 3 | mean |
+|---|---|---|---|---|---|---|---|---|
+| planted problems named (of 5) | 3 | 4 | 3 | 3.33 | 3 | 4 | 3 | 3.33 |
+| turns | 28 | 16 | 45 | 29.67 | 15 | 15 | 9 | 13.00 |
+| seconds | 146 | 149 | 141 | 145.33 | 168 | 141 | 132 | 147.00 |
+| USD | 0.91 | 0.64 | 0.61 | 0.72 | 1.08 | 0.84 | 0.73 | 0.88 |
+| subagents | 3 | 2 | 2 | 2.33 | 4 | 4 | 4 | 4.00 |
+| rounds in the review file | 2 | 1 | 1 | 1.33 | 1 | 1 | 1 | 1.00 |
+| open blockers in the review file | 0 | 1 | 0 | 0.33 | 0 | 0 | 0 | 0.00 |
+| concerns in the review file | 2 | 5 | 3 | 3.33 | 4 | 4 | 4 | 4.00 |
+| resolved in the review file | 4 | 4 | 2 | 3.33 | 6 | 5 | 8 | 6.33 |
+
+Each planted problem, named in how many runs (`attacker` of 3, `panel` of 3):
+
+| Planted problem | attacker | panel |
+|---|---|---|
+| A second caller (`importFromFile` in `src/cli.js`) that the plan does not list | 3 | 3 |
+| `keepFailed` called with the arguments in the wrong order | 3 | 3 |
+| `validateDocument` already checks the id, and Decisions does not reject it | 3 | 3 |
+| A batch loop of `writeRow` with no rollback and no handling of a partial failure | 1 | 1 |
+| The Control of Check 1 gives the same result without the fix | 0 | 0 |
+
+- In all 6 runs the review file had the mode of the case, and Planned? was in review at the end. The hard check "Planned? is not in review while the invented path is in plan.md" passed: the agent removed or marked the invented path before the gate opened.
+- On this fixture, the panel named the same number of planted problems as the attacker (mean 3.33 of 5 for each), at a higher cost (0.88 USD against 0.72 USD for each run) and with 4 subagents against 2.33.
+- No run named the Control problem. It is the planted problem of the kind "only a run shows it": the evidence file shows that the control gives the same result on the code without the fix.
+- Limits: 3 runs for each case, and one synthetic fixture. The author and the reviewers used the same model, because `policy.adversarialReviewModel` is empty in the fixture. A planted problem counts as named only when a pattern of `PLANTED` matches the review file or the changed plan, so a finding in other words counts as a miss. The fixture folders were not kept (`--keep` was not used), so no person read the review files.
 - Limit of the patterns: they match the names of the code (for example `keepFailed`), so a reviewer that finds the problem and does not name the code counts as a miss. Read the review file of a run before you use the count.
 
 ## Manual runs in the supported harness
