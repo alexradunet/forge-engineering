@@ -17,7 +17,8 @@ import path from 'node:path';
 import { resolve, samePath } from './repo.mjs';
 import { listTickets } from './tickets.mjs';
 import { approvedDrafts, checkAction, isChangeDraft, regular, within } from './validation.mjs';
-import { baseBranchOf, codeBinding } from './code-bind.mjs';
+import { baseBranchOf, codeBinding, resolveCommit } from './code-bind.mjs';
+import { FORGE_VALUE_OPTIONS } from './cli-options.mjs';
 import { ticketOfFolder, trustedConfig } from './hook.mjs';
 
 export const GUARD_MODES = ['deny', 'ask', 'off'];
@@ -31,8 +32,8 @@ const METHOD_OPTIONS = new Set(['-X', '--method']);
 // The shells that run the text of a heredoc or a pipe as commands.
 const SHELLS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'fish', 'pwsh', 'powershell']);
 const HELP = new Set(['--help', '-h']);
-// The options of forge.mjs that take a value, before and after the subcommand.
-const FORGE_VALUE_OPTIONS = new Set(['--wiki', '--cwd', '--profile', '--answer', '--method', '--manifest', '--hash', '--today']);
+// The time budget of one preTool call (the hook limit is 30 s).
+const DEADLINE_MS = 20000;
 // The capabilities that change something outside the workspace. The core holds the names; the trusted config gives the commands.
 export const WRITE_CAPABILITIES = ['tracker.comment', 'tracker.create', 'tracker.transition', 'tracker.link', 'repo.open-change', 'repo.update-change', 'repo.reply', 'ci.trigger'];
 // Permission modes in which a host runs a command with no prompt, also after a hook `ask` (GH-2: Claude Code bypassPermissions).
@@ -285,20 +286,33 @@ function matches(words, command) {
 }
 
 /**
- * The branches that a `git push` names: { refs, all }. The first plain word is the remote, and each other word is a
+ * The branches that a `git push` names: { refs, all, sources, deletes }. The first plain word is the remote, and each other word is a
  * refspec `[+]<source>[:<target>]`. `all` is true for `--all`, `--mirror`, and `--branches`.
+ * `sources` lists what the push sends: the source of each refspec, or `HEAD` for a push with no refspec (it is empty for a push of
+ * all branches, of tags only, and of a pattern). `deletes` is true when the push only deletes refs (`--delete`, `-d`, or `:<target>`): it sends no code.
  * A push of a ticket branch can run from each folder of the repository, so the folder alone does not show the ticket.
  */
 function pushTargets(args) {
   const plain = [];
   let all = false;
+  let tags = false;
+  let del = false;
   for (let i = 0; i < args.length; i++) {
     if (['--all', '--mirror', '--branches'].includes(args[i])) all = true;
+    else if (args[i] === '--tags') tags = true;
+    else if (args[i] === '--delete' || args[i] === '-d') del = true;
     else if (PUSH_VALUE_OPTIONS.has(args[i])) i++;
     else if (!args[i].startsWith('-')) plain.push(args[i]);
   }
-  const refs = plain.slice(1).map((spec) => spec.replace(/^\+/, '').split(':')[0].replace(/^refs\/heads\//, '')).filter(Boolean);
-  return { refs, all };
+  const specs = plain.slice(1).map((spec) => spec.replace(/^\+/, ''));
+  const refs = specs.map((spec) => spec.split(':')[0].replace(/^refs\/heads\//, '')).filter(Boolean);
+  const pieces = specs.filter((spec) => !del && spec.split(':')[0]);
+  let sources = pieces.map((spec) => spec.split(':')[0]);
+  const noSource = all || sources.some((source) => source.includes('*'));
+  if (noSource) sources = [];
+  else if (!specs.length && !del && !tags) sources = ['HEAD'];
+  const deletes = del || (specs.length > 0 && specs.every((spec) => spec.startsWith(':')));
+  return { refs, all, sources, deletes };
 }
 
 /**
@@ -416,23 +430,43 @@ function approveVerdict(action) {
   return { decision: 'ask', key, question, reason: `Forge gate guard: ${question} Allow it only if you gave this answer yourself.` };
 }
 
+/** The message for a git error of the code check: the time limit and a missing base branch have their own text. */
+function gitProblem(error, ticket, baseBranch) {
+  if (error.code === 'deadline') return `Forge ran out of time while it read the code of ${ticket.branch} (the hook has a limit of ${DEADLINE_MS / 1000} s). Try again.`;
+  if (error.code === 'base-missing') return `base branch ${error.baseBranch ?? baseBranch} not found: set repo.baseBranch.`;
+  return `Forge cannot read the code of ${ticket.branch} to compare it with the Shippable? approval: ${error.message} Run \`git fetch\`, then try again.`;
+}
+
 /**
  * The message of the code binding check at a push, or '' when the code is the code of the Shippable? approval.
- * The approved manifest holds `code` ({ head, base, patchId, branch }). The branch of the README must be that branch, and the patch-id of the
+ * The approved manifest holds `code` ({ head, base, patchId, branch }). The branch of the README must be that branch (also when the README
+ * branch is empty), the push must send the head of that branch (each source of the refspecs of `action`), and the patch-id of the
  * diff from the merge base must be the same. A clean rebase keeps the patch-id. A git error gives its own message: it is not a mismatch.
+ * A push that only deletes refs, and a closed ticket (its work is merged), get no check. `deadline` is the end of the time budget of the call.
  */
-function codeMismatch(match, where, config) {
+function codeMismatch(match, where, config, action, deadline) {
   const ticket = match.ticket;
+  if (ticket.phase === 'closed' || action.deletes) return '';
   const gate = ticket.gates.find((item) => item.name === 'Shippable?');
   let code = null;
   try { code = JSON.parse(regular(within(path.dirname(match.file), gate.manifest)).toString('utf8'))?.code; } catch { /* No readable code is the same as no code. */ }
-  if (!code || typeof code !== 'object' || !code.patchId || !code.branch) {
-    return 'The Shippable? approval has no code binding: it was approved before Forge 13.1.0 or without a code binding. Open Shippable? again.';
+  const bound = code && typeof code === 'object' && code.patchId && code.branch;
+  if (!bound) {
+    return ticket.branch ? 'The Shippable? approval has no code binding: it was approved before Forge 13.1.0 or without a code binding. Open Shippable? again.' : '';
   }
+  if (!ticket.branch) return `the README branch is empty, but the Shippable? approval binds the branch ${code.branch}. Open Shippable? again.`;
   if (code.branch !== ticket.branch) return `The README branch (${ticket.branch}) is not the branch of the Shippable? approval (${code.branch}). Open Shippable? again.`;
+  if (!config) return 'the Forge config is not trusted (run `forge.mjs trust`).';
+  const baseBranch = baseBranchOf(config, where.repo.path);
   let now;
-  try { now = codeBinding({ worktree: ticket.worktree || where.repo.path, branch: ticket.branch, baseBranch: baseBranchOf(config, where.repo.path) }); }
-  catch (error) { return `Forge cannot read the code of ${ticket.branch} to compare it with the Shippable? approval: ${error.message} Run \`git fetch\`, then try again.`; }
+  try { now = codeBinding({ worktree: ticket.worktree || where.repo.path, branch: ticket.branch, baseBranch, deadline }); }
+  catch (error) { return gitProblem(error, ticket, baseBranch); }
+  for (const source of action.sources ?? []) {
+    let sent = '';
+    try { sent = resolveCommit(action.cwd, source, { deadline }); }
+    catch (error) { return gitProblem(error, ticket, baseBranch); }
+    if (sent !== now.head) return `this push sends ${sent ? sent.slice(0, 12) : `${source} (no commit)`}, not the head of the ticket branch ${ticket.branch} (${now.head.slice(0, 12)}). Push the branch itself.`;
+  }
   if (now.patchId !== code.patchId) return `The code changed after the Shippable? approval (patch-id ${now.patchId.slice(0, 12)}, approved ${String(code.patchId).slice(0, 12)}). Review the new code and open Shippable? again.`;
   return '';
 }
@@ -459,8 +493,10 @@ function noPrompt(verdict, mode) {
  *   and `deny` in a mode with no prompt.
  * - A `deny` wins over an `ask`. Only a trusted config can change the mode or add commands.
  */
-export function preTool(event, { env = process.env } = {}) {
+export function preTool(event, { env = process.env, deadlineMs = DEADLINE_MS } = {}) {
   if (!event?.command) return null;
+  // One time budget for all git calls of the code checks of this call: the hook has a limit of 30 s.
+  const deadline = Date.now() + deadlineMs;
   const base = event.cwd || process.cwd();
   const home = locate(base, env);
   const homeConfig = home?.wiki.exists ? trustedConfig(home, env) : null;
@@ -520,8 +556,8 @@ export function preTool(event, { env = process.env } = {}) {
             : { decision: 'deny', key, reason: `Forge gate guard: ${question} Open the gate as the ticket skill says (Review gates), and wait for the answer of the user. Do not run the command in another form. Tell the user which approval is missing, and offer to open the gate.` });
           continue;
         }
-        if (action.kind === 'push' && match.ticket.branch) {
-          const problem = codeMismatch(match, where, config);
+        if (action.kind === 'push') {
+          const problem = codeMismatch(match, where, config, action, deadline);
           if (problem) {
             const key = match.ticket.key;
             const question = `${key}: ${problem}`;

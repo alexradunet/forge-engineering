@@ -251,7 +251,7 @@ function repo(t, { rebased = false } = {}) {
   const run = (...args) => execFileSync('git', ['-C', f.tree, ...args], { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] }).trim();
   mkdirSync(f.tree, { recursive: true });
   execFileSync('git', ['init', '-q', '-b', 'main', f.tree], { windowsHide: true });
-  for (const [k, v] of [['user.name', 'T'], ['user.email', 't@example.com'], ['commit.gpgsign', 'false']]) run('config', k, v);
+  for (const [k, v] of [['user.name', 'T'], ['user.email', 't@example.com'], ['commit.gpgsign', 'false'], ['core.hooksPath', '/dev/null']]) run('config', k, v);
   writeFileSync(path.join(f.tree, 'a.txt'), 'one\n');
   run('add', '.');
   run('commit', '-q', '-m', 'base');
@@ -322,4 +322,16 @@ test('shippableChecks: evidenceOnDeployedEnv skips only the proof part', (t) => 
   const f = repo(t);
   assert.deepEqual(codes(shippableChecks(f.dir, f.ticket, { policy: NOPROOF, baseBranch: 'main' })), ['code-review-missing']);
   assert.deepEqual(codes(shippableChecks(f.dir, f.ticket, { policy: OFF, baseBranch: 'main' })), ['proof-missing', 'code-review-missing']);
+});
+
+test('M1: a code review whose head is the merge base (or older) is stale', (t) => {
+  const f = repo(t);
+  const code = shippableChecks(f.dir, f.ticket, { policy: NOPROOF, baseBranch: 'main' }).code;
+  const base = f.run('rev-parse', 'main');
+  assert.equal(base, code.base);
+  f.put('evidence/code-review-001.md', review(base, 'a'.repeat(40)));
+  assert.deepEqual(codes(shippableChecks(f.dir, f.ticket, { policy: NOPROOF, baseBranch: 'main' })), ['code-review-stale']);
+  // The same with a head that holds ticket work: it is a note.
+  f.put('evidence/code-review-001.md', review(code.head, 'a'.repeat(40)));
+  assert.deepEqual(codes(shippableChecks(f.dir, f.ticket, { policy: NOPROOF, baseBranch: 'main' })), []);
 });

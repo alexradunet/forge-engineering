@@ -72,6 +72,7 @@ import { homeOf, rawDir } from './lib/layout.mjs';
 import { liveStatus, serveLive } from './lib/live-serve.mjs';
 import { listForge, openForge, renewLink, stopForge } from './lib/open.mjs';
 import { loadProfile, pluginRoot } from './lib/profile.mjs';
+import { OPTIONAL_VALUE_OPTIONS, REQUIRED_VALUE_OPTIONS } from './lib/cli-options.mjs';
 
 // A tracker that uses an MCP server (see mcpGateway) has no CLI.
 const CLI_FOR = { github: 'gh' };
@@ -166,7 +167,7 @@ export function parseArgs(argv) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--json') out.json = true;
-    else if (['--wiki', '--cwd'].includes(a)) {
+    else if (OPTIONAL_VALUE_OPTIONS.includes(a)) {
       out[a.slice(2)] = argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[++i] : '';
     }
     else if (a === '--force') out.force = true;
@@ -179,7 +180,7 @@ export function parseArgs(argv) {
     else if (a === '--stop') out.stop = true;
     else if (a === '--new-link') out.newLink = true;
     else if (a === '--no-browser') out.noBrowser = true;
-    else if (['--profile', '--summary', '--base', '--today', '--answer', '--method', '--manifest', '--hash', '--port', '--out'].includes(a)) {
+    else if (REQUIRED_VALUE_OPTIONS.includes(a)) {
       if (argv[i + 1] === undefined || argv[i + 1].startsWith('--')) throw new ForgeError(`${a} needs a value.`, 'bad-args');
       out[a.slice(2)] = argv[++i];
     }

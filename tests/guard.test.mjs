@@ -11,7 +11,8 @@ import { status as trustStatus, approve } from '../plugins/forge/scripts/lib/tru
 import { resolve } from '../plugins/forge/scripts/lib/repo.mjs';
 import { seed } from '../plugins/forge/scripts/lib/setup.mjs';
 import { setValues } from '../plugins/forge/scripts/lib/config-write.mjs';
-import { hookArgs } from '../plugins/forge/scripts/forge.mjs';
+import { hookArgs, parseArgs } from '../plugins/forge/scripts/forge.mjs';
+import { FORGE_VALUE_OPTIONS } from '../plugins/forge/scripts/lib/cli-options.mjs';
 import { codeBinding } from '../plugins/forge/scripts/lib/code-bind.mjs';
 
 // The gate guard is the preToolUse hook: a push or a new change request in a ticket worktree
@@ -23,7 +24,7 @@ const env = { ...process.env, FORGE_WIKI_ROOT: '', FORGE_DATA_DIR: mkdtempSync(p
 const GATES = [['Planned?', ['story.md', 'plan.md']], ['Shippable?', ['review.md']]];
 
 function git(cwd, ...args) {
-  const result = spawnSync('git', ['-C', cwd, '-c', 'user.name=Forge Test', '-c', 'user.email=forge@example.test', ...args], { encoding: 'utf8' });
+  const result = spawnSync('git', ['-C', cwd, '-c', 'user.name=Forge Test', '-c', 'user.email=forge@example.test', '-c', 'core.hooksPath=/dev/null', '-c', 'commit.gpgsign=false', ...args], { encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);
   return result.stdout.trim();
 }
@@ -157,9 +158,9 @@ test('shipActions finds each push and each change request command, with its fold
   assert.deepEqual(kinds('gh pr create -R a/b -t "T" -F body.md --draft'), ['change']);
   assert.deepEqual(kinds('git push -u origin x && gh pr create -t T'), ['push', 'change']);
   assert.deepEqual(shipActions('gh pr create -t T', base, []), [], 'Without a trusted config there is no change command.');
-  assert.deepEqual(shipActions('git -C ../wt push', base, []), [{ kind: 'push', cwd: path.resolve(base, '../wt'), refs: [], all: false }]);
+  assert.deepEqual(shipActions('git -C ../wt push', base, []), [{ kind: 'push', cwd: path.resolve(base, '../wt'), refs: [], all: false, sources: ['HEAD'], deletes: false }]);
   assert.deepEqual(shipActions('cd sub/dir && git push; cd .. && gh pr create', base, changes), [
-    { kind: 'push', cwd: path.resolve(base, 'sub/dir'), refs: [], all: false }, { kind: 'change', cwd: path.resolve(base, 'sub') },
+    { kind: 'push', cwd: path.resolve(base, 'sub/dir'), refs: [], all: false, sources: ['HEAD'], deletes: false }, { kind: 'change', cwd: path.resolve(base, 'sub') },
   ]);
   // A push names its branches: the first plain word is the remote, and each other word is a refspec.
   const targets = (line) => shipActions(line, base, []).map(({ refs, all }) => ({ refs, all }));
@@ -167,6 +168,15 @@ test('shipActions finds each push and each change request command, with its fold
   assert.deepEqual(targets('git push origin :old -o ci.skip HEAD'), [{ refs: ['HEAD'], all: false }]);
   assert.deepEqual(targets('git push --all origin'), [{ refs: [], all: true }]);
   assert.deepEqual(targets('git push --mirror'), [{ refs: [], all: true }]);
+  // What a push sends: the source of each refspec, HEAD for no refspec, nothing for a delete, all branches, or a pattern.
+  const sent = (line) => shipActions(line, base, []).map(({ sources, deletes }) => ({ sources, deletes }));
+  assert.deepEqual(sent('git push'), [{ sources: ['HEAD'], deletes: false }]);
+  assert.deepEqual(sent('git push origin HEAD:main +abc123:refs/heads/x'), [{ sources: ['HEAD', 'abc123'], deletes: false }]);
+  assert.deepEqual(sent('git push origin --delete old'), [{ sources: [], deletes: true }]);
+  assert.deepEqual(sent('git push -d origin old'), [{ sources: [], deletes: true }]);
+  assert.deepEqual(sent('git push origin :old'), [{ sources: [], deletes: true }]);
+  assert.deepEqual(sent('git push --all'), [{ sources: [], deletes: false }]);
+  assert.deepEqual(sent('git push origin refs/heads/*:refs/heads/*'), [{ sources: [], deletes: false }]);
 });
 
 test('a push that names a ticket branch is checked from each folder of the repository', (t) => {
@@ -611,7 +621,8 @@ test('a push is denied with no code binding, with a read error (own message), an
   trustConfig(gone, ['repo.baseBranch=nope']);
   const error = run(gone.worktree, push);
   assert.equal(error.decision, 'deny');
-  assert.match(error.reason, /Forge cannot read the code of users\/a\/APP-7-doc-import.*git fetch/);
+  assert.match(error.reason, /base branch nope not found: set repo\.baseBranch/);
+  assert.doesNotMatch(error.reason, /git fetch/);
   assert.doesNotMatch(error.reason, /code changed after/);
   // The missing worktree is the same kind of error.
   const away = setup(t, { approved: ['Planned?', 'Shippable?'] });
@@ -633,4 +644,90 @@ test('a push is denied with no code binding, with a read error (own message), an
   const off = setup(t, { approved: ['Planned?', 'Shippable?'], code: 'none' });
   trustConfig(off, ['policy.gateGuard=off']);
   assert.equal(run(off.worktree, push), null);
+});
+
+test('H1: the approval parser reads the same value options as parseArgs', () => {
+  const cwd = path.resolve('/wt');
+  const commands = (line) => guardActions(line, cwd).map((action) => action.command);
+  assert.deepEqual(commands('node /p/scripts/forge.mjs --base x gate-approve L-1 Shippable? --answer yes'), ['gate-approve']);
+  assert.deepEqual(commands('node /p/scripts/forge.mjs --summary s trust approve config/a.md=1'), ['trust approve']);
+  assert.deepEqual(commands('node /p/scripts/forge.mjs --port 80 --out o gate-approve L-1 Planned? --answer yes'), ['gate-approve']);
+  const first = guardActions('node /p/scripts/forge.mjs --base x gate-approve L-1 Shippable? --answer yes', cwd)[0];
+  assert.deepEqual([first.key, first.gate, first.answer], ['L-1', 'Shippable?', 'yes']);
+  // Each value option of parseArgs is a value option of the guard: the next word is not the subcommand.
+  for (const option of FORGE_VALUE_OPTIONS) {
+    assert.deepEqual(parseArgs([option, 'v', 'gate-approve'])._, ['gate-approve'], option);
+    assert.deepEqual(commands(`node /p/forge.mjs ${option} v gate-approve L-1 Planned?`), ['gate-approve'], option);
+  }
+});
+
+test('H2: a push must send the head of the approved ticket branch', (t) => {
+  const s = setup(t, { approved: ['Planned?', 'Shippable?'] });
+  const branch = 'users/a/APP-7-doc-import';
+  assert.equal(run(s.worktree, `git push origin ${branch}:main`), null, 'The branch itself passes.');
+  assert.equal(run(s.worktree, `git push origin ${s.binding.head}:main`), null, 'Its sha passes.');
+  assert.equal(run(s.worktree, 'git push origin HEAD:main'), null, 'HEAD is the branch head here.');
+  // Another sha: the first commit of main.
+  const other = git(s.app, 'rev-parse', 'main');
+  const denied = run(s.worktree, `git push origin ${other}:main`);
+  assert.equal(denied.decision, 'deny');
+  assert.match(denied.reason, new RegExp(`this push sends ${other.slice(0, 12)}, not the head of the ticket branch ${branch}`));
+  assert.equal(run(s.worktree, 'git push origin main').decision, 'deny', 'Another branch name.');
+  // A detached HEAD with a new commit: the branch ref has not moved, but the push sends new code.
+  git(s.worktree, 'checkout', '-q', '--detach');
+  assert.equal(run(s.worktree, 'git push origin HEAD:main'), null, 'A detached HEAD on the branch head is the approved code.');
+  writeFileSync(path.join(s.worktree, 'c.txt'), 'new\n');
+  git(s.worktree, 'add', 'c.txt');
+  git(s.worktree, 'commit', '-q', '-m', 'detached');
+  const detached = run(s.worktree, 'git push origin HEAD:main');
+  assert.equal(detached.decision, 'deny');
+  assert.match(detached.reason, /this push sends [0-9a-f]{12}, not the head of the ticket branch/);
+  assert.equal(run(s.worktree, 'git push').decision, 'deny', 'A push with no refspec sends HEAD.');
+  assert.equal(run(s.worktree, `git push origin ${git(s.worktree, 'rev-parse', 'HEAD')}:main`).decision, 'deny');
+  // A delete sends no code.
+  assert.equal(run(s.worktree, `git push origin --delete ${branch}`), null);
+  assert.equal(run(s.worktree, `git push origin :${branch}`), null);
+});
+
+test('H3: an empty README branch does not turn the code binding off', (t) => {
+  const s = setup(t, { approved: ['Planned?', 'Shippable?'] });
+  const push = 'git push -u origin users/a/APP-7-doc-import';
+  assert.equal(run(s.worktree, push), null);
+  writeFileSync(s.readme, readFileSync(s.readme, 'utf8').replace('branch: "users/a/APP-7-doc-import"', 'branch: ""'));
+  const denied = run(s.worktree, 'git push origin HEAD:main');
+  assert.equal(denied?.decision, 'deny');
+  assert.match(denied.reason, /the README branch is empty, but the Shippable\? approval binds the branch users\/a\/APP-7-doc-import/);
+});
+
+test('M2: an untrusted config and a missing base branch have their own message, a closed ticket and a delete get no binding check', (t) => {
+  const push = 'git push -u origin users/a/APP-7-doc-import';
+  const untrusted = setup(t, { approved: ['Planned?', 'Shippable?'] });
+  setValues(resolveConfigDir(untrusted), ['repo.baseBranch=develop']);
+  const a = run(untrusted.worktree, push);
+  assert.equal(a.decision, 'deny');
+  assert.match(a.reason, /the Forge config is not trusted \(run \`forge\.mjs trust\`\)/);
+  assert.doesNotMatch(a.reason, /git fetch/);
+  const gone = setup(t, { approved: ['Planned?', 'Shippable?'] });
+  trustConfig(gone, ['repo.baseBranch=nope']);
+  assert.match(run(gone.worktree, push).reason, /base branch nope not found: set repo\.baseBranch/);
+  assert.equal(run(gone.worktree, 'git push origin --delete users/a/APP-7-doc-import'), null, 'A delete is not checked.');
+  // A closed ticket: its work is merged, so the binding does not apply.
+  const closed = setup(t, { approved: ['Planned?', 'Shippable?'] });
+  writeFileSync(path.join(closed.worktree, 'b.txt'), 'changed after GO\n');
+  git(closed.worktree, 'commit', '-q', '-am', 'late fix');
+  assert.equal(run(closed.worktree, push).decision, 'deny');
+  writeFileSync(closed.readme, readFileSync(closed.readme, 'utf8').replace('phase: start', 'phase: closed').replace('state: active', 'state: done'));
+  assert.equal(run(closed.worktree, push), null, 'A closed ticket gets no binding check.');
+});
+
+function resolveConfigDir(s) {
+  return seed(resolve({ cwd: s.app, env }), templates).configDir;
+}
+
+test('M3: one deadline for the whole call: an over deadline denies with a clear message', (t) => {
+  const s = setup(t, { approved: ['Planned?', 'Shippable?'] });
+  const push = 'git push -u origin users/a/APP-7-doc-import';
+  assert.equal(preTool({ cwd: s.worktree, command: push }, { env, deadlineMs: 0 }).decision, 'deny');
+  assert.match(preTool({ cwd: s.worktree, command: push }, { env, deadlineMs: 0 }).reason, /ran out of time/);
+  assert.equal(preTool({ cwd: s.worktree, command: push }, { env }), null, 'The default budget is enough.');
 });

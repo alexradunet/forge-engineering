@@ -299,7 +299,7 @@ function branchFixture(t) {
   t.after(() => rmSync(tree, { recursive: true, force: true }));
   const run = (...args) => execFileSync('git', ['-C', tree, ...args], { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] }).trim();
   execFileSync('git', ['init', '-q', '-b', 'main', tree], { windowsHide: true });
-  for (const [k, v] of [['user.name', 'T'], ['user.email', 't@example.com'], ['commit.gpgsign', 'false']]) run('config', k, v);
+  for (const [k, v] of [['user.name', 'T'], ['user.email', 't@example.com'], ['commit.gpgsign', 'false'], ['core.hooksPath', '/dev/null']]) run('config', k, v);
   writeFileSync(path.join(tree, 'a.txt'), 'one\n');
   run('add', '.');
   run('commit', '-q', '-m', 'base');

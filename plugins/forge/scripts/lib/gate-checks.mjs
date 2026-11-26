@@ -209,7 +209,9 @@ function codeFindings(dir, ticket, { repoPath, baseBranch }, out) {
   try { out.code = codeBinding({ worktree, branch: ticket.branch, baseBranch }); }
   catch (error) {
     out.codeError = error.message;
-    finding('code-review-git', `Forge cannot read the code of ${ticket.branch}: ${error.message}`, 'Run `git fetch` in the worktree, then try again.');
+    finding('code-review-git', `Forge cannot read the code of ${ticket.branch}: ${error.message}`, error.code === 'base-missing'
+      ? 'Set repo.baseBranch in the Forge config to a branch that exists here (then run `forge.mjs trust`), or run `git fetch`.'
+      : 'Run `git fetch` in the worktree, then try again.');
     return;
   }
   const evidenceDir = path.join(dir, 'evidence');
@@ -225,7 +227,8 @@ function codeFindings(dir, ticket, { repoPath, baseBranch }, out) {
   out.review = `evidence/${newest}`;
   if (data['patch-id'] === out.code.patchId) return;
   try {
-    if (isAncestor(worktree, data.head, out.code.head)) {
+    // The review head must hold ticket work: a descendant of the merge base, and not the merge base itself.
+    if (isAncestor(worktree, out.code.base, data.head) && !isAncestor(worktree, data.head, out.code.base) && isAncestor(worktree, data.head, out.code.head)) {
       out.later = commitsAfter(worktree, data.head, out.code.head);
       return;
     }

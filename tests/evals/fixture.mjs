@@ -199,7 +199,7 @@ export const SCENARIOS = {
   'baseline-run': BASELINE_RUN,
 };
 
-const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, '-c', 'user.name=Forge Eval', '-c', 'user.email=eval@example.test', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, '-c', 'user.name=Forge Eval', '-c', 'user.email=eval@example.test', '-c', 'core.hooksPath=/dev/null', '-c', 'commit.gpgsign=false', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
 const put = (file, text) => { mkdirSync(path.dirname(file), { recursive: true }); writeFileSync(file, text); };
 
 /** The journal entry of the scope decision (Forge 12: the plan steps start only when it exists), built from the story text. */

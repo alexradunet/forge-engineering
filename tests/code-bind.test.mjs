@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { baseBranchOf, codeBinding, commitsAfter, dirty, isAncestor } from '../plugins/forge/scripts/lib/code-bind.mjs';
@@ -12,7 +12,7 @@ function repo(t) {
   t.after(() => rmSync(tree, { recursive: true, force: true }));
   const run = (...args) => execFileSync('git', ['-C', tree, ...args], { encoding: 'utf8', windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] }).trim();
   execFileSync('git', ['init', '-q', '-b', 'main', tree], { windowsHide: true });
-  for (const [k, v] of [['user.name', 'T'], ['user.email', 't@example.com'], ['commit.gpgsign', 'false']]) run('config', k, v);
+  for (const [k, v] of [['user.name', 'T'], ['user.email', 't@example.com'], ['commit.gpgsign', 'false'], ['core.hooksPath', '/dev/null']]) run('config', k, v);
   const write = (name, text) => writeFileSync(path.join(tree, name), text);
   write('a.txt', 'one\n');
   run('add', '.');
@@ -111,4 +111,25 @@ test('baseBranchOf takes the row of the main checkout, else repo.baseBranch, els
   assert.equal(baseBranchOf(config, '/work/other'), 'master');
   assert.equal(baseBranchOf({ repo: {} }, '/work/app'), '');
   assert.equal(baseBranchOf(null, '/work/app'), '');
+});
+
+test('M5: the patch-id does not depend on the Git config of the machine', (t) => {
+  const r = repo(t);
+  const plain = r.bind().patchId;
+  r.run('config', 'color.ui', 'always');
+  r.run('config', 'diff.context', '1');
+  r.run('config', 'diff.algorithm', 'patience');
+  r.run('config', 'diff.noprefix', 'true');
+  r.run('config', 'diff.renames', 'copies');
+  assert.equal(r.bind().patchId, plain);
+});
+
+test('an absolute deadline in the past stops the binding with the code deadline', (t) => {
+  const r = repo(t);
+  assert.throws(() => r.bind({ deadline: Date.now() - 1 }), (error) => error.code === 'deadline' && /did not finish/.test(error.message));
+  assert.equal(r.bind({ deadline: Date.now() + 60000 }).branch, 'feat');
+});
+
+test('the error text for a missing Git feature names no version', () => {
+  assert.doesNotMatch(readFileSync(new URL('../plugins/forge/scripts/lib/code-bind.mjs', import.meta.url), 'utf8'), /Git 2\.\d/);
 });
