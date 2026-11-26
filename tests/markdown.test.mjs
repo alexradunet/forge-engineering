@@ -3,10 +3,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { linkTarget, markdown } from '../plugins/forge/scripts/lib/markdown.mjs';
 
-test('link targets open code in the editor, keep ticket links relative, and refuse other schemes', () => {
-  assert.equal(linkTarget('/repo/src/RetryJob.cs:42'), 'vscode://file/repo/src/RetryJob.cs:42');
-  assert.equal(linkTarget('C:\\repo\\My File.cs:7:3'), 'vscode://file/C:/repo/My%20File.cs:7');
-  assert.equal(linkTarget('<C:/repo/a b.cs>', 'file'), 'file:///C:/repo/a%20b.cs');
+test('link targets of a local file are file links, keep ticket links relative, and refuse other schemes', () => {
+  assert.equal(linkTarget('/repo/src/RetryJob.cs:42'), 'file:///repo/src/RetryJob.cs');
+  assert.equal(linkTarget('C:\\repo\\My File.cs:7:3'), 'file:///C:/repo/My%20File.cs');
+  assert.equal(linkTarget('<C:/repo/a b.cs>'), 'file:///C:/repo/a%20b.cs');
   assert.equal(linkTarget('evidence/2026-11-11-config.md'), 'evidence/2026-11-11-config.md');
   assert.equal(linkTarget('https://example.com/a?b=1'), 'https://example.com/a?b=1');
   for (const target of ['javascript:alert(1)', 'data:text/html,x', 'vbscript:x', '#top', '//example.com/x']) assert.equal(linkTarget(target), '', target);

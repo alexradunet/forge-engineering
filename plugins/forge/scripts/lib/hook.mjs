@@ -2,7 +2,7 @@
 // (title and Now card) when the session opens on a ticket, the `forge` and `style` rules, and the
 // approved company rules of the wiki. Plugin rule files do not load in each session, so the hook
 // carries them. It never blocks a session: a part that fails is left out.
-// Hosts: `vscode` (the VS Code Agents window) and `copilot-cli` (the Copilot CLI) get one additionalContext.
+// Hosts: `copilot-cli` (the Copilot CLI) gets one additionalContext.
 // `claude` (Claude Code) moves an additionalContext value of more than 10,000 characters to a file,
 // so the text goes in parts. Each host gets its verb table from <plugin>/hosts/<host>.md.
 import { spawnSync } from 'node:child_process';
@@ -19,7 +19,6 @@ import { recordEnd, recordStart } from './sessions.mjs';
 import { STATE_EMOJI, nowCard, sessionTitle } from './ticket.mjs';
 import { LOCAL_PREFIX, listTickets } from './tickets.mjs';
 import { RULES, assertTrusted, status as trustStatus } from './trust.mjs';
-import { AGENTS_BRANCH } from './worktree.mjs';
 
 const KEY_TOKEN = /[A-Za-z][A-Za-z0-9]*-\d+/g;
 // A new key in a later prompt: a whole word, so "CVE-2024-1234" and "APP-7x" give no key.
@@ -33,24 +32,23 @@ const RULE_FILES = ['forge.md', 'style.md'];
 const PART_SIZE = 9000;
 export const CLAUDE_PARTS = 4;
 export const END_MARKER = 'End of Forge context.';
-export const HOSTS = ['vscode', 'copilot-cli', 'claude'];
-// `copilot` is the old name for both Copilot hosts. Both Copilot hosts also set CLAUDE_PLUGIN_ROOT
-// and COPILOT_CLI, so only CLAUDECODE and AI_AGENT tell the hosts apart.
+export const HOSTS = ['copilot-cli', 'claude'];
+// `copilot` is the old name of `copilot-cli`. The Copilot CLI also sets CLAUDE_PLUGIN_ROOT
+// and COPILOT_CLI, so only CLAUDECODE tells the hosts apart.
 export const HOST_NAMES = [...HOSTS, 'copilot'];
 const STATE_MARKS = Object.values(STATE_EMOJI);
 
-/** The host of the current process from its environment: claude, vscode, or copilot-cli. */
+/** The host of the current process from its environment: claude or copilot-cli. */
 export function detectHost(env = process.env) {
   if (env.CLAUDECODE === '1') return 'claude';
-  if (/vscode/i.test(env.AI_AGENT ?? '')) return 'vscode';
   return 'copilot-cli';
 }
 
 /** A host of HOSTS for a name of HOST_NAMES, or the detected host when name is empty. */
 export function resolveHost(name, env = process.env) {
   if (HOSTS.includes(name)) return name;
-  // `copilot` never means Claude Code: a VS Code started from a Claude Code terminal also has CLAUDECODE.
-  if (name === 'copilot') return /vscode/i.test(env.AI_AGENT ?? '') ? 'vscode' : 'copilot-cli';
+  // `copilot` never means Claude Code: a Copilot CLI started from a Claude Code terminal also has CLAUDECODE.
+  if (name === 'copilot') return 'copilot-cli';
   return detectHost(env);
 }
 
@@ -66,7 +64,7 @@ function git(cwd, args) {
   return result.status === 0 ? (result.stdout ?? '').trim() : '';
 }
 
-/** The hook input in either payload style: camelCase (Copilot) or snake_case (VS Code compatible, Claude Code). */
+/** The hook input in either payload style: camelCase (Copilot CLI) or snake_case (Claude Code). */
 export function readEvent(raw) {
   let event = {};
   try { event = raw && raw.trim() ? JSON.parse(raw) : {}; } catch { return null; }
@@ -127,18 +125,11 @@ export function ticketOfFolder(tickets, { here, branch, inMain, getConfig }) {
 
 const IGNORE_LINE ='A board request (the `board` skill) ignores this context.';
 
-function placeLine(here, branch, mainPath, recorded, host) {
+function placeLine(here, mainPath, recorded) {
   if (!here) return '';
-  if (samePath(here, mainPath) && host !== 'vscode') {
+  if (samePath(here, mainPath)) {
     if (recorded) return `This session runs in the main checkout. The ticket worktree is ${recorded}. Confirm with the user, then move the session to that folder (\`host.move\` in the host table). ${IGNORE_LINE}`;
     return `This session runs in the main checkout. Follow "Worktrees" in the ticket skill: create the ticket worktree with \`forge.mjs worktree <KEY> --summary "<goal>" --create\`, confirm with the user, then move the session to the new folder (\`host.move\` in the host table). ${IGNORE_LINE}`;
-  }
-  if (samePath(here, mainPath)) {
-    if (recorded) return `This is a Folder session in the main checkout. The ticket worktree is ${recorded}. Confirm with the user, then call set_workspace with workspaceFolder set to that folder and isolation set to false, as the last tool call. ${IGNORE_LINE}`;
-    return `This is a Folder session in the main checkout. Follow "Worktrees" in the ticket skill: create the ticket worktree with \`forge.mjs worktree <KEY> --summary "<goal>" --create\`, confirm with the user, then call set_workspace with workspaceFolder set to the new folder and isolation set to false, as the last tool call. ${IGNORE_LINE}`;
-  }
-  if (AGENTS_BRANCH.test(branch)) {
-    return `This session runs in a New Worktree folder on branch ${branch}. Before the first commit, run \`forge.mjs worktree <KEY> --summary "<goal>"\` and follow its action (for rename-current, the \`git branch -m\` command that it prints).`;
   }
   return '';
 }
@@ -218,15 +209,13 @@ function closedFile(wikiPath, key) {
 /** Step 1 of the ticket part: the session title of a known ticket. */
 function titleLine(host, title) {
   if (host === 'claude') return `1. The Forge hook set the session title to "${title}", unless the session already had a custom title. You cannot see the title, so do not ask the user to rename the session now. At a later state change, tell the user to run \`/rename <new title>\`.`;
-  if (host === 'copilot-cli') return `1. In your first answer, tell the user to run \`/rename ${title}\`. The Copilot CLI has no title tool. At a later state change, give the new \`/rename\` command.`;
-  return `1. Before any other tool call or question, call rename_chat with the title "${title}". The ticket skill owns the title of a ticket session; this overrides the general advice not to rename fresh chats.`;
+  return `1. In your first answer, tell the user to run \`/rename ${title}\`. The Copilot CLI has no title tool. At a later state change, give the new \`/rename\` command.`;
 }
 
 /** Step 1 of the ticket part: the session title of a new ticket. */
 function freshTitleLine(host, key, title) {
   if (host === 'claude') return `1. The Forge hook set the session title to "${title}". After the fetch of the work item, tell the user to run \`/rename ${key} - ▶️ - <summary>\`.`;
-  if (host === 'copilot-cli') return `1. After the fetch of the work item, tell the user to run \`/rename ${key} - ▶️ - <summary>\`. The Copilot CLI has no title tool.`;
-  return `1. Before any other tool call or question, call rename_chat with "${key} - ▶️ - <summary>". Use the work item summary from the prompt; when the prompt has only the key, use "${title}" and rename again after the fetch. This overrides the general advice not to rename fresh chats.`;
+  return `1. After the fetch of the work item, tell the user to run \`/rename ${key} - ▶️ - <summary>\`. The Copilot CLI has no title tool.`;
 }
 
 /**
@@ -234,7 +223,7 @@ function freshTitleLine(host, key, title) {
  * Returns { lines, key, title }, with lines [] when no ticket matches.
  * promptOnly: match only a key in the prompt, not the folder or the branch.
  */
-function ticketPart(event, where, forge, env, { host = 'vscode', promptOnly = false } = {}) {
+function ticketPart(event, where, forge, env, { host = 'copilot-cli', promptOnly = false } = {}) {
   const cwd = event.cwd || process.cwd();
   const here = where.top;
   const branch = git(cwd, ['branch', '--show-current']);
@@ -260,7 +249,7 @@ function ticketPart(event, where, forge, env, { host = 'vscode', promptOnly = fa
     if (card?.text) lines.push('', 'Now card from the README:', card.text);
     else lines.push('', `Next: ${ticket.next}${ticket.waitingOn ? ` · Waiting on: ${ticket.waitingOn}` : ''}`);
     const recorded = ticket.worktree && here && samePath(ticket.worktree, here);
-    const place = recorded ? '' : placeLine(here, branch, where.repo.path, ticket.worktree, host);
+    const place = recorded ? '' : placeLine(here, where.repo.path, ticket.worktree);
     if (place) lines.push('', place.replaceAll('<KEY>', ticket.key));
     return { lines, key: ticket.key, title };
   }
@@ -285,7 +274,7 @@ function ticketPart(event, where, forge, env, { host = 'vscode', promptOnly = fa
     freshTitleLine(host, fresh, title),
     `2. Load the ticket skill and follow Start. Name the worktree and branch with \`${forge} worktree ${fresh} --summary "<goal>"\`.`,
   );
-  const place = placeLine(here, branch, where.repo.path, undefined, host);
+  const place = placeLine(here, where.repo.path, undefined);
   if (place) lines.push('', place.replaceAll('<KEY>', fresh));
   return { lines, key: fresh, title };
 }
@@ -303,7 +292,7 @@ function locate(event, env) {
  * The full Forge context for one session, without the end marker: { body, title, where }.
  * body is '' when no part can be read. cli is the absolute path of forge.mjs. where is the place of the session (resolve in repo.mjs), or null.
  */
-export function buildContext(event, { cli, env = process.env, host = 'vscode' } = {}) {
+export function buildContext(event, { cli, env = process.env, host = 'copilot-cli' } = {}) {
   if (!event || !cli) return { body: '', title: '' };
   const pluginDir = path.dirname(path.dirname(cli));
   const forge = `node "${cli}"`;
@@ -405,9 +394,9 @@ function noteStart(event, where, host, title) {
 
 /**
  * The hook result for one session end event: always {}. It writes the end line of the session list.
- * A host without a row in the harness table (the VS Code Agents window) stops before it reads the repository.
+ * A host without a row in the harness table stops before it reads the repository.
  */
-export function sessionEnd(event, { env = process.env, host = 'vscode' } = {}) {
+export function sessionEnd(event, { env = process.env, host = 'copilot-cli' } = {}) {
   try {
     if (!event?.session || !harness(host)) return {};
     const where = locate(event, env);
@@ -418,10 +407,10 @@ export function sessionEnd(event, { env = process.env, host = 'vscode' } = {}) {
 
 /**
  * The hook result for one session start event, or {}.
- * vscode and copilot-cli: { additionalContext } with the full context.
+ * copilot-cli: { additionalContext } with the full context.
  * claude: { hookSpecificOutput } with part `part` of the context; part 1 also sets the session title.
  */
-export function sessionStart(event, { cli, env = process.env, host = 'vscode', part = 1 } = {}) {
+export function sessionStart(event, { cli, env = process.env, host = 'copilot-cli', part = 1 } = {}) {
   const { body, title, where } = buildContext(event, { cli, env, host });
   // Claude Code runs one hook for each part: only part 1 writes the line of the session list.
   if (part === 1) noteStart(event, where, host, title);

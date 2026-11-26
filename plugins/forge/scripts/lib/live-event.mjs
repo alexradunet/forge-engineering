@@ -7,7 +7,7 @@ import { ownTurn } from './own-turn.mjs';
 
 export const EVENT_VERSION = 1;
 export const EVENTS = ['session-start', 'prompt', 'tool-start', 'tool-end', 'notify', 'agent-start', 'agent-stop', 'stop', 'session-end'];
-export const LIVE_HOSTS = ['claude', 'copilot-cli', 'vscode'];
+export const LIVE_HOSTS = ['claude', 'copilot-cli'];
 /** The name of the state file of the live server in the forge data folder. */
 // Until Forge 8.3 one server ran for a user, with this state file. A server start removes the file.
 export const LIVE_FILE = 'live.json';

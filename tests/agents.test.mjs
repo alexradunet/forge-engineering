@@ -20,7 +20,7 @@ test('agents discovery and handoff allow reuse of the current worktree', () => {
   assert.match(data.description, /Reuse a suitable Git worktree/);
   assert.match(agents, /Continue here when it is suitable/);
   assert.match(agents, /do not delegate again merely to obtain isolation/);
-  assert.match(agents, /`worktree`: `false` for an existing verified worktree/);
+  assert.match(agents, /folder: the verified worktree path when one already exists/);
   assert.doesNotMatch(agents, /Each implementer gets its own worktree/);
 });
 
@@ -32,8 +32,8 @@ test('worktree selection checks Git identity and gives explicit baselines priori
   ]) assert.ok(agents.includes(command), command);
   assert.match(agents, /an explicit required commit; the recorded ticket branch for existing work;.*only for a new task without a ticket branch/);
   assert.match(agents, /missing, ambiguous, or conflicts with ticket evidence, stop and ask/);
-  assert.match(agents, /tool has no base-branch parameter/);
-  assert.match(agents, /choose the ticket branch as the base only after its tip matches the required SHA/);
+  assert.match(agents, /Never assume that a new worktree selects the ticket branch or a required commit/);
+  assert.match(agents, /Create the worktree from the required SHA: `<F> worktree <KEY> --summary "<short>" --base <full SHA> --create`/);
 });
 
 test('pinned proof checks stay exact while resumed implementation preserves task changes', () => {
@@ -140,13 +140,13 @@ test('each review gate has a cold read by a reader without the session history',
   assert.match(ticket, /Before you open Planned\?, Shippable\?, or Learned\?, run one cold read/);
   assert.doesNotMatch(phase('gates'), /### .*Canvas/);
   assert.doesNotMatch(phase('gates'), /canvas-comments\.md/);
-  assert.match(phase('gates'), /I added comments in the editor or in the chat/);
+  assert.match(phase('gates'), /I added comments in the chat/);
   assert.doesNotMatch(ticketCore.split('\n', 4).join('\n'), /canvas/i, 'the description of the ticket skill has no canvas');
 });
 
 test('each host table has the part for the pages, and the live server stays on this machine', () => {
-  assert.match(phase('gates'), /Open the document next to the session with `host\.open`, and give the link to the document/);
-  for (const host of ['vscode', 'claude', 'copilot-cli']) {
+  assert.match(phase('gates'), /Give the link to the document with `host\.open`/);
+  for (const host of ['claude', 'copilot-cli']) {
     const table = readFileSync(new URL(`../plugins/forge/hosts/${host}.md`, import.meta.url), 'utf8');
     assert.match(table, /`forge\.mjs open --no-browser`/, host);
     assert.match(table, /^## Pages$/m, host);

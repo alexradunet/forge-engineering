@@ -1,6 +1,6 @@
 ---
 name: ticket
-description: Ticket workspace for the work items of one repository, from the tracker of the forge config (for example Jira or GitHub Issues). Every new ticket follows the full-v4 workflow (research, scope check, investigation, plan, implementation, evidence, and learning) with three review gates and a small set of plain documents. Keeps working artifacts in <forge>/raw/tickets/<key>, shared by agent sessions (VS Code Agents window, Copilot CLI, Claude Code), and distills them into canonical wiki pages at close. Use when the user pastes a work item key or URL, or asks to "start ticket APP-123", "new local ticket", "work on APP-123", "resume APP-123", "where are we on the ticket", "record this finding", "save the plan to the ticket", "close the ticket", or "archive the ticket".
+description: Ticket workspace for the work items of one repository, from the tracker of the forge config (for example Jira or GitHub Issues). Every new ticket follows the full-v4 workflow (research, scope check, investigation, plan, implementation, evidence, and learning) with three review gates and a small set of plain documents. Keeps working artifacts in <forge>/raw/tickets/<key>, shared by agent sessions (Copilot CLI, Claude Code), and distills them into canonical wiki pages at close. Use when the user pastes a work item key or URL, or asks to "start ticket APP-123", "new local ticket", "work on APP-123", "resume APP-123", "where are we on the ticket", "record this finding", "save the plan to the ticket", "close the ticket", or "archive the ticket".
 ---
 
 # 🎫 Ticket workspace
@@ -24,7 +24,7 @@ This file is short, so that it stays whole in the context. The steps of each pha
 |---|---|
 | Start: a new work item, research, colleague questions, spikes, interview, scope check | [phases/start.md](phases/start.md) |
 | A gate opens, comments arrive, an approval, a manifest, or a Sendable? write (Cold read, Procedure, Approval revisions, Sendable? for each write, Approval form) | [phases/gates.md](phases/gates.md) |
-| A README change (Frontmatter, the Now card, People), the Session title, the Artifacts panel, the Ticket overview | [phases/state.md](phases/state.md) |
+| A README change (Frontmatter, the Now card, People), the Session title, the Session links, the Ticket overview | [phases/state.md](phases/state.md) |
 | Worktrees: at Start, before the first commit, at Implement, and before a proof run | [phases/worktrees.md](phases/worktrees.md) |
 | Investigate, the Diagnosis stop, and Plan | [phases/investigate-plan.md](phases/investigate-plan.md) |
 | Implement, the adversarial review, `review.md`, and the change request | [phases/implement.md](phases/implement.md) |

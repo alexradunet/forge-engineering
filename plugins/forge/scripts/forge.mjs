@@ -14,20 +14,20 @@
 //            and the launcher (forge, forge.cmd).
 //   bind    [--wiki <dir>] [--profile <name>]   write <wiki>/forge/repo.json (with the profile name, when given; a wiki keeps its profile)
 //   seed [--force] [--profile <name>]   copy the profile templates to <wiki>/forge/config (the profile of the wiki; a file that an extra profile lacks comes from the default profile)
-//   board   [--json] [--dry-run] [--today <date>] [--links vscode|file]   write <forge>/raw/board.md, the tickets grouped by state,
+//   board   [--json] [--dry-run] [--today <date>]   write <forge>/raw/board.md, the tickets grouped by state,
 //           and the pages: raw/board.html and raw/wiki.html
 //   styleguide [--out <file>] [--json]   write the styleguide page of the UI kit (each token and component, in both themes): <forge>/raw/styleguide.html, or the file of --out
 //   local-key [--json]   the next key L-<n> of a ticket with no work item (it moves the counter <forge>/raw/local-key)
 //   worktree <KEY> --summary "<goal>" [--base <ref>] [--create] [--json]   plan or create the ticket worktree and branch
-//   live    [--port <n>] [--links vscode|file]   show the board and the wiki on http://127.0.0.1 with the live state of the agent sessions
+//   live    [--port <n>]   show the board and the wiki on http://127.0.0.1 with the live state of the agent sessions
 //            (the session hooks send their events to this server). Its one action for a page is Resume (it opens a terminal for a closed session). It stops at a signal,
 //            or after 8 hours with no event and no request of a page. The links stay the same after a restart: its page token is in a key file.
 //            One server runs for each repository, and a session reports to the server of its repository.
 //   live --status   print the link of the live server of this repository, or exit 1 when none runs
-//   open    [--no-browser] [--port <n>] [--links vscode|file]   the command for a person: start the live server of this repository in the background
+//   open    [--no-browser] [--port <n>]   the command for a person: start the live server of this repository in the background
 //            when none runs, print the links of the board and the wiki, and open the board in the browser
 //   open --status | --list | --stop   the server of this repository, each server of this user, or stop the server of this repository
-//   open --new-link [--no-browser] [--port <n>] [--links vscode|file]   write a new page token for this repository, so each older link stops (use it when a link leaked):
+//   open --new-link [--no-browser] [--port <n>]   write a new page token for this repository, so each older link stops (use it when a link leaked):
 //            a server that runs is stopped and started again, and the new links print as for open
 //   gate-open <key> <gate> [extra files...] [--dry-run] [--json] [--today <yyyy-mm-dd>]
 //            open the review of a gate in one call (not Sendable?): checks the earlier gates and the plan, writes approvals/<gate>-<n>.json,
@@ -41,7 +41,7 @@
 //   hook pre-tool [--host <host>]   the gate guard: read the preToolUse event on stdin; for a push or a new change request
 //            in a ticket worktree without a valid Shippable? approval, print the deny (or ask) decision, else {}
 //   context [--cwd <dir>] [--host <host>]   print the Forge context (for a host without the hook)
-//     <host> is vscode, copilot-cli, or claude (copilot is an old name). Without --host, forge.mjs finds the host from the environment.
+//     <host> is copilot-cli or claude (copilot is an old name). Without --host, forge.mjs finds the host from the environment.
 //   trust [approve <path>=<sha>...]   show or approve the files under <wiki>/forge
 //   run <script> [args...]   run <wiki>/forge/scripts/<script>.mjs after the trust check
 import { spawnSync } from 'node:child_process';
@@ -65,7 +65,6 @@ import { createWorktree, planWorktree } from './lib/worktree.mjs';
 import { CLAUDE_PARTS, HOST_NAMES, contextText, promptSubmit, readEvent, resolveHost, sessionEnd, sessionStart, trustedConfig } from './lib/hook.mjs';
 import { preTool, preToolOutput, readToolEvent } from './lib/guard.mjs';
 import { gateName } from './lib/reading.mjs';
-import { LINK_MODES } from './lib/markdown.mjs';
 import { writeViews } from './lib/views.mjs';
 import { renderStyleguide } from './lib/ui/styleguide.mjs';
 import { homeOf, rawDir } from './lib/layout.mjs';
@@ -179,7 +178,7 @@ export function parseArgs(argv) {
     else if (a === '--stop') out.stop = true;
     else if (a === '--new-link') out.newLink = true;
     else if (a === '--no-browser') out.noBrowser = true;
-    else if (['--profile', '--summary', '--base', '--today', '--answer', '--method', '--manifest', '--hash', '--links', '--port', '--out'].includes(a)) {
+    else if (['--profile', '--summary', '--base', '--today', '--answer', '--method', '--manifest', '--hash', '--port', '--out'].includes(a)) {
       if (argv[i + 1] === undefined || argv[i + 1].startsWith('--')) throw new ForgeError(`${a} needs a value.`, 'bad-args');
       out[a.slice(2)] = argv[++i];
     }
@@ -339,7 +338,7 @@ export function configEdit(argv, { cwd = process.cwd() } = {}) {
 
 /**
  * The options of `hook <name> [--host <host>] [--part <n>]`, or null when they are not valid.
- * A hook without --host is a Copilot hook (VS Code or Copilot CLI, from env). Claude Code hooks give --host claude.
+ * A hook without --host is a Copilot hook (the Copilot CLI, also when CLAUDECODE is set). Claude Code hooks give --host claude.
  */
 export function hookArgs(argv, env = process.env) {
   const [, name, ...rest] = argv;
@@ -380,7 +379,7 @@ export function main(argv = process.argv.slice(2)) {
     let result = {};
     try {
       const hook = hookArgs(argv);
-      if (!hook) console.error(`forge: Usage: forge.mjs hook session-start [--host vscode|copilot-cli | --host claude --part <1-${CLAUDE_PARTS}>] | hook prompt-submit --host claude | hook pre-tool [--host <host>] | hook session-end [--host <host>] (reads the hook event JSON on stdin).`);
+      if (!hook) console.error(`forge: Usage: forge.mjs hook session-start [--host copilot-cli | --host claude --part <1-${CLAUDE_PARTS}>] | hook prompt-submit --host claude | hook pre-tool [--host <host>] | hook session-end [--host <host>] (reads the hook event JSON on stdin).`);
       else {
         let raw = '';
         try { if (!process.stdin.isTTY) raw = readFileSync(0, 'utf8'); } catch { /* no input */ }
@@ -461,7 +460,7 @@ export function main(argv = process.argv.slice(2)) {
       const templates = path.join(pluginRoot, 'templates', 'config');
       console.log(JSON.stringify(seed(resolve(opts), templates, { force: args.force, profile: args.profile }), null, 2));
     } else if (cmd === 'board') {
-      if (args._.length !== 1 || (args.links !== undefined && !LINK_MODES.includes(args.links))) throw new ForgeError(`Usage: forge.mjs board [--json] [--dry-run] [--today <YYYY-MM-DD>] [--links ${LINK_MODES.join('|')}].`, 'bad-args');
+      if (args._.length !== 1) throw new ForgeError(`Usage: forge.mjs board [--json] [--dry-run] [--today <YYYY-MM-DD>].`, 'bad-args');
       const where = resolve(opts);
       if (!where.wiki.exists) throw new ForgeError(`No wiki at ${where.wiki.path}. Run the forge-setup skill.`, 'no-wiki');
       let board;
@@ -469,7 +468,7 @@ export function main(argv = process.argv.slice(2)) {
       try {
         board = writeBoard(where.wiki.path, { today: args.today, dryRun: args.dryRun });
         // The pages of the same board: raw/board.html and raw/wiki.html.
-        views = writeViews(where.wiki.path, { links: args.links, today: args.today, dryRun: args.dryRun });
+        views = writeViews(where.wiki.path, { today: args.today, dryRun: args.dryRun });
       } catch (err) { throw new ForgeError(err.message, 'board'); }
       const page = {
         file: views.page.file, url: pathToFileURL(views.page.file).href, written: views.page.written,
@@ -533,8 +532,8 @@ export function main(argv = process.argv.slice(2)) {
     } else if (cmd === 'live') {
       const port = args.port === undefined ? undefined : Number(args.port);
       const badPort = args.port !== undefined && (!/^\d{1,5}$/.test(args.port) || (port !== 0 && (port < 1024 || port > 65535)));
-      if (args._.length !== 1 || args.json || (args.links !== undefined && !LINK_MODES.includes(args.links)) || badPort || args.newLink || (args.status && args.port !== undefined)) {
-        throw new ForgeError(`Usage: forge.mjs live [--port <n>] [--links ${LINK_MODES.join('|')}], or forge.mjs live --status. A port is 0, or 1024 to 65535.`, 'bad-args');
+      if (args._.length !== 1 || args.json || badPort || args.newLink || (args.status && args.port !== undefined)) {
+        throw new ForgeError(`Usage: forge.mjs live [--port <n>], or forge.mjs live --status. A port is 0, or 1024 to 65535.`, 'bad-args');
       }
       const where = resolve(opts);
       if (args.status) {
@@ -544,7 +543,7 @@ export function main(argv = process.argv.slice(2)) {
       } else {
         if (!where.wiki.exists) throw new ForgeError(`No wiki at ${where.wiki.path}. Run the forge-setup skill.`, 'no-wiki');
         // The server runs after main() returns. The exit code comes when the server stops.
-        serveLive(where.wiki.path, { links: args.links, port, repo: where.repo.path }).then(
+        serveLive(where.wiki.path, { port, repo: where.repo.path }).then(
           (code) => { process.exitCode = code; },
           (err) => { console.error(`forge: ${err.message}`); process.exitCode = 1; },
         );
@@ -553,8 +552,8 @@ export function main(argv = process.argv.slice(2)) {
       const port = args.port === undefined ? undefined : Number(args.port);
       const badPort = args.port !== undefined && (!/^\d{1,5}$/.test(args.port) || (port !== 0 && (port < 1024 || port > 65535)));
       const modes = [args.status, args.list, args.stop].filter(Boolean).length;
-      if (args._.length !== 1 || args.json || (args.links !== undefined && !LINK_MODES.includes(args.links)) || badPort || modes > 1 || (modes && (args.port !== undefined || args.links !== undefined || args.newLink))) {
-        throw new ForgeError(`Usage: forge.mjs open [--no-browser] [--new-link] [--port <n>] [--links ${LINK_MODES.join('|')}], or forge.mjs open --status | --list | --stop. A port is 0, or 1024 to 65535.`, 'bad-args');
+      if (args._.length !== 1 || args.json || badPort || modes > 1 || (modes && (args.port !== undefined || args.newLink))) {
+        throw new ForgeError(`Usage: forge.mjs open [--no-browser] [--new-link] [--port <n>], or forge.mjs open --status | --list | --stop. A port is 0, or 1024 to 65535.`, 'bad-args');
       }
       if (args.list) {
         // Each live server of this user: the list needs no repository.
@@ -573,7 +572,7 @@ export function main(argv = process.argv.slice(2)) {
       // The answer comes after main() returns: the server needs a moment to start or to stop.
       const work = args.stop
         ? stopForge({ wiki: where.wiki.path }).then((result) => { console.log(result.stopped ? `forge: stopped the live server of this repository (process ${result.pid}).` : 'forge: no server runs for this repository.'); })
-        : (args.newLink ? renewLink : openForge)({ cli: fileURLToPath(import.meta.url), repo: where.repo.path, wiki: where.wiki.path, links: args.links, port, browser: !args.noBrowser }).then(() => {});
+        : (args.newLink ? renewLink : openForge)({ cli: fileURLToPath(import.meta.url), repo: where.repo.path, wiki: where.wiki.path, port, browser: !args.noBrowser }).then(() => {});
       work.catch((err) => { console.error(`forge: ${err.message}`); process.exitCode = 1; });
     } else if (cmd === 'gate-open') {
       if (args._.length < 3) throw new ForgeError('Usage: forge.mjs gate-open <key> <gate> [extra files...] [--dry-run] [--json] [--today <yyyy-mm-dd>].', 'bad-args');

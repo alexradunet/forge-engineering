@@ -1,7 +1,7 @@
 # Ticket state: README, people, session title, and overview
 
 This file is a part of the `ticket` skill: [SKILL.md](../SKILL.md) has the words (`<F>`, `<KEY>`, `<key>`), the data rules, the gate rules, and the list of the other parts.
-It has the README frontmatter, the Now card, the people list, the session title, the artifacts panel, and the ticket overview.
+It has the README frontmatter, the Now card, the people list, the session title, the session links, and the ticket overview.
 After a compaction of the session, read this file again before you use its steps.
 
 ### 🏷️ Frontmatter
@@ -83,15 +83,14 @@ The user asked for these titles. The ticket skill owns the title of a ticket ses
 - Set it again at each change of the state emoji or the goal. Before a `host.ask` question that waits for the user, set 🟡 first.
 - The `board` skill can fix a stale title of a ticket session.
 
-### 📌 Artifacts panel
+### 📌 Session links
 
-The artifacts panel of the host (`host.artifact`) shows what this session works on.
+The host gives the files of this session as Markdown links in the chat (`host.artifact`).
 
-- At Start and Resume, record the ticket `README.md` as an artifact with the label `<KEY> · Now`.
-- When a gate opens, record its primary document with the label `<KEY> · <gate> · <file>`, for example `APP-123 · Planned? · plan.md`. Remove the document of a gate that is approved.
-- Record a change request that the session creates or changes as an artifact. Record the work item URL as a reference.
-- Do not record evidence files, snapshots, or the journal.
-- The panel can be off, or the host has no panel. Then the host row gives a Markdown link instead.
+- At Start and Resume, give the link to the ticket `README.md` with the text `<KEY> · Now`.
+- When a gate opens, give the link to its primary document with the text `<KEY> · <gate> · <file>`, for example `APP-123 · Planned? · plan.md`.
+- Give the link to a change request that the session creates or changes, and the work item URL.
+- Do not link evidence files, snapshots, or the journal.
 
 ### 📋 Ticket overview
 

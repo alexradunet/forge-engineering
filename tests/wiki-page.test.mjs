@@ -131,7 +131,7 @@ test('the wiki page is one self-contained file: the list of the pages, each page
   assert.match(build, /<a href="https:\/\/example\.com\/docs" target="_blank" rel="noopener noreferrer">/);
   assert.match(build, /<h3>Steps<\/h3>\n<h4>Details<\/h4>/, 'the headings keep their levels below the title of the page');
   assert.match(build, /<pre data-lang="sh"><code>cat \[not a link\]\(app\/retry\.md\)<\/code><\/pre>/);
-  assert.match(build, /<span class="pill st-go">verified<\/span><span>updated 2026-11-10<\/span><code>tooling\/build\.md<\/code><a href="vscode:\/\/file\/[^"]*tooling\/build\.md"/);
+  assert.match(build, /<span class="pill st-go">verified<\/span><span>updated 2026-11-10<\/span><code>tooling\/build\.md<\/code><a href="file:\/\/\/[^"]*tooling\/build\.md"/);
   assert.match(build, /<h3 class="eyebrow">Sources<\/h3><ul><li><a href="https:\/\/example\.com\/build" target="_blank" rel="noopener noreferrer">https:\/\/example\.com\/build<\/a><\/li><li><a href="#app\/retry\.md"><code>app\/retry\.md<\/code><\/a><\/li><li><code>scripts\/build\.mjs:12<\/code><\/li>/);
   assert.match(build, /<h3 class="eyebrow">Used by<\/h3><ul><li><a href="tickets\/app-9\/README\.md" data-nav><span class="key">APP-9<\/span> Fix outbox retry<\/a> <small>ticket, active<\/small><\/li><li><a href="#tickets\/app-2\.md">APP-2: Old fix<\/a> <small>closed ticket<\/small><\/li>/);
   assert.match(html, /<span class="pill st-needs-me">needs a check<\/span>/);
@@ -139,8 +139,6 @@ test('the wiki page is one self-contained file: the list of the pages, each page
   assert.match(html, /<a class="quiet" href="board\.html" data-nav title="The board of all tickets \(b\)">Board<\/a>/);
   assert.match(html, /"nav":\{"board":"board\.html","wiki":""\}/);
   assert.match(html, /<li class="group">Closed<\/li><li><a href="#tickets\/app-2\.md" data-text="app-2 old fix closed">/, 'the switcher has the closed tickets, and their links stay in the page');
-  assert.match(renderWikiPage(model, { links: 'file' }), /<a href="file:\/\/[^"]*tooling\/build\.md"/);
-  assert.throws(() => renderWikiPage(model, { links: 'web' }), /Unknown link mode/);
   // A served page: the token is in the data, and the links use the routes of the server.
   const served = renderWikiPage(model, { serve: { token: TOKEN }, nav: buildNav(board, { from: 'wiki', token: TOKEN, closed: model.closed }) });
   assert.match(served, new RegExp(`"token":"${TOKEN}","nav":\\{"board":"/board\\?t=${TOKEN}","wiki":""`));
@@ -170,7 +168,7 @@ test('markdown turns a link or a path of a wiki page into a link of that page, a
     link: (target) => { const found = pageOf(model, dir, target); return found ? `#${pageHash(found)}` : ''; },
   };
   const story = readFileSync(path.join(dir, 'story.md'), 'utf8');
-  const html = markdown(story, { links: 'vscode', wiki: wikiLinks });
+  const html = markdown(story, { wiki: wikiLinks });
   assert.match(html, /The limits are in <a href="#app\/retry\.md">the retry page<\/a>\./);
   assert.match(html, /The build steps are in <a href="#tooling\/build\.md">tooling\/build\.md<\/a>, and the old fix is <a href="#tickets\/app-2\.md"><code>tickets\/app-2\.md<\/code><\/a>\./);
   assert.match(html, /Not a page: evidence\/run\.md and <a href="plan\.md">the plan<\/a>\./, 'each other link stays as it was');

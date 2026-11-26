@@ -472,18 +472,16 @@ test('each host gets its own output format, and no verdict gives an empty object
   const verdict = { decision: 'deny', key: 'APP-7', reason: 'Forge gate guard: text.' };
   assert.deepEqual(preToolOutput(null, 'claude'), {});
   assert.deepEqual(preToolOutput(verdict, 'claude'), { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'Forge gate guard: text.' } });
-  for (const host of ['vscode', 'copilot-cli']) {
-    assert.deepEqual(preToolOutput(verdict, host), { permissionDecision: 'deny', permissionDecisionReason: 'Forge gate guard: text.' });
-  }
+  assert.deepEqual(preToolOutput(verdict, 'copilot-cli'), { permissionDecision: 'deny', permissionDecisionReason: 'Forge gate guard: text.' });
   assert.equal(hookArgs(['hook', 'pre-tool', '--host', 'claude'], {}).host, 'claude');
-  assert.equal(hookArgs(['hook', 'pre-tool'], { AI_AGENT: 'github_copilot_vscode_agent' }).host, 'vscode');
   assert.equal(hookArgs(['hook', 'pre-tool'], {}).host, 'copilot-cli');
+  assert.equal(hookArgs(['hook', 'pre-tool'], { CLAUDECODE: '1' }).host, 'copilot-cli', 'A hook without --host is a Copilot CLI hook.');
   assert.equal(hookArgs(['hook', 'pre-tool', '--part', '1'], {}), null);
 });
 
 test('forge.mjs hook pre-tool always exits 0 with JSON', (t) => {
   const s = setup(t);
-  const call = (input, ...args) => spawnSync(process.execPath, [cli, 'hook', 'pre-tool', ...args], { input, encoding: 'utf8', env: { ...env, CLAUDECODE: '', AI_AGENT: '' } });
+  const call = (input, ...args) => spawnSync(process.execPath, [cli, 'hook', 'pre-tool', ...args], { input, encoding: 'utf8', env: { ...env, CLAUDECODE: '' } });
   const claude = call(JSON.stringify({ cwd: s.worktree, tool_name: 'Bash', tool_input: { command: 'git push' } }), '--host', 'claude');
   assert.equal(claude.status, 0, claude.stderr);
   assert.equal(JSON.parse(claude.stdout).hookSpecificOutput.permissionDecision, 'deny');

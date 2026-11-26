@@ -24,7 +24,7 @@ Sendable? does not use this procedure. It has its own steps (see Sendable? for e
 1. Write or update the gate document from its template. Run the cold read. Run `<F> lint` and remove its warnings for this document.
 2. Run `<F> gate-open <key> <gate> [extra files]`. It builds the document set and writes the manifest in `approvals/` with the SHA-256 of each file. It saves the snapshot, sets the gate to `in-review`, and sets `state: needs-me`. For Planned?, it runs the plan checks first. It prints the form text. You still set `next` and the other lines of the Now card in the same edit. When it refuses, correct what the message names, then run it again. Never write a manifest by hand.
 3. Set the 🟡 title (`host.title`, see Session title) before the form.
-4. Open the document next to the session with `host.open`, and give the link to the document. Tell the user: add comments in the editor (`host.comments`) or in the chat.
+4. Give the link to the document with `host.open`. Tell the user: add comments in the chat (`host.comments`).
 5. Show the approval form (below) with `host.ask`. Do not start the blocked step.
 6. Act on the answer:
    - GO: record the approval (step 8), then start the next workflow step.
@@ -82,7 +82,7 @@ Show it with `host.ask` at each gate. Use one field, `decision`, with these opti
 | Value | Title |
 |---|---|
 | `approve` | 🟢 GO: approve and start the next step |
-| `comments` | 💬 Comments: I added comments in the editor or in the chat |
+| `comments` | 💬 Comments: I added comments in the chat |
 | `changes` | ✏️ Changes: I typed them in the free-text answer |
 | `later` | ⏸️ Hold: not now |
 

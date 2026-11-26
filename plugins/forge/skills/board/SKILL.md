@@ -1,6 +1,6 @@
 ---
 name: board
-description: The ticket board of one repository, in any session. Shows the state of each forge ticket, answers questions about tickets and their sessions, refreshes the sync notes, and keeps the ticket session titles and state groups current. Read-only for code, tickets, and external tools. Use when the user asks to "show the board", "refresh the board", "sync", "which tickets need me", "what is APP-123 waiting on", or "fix the session titles".
+description: The ticket board of one repository, in any session. Shows the state of each forge ticket, answers questions about tickets and their sessions, refreshes the sync notes, and keeps the ticket session titles current. Read-only for code, tickets, and external tools. Use when the user asks to "show the board", "refresh the board", "sync", "which tickets need me", "what is APP-123 waiting on", or "fix the session titles".
 ---
 
 # 🧭 Board
@@ -71,9 +71,9 @@ When the user says "refresh" or "sync":
    CI read failed: no access to the Jenkins job.
    ```
 
-4. Run `<F> board` again, then fix the titles and groups.
+4. Run `<F> board` again, then fix the titles.
 
-## 🏷️ Titles and state groups
+## 🏷️ Titles
 
 When the user asks, and after each refresh:
 
@@ -81,10 +81,7 @@ When the user asks, and after each refresh:
 2. The correct title is the board `sessionTitle` (`<KEY> - <emoji> - <short>`).
    When the title of another session is different, rename that session (`host.title` with the link of that session).
    When the host cannot rename another session, list each stale title and the correct title for the user.
-3. Keep one custom group for each state, in this order:
-   `🟡 Needs me`, `🔴 Blocked`, `🟢 Go`, `▶️ Active`, `⏳ Waiting`, `✅ Done`.
-   Use `host.groups`. Move only Forge ticket sessions. When the host has no groups, skip this step.
-4. Never archive, delete, or mark a session as done. Suggest it for a ✅ ticket, and wait for a "yes".
+3. Never archive, delete, or mark a session as done. Suggest it for a ✅ ticket, and wait for a "yes".
 
 ## 📡 Live view
 

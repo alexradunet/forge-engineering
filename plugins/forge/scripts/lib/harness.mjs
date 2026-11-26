@@ -1,6 +1,6 @@
 // The harness table: one row for each terminal harness whose sessions Forge can resume.
 // A harness is a program that runs an agent session in a terminal. The id of a row is the host name of the hooks.
-// A host without a row (the VS Code Agents window) has no terminal session, so Forge keeps no record of its sessions.
+// A host without a row has no terminal session that Forge can resume, so Forge keeps no record of its sessions.
 // A new harness is one more row here. This file has no import, so a hook that reads it starts fast.
 
 const UUID = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;

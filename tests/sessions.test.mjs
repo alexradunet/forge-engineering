@@ -24,14 +24,13 @@ const lines = (dir) => readFileSync(sessionsFile(dir), 'utf8').trim().split('\n'
 test('the harness table has the terminal harnesses, and a session id never reads as an option', () => {
   assert.deepEqual(HARNESSES.map((row) => row.id), ['claude', 'copilot-cli']);
   for (const row of HARNESSES) assert.ok(HOSTS.includes(row.id), `${row.id} is a host of the hooks`);
-  assert.equal(harness('vscode'), null, 'the VS Code Agents window has no terminal session');
   assert.equal(harness('pi'), null);
   assert.deepEqual(resumeArgv('claude', A), ['claude', '--resume', A]);
   assert.deepEqual(resumeArgv('copilot-cli', 'abc_1-x'), ['copilot', '--resume=abc_1-x']);
   // A planted line of the session list cannot add an option or a second command.
   for (const id of ['--dangerously-skip-permissions', '-p', 'abc', `${A} --x`, `${A};id`, '', undefined, 7]) assert.equal(resumeArgv('claude', id), null, String(id));
   for (const id of ['--allow-all', '-x', 'a b', 'a;b', 'a$(id)', '../x', '', 'x'.repeat(129)]) assert.equal(sessionIdOk('copilot-cli', id), false, id);
-  assert.equal(resumeArgv('vscode', A), null);
+  assert.equal(resumeArgv('pi', A), null);
   assert.equal(resumeText('claude', A, '/code/app'), `cd "/code/app"; claude --resume ${A}`);
   assert.equal(resumeText('copilot-cli', 'cp-1', 'C:\\code\\my app'), 'cd "C:\\code\\my app"; copilot --resume=cp-1');
   assert.equal(resumeText('claude', A), `claude --resume ${A}`);
@@ -41,7 +40,7 @@ test('the harness table has the terminal harnesses, and a session id never reads
 
 test('a hook writes one small line for each fact, and only for a session of a terminal harness', (t) => {
   const dir = raw(t);
-  assert.equal(recordStart(dir, { host: 'vscode', id: A, cwd: '/code/app' }, 1000), false);
+  assert.equal(recordStart(dir, { host: 'pi', id: A, cwd: '/code/app' }, 1000), false);
   assert.equal(recordStart(dir, { host: 'claude', id: 'S1', cwd: '/code/app' }, 1000), false);
   assert.equal(recordStart('', { host: 'claude', id: A, cwd: '/code/app' }, 1000), false);
   assert.equal(recordEnd(dir, { host: 'claude', id: '-x' }, 1000), false);
@@ -89,7 +88,7 @@ test('the lines fold into one record for each session: a start after the end ope
   appendFileSync(sessionsFile(dir), [
     '{"v":1,"e":"start","host":"claude","id":"', 'not json', '[1]', 'null',
     JSON.stringify({ v: 2, e: 'start', host: 'claude', id: B, cwd: '/x', ts: 5000 }),
-    JSON.stringify({ v: 1, e: 'start', host: 'vscode', id: B, cwd: '/x', ts: 5000 }),
+    JSON.stringify({ v: 1, e: 'start', host: 'pi', id: B, cwd: '/x', ts: 5000 }),
     JSON.stringify({ v: 1, e: 'start', host: 'claude', id: '--resume', cwd: '/x', ts: 5000 }),
     JSON.stringify({ v: 1, e: 'run', host: 'claude', id: B, cwd: '/x', ts: 5000 }),
     JSON.stringify({ v: 1, e: 'start', host: 'claude', id: B, cwd: '/x', ts: 'now' }),

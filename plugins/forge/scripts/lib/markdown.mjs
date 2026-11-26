@@ -3,11 +3,10 @@
 import { esc } from './ui.mjs';
 import { tableRow } from './reading.mjs';
 
-export const LINK_MODES = ['vscode', 'file'];
 const unesc = (value) => value.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
 
 /** The link target for the page, or '' when the target must stay plain text. */
-export function linkTarget(target, links = 'vscode') {
+export function linkTarget(target) {
   const text = String(target).trim().replace(/^<|>$/g, '');
   const safe = (value) => value.replace(/[\s"<>`]/g, (c) => encodeURIComponent(c));
   if (/^https?:\/\//i.test(text)) return safe(text);
@@ -16,7 +15,7 @@ export function linkTarget(target, links = 'vscode') {
     const match = /^(.*?)(?::(\d+)(?::\d+)?)?$/.exec(text);
     const local = match[1].replaceAll('\\', '/');
     const absolute = local.startsWith('/') ? local : `/${local}`;
-    return links === 'file' ? `file://${safe(absolute)}` : `vscode://file${safe(absolute)}${match[2] ? `:${match[2]}` : ''}`;
+    return `file://${safe(absolute)}`;
   }
   if (/^[a-z][a-z0-9+.-]*:/i.test(text) || text.startsWith('#')) return '';
   return safe(text.replaceAll('\\', '/'));
@@ -38,7 +37,7 @@ function inline(text, ctx) {
   out = out.replace(/\[([^\]]+)\]\((&lt;.*?&gt;|[^)\s]+)\)/g, (all, label, target) => {
     // A link to a page of the wiki opens the wiki page, so that the user stays in the forge pages.
     const page = wiki ? wiki.link(unesc(target)) : '';
-    const href = page || linkTarget(unesc(target), ctx.links);
+    const href = page || linkTarget(unesc(target));
     // On the wiki page (ctx.plain), a relative link to a file that is not a page has no target: its words stay as text.
     if (!href || (ctx.plain && !page && !/^[a-z][a-z0-9+.-]*:/i.test(href))) return label;
     return keep(`<a href="${esc(href)}"${/^https?:/i.test(href) ? ' target="_blank" rel="noopener noreferrer"' : ''}>${strong(label)}</a>`);
@@ -83,7 +82,7 @@ function list(lines, start, ctx) {
 }
 
 /** A small Markdown subset as HTML: paragraphs, lists, tables, code, quotes, links, and bold. */
-export function markdown(text, ctx = { links: 'vscode' }) {
+export function markdown(text, ctx = {}) {
   const lines = String(text ?? '').replace(/\r\n/g, '\n').split('\n');
   const out = [];
   let paragraph = [];

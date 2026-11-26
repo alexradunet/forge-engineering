@@ -29,7 +29,7 @@ Run only when the user says that the ticket is done.
     - Run `git status --short` and check for outgoing commits in the worktree. Uncommitted or unpushed work blocks the cleanup. Report it.
     - Run the repository cleanup that the `## Close` policy section names (for example a database per worktree).
     - A worktree that `<F> worktree --create` made (its folder is in `<repo>.worktrees/`): after the "yes", run `git worktree remove "<folder>"` from the main checkout. Keep the branch. Never use `--force`.
-    - A worktree that VS Code made (a **New Worktree** session): tell the user to use **Mark as Done** on the session in the Agents window, not **Delete**. Delete leaves the worktree on disk ([vscode#332442](https://github.com/microsoft/vscode/issues/332442)). Mark as Done keeps the branch, but it does not always remove the worktree (for example after `git branch -m`). After Mark as Done, run `git worktree list`. When the folder is still there, run `git worktree remove "<folder>"` from the main checkout, or tell the user to run **Chat: Open Worktree Cleanup**. A worktree that another tool created needs that tool's remove command.
+    - A worktree that another tool made needs the remove command of that tool.
     - A session that runs in the worktree locks the folder. Report the path that is left.
 11. Tell the user what you recorded, in one line per page.
 

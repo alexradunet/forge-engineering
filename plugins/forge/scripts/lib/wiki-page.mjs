@@ -7,7 +7,7 @@
 // The style and the components come from ui.mjs (the kit): this file has only the layout of the wiki. The script uses no template literals: it sits in one.
 import path from 'node:path';
 import { STATE_LABEL } from './board.mjs';
-import { LINK_MODES, linkTarget, markdown } from './markdown.mjs';
+import { linkTarget, markdown } from './markdown.mjs';
 import { MERMAID_FILE, MERMAID_INTEGRITY, MERMAID_ROUTE, needsMermaid } from './mermaid.mjs';
 import { BREAK, TOOLS_HTML, UI_STYLE, bannerHtml, buildNav, countHtml, emptyHtml, esc, footHtml, helpHtml, iconHtml, navData, pageHtml as shellHtml, pageLabel, pageScript, pillHtml, pixelText, proseHtml, searchHtml, switcherHtml } from './ui.mjs';
 import { CLOSED_FOLDER, pageHash, pageOf } from './wiki.mjs';
@@ -46,9 +46,9 @@ function pageHtml(page, index, model, ctx) {
     link: (target) => { const found = pageOf(model, path.join(root, page.folder), target); return found ? `#${pageHash(found)}` : ''; },
   };
   // A relative link to another file has no target on this page: its words stay as text.
-  const body = markdown(page.body, { links: ctx.links, wiki, plain: true });
+  const body = markdown(page.body, { wiki, plain: true });
   const status = page.status ? pillHtml(STATUS_TEXT[page.status] ?? page.status, STATUS_STATE[page.status] ?? '') : '';
-  const file = linkTarget(path.join(root, ...page.path.split('/')), ctx.links);
+  const file = linkTarget(path.join(root, ...page.path.split('/')));
   const meta = [
     status,
     page.updated ? `<span>updated ${esc(page.updated)}</span>` : '',
@@ -90,11 +90,10 @@ const HELP = [
  * The self-contained HTML page of a wiki model (buildWiki in wiki.mjs). With serve.token, the links use the routes of the server of the page.
  * nav (buildNav in ui.mjs, from 'wiki') gives the links to the board page and to the tickets.
  */
-export function renderWikiPage(model, { links = 'vscode', nav = null, serve = null } = {}) {
-  if (!LINK_MODES.includes(links)) throw new Error(`Unknown link mode: ${links}. Use ${LINK_MODES.join(' or ')}.`);
+export function renderWikiPage(model, { nav = null, serve = null } = {}) {
   const token = serve?.token ?? '';
   if (token && !/^[0-9a-f]{32}$/.test(token)) throw new Error('The page token must have 32 hexadecimal characters.');
-  const ctx = { links, nav: nav ?? buildNav({ groups: [] }, { from: 'wiki', token, closed: model.closed }) };
+  const ctx = { nav: nav ?? buildNav({ groups: [] }, { from: 'wiki', token, closed: model.closed }) };
   const pages = model.pages.map((page, index) => pageHtml(page, index, model, ctx)).join('\n');
   const errors = model.errors.length
     ? `<section id="errors"><h3 class="eyebrow">Read errors</h3>${model.errors.map((error) => bannerHtml(`<code>${esc(error.path)}</code> ${esc(error.message)}`, { kind: 'bad' })).join('')}</section>` : '';

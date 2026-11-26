@@ -2,10 +2,8 @@
 // the tickets that wait for the user first, a link from each ticket to its document, and the closed tickets with a link to their summary page in the wiki.
 // It shows the model of board.mjs (the same data as raw/board.md). It loads nothing from a network, and it is never a source.
 // The style and the components come from ui.mjs (the kit): this file has only the layout of the board. The script uses no template literals: it sits in one.
-import path from 'node:path';
 import { WAIT_WORKDAYS, nextStrike } from './board.mjs';
-import { LINK_MODES, linkTarget } from './markdown.mjs';
-import { rawDir } from './layout.mjs';
+import { linkTarget } from './markdown.mjs';
 import { GATE_DOCS } from './ticket.mjs';
 import { BREAK, TOOLS_HTML, UI_STYLE, bannerHtml, brandHtml, buildNav, chipHtml, countHtml, emptyHtml, esc, faviconUri, footHtml, frameHtml, gatesHtml, helpHtml, navData, pageHtml, pageLabel, pageScript, pixelText, searchHtml, switcherHtml, tagHtml } from './ui.mjs';
 
@@ -16,11 +14,9 @@ export const STALE_DAYS = 7;
 // The steps of the first run: the board has no ticket yet.
 const FIRST_STEPS = ['Start an agent session in the repository.', 'Give it a work item key, for example APP-123.', 'The ticket shows here after its first step.'];
 
-/** The link to a file of the ticket folder: the editor link of a local page, else the link of the nav (a relative link, or the route of the live server). */
+/** The link to a file of the ticket folder: the link of the nav (a relative link, or the route of the live server). */
 function ticketHref(item, ctx, name) {
-  return ctx.links === 'vscode' && ctx.wiki
-    ? linkTarget(path.join(rawDir(ctx.wiki), 'tickets', item.folder, ...name.split('/')))
-    : ctx.nav.file(item.folder, name);
+  return ctx.nav.file(item.folder, name);
 }
 
 /** The link to the document of a ticket: the document of the gate in review (its `doc`, else the document of the gate name), else the README. */
@@ -61,8 +57,6 @@ function cardHtml(item, label, ctx) {
   const allDone = !item.openGate && item.gates.length && item.gates.every((one) => ['approved', 'skipped'].includes(one.status));
   const links = [];
   links.push(`<a href="${esc(ticketHref(item, ctx, 'README.md'))}">README</a>`);
-  const worktree = ctx.links === 'vscode' && item.worktree ? linkTarget(item.worktree) : '';
-  if (worktree.startsWith('vscode://')) links.push(`<a href="${esc(worktree)}" title="${esc(item.worktree)}">Worktree</a>`);
   for (const change of item.changes) links.push(external(change.url, change.label || 'Change'));
   const inner = `<header><span class="key">${esc(item.key)}</span><span class="age"${stale ? ` title="No update for ${item.days} days"` : ''}>${age(item.days)}</span></header>`
     + `<h3><a class="open" href="${esc(href)}"${navAttr(href)} title="${esc(item.title)}">${esc(item.short || item.title)}</a></h3>`
@@ -155,13 +149,12 @@ const HELP = [
  * serve.open is the command that starts that server again (the notice of a stopped server shows it), and serve.c is the change stamp of this board (live-stamp.mjs).
  * nav.closed (buildNav in ui.mjs) gives the closed tickets of the wiki.
  */
-export function renderBoardPage(board, { links = 'vscode', nav = null, serve = null, wiki = '' } = {}) {
-  if (!LINK_MODES.includes(links)) throw new Error(`Unknown link mode: ${links}. Use ${LINK_MODES.join(' or ')}.`);
+export function renderBoardPage(board, { nav = null, serve = null } = {}) {
   const token = serve?.token ?? '';
   if (token && !/^[0-9a-f]{32}$/.test(token)) throw new Error('The page token must have 32 hexadecimal characters.');
   const live = token && serve.live ? String(serve.live) : '';
   const resume = live && serve.resume ? String(serve.resume) : '';
-  const ctx = { links, wiki, nav: nav ?? buildNav(board, { token }) };
+  const ctx = { nav: nav ?? buildNav(board, { token }) };
   const chips = board.groups.map((group, index) => {
     const label = pageLabel(group.state, group.label);
     return chipHtml(label, group.state, group.tickets.length, { mark: group.emoji, disabled: !group.tickets.length, attrs: `data-state="${esc(group.state)}" title="Show only ${esc(label)} (${index + 1})"` });

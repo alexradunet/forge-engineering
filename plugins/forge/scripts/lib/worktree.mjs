@@ -6,8 +6,6 @@ import path from 'node:path';
 import { samePath } from './repo.mjs';
 
 const STOP_WORDS = new Set(['a', 'an', 'the', 'of', 'to', 'in', 'on', 'for', 'and', 'or', 'with', 'by', 'at', 'from', 'is', 'be', 'when', 'into', 'via']);
-// The Agents window gives a New Worktree session a branch under this prefix.
-export const AGENTS_BRANCH = /^agents\//;
 
 function git(cwd, args) {
   const result = spawnSync('git', ['-C', cwd, ...args], { encoding: 'utf8', windowsHide: true });
@@ -65,7 +63,7 @@ function belongsTo(entry, key) {
 
 /**
  * The read-only plan: names, base, the current session folder, other worktrees of the ticket,
- * and the suggested action (reuse, rename-current, resume, or create).
+ * and the suggested action (reuse, resume, or create).
  */
 export function planWorktree({ repoPath, cwd = repoPath, config, key: rawKey, summary, base }) {
   const key = parseKey(rawKey);
@@ -87,10 +85,8 @@ export function planWorktree({ repoPath, cwd = repoPath, config, key: rawKey, su
   const branchExists = git(repoPath, ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`]).ok;
   let action = 'create';
   if (current?.linked && current.branch === branch) action = 'reuse';
-  else if (current?.linked && AGENTS_BRANCH.test(current.branch) && !branchExists) action = 'rename-current';
   else if (existing) action = 'resume';
   const commands = {
-    'rename-current': [`git branch -m ${branch}`],
     create: branchExists ? [`git worktree add "${folder}" ${branch}`]
       : [`git worktree add -b ${branch} "${folder}" ${baseSha.ok ? baseSha.out : baseRef}`],
   }[action] ?? [];

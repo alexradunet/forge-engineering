@@ -76,7 +76,7 @@ test('the ticket skill stays whole after a compaction: a short SKILL.md and one 
 test('each heading that another file names is in one part of the ticket skill', () => {
   const where = {
     'start.md': ['## 🚀 Start', '### 🧭 Research', '### 🧪 Spikes', '### 🎤 Interview', '### 🎯 Scope check'],
-    'state.md': ['### 🏷️ Frontmatter', '### 👥 People', '### 🏷️ Session title (info bar)', '### 📌 Artifacts panel', '### 📋 Ticket overview'],
+    'state.md': ['### 🏷️ Frontmatter', '### 👥 People', '### 🏷️ Session title (info bar)', '### 📌 Session links', '### 📋 Ticket overview'],
     'worktrees.md': ['### 🌳 Worktrees'],
     'gates.md': ['### 🐟 Cold read', '### Procedure for each gate', '### Approval revisions', '### Sendable? for each write', '### ✅ Approval form'],
     'investigate-plan.md': ['## 🔎 Investigate', '### 🛑 Diagnosis stop', '## 📝 Plan'],

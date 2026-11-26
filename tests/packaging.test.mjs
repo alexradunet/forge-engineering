@@ -7,8 +7,8 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { CLAUDE_PARTS, END_MARKER } from '../plugins/forge/scripts/lib/hook.mjs';
 
-// Packaging contract: one plugin folder serves VS Code, Copilot CLI, and Claude Code.
-// VS Code and Copilot CLI read plugin.json (Agent Plugins 1.0) and com.github.copilot/hooks/hooks.json.
+// Packaging contract: one plugin folder serves Copilot CLI and Claude Code.
+// Copilot CLI reads plugin.json (Agent Plugins 1.0) and com.github.copilot/hooks/hooks.json.
 // Claude Code reads .claude-plugin/marketplace.json, the folder name, and hooks/hooks.json.
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const pluginDir = path.join(repo, 'plugins', 'forge');
@@ -25,10 +25,10 @@ function scratch(t) {
   return root;
 }
 
-const hookEnv = (root, extra) => ({ ...process.env, FORGE_WIKI_ROOT: '', FORGE_DATA_DIR: root, CLAUDECODE: '', AI_AGENT: '', ...extra });
+const hookEnv = (root, extra) => ({ ...process.env, FORGE_WIKI_ROOT: '', FORGE_DATA_DIR: root, CLAUDECODE: '', ...extra });
 
 test('the manifest and both marketplaces have the same name and version', () => {
-  assert.equal(manifest.$schema, 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json', 'VS Code picks the Agent Plugins format only with the $schema.');
+  assert.equal(manifest.$schema, 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json', 'The manifest names the Agent Plugins schema.');
   assert.equal(path.basename(pluginDir), manifest.name, 'Claude Code takes the plugin name from the folder name.');
   assert.ok(!existsSync(path.join(pluginDir, '.claude-plugin')), 'Keep one manifest: Claude Code gets the version from the marketplace entry.');
   for (const market of [copilotMarket, claudeMarket]) {

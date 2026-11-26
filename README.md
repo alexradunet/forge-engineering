@@ -1,7 +1,7 @@
 # 🧭 forge-engineering
 
-`forge` is an agent plugin for the [VS Code Agents window](https://code.visualstudio.com/docs/agents/run/agents-window).
-The same plugin folder also runs in GitHub Copilot CLI and Claude Code (see Hosts).
+`forge` is an agent plugin for Claude Code and GitHub Copilot CLI (see Hosts).
+One plugin folder runs in both.
 It gives every agent session a ticket workflow with review gates, a small set of plain ticket documents,
 a repository wiki, coordinated agent sessions, and a ticket board that any session can show.
 
@@ -19,22 +19,24 @@ CLI calls are visible, reproducible, and cost no context for tool lists.
 
 ```mermaid
 flowchart LR
-  plugin["forge plugin<br/>rules, skills, scripts,<br/>profile config templates"] --> vscode["VS Code Agents window<br/>Copilot harness"]
-  repo["code checkout"] --> vscode
-  wiki["../repo.forge<br/>wiki: config, rules, knowledge<br/>raw: tickets and pages"] --> vscode
+  plugin["forge plugin<br/>rules, skills, scripts,<br/>profile config templates"] --> host["Claude Code<br/>or Copilot CLI"]
+  repo["code checkout"] --> host
+  wiki["../repo.forge<br/>wiki: config, rules, knowledge<br/>raw: tickets and pages"] --> host
   shared["wiki Git remote<br/>private"] <-->|push / pull| wiki
 ```
 
 ## 🚀 Start
 
-1. In VS Code, run **Chat: Install Plugin from Source**.
-2. Enter `https://github.com/alexradunet/forge-engineering`.
-3. Open your code checkout in the Agents window.
-4. In a chat, say "set up forge".
+1. Clone `https://github.com/alexradunet/forge-engineering`.
+2. Install the plugin from the clone:
+   - Claude Code: `claude plugin marketplace add <clone>`, then `claude plugin install forge@forge`. Or start a session with `claude --plugin-dir <clone>/plugins/forge`.
+   - Copilot CLI: `copilot plugin install <clone>/plugins/forge`, or start a session with `copilot --plugin-dir <clone>/plugins/forge`.
+3. Open a session in your code checkout.
+4. In the chat, say "set up forge".
 5. Answer the setup form: your branch pattern (`users/<your name>/{KEY}-{slug}`) and the path of your clone.
 
-Needs: Node.js 20 or later, Git, the CLI of your profile (`gh` for GitHub, `tea` for Forgejo),
-and VS Code with agent plugins enabled (`chat.plugins.enabled`). forge runs on Windows, macOS, and Linux.
+Needs: Node.js 20 or later, Git, and the CLI of your profile (`gh` for GitHub, `tea` for Forgejo).
+forge runs on Windows, macOS, and Linux.
 
 Setup reads the repository first, so most answers are prefilled:
 
@@ -44,20 +46,16 @@ Setup reads the repository first, so most answers are prefilled:
 
 Then it creates the Forge folder `../<repo>.forge` with its wiki, seeds the profile config and rule pages, writes your values with a validated command,
 asks you to store the credentials of the profile, asks you to approve the files by hash, and runs one live read for each tool.
-It asks for the team size (small or large) and the response style, and writes the policy values for them. At the end, it offers the optional extras: the other policy values and a VS Code check.
+It asks for the team size (small or large) and the response style, and writes the policy values for them. At the end, it offers the optional extras: the other policy values.
 
 | Say | Result |
 |---|---|
 | "set up forge" | First-time setup, or resume at the first open step |
-| "check forge" | `doctor`, plugin version, and VS Code release notes |
+| "check forge" | `doctor`, plugin version, and the changelog of the current host |
 | "refresh the forge config" | Copy the new profile templates after an update, and keep your personal values |
 | "finish forge setup" | Resume after a stop |
 
 `forge.mjs doctor` warns while `<user>` remains in `repo.branchPattern`, while the main checkout path is missing, or while a credential is missing. It also checks the login of `gh` (`tool:gh login`), whether a session start hook ran (`hook`), and whether the plugin clone is behind its remote (`plugin:version`). Each `warn` line gives one exact fix command. `forge.mjs doctor --fetch` runs `git fetch` in the plugin clone first.
-
-forge targets the VS Code Agents window. VS Code changes each month. So the VS Code host file (`plugins/forge/hosts/vscode.md`) tells the agent
-to read the current [VS Code documentation](https://code.visualstudio.com/docs/agents/run/agents-window) and the
-[release notes](https://code.visualstudio.com/updates) before it advises on a VS Code feature.
 
 ### 🔌 Hosts
 
@@ -68,21 +66,20 @@ for a verb, the agent tells you the manual step.
 
 | Host | Start | Host found by | Notes |
 |---|---|---|---|
-| VS Code Agents window | Install the plugin (above) | `AI_AGENT` contains `vscode` | Session tools, forms, artifacts, and comments |
-| GitHub Copilot CLI | `copilot plugin install` or `copilot --plugin-dir <clone>/plugins/forge` | no `AI_AGENT` and no `CLAUDECODE` | You run `/rename` and `/cwd`. The board is the session overview. |
+| GitHub Copilot CLI | `copilot plugin install <clone>/plugins/forge` or `copilot --plugin-dir <clone>/plugins/forge` | no `CLAUDECODE` | You run `/rename` and `/cwd`. The board is the session overview. |
 | Claude Code | `claude plugin marketplace add <clone>`, then `claude plugin install forge@forge`. Or `claude --plugin-dir <clone>/plugins/forge` | `CLAUDECODE=1` | The hooks set the title. The context comes in numbered parts. |
 
-`forge.mjs context --host <vscode|copilot-cli|claude>` prints the context of a host, for a check or for a host without the hook.
+`forge.mjs context --host <copilot-cli|claude>` prints the context of a host, for a check or for a host without the hook.
+
+Forge 13.0.0 removed the VS Code Agents window host. Forge 12.4.0 is the last version with it.
 
 ### 🔄 Update forge
 
-VS Code has no update action for a plugin installed from a URL or local folder.
 To update `forge`:
 
-1. If you installed from a Git clone (`~/.vscode/agent-plugins/github.com/<owner>/<repo>` or `~/.copilot/installed-plugins/_direct/forge`), pull the latest `main` in that folder, or uninstall and reinstall the plugin.
-2. Run **Developer: Reload Window** so that `%APPDATA%/Code/agentPlugins` gets a new copy of the plugin.
-   For a `chat.pluginLocations` folder, VS Code makes a new copy only when the change time of the plugin root folder changes.
-   A file edit does not change it. Before the reload, run `(Get-Item plugins\forge).LastWriteTime = Get-Date` in the clone.
+1. Claude Code: pull the latest `main` in your clone. A marketplace that you added from a folder reads the plugin from that folder, so the pull is the update. In an open session, run `/reload-plugins`.
+   For a plugin that you installed from a marketplace with its own copy, run `claude plugin update forge@forge`.
+2. Copilot CLI: if you installed from a Git clone (`~/.copilot/installed-plugins/_direct/forge`), pull the latest `main` in that folder, or uninstall and reinstall the plugin.
 3. When the update changed `plugins/forge/templates/config/`, say "refresh the forge config".
 
 "check forge" reports when the installed plugin is behind its remote.
@@ -123,17 +120,17 @@ Setup offers the native wiki of the private repository, a separate private `<rep
 
 | Path | Content |
 |---|---|
-| `plugins/forge/plugin.json` | Plugin manifest ([Agent Plugins 1.0](https://agent-plugins.org)) for all hosts. Claude Code takes the name from the folder and the version from its marketplace. |
-| `.github/plugin/marketplace.json`, `.claude-plugin/marketplace.json` | The marketplaces for VS Code and Copilot CLI, and for Claude Code. `tests/packaging.test.mjs` keeps the name, the version, and the source the same in each manifest, and runs each hook command. |
+| `plugins/forge/plugin.json` | Plugin manifest ([Agent Plugins 1.0](https://agent-plugins.org)) for both hosts. Claude Code takes the name from the folder and the version from its marketplace. |
+| `.github/plugin/marketplace.json`, `.claude-plugin/marketplace.json` | The marketplaces for Copilot CLI and for Claude Code. `tests/packaging.test.mjs` keeps the name, the version, and the source the same in each manifest, and runs each hook command. |
 | `plugins/forge/context/` | The session rules, in a short form: `forge` (paths, ticket sessions, host verbs, the rules for external writes) and `style` (response style, "No AI tells", response shape, memory). The `sessionStart` hook gives them to each session. `tools.md` holds the steps that the agent reads before the first external call: capabilities, tool choice, external writes, the gate guard, and the manual step. `tests/context-budget.test.mjs` keeps the sizes. |
-| `plugins/forge/hosts/` | One verb table for each host: `vscode.md`, `copilot-cli.md`, `claude.md`. The hook adds the verb table of the current host to the context. The other parts of the file (the pages, the feature documentation) stay in the file, and the agent reads them at the step. |
+| `plugins/forge/hosts/` | One verb table for each host: `copilot-cli.md` and `claude.md`. The hook adds the verb table of the current host to the context. The other parts of the file (the pages, the feature documentation) stay in the file, and the agent reads them at the step. |
 | `plugins/forge/com.github.copilot/hooks/` | `hooks.json`: the `sessionStart` hook. It gives each session the paths, the ticket context, the `forge` and `style` rules, and the approved company rules of `<wiki>/rules/`. The `preToolUse` hook is the gate guard (`forge.mjs hook pre-tool`, see Review gates). Forge 9.1 adds the `sessionEnd` hook: with `sessionStart`, it writes the session list of a Copilot CLI session (see [Live view](#-live-view)). |
-| `plugins/forge/hooks/` | `hooks.json`: the same context for Claude Code (spike). `SessionStart` gives it in parts of at most 9,000 characters (2 parts for a session without company rules), `UserPromptSubmit` sets the ticket title, and `PreToolUse` is the gate guard. See `Claude Code host` in [vscode-baseline.md](docs/vscode-baseline.md) Forge 7.6 adds the live reporter (`scripts/live-hook.mjs`) as a background hook on the activity events of a session: see [Live view](#-live-view). Forge 9.1 adds the session list: part 1 of `SessionStart` writes the start of a session, and `forge.mjs hook session-end` at `SessionEnd` writes its end. |
+| `plugins/forge/hooks/` | `hooks.json`: the same context for Claude Code (spike). `SessionStart` gives it in parts of at most 9,000 characters (2 parts for a session without company rules), `UserPromptSubmit` sets the ticket title, and `PreToolUse` is the gate guard. See `Claude Code host` in [baseline.md](docs/baseline.md). Forge 7.6 adds the live reporter (`scripts/live-hook.mjs`) as a background hook on the activity events of a session: see [Live view](#-live-view). Forge 9.1 adds the session list: part 1 of `SessionStart` writes the start of a session, and `forge.mjs hook session-end` at `SessionEnd` writes its end. |
 | `plugins/forge/skills/` | `ticket`, `agents`, `board`, `wiki`, `forge-setup`, `writing` |
 | `plugins/forge/templates/` | The default profile: config (`config/`), rule pages (`rules/`), setup values (`profile.md`), and machine values with the list of the other profile files (`profile.json`) |
 | `plugins/forge/scripts/` | `forge.mjs` (init, config, trust, lint, board, local-key, worktree, live, open, gate-open, gate-approve, hook, wiki scripts), `cred.mjs`, `live-hook.mjs` (the reporter of the live view) |
 | `plugins/forge/vendor/mermaid/` | The only third-party program of the plugin: the small Mermaid build that draws the diagrams of the wiki page, with its license and a [notice](plugins/forge/vendor/mermaid/NOTICE.md) (version, hash, update steps) |
-| `docs/` | [config.md](docs/config.md) (config format), [wiki.md](docs/wiki.md) (sharing and scripts), [evaluation.md](docs/evaluation.md) (behavioral runs: `npm run eval` gives the cases of `tests/evals/` to a real agent session), and [vscode-baseline.md](docs/vscode-baseline.md) (the VS Code features that forge uses) |
+| `docs/` | [config.md](docs/config.md) (config format), [wiki.md](docs/wiki.md) (sharing and scripts), [evaluation.md](docs/evaluation.md) (behavioral runs: `npm run eval` gives the cases of `tests/evals/` to a real agent session), and [baseline.md](docs/baseline.md) (the host features that forge uses) |
 | `AGENTS.md` | [Rules for agents that develop forge](AGENTS.md): docs-first checks, tests, and file format |
 
 ## 🧩 Skills
@@ -142,7 +139,7 @@ Setup offers the native wiki of the private repository, a separate private `<rep
 |---|---|
 | `ticket` | One folder per work item in `<forge>/raw/tickets/<key>`, full research and investigation, review gates, code map, evidence, outbox. `SKILL.md` is short, and the steps of each phase are in `phases/`. |
 | `agents` | Implementer sessions in worktrees, reviewer subagents, the cold read of gate documents, hand-off, session status |
-| `board` | "Show the board" in any session: ticket status, refresh, session titles and state groups |
+| `board` | "Show the board" in any session: ticket status, refresh, and session titles |
 | `wiki` | Query, record, and lint the repository wiki |
 | `forge-setup` | "set up forge", "check forge", "repair forge", "finish forge setup", "refresh the forge config" |
 | `writing` | One source for the writing rules: modes, precedence, and the AI writing pattern catalog. Say "humanize this" or "check the writing". |
@@ -169,19 +166,18 @@ No mode allows em dashes or en dashes in prose. License texts are in [NOTICE.md]
 ## 🎫 Ticket work
 
 1. Open a new session and paste the work item key or URL, for example "start APP-42" or "resume APP-42".
-   The agent renames the session first (see Session titles below).
+   The session gets its title first (see Session titles below).
    For work with no work item, say "new local ticket". `forge.mjs local-key` gives the key `L-<n>`.
 2. Forge names the worktree and the branch. `forge.mjs worktree APP-42 --summary "<goal>"` gives the branch
    from `repo.branchPattern` and the folder `<repo>.worktrees/<key>-<slug>`:
-   - **New Worktree** session: the agent renames the `agents/...` branch with `git branch -m` before the first commit. VS Code keeps its folder name.
-   - **Folder** session on the main checkout: after one "yes", the agent creates the worktree and moves the session there with `set_workspace`.
+   - Session on the main checkout: after one "yes", the agent creates the worktree and moves the session there (`EnterWorktree` in Claude Code, `/cwd` in Copilot CLI).
    - When a worktree of the ticket exists, the agent continues there.
 3. Every new ticket uses `workflow: full-v4`, with no sizing question:
    research → scope interview → scope check in chat →
    investigation (🛑 diagnosis stop) → plan → **Planned?** → implement → Evidence Testing → **Shippable?**.
    When `policy.evidenceOnDeployedEnv` is `true`, Evidence Testing runs after the push.
    A small fix has the same phases and gates. Its documents are shorter.
-4. Read the gate document, and add your comments (in VS Code, comment threads of the editor; in Claude Code and Copilot CLI, the chat). One explicit user approval covers the
+4. Read the gate document, and add your comments in the chat. One explicit user approval covers the
    displayed file and revision set, recorded in a SHA-256 manifest. `forge.mjs gate-open <key> <gate>` builds that set, writes the manifest and the snapshot, sets the gate to `in-review`, and prints the form text. `forge.mjs gate-approve <key> <gate> --answer "<your exact answer>" --method form|chat`
    accepts only `approve` in the form or `approve <gate>` in chat, and refuses a changed document or manifest. It checks the manifest and the documents, then records the approval in the README and in `approvals/history.md`. When a write fails, it restores both files.
    Unavailable sources and test gaps are recorded, not treated as safety evidence.
@@ -260,10 +256,6 @@ A ticket has about 7 Markdown files, and each fact has one home. A file starts t
 - The Now card at the top of each ticket README shows the state, the phase, the open gate, the next step,
   who the ticket waits on, what is done, and the date. `forge.mjs lint` warns when the card
   does not agree with the frontmatter.
-- The artifacts panel next to the chat input shows `<KEY> · Now` and the document of the open gate
-  (`chat.artifacts.enabled`).
-- VS Code 1.145 and later: in the Chat view, open **More Actions**, select **View Mode**, then **Conversation**
-  (`chat.persistentProgressVerbosity`, experimental). The tool calls collapse, so a long session is easier to read.
 
 ### 🏷️ Session titles
 
@@ -282,9 +274,6 @@ The title has less than 60 characters. Keys of one project have the same width, 
 The plugin has a `sessionStart` [hook](plugins/forge/com.github.copilot/hooks/hooks.json).
 When a session starts, `forge.mjs hook session-start` finds the ticket from the session folder, the branch,
 or the key in the first prompt. It gives the agent the title, the Now card, and the worktree step.
-The agent renames the session before any other step, and again at the end of the first turn,
-because VS Code can replace the title after the first prompt
-(see "Known gaps" in [vscode-baseline.md](docs/vscode-baseline.md)).
 The context ends with the line `End of Forge context.`. When that line is missing, each skill runs
 `forge.mjs context`, which prints the same context. In Claude Code, the hooks set the title with `sessionTitle`.
 In Copilot CLI, the agent gives you the `/rename` command.
@@ -304,17 +293,17 @@ See [People](plugins/forge/skills/ticket/SKILL.md#-people).
 
 Say "show the board" or "my tickets". The agent reads the README frontmatter of each ticket
 and groups the tickets by state: 🟡 Needs me, 🔴 Blocked, 🟢 Go, ▶️ Active, ⏳ Waiting, ✅ Done.
-`forge.mjs board` writes the same view to `<forge>/raw/board.md`, so you can keep it open in the editor.
+`forge.mjs board` writes the same view to `<forge>/raw/board.md`.
 Each row shows the session title, the open gate, the next step, who the ticket waits on, and the days since the update.
 When `<forge>/raw/sync/<KEY>.md` exists, the row also shows the change request, CI, and tracker status.
 
-The same command writes the board page, `<forge>/raw/board.html`, and the wiki page. Open the page in a browser tab, or in VS Code with **Open in Integrated Browser**.
+The same command writes the board page, `<forge>/raw/board.html`, and the wiki page. Open the page in a browser tab.
 
 - The look is a forge: square frames, hard shadows, a pixel anvil, pixel headings, and gate ingots. Text that you read keeps the system font. The pages say "needs you" for a ticket that waits for you. `raw/board.md` keeps "Needs me".
 - A strip at the top names the next step for you: the ticket with a gate in review first, then another ticket that needs you, a blocked ticket, or a ticket that can start. **Open** goes to its document.
 - The tab of the board says `(2) Forge board` when 2 tickets need you, and its icon has a hot spot. Each page has a pixel anvil as its tab icon.
 - The tickets that wait for you are first, in a lane with the full width. The other open states are side by side, and **Done** is a closed list.
-- A card shows the key, the title, the gates as steps, the next step, who the ticket waits on, and the change request, CI, and tracker status. A click on the card opens the document of the gate that is in review, or the `README.md` of the ticket. The link is an editor link or a file link. On the live server, a link gives the file as text.
+- A card shows the key, the title, the gates as steps, the next step, who the ticket waits on, and the change request, CI, and tracker status. A click on the card opens the document of the gate that is in review, or the `README.md` of the ticket. The link is a file link. On the live server, a link gives the file as text.
 - The filter (key `/`) hides tickets by their words. A state chip or a number key shows one state. The keys `j` and `k` go from ticket to ticket, and `t` opens the list of all tickets.
 - An open ticket without an update for 7 days has a mark. Long waits for people and read errors have their own lists.
 - The page loads nothing from a network, and it is in `raw/`, so it is never committed. [design-system.md](docs/design-system.md) gives the tokens, the components, and the UX cases of the pages.
@@ -332,7 +321,7 @@ CLI validation and the board use the shared parser in
 
 ## 🧭 Board
 
-Say "show the board" in any session: a session in the main checkout, a ticket session, or the Copilot CLI or Claude Code.
+Say "show the board" in any session: a session in the main checkout, a ticket session, in Claude Code or in Copilot CLI.
 The `board` skill answers questions about your tickets and the other sessions, so you do not have to open each session.
 A question that names a key does not start or resume that ticket.
 
@@ -341,8 +330,8 @@ A question that names a key does not start or resume that ticket.
 | "Show the board" | The count for each state, then the tickets that need you |
 | "What did we do on APP-42?" | The Now card, the latest journal entries, and the session link |
 | "What must I approve on APP-42?" | The summary of the open gate document |
-| "Refresh" | Reads the tracker, the change requests, and CI (read-only), writes `raw/sync/`, then fixes titles and state groups |
-| "Fix the session titles" | Renames stale ticket session titles and, in VS Code, moves the sessions to their state groups |
+| "Refresh" | Reads the tracker, the change requests, and CI (read-only), writes `raw/sync/`, then fixes titles |
+| "Fix the session titles" | Renames stale ticket session titles |
 
 The board does not edit code, ticket documents, or wiki pages. It writes only `raw/board.md`, `raw/sync/`, and the pages (`raw/board.html`, and `raw/wiki.html`).
 It never approves a gate and never answers a question of a session for you,
@@ -351,8 +340,7 @@ It never merges, pushes, or writes to the tracker.
 To start a ticket, send its key or URL in a new session. To tell a ticket session something, type it in that session.
 See the [board skill](plugins/forge/skills/board/SKILL.md).
 
-Forge 6.5 had a **Forge Master** custom agent for this. Forge 6.6 removes it: VS Code ignored the agent body
-(baseline click-check 14), and a persistent overview session added no function that a skill cannot give.
+The board is a skill, not a custom agent: a skill is portable and runs in any session.
 
 ## 📖 Wiki page
 
@@ -402,7 +390,7 @@ flowchart LR
 - A board card shows the state of its session (working, needs you, idle, or ended), the tool that runs now, and the count of subagents that run. A session of the repository without a ticket is in the list **Other sessions**.
 - A session that is not live any more shows as **closed**, with the buttons **Resume** and **Copy command**. It is on the card of its ticket or in **Other sessions**.
 - **Resume** opens a new tab or window of your terminal in the folder of the session, with `claude --resume <id>` or `copilot --resume=<id>`. When no terminal opens, the page puts the command on the clipboard.
-- The session list is `<forge>/raw/sessions.jsonl`. The session start hook and the session end hook of Claude Code and of Copilot CLI write it, also when no server runs. A VS Code session is not in the list.
+- The session list is `<forge>/raw/sessions.jsonl`. The session start hook and the session end hook of Claude Code and of Copilot CLI write it, also when no server runs.
 - A session with a start and no end in the list shows as **no end seen**: it can be open in a terminal, so its **Resume** needs a second click. A Copilot CLI session that runs shows in this way.
 - The terminal is the first one of this list that starts. Windows: Windows Terminal, then a console window. Linux: Orca (when the server runs in Orca), `$TERMINAL`, `xdg-terminal-exec`, `x-terminal-emulator`, then `ghostty`, `gnome-terminal`, `konsole`, `kitty`, `alacritty`, `wezterm`, and `foot`. On macOS, use **Copy command**.
 - To name the terminal that Forge tries first, set `FORGE_TERMINAL` to a name of that list (`wt`, `cmd`, `orca`, or a Linux terminal), or write `{"terminal": "<name>"}` to `settings.json` in the forge data folder.
@@ -415,8 +403,8 @@ flowchart LR
 - One server runs for each repository, each on its own port, so more than one repository can be open at the same time. A session reports to the server of its repository: its folder is in the main checkout, in `<repo>.worktrees`, in the wiki folder, or in the worktree of a ticket. A session in another folder reports to no server.
 - `forge.mjs open --status` prints the links of the server of this repository, `forge.mjs open --list` prints each server that runs, and `forge.mjs open --stop` stops the server of this repository. The server also stops after 8 hours with no event and no page view.
 
-The live activity comes from Claude Code sessions. Copilot CLI and VS Code sessions send no activity yet: their hooks have no background option, so a reporter can slow each tool call (see the [baseline](docs/vscode-baseline.md)).
-A Copilot CLI session shows with its start and its end only, and with **Resume**. A VS Code session does not show.
+The live activity comes from Claude Code sessions. Copilot CLI sessions send no activity yet: its hooks have no background option, so a reporter can slow each tool call (see the [baseline](docs/baseline.md)).
+A Copilot CLI session shows with its start and its end only, and with **Resume**.
 
 ## 🔎 Local validation
 
@@ -449,8 +437,8 @@ Trust approvals and credentials stay outside the wiki. See [wiki.md](docs/wiki.m
 
 ## 🛠️ Develop
 
-- Read [AGENTS.md](AGENTS.md) first. Before you change how forge uses a VS Code feature, read the release notes
-  since the [VS Code baseline](docs/vscode-baseline.md) and the feature page. Use a native feature when one exists.
+- Read [AGENTS.md](AGENTS.md) first. Before you change how forge uses a host feature, read the changelogs
+  of Claude Code and Copilot CLI since the [baseline](docs/baseline.md), and the feature page. Use a native feature when one exists.
 - `npm test` runs the tests.
 - The pages use one UI kit, `plugins/forge/scripts/lib/ui/`. [design-system.md](docs/design-system.md) is its document: read it before a page change.
 - `node plugins/forge/scripts/forge.mjs styleguide` writes `<forge>/raw/styleguide.html`: each token, sprite, letter, and component in both themes.
@@ -459,11 +447,8 @@ Trust approvals and credentials stay outside the wiki. See [wiki.md](docs/wiki.m
   supported harness, trace evidence, and execution approval. Deterministic fixtures
   and document checks do not establish model compliance; do not claim a behavioral
   pass without the required harness run evidence.
-- To test a local checkout, run **Chat: Install Plugin from Source** with the `plugins/forge` folder.
-  First uninstall or disable the forge plugin from the GitHub URL. With both installed, VS Code loads two plugins named `forge`, and the
-  rules and skills appear two times. To go back, remove the local folder in **Chat: Open Customizations**, **Plugins**
-  (or its `chat.pluginLocations` entry in the user settings), and enable the URL install again.
-- Check the loaded rules and skills in **Chat: Open Customizations**.
+- To test a local checkout, run `claude --plugin-dir plugins/forge` or `copilot --plugin-dir plugins/forge`.
+  First disable an installed forge plugin, so that the session loads only the local copy.
 
 ## 📄 License
 

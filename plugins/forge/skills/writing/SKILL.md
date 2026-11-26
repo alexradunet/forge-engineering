@@ -253,7 +253,7 @@ Templates also make clean formatting. The tell is decoration on every item. Appl
 #### §20 Decorative headings
 
 - Look for: Title Case in each heading; emoji or arrows as decoration; a horizontal rule between all sections; a top heading that repeats the title; a heading for effect ("The decision, on one screen").
-- Fix: use sentence case, a heading that names the content, and the title once. Emoji are allowed only in chat and forge documents. Proper names keep their capitals, for example Evidence Testing and Agents window.
+- Fix: use sentence case, a heading that names the content, and the title once. Emoji are allowed only in chat and forge documents. Proper names keep their capitals, for example Evidence Testing and Copilot CLI.
 
 > Before: ## Strategic Negotiations And Global Partnerships
 > After: ## Strategic negotiations and global partnerships

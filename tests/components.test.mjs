@@ -36,7 +36,7 @@ function frontmatter(file) {
 }
 
 test('the board skill replaces the Forge Master agent and keeps its limits', () => {
-  // 6.6.0 removed the Forge Master agent: VS Code ignored its body, and the board works in any session.
+  // The board works in any session, so there is no Forge Master agent.
   assert.equal(existsSync(path.join(plugin, 'com.github.copilot', 'agents')), false);
   assert.equal(existsSync(path.join(plugin, 'agents')), false);
   const skill = frontmatter(path.join(plugin, 'skills', 'board', 'SKILL.md'));
@@ -56,44 +56,43 @@ test('the board skill replaces the Forge Master agent and keeps its limits', () 
   // Click-check 15: the verb `host.board` made "show me the board" read only the sessions list.
   assert.ok(rule.includes('Load the `board` skill before any other tool call'), 'a board request loads the board skill first');
   assert.ok(!/host\.board\b/.test(rule), 'no host verb has the name of the board skill');
-  // The VS Code tool detail moved from forge.md to the VS Code host table; forge.md names the host verb.
+  // The tool detail is in the host tables; forge.md names the host verb.
   assert.ok(rule.includes('start a new independent session (`host.spawn`)'), 'the forge rule keeps ticket sessions independent');
-  assert.ok(readFileSync(path.join(plugin, 'hosts', 'vscode.md'), 'utf8').includes('always give `relationship: independent`'), 'the VS Code table keeps ticket sessions out of nested chats');
 });
 
-// The VS Code session tools are host specific. A portable Forge text names a host verb (`host.title`),
-// and the host table gives the tool. Only the host-specific files can name a session tool:
-// the host tables and the com.github.copilot folder.
-const VSCODE_TOOLS = /\b(rename_chat|set_workspace|create_session|send_message|list_sessions|get_session_context|delete_session|archive_chat|move_session|isolate_session|readSessionsList|organizeSessionsList|add_artifact_or_reference|listComments|replyToComment|resolveComments|configureAutomation|listAutomations|runAutomation|ask_user)\b/;
-const HOST_ONLY = ['hosts', 'com.github.copilot'];
+// The VS Code Agents window is not a host of Forge. No file of the plugin or of the 2 marketplace files names it,
+// and none names one of its session tools. `ask_user` is not in the list: the Copilot CLI has a tool with that name.
+const REMOVED_HOST = /vs ?code|vscode|agents window|\b(rename_chat|set_workspace|create_session|send_message|list_sessions|get_session_context|delete_session|archive_chat|move_session|isolate_session|readSessionsList|organizeSessionsList|add_artifact_or_reference|listComments|replyToComment|resolveComments|configureAutomation|listAutomations|runAutomation)\b/i;
 
-function markdownFiles(dir) {
+function filesOf(dir, ext) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) return markdownFiles(full);
-    return entry.name.endsWith('.md') ? [full] : [];
+    if (entry.isDirectory()) return entry.name === 'vendor' ? [] : filesOf(full, ext);
+    return !ext || entry.name.endsWith(ext) ? [full] : [];
   });
 }
+const markdownFiles = (dir) => filesOf(dir, '.md');
 
-test('portable plugin text names host verbs, not VS Code session tools', () => {
+test('no file of the plugin or of a marketplace file names the VS Code Agents window or its session tools', () => {
   const hits = [];
-  for (const file of markdownFiles(plugin)) {
-    const rel = path.relative(plugin, file);
-    if (HOST_ONLY.some((part) => rel === part || rel.startsWith(`${part}${path.sep}`))) continue;
-    readFileSync(file, 'utf8').split(/\r?\n/).forEach((line, i) => {
-      if (VSCODE_TOOLS.test(line)) hits.push(`${rel}:${i + 1}: ${line.trim().slice(0, 100)}`);
+  const files = [...filesOf(plugin), path.join(root, '.claude-plugin', 'marketplace.json'), path.join(root, '.github', 'plugin', 'marketplace.json')];
+  for (const file of files) {
+    const text = readFileSync(file);
+    if (text.includes(0)) continue;
+    text.toString('utf8').split(/\r?\n/).forEach((line, i) => {
+      if (REMOVED_HOST.test(line)) hits.push(`${path.relative(root, file)}:${i + 1}: ${line.trim().slice(0, 100)}`);
     });
   }
   assert.deepEqual(hits, []);
 });
 
 test('each host table has one row for each host verb, and the skills name only known verbs', () => {
-  // 7.3.0: the session context is short, so forge.md has no verb list. The VS Code table is the reference list.
+  // 7.3.0: the session context is short, so forge.md has no verb list. The Claude Code table is the reference list.
   const rows = (text) => [...text.matchAll(/^\| `(host\.[a-z]+)` \|/gm)].map((m) => m[1]);
-  const verbs = rows(readFileSync(path.join(plugin, 'hosts', 'vscode.md'), 'utf8'));
-  assert.ok(verbs.length >= 10, `hosts/vscode.md lists ${verbs.length} verbs`);
+  const verbs = rows(readFileSync(path.join(plugin, 'hosts', 'claude.md'), 'utf8'));
+  assert.ok(verbs.length >= 10, `hosts/claude.md lists ${verbs.length} verbs`);
   assert.deepEqual(rows(readFileSync(path.join(plugin, 'context', 'forge.md'), 'utf8')), [], 'The verb rows are in the host tables only.');
-  for (const host of ['vscode', 'copilot-cli', 'claude']) {
+  for (const host of ['copilot-cli', 'claude']) {
     const table = readFileSync(path.join(plugin, 'hosts', `${host}.md`), 'utf8');
     assert.match(table, /^# Forge host: /, `${host}: the hook finds the table by its heading`);
     assert.deepEqual([...table.matchAll(/^\| `(host\.[a-z]+)` \|/gm)].map((m) => m[1]), verbs, `${host}: rows`);

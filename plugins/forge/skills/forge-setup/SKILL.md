@@ -1,6 +1,6 @@
 ---
 name: forge-setup
-description: Set up, check, repair, resume, or refresh forge for the repository of the profile of its wiki. Detects the CLIs and their login, the MCP servers of the profile, the default branch, your branch pattern, and your main clone; creates or binds the Forge folder of the repository (../<repo>.forge, with its wiki); seeds the profile config (tracker, repository, CI, policy) and the rule pages; sets your personal values; stores the credentials of the profile in the OS credential store; checks each capability with a live read; and offers the optional extras (policy values and the VS Code check). Use when the user says "set up forge", "configure forge", "check forge", "repair forge", "finish forge setup", "resume forge setup", or "refresh the forge config".
+description: Set up, check, repair, resume, or refresh forge for the repository of the profile of its wiki. Detects the CLIs and their login, the MCP servers of the profile, the default branch, your branch pattern, and your main clone; creates or binds the Forge folder of the repository (../<repo>.forge, with its wiki); seeds the profile config (tracker, repository, CI, policy) and the rule pages; sets your personal values; stores the credentials of the profile in the OS credential store; checks each capability with a live read; and offers the optional extras (policy values). Use when the user says "set up forge", "configure forge", "check forge", "repair forge", "finish forge setup", "resume forge setup", or "refresh the forge config".
 disable-model-invocation: true
 ---
 
@@ -72,7 +72,7 @@ State the progress at each step, for example "step 4 of 11 done".
 ## ✅ Check or repair
 
 1. Run `doctor`. Report each `fail` and `warn` line with its fix.
-2. Read the latest VS Code release notes (see "VS Code features" in `<plugin>/hosts/vscode.md`). Report each change that affects plugins, sessions, worktrees, hooks, custom agents, or MCP servers.
+2. Read the changelog of the current host (the feature section of `<plugin>/hosts/claude.md` or `<plugin>/hosts/copilot-cli.md` has the links). Report each change that affects plugins, sessions, worktrees, hooks, custom agents, or MCP servers.
 3. Check the plugin version: run `<F> doctor --fetch` and read the `plugin:version` line. When it says that the clone is behind, tell the user to update (README, "Update forge").
    An uninstall and a new install from source can reuse the old clone, so a reinstall is not an update.
 4. When a line needs a fix, continue with ⏯️ Resume.
@@ -247,14 +247,7 @@ A hook can add steps and make rules stricter. It can never weaken a core rule.
 
 ### Board
 
-Tell the user: say "show the board" in any session. The `board` skill shows the state of each ticket and keeps the ticket session titles and state groups current. There is nothing to set up.
-
-### VS Code check
-
-1. Read the latest release notes and the [Agent plugins](https://code.visualstudio.com/docs/agent-customization/agent-plugins) page.
-2. Confirm that `chat.plugins.enabled` is on, and that **Chat: Open Customizations** > **Plugins** shows one `forge` plugin.
-3. Two `forge` plugins load the rules two times. Tell the user to disable one of them.
-4. Never change a user setting without approval. Give the UI steps, and let the user change it.
+Tell the user: say "show the board" in any session. The `board` skill shows the state of each ticket and keeps the ticket session titles current. There is nothing to set up.
 
 ## 📚 Wiki remote
 

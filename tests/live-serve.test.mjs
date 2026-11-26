@@ -192,8 +192,8 @@ test('the pages of the live server: the board and the wiki page, each with its o
   assert.match(board.text, /<section class="frame sunk bsec" id="live-other" hidden>/); // Forge 9.2: the list of other sessions is a sunk kit frame
   assert.match(board.text, /<ul class="rows" id="live-list"><\/ul><ul class="rows" id="past-list"><\/ul>/);
   assert.match(board.text, /<p class="note" id="live-note" aria-live="polite">/); // Forge 9.2: the live line is a live region
-  // The default link mode is the editor: a ticket card opens the document of its gate in review in the editor, and no ticket has a page here.
-  assert.ok(board.text.includes(`<a class="open" href="vscode://file${path.join(rawDir(s.wiki), 'tickets', 'app-9', 'plan.md').replaceAll('\\', '/').replace(/^(?!\/)/, '/')}" title=`), 'a ticket card opens its document');
+  // A ticket card opens the document of its gate in review on this server, with the token, and no ticket has a page here.
+  assert.ok(board.text.includes(`<a class="open" href="/ticket/app-9/plan.md?t=${s.page}" data-nav title=`), 'a ticket card opens its document');
   assert.doesNotMatch(board.text, /\/ticket\/[^"]*\/\?t=|canvas\.html/);
   assert.equal(board.text.match(/<script\b/g).length, 2);
 
@@ -210,11 +210,7 @@ test('the pages of the live server: the board and the wiki page, each with its o
   assert.ok(board.text.includes(`<a class="quiet" href="/wiki?t=${s.page}" data-nav`));
   assert.ok(board.text.includes(`<a class="open" href="/wiki?t=${s.page}#tickets/app-1.md" data-nav title="First fix">`), 'a closed ticket opens its summary page');
   assert.equal((await request(s.port, { url: '/wiki' })).status, 403);
-  // In the file link mode, the card opens the same document on this server, with the token.
-  const files = await start(t, { links: 'file' });
-  const fileBoard = await request(files.port, { url: `/board?t=${files.page}` });
-  assert.ok(fileBoard.text.includes(`<a class="open" href="/ticket/app-9/plan.md?t=${files.page}" data-nav title=`), 'the document of the gate in review');
-  assert.equal((await request(files.port, { url: `/ticket/app-9/plan.md?t=${files.page}` })).status, 200);
+  assert.equal((await request(s.port, { url: `/ticket/app-9/plan.md?t=${s.page}` })).status, 200);
   for (const url of ['/ticket/app-9/page.html', '/ticket/app-9/..%2Fapp-2%2FREADME.md', '/ticket/nope/', '/ticket/..%2F..%2Fx/', '/board.html', '/README.md', '/wiki/', '/wiki/tooling/build.md', '/tooling/build.md']) {
     assert.equal((await request(s.port, { url: `${url}?t=${s.page}` })).status, 404, url);
   }
@@ -361,7 +357,7 @@ test('forge.mjs open starts the server of a repository in the background, gives 
   assert.deepEqual([stopped.status, /^forge: stopped the live server of this repository \(process \d+\)\.\n$/.test(stopped.stdout)], [0, true]);
   assert.equal(liveStatus(f.env, f.wiki), null);
   assert.equal(run('--stop').stdout, 'forge: no server runs for this repository.\n');
-  for (const args of [['extra'], ['--port', '80'], ['--json'], ['--links', 'web'], ['--status', '--stop'], ['--list', '--port', '0']]) {
+  for (const args of [['extra'], ['--port', '80'], ['--json'], ['--links', 'file'], ['--status', '--stop'], ['--list', '--port', '0']]) {
     const result = run(...args);
     assert.equal(result.status, 1, args.join(' '));
     assert.match(result.stderr, /Usage: forge\.mjs open/);
@@ -388,7 +384,7 @@ test('the browser command of each platform gets only the link, and a missing com
 });
 
 test('the live command refuses wrong arguments', () => {
-  for (const args of [['live', 'extra'], ['live', '--port', '80'], ['live', '--port', 'x'], ['live', '--json'], ['live', '--links', 'web'], ['live', '--status', '--port', '0']]) {
+  for (const args of [['live', 'extra'], ['live', '--port', '80'], ['live', '--port', 'x'], ['live', '--json'], ['live', '--links', 'file'], ['live', '--status', '--port', '0']]) {
     const result = spawnSync(process.execPath, [cli, ...args, '--cwd', cwd], { encoding: 'utf8', env: { ...process.env, FORGE_DATA_DIR: path.join(os.tmpdir(), 'forge-live-none') } });
     assert.equal(result.status, 1, args.join(' '));
     assert.match(result.stderr, /Usage: forge\.mjs live/);
@@ -444,7 +440,7 @@ test('the server gives the pages the sessions of the session list that are not l
   assert.ok(!(await live(s)).past.some((item) => item.id === UUID_A));
   // A session with another id shape (a test id, another host version) writes nothing.
   await post(s, ev('prompt', { text: 'hello' }));
-  await post(s, { ...ev('prompt', { text: 'hello' }), host: 'vscode', session: UUID_B });
+  await post(s, { ...ev('prompt', { text: 'hello' }), host: 'other-host', session: UUID_B });
   assert.ok(!readSessions(raw).has('S1') && !readSessions(raw).has(UUID_B));
 });
 

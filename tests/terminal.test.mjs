@@ -80,7 +80,7 @@ test('a tab title has plain characters only, and the new terminal does not get t
   const env = {
     PATH: '/bin', HOME: '/home/u', TERM_PROGRAM: 'Orca', CLAUDE_CONFIG_DIR: '/home/u/.claude2', ANTHROPIC_MODEL: 'x',
     FORGE_HOME: '/code/app.forge', FORGE_TERMINAL: 'kitty', CLAUDECODE: '1', CLAUDE_CODE_ENTRYPOINT: 'cli', CLAUDE_PLUGIN_ROOT: '/p', CLAUDE_PROJECT_DIR: '/code/app',
-    AI_AGENT: 'github_copilot_vscode_agent', COPILOT_CLI: '1', PLUGIN_ROOT: '/p', COPILOT_PLUGIN_ROOT: '/p',
+    AI_AGENT: 'other_agent_tool', COPILOT_CLI: '1', PLUGIN_ROOT: '/p', COPILOT_PLUGIN_ROOT: '/p',
   };
   assert.deepEqual(cleanEnv(env), { PATH: '/bin', HOME: '/home/u', TERM_PROGRAM: 'Orca', CLAUDE_CONFIG_DIR: '/home/u/.claude2', ANTHROPIC_MODEL: 'x', FORGE_TERMINAL: 'kitty' });
 });

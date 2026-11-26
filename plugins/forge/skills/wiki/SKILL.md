@@ -1,6 +1,6 @@
 ---
 name: wiki
-description: Engineering wiki of the current repository (../<repo>.forge/wiki), shared by all sessions in the VS Code Agents window. Use it to look up past findings, gotchas, decisions, and how parts of your code connect, and to record new durable knowledge. Use when asked to "check the wiki", "remember this in the wiki", "add to wiki", "what do we know about X", "lint the wiki", or when you start non-trivial work in an area the wiki index covers.
+description: Engineering wiki of the current repository (../<repo>.forge/wiki), shared by all agent sessions of the repository. Use it to look up past findings, gotchas, decisions, and how parts of your code connect, and to record new durable knowledge. Use when asked to "check the wiki", "remember this in the wiki", "add to wiki", "what do we know about X", "lint the wiki", or when you start non-trivial work in an area the wiki index covers.
 ---
 
 # 📚 Repository wiki
@@ -24,7 +24,7 @@ The wiki shares configuration and helper scripts through Git. It needs no separa
   index.md        catalog: one line per page, grouped by area
   log.md          append-only change log
   forge/          repo.json (binding), config/ (forge config), scripts/ (helper scripts)
-  tooling/        VS Code, MCP, build, and environment gotchas
+  tooling/        MCP, build, and environment gotchas
   <area>/         architecture, flows, and code knowledge (one folder for each product or codebase)
   decisions/      decisions and their reasons
   tickets/        one summary page per closed ticket

@@ -316,7 +316,7 @@ function answers(port) {
  * Gives the exit code: 130 or 143 after a signal, and 3 at the idle limit (no event and no request of a page for `idleMs`).
  * `sweepMs` is the time between two sweeps: a test gives a short one.
  */
-export async function serveLive(wiki, { links = 'vscode', port, repo = '', idleMs = IDLE_MS, holdMs = HOLD_MS, sweepMs = SWEEP_MS, out = process.stdout, err = process.stderr, signals = process, env = process.env, openTerminalFn = openTerminal } = {}) {
+export async function serveLive(wiki, { port, repo = '', idleMs = IDLE_MS, holdMs = HOLD_MS, sweepMs = SWEEP_MS, out = process.stdout, err = process.stderr, signals = process, env = process.env, openTerminalFn = openTerminal } = {}) {
   const home = homeOf(wiki);
   const running = liveStatus(env, home);
   if (running && await answers(running.port)) throw new Error(`A live server runs already for this repository: ${running.link}. Stop it first (forge.mjs open --stop, or process ${running.pid}).`);
@@ -551,12 +551,12 @@ export async function serveLive(wiki, { links = 'vscode', port, repo = '', idleM
       const model = () => (pages ??= buildWiki(wiki, { board }));
       if (url.pathname === '/board') {
         if (scan()) changed();
-        const page = renderBoardPage(board, { links, wiki, serve: { token: pageToken, live: `/live?t=${pageToken}`, resume: '/resume', open: openText, c: cache.stamp }, nav: buildNav(board, { token: pageToken, closed: model().closed }) });
+        const page = renderBoardPage(board, { serve: { token: pageToken, live: `/live?t=${pageToken}`, resume: '/resume', open: openText, c: cache.stamp }, nav: buildNav(board, { token: pageToken, closed: model().closed }) });
         send(res, 200, 'text/html; charset=utf-8', page, { 'Content-Security-Policy': BOARD_POLICY });
         return;
       }
       if (url.pathname === '/wiki') {
-        const page = renderWikiPage(model(), { links, serve: { token: pageToken, open: openText }, nav: buildNav(board, { from: 'wiki', token: pageToken, closed: model().closed }) });
+        const page = renderWikiPage(model(), { serve: { token: pageToken, open: openText }, nav: buildNav(board, { from: 'wiki', token: pageToken, closed: model().closed }) });
         send(res, 200, 'text/html; charset=utf-8', page, { 'Content-Security-Policy': needsMermaid(page) ? WIKI_POLICY_MERMAID : WIKI_POLICY });
         return;
       }

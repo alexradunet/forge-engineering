@@ -82,6 +82,6 @@ A decision that an approval depends on also goes into the gate document (`Answer
 | Value | Title |
 |---|---|
 | `approve` | 🟢 GO: approve and start the next step |
-| `comments` | 💬 Comments: I added comments in the editor or in the chat |
+| `comments` | 💬 Comments: I added comments in the chat |
 | `changes` | ✏️ Changes: I type them in the free-text answer |
 | `later` | ⏸️ Hold: not now |

@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { CLAUDE_PARTS, END_MARKER, PROMPT_HEAD, buildContext, detectHost, promptSubmit, readEvent, resolveHost, ruleBody, sessionEnd, sessionStart, splitParts } from '../plugins/forge/scripts/lib/hook.mjs';
+import { CLAUDE_PARTS, END_MARKER, HOSTS, PROMPT_HEAD, buildContext, detectHost, promptSubmit, readEvent, resolveHost, ruleBody, sessionEnd, sessionStart, splitParts } from '../plugins/forge/scripts/lib/hook.mjs';
 import { OWN_TURN_STARTS, ownTurn } from '../plugins/forge/scripts/lib/own-turn.mjs';
 import { readSessions } from '../plugins/forge/scripts/lib/sessions.mjs';
 import { status as trustStatus, approve } from '../plugins/forge/scripts/lib/trust.mjs';
@@ -22,7 +22,7 @@ const pluginDir = path.dirname(path.dirname(cli));
 // Without a ticket the hook still gives the paths and the rules, but no ticket part.
 const TICKET = '\n# Forge ticket context\n';
 const noTicket = (result) => Boolean(result.additionalContext?.includes('\n# forge plugin\n')) && !result.additionalContext.includes(TICKET);
-// The ticket part only: the rules after it name set_workspace and other commands too.
+// The ticket part only: the rules come after it.
 const ticketOf = (text) => text.slice(text.indexOf(TICKET), text.indexOf('\n# forge plugin\n'));
 
 function git(cwd, ...args) {
@@ -82,39 +82,27 @@ test('a session in the recorded ticket worktree gets the title, Resume, and the 
   git(s.app, 'worktree', 'add', '-q', '-b', 'APP-7-doc-import', folder);
   writeFileSync(s.readme, readFileSync(s.readme, 'utf8').replace('worktree: ""', `worktree: "${folder.replaceAll('\\', '/')}"`));
   const result = run({ cwd: folder, source: 'new', prompt: '' });
-  assert.match(result.additionalContext, /call rename_chat with the title "APP-7 - 🟡 - Doc import error telemetry"/);
-  assert.match(result.additionalContext, /overrides the general advice not to rename fresh chats/);
+  assert.match(result.additionalContext, /tell the user to run `\/rename APP-7 - 🟡 - Doc import error telemetry`/);
   assert.match(result.additionalContext, /follow Resume/);
   assert.match(result.additionalContext, /- \*\*Next:\*\* Approve Planned\?/);
-  assert.doesNotMatch(ticketOf(result.additionalContext), /set_workspace|git branch -m|migrate/);
+  assert.doesNotMatch(ticketOf(result.additionalContext), /git branch -m|migrate/);
 });
 
-test('a New Worktree session on an agents/ branch is matched by key and told to rename the branch', (t) => {
-  const s = setup(t);
-  const folder = path.join(`${s.app}.worktrees`, 'resume-ticket-app-7-workflow');
-  git(s.app, 'worktree', 'add', '-q', '-b', 'agents/resume-ticket-app-7-workflow', folder);
-  const text = run({ cwd: folder, prompt: 'continue' }).additionalContext;
-  assert.match(text, /Forge ticket session: APP-7/);
-  assert.match(text, /New Worktree folder on branch agents\/resume-ticket-app-7-workflow/);
-  assert.match(text, /worktree APP-7 --summary/);
-  assert.ok(text.includes(`node "${cli}" worktree`), 'Commands name the absolute forge.mjs path.');
-});
-
-test('a Folder session in the main checkout finds a key in the prompt or offers Start for a new key', (t) => {
+test('a session in the main checkout finds a key in the prompt or offers Start for a new key', (t) => {
   const s = setup(t, { worktree: 'C:/elsewhere/app-7' });
   const known = run({ cwd: s.app, prompt: 'Resume app-7 please' }).additionalContext;
-  assert.match(known, /The ticket worktree is C:\/elsewhere\/app-7\. Confirm with the user, then call set_workspace/);
+  assert.match(known, /The ticket worktree is C:\/elsewhere\/app-7\. Confirm with the user, then move the session to that folder/);
   assert.match(known, /A board request \(the `board` skill\) ignores this context\./);
   const fresh = run({ cwd: s.app, prompt: 'APP-241223 Doc import fails for big files' }).additionalContext;
   assert.match(fresh, /names APP-241223, and the wiki has no ticket folder/);
-  assert.match(fresh, /rename_chat with "APP-241223 - ▶️ - <summary>"/);
+  assert.match(fresh, /tell the user to run `\/rename APP-241223 - ▶️ - <summary>`/);
   assert.match(fresh, /follow Start/);
   assert.match(fresh, /worktree APP-241223 --summary "<goal>" --create/);
   assert.ok(noTicket(run({ cwd: s.app, prompt: 'what is the board status' })));
   assert.ok(noTicket(run({ cwd: s.app, prompt: 'utf-8 and sha-256 are not keys' })), 'Lower-case tokens are not new keys.');
 });
 
-test('a ticket that records the base branch or the main checkout does not match every Folder session', (t) => {
+test('a ticket that records the base branch or the main checkout does not match every session in the main checkout', (t) => {
   const s = setup(t, { branch: 'main' });
   writeFileSync(s.readme, readFileSync(s.readme, 'utf8').replace('worktree: ""', `worktree: "${s.app.replaceAll('\\', '/')}"`));
   assert.ok(noTicket(run({ cwd: s.app, prompt: 'what is the board status' })));
@@ -232,37 +220,30 @@ test('the Copilot context ends with the end marker that the skills check', (t) =
   assert.ok(run({ cwd: s.app, prompt: 'hello' }).additionalContext.endsWith(`\n\n${END_MARKER}`));
 });
 
-test('detectHost tells the hosts apart by CLAUDECODE and AI_AGENT only', () => {
-  // Both Copilot hosts also set CLAUDE_PLUGIN_ROOT and COPILOT_CLI (probe of 6.4.0).
+test('detectHost tells the hosts apart by CLAUDECODE only', () => {
+  // The Copilot CLI also sets CLAUDE_PLUGIN_ROOT and COPILOT_CLI (probe of 6.4.0).
   const copilotVars = { COPILOT_CLI: '1', CLAUDE_PLUGIN_ROOT: 'x', CLAUDE_PROJECT_DIR: 'y' };
-  assert.equal(detectHost({ ...copilotVars, AI_AGENT: 'github_copilot_vscode_agent' }), 'vscode');
+  assert.deepEqual(HOSTS, ['copilot-cli', 'claude']);
   assert.equal(detectHost(copilotVars), 'copilot-cli');
+  assert.equal(detectHost({ ...copilotVars, AI_AGENT: 'other-tool' }), 'copilot-cli', 'AI_AGENT does not give a host.');
   assert.equal(detectHost({ CLAUDECODE: '1' }), 'claude');
-  assert.equal(resolveHost('copilot', { AI_AGENT: 'github_copilot_vscode_agent' }), 'vscode');
   assert.equal(resolveHost('copilot', { CLAUDECODE: '1' }), 'copilot-cli', 'copilot never means Claude Code.');
-  assert.equal(resolveHost('copilot', { CLAUDECODE: '1', AI_AGENT: 'github_copilot_vscode_agent' }), 'vscode', 'VS Code started from a Claude Code terminal.');
   assert.equal(resolveHost('claude', {}), 'claude');
-  const both = { CLAUDECODE: '1', AI_AGENT: 'github_copilot_vscode_agent' };
-  assert.equal(hookArgs(['hook', 'session-start'], both).host, 'vscode', 'A hook without --host is a Copilot hook.');
-  assert.equal(hookArgs(['hook', 'session-start'], { CLAUDECODE: '1' }).host, 'copilot-cli');
+  assert.equal(resolveHost('', { CLAUDECODE: '1' }), 'claude');
+  const both = { CLAUDECODE: '1' };
+  assert.equal(hookArgs(['hook', 'session-start'], both).host, 'copilot-cli', 'A hook without --host is a Copilot CLI hook, also in a Claude Code terminal.');
+  assert.equal(hookArgs(['hook', 'session-start', '--host', 'vscode'], {}), null, 'vscode is not a host.');
   assert.deepEqual(hookArgs(['hook', 'session-start', '--host', 'claude', '--part', '2'], {}), { name: 'session-start', host: 'claude', part: 2 });
   assert.equal(hookArgs(['hook', 'session-start', '--part', '2'], both), null);
 });
 
-test('each host gets its own table, and the Copilot CLI ticket part has no VS Code tool step', (t) => {
+test('each host gets its own table, and the default host is the Copilot CLI', (t) => {
   const s = setup(t, { worktree: 'C:/elsewhere/app-7' });
-  const vscode = run({ cwd: s.app, prompt: 'Resume APP-7' }).additionalContext;
-  assert.match(vscode, /# Forge host: VS Code Agents window\n/);
-  assert.match(vscode, /`host\.move` \| Call `set_workspace` with `workspaceFolder` set to the folder and `isolation: false`/);
-  assert.doesNotMatch(vscode, /# Forge host: (Claude|GitHub Copilot CLI)/);
-  // VS Code regression: the verbs must still resolve to the exact tool steps of 6.4.0.
-  for (const step of [
-    /`host\.title` \| Call `rename_chat`/, /`host\.ask` \| Call `ask_user`/,
-    /always give `relationship: independent`: without it, VS Code makes a nested chat/,
-    /Give `worktree: false` for an existing verified worktree/, /`host\.artifact` \| Call `add_artifact_or_reference`/,
-  ]) assert.match(vscode, step);
   const cliText = sessionStart({ cwd: s.app, prompt: 'Resume APP-7' }, { cli, env, host: 'copilot-cli' }).additionalContext;
   assert.match(cliText, /# Forge host: GitHub Copilot CLI\n/);
+  assert.doesNotMatch(cliText, /# Forge host: Claude/);
+  assert.equal(run({ cwd: s.app, prompt: 'Resume APP-7' }).additionalContext, cliText, 'a call without a host gives the Copilot CLI context');
+  assert.match(cliText, /`host\.title` \| Tell the user to run `\/rename <title>`/);
   const ticket = ticketOf(cliText);
   assert.match(ticket, /tell the user to run `\/rename APP-7 - 🟡 - Doc import error telemetry`/);
   assert.match(ticket, /The ticket worktree is C:\/elsewhere\/app-7\. Confirm with the user, then move the session to that folder \(`host\.move`/);
@@ -280,7 +261,7 @@ test('splitParts keeps each part under the size and keeps all the text', () => {
   assert.deepEqual(splitParts(['# A', 'a'.repeat(30), '# B', 'b'.repeat(10), 'c'.repeat(20)].join('\n\n'), 60), [`# A\n\n${'a'.repeat(30)}`, `# B\n\n${'b'.repeat(10)}\n\n${'c'.repeat(20)}`], 'A part ends before a heading.');
 });
 
-test('Claude Code gets the context in numbered parts under 10,000 characters, with the title and no VS Code tool steps', (t) => {
+test('Claude Code gets the context in numbered parts under 10,000 characters, with the title and no Copilot title step', (t) => {
   const s = setup(t);
   const folder = path.join(`${s.app}.worktrees`, 'app-7-doc-import');
   git(s.app, 'worktree', 'add', '-q', '-b', 'APP-7-doc-import', folder);
@@ -315,7 +296,7 @@ test('Claude Code gets the context in numbered parts under 10,000 characters, wi
   // The Claude tools line became the Claude Code host table, and Claude moves with EnterWorktree (`host.move`).
   const all = texts.join('\n\n');
   assert.match(all, /# Forge host: Claude Code\n/);
-  assert.doesNotMatch(all, /# Forge host: VS Code/);
+  assert.doesNotMatch(all, /# Forge host: GitHub Copilot CLI/);
   assert.match(all, /`host\.move` \| Call `EnterWorktree`/);
   const main = buildContext({ cwd: s.app, prompt: 'APP-241223 new work' }, { cli, env, host: 'claude' }).body;
   assert.match(ticketOf(main), /move the session to the new folder \(`host\.move` in the host table\)/);
@@ -452,18 +433,20 @@ test('a later prompt names a ticket only in its first characters', (t) => {
 
 test('forge.mjs context prints the context for a host without the hook, and the Claude hook options are strict', (t) => {
   const s = setup(t);
-  const call = (args, extra = {}, input = undefined) => spawnSync(process.execPath, [cli, ...args], { input, encoding: 'utf8', env: { ...env, CLAUDECODE: '', AI_AGENT: 'github_copilot_vscode_agent', ...extra }, cwd: s.app });
+  const call = (args, extra = {}, input = undefined) => spawnSync(process.execPath, [cli, ...args], { input, encoding: 'utf8', env: { ...env, CLAUDECODE: '', ...extra }, cwd: s.app });
   const plain = call(['context']);
   assert.equal(plain.status, 0, plain.stderr);
   assert.ok(plain.stdout.startsWith('# Forge session context'));
   assert.ok(plain.stdout.trimEnd().endsWith(END_MARKER));
-  assert.match(plain.stdout, /# Forge host: VS Code Agents window/, 'VS Code sets AI_AGENT.');
+  assert.match(plain.stdout, /# Forge host: GitHub Copilot CLI/, 'The Copilot CLI sets no CLAUDECODE.');
   assert.match(call(['context'], { CLAUDECODE: '1' }).stdout, /# Forge host: Claude Code/, 'Claude Code sets CLAUDECODE=1.');
-  assert.match(call(['context'], { AI_AGENT: '' }).stdout, /# Forge host: GitHub Copilot CLI/, 'The Copilot CLI sets no AI_AGENT.');
-  assert.match(call(['context', '--host', 'copilot'], { AI_AGENT: '' }).stdout, /# Forge host: GitHub Copilot CLI/, 'copilot is the old name of a Copilot host.');
+  assert.match(call(['context', '--host', 'copilot'], { CLAUDECODE: '1' }).stdout, /# Forge host: GitHub Copilot CLI/, 'copilot is the old name of the Copilot CLI.');
+  assert.equal(call(['context', '--host', 'vscode']).status, 2);
   assert.equal(call(['context', '--host', 'pi']).status, 2);
-  const cliHook = call(['hook', 'session-start'], { AI_AGENT: '' }, JSON.stringify({ cwd: s.app, source: 'startup' }));
-  assert.match(JSON.parse(cliHook.stdout).additionalContext, /# Forge host: GitHub Copilot CLI/, 'The Copilot hook finds its host from the environment.');
+  const cliHook = call(['hook', 'session-start'], {}, JSON.stringify({ cwd: s.app, source: 'startup' }));
+  assert.match(JSON.parse(cliHook.stdout).additionalContext, /# Forge host: GitHub Copilot CLI/, 'The Copilot CLI hook finds its host from the environment.');
+  const inClaudeTerminal = call(['hook', 'session-start'], { CLAUDECODE: '1' }, JSON.stringify({ cwd: s.app, source: 'startup' }));
+  assert.match(JSON.parse(inClaudeTerminal.stdout).additionalContext, /# Forge host: GitHub Copilot CLI/, 'A hook without --host is a Copilot CLI hook, also when CLAUDECODE is set.');
   const part = call(['hook', 'session-start', '--host', 'claude', '--part', '2'], {}, JSON.stringify({ cwd: s.app, source: 'startup' }));
   assert.equal(part.status, 0, part.stderr);
   assert.match(JSON.parse(part.stdout).hookSpecificOutput.additionalContext, /^Forge context part 2 of /);
@@ -489,7 +472,7 @@ test('a full-v4 ticket gets the plain Now card and Resume', (t) => {
   assert.deepEqual(nowCard('# A\n\n## Now\n\n- State: ▶️ active\n- Waiting on: nobody\n\n## Files\n').fields, { state: '▶️ active', 'waiting on': 'nobody' });
 });
 
-test('the hooks of a terminal harness write the start and the end of a session to the session list, and VS Code writes nothing', (t) => {
+test('the hooks of a terminal harness write the start and the end of a session to the session list, and a host without a row writes nothing', (t) => {
   const s = setup(t);
   const raw = path.join(s.home, 'raw');
   const file = path.join(raw, 'sessions.jsonl');
@@ -498,7 +481,7 @@ test('the hooks of a terminal harness write the start and the end of a session t
 
   // No session id (a test payload, an old host version), a host without a row, or an id of another shape: no line.
   sessionStart({ cwd: s.app, source: 'startup', prompt: '', session: '' }, { cli, env, host: 'claude', part: 1 });
-  sessionStart({ cwd: s.app, source: 'new', prompt: '', session: 'vs-1' }, { cli, env, host: 'vscode' });
+  sessionStart({ cwd: s.app, source: 'new', prompt: '', session: 'vs-1' }, { cli, env, host: 'other-host' });
   sessionStart({ cwd: s.app, source: 'startup', prompt: '', session: '--dangerously-skip-permissions' }, { cli, env, host: 'claude', part: 1 });
   sessionStart({ cwd: s.app, source: 'startup', prompt: '', session: '-x' }, { cli, env, host: 'copilot-cli' });
   assert.deepEqual(lines(), []);
@@ -515,7 +498,7 @@ test('the hooks of a terminal harness write the start and the end of a session t
   assert.deepEqual({ ...lines()[1], ts: 0 }, { v: 1, e: 'start', host: 'copilot-cli', id: 'cp-1', cwd: s.app, ts: 0, label: 'Check why token=*** fails', source: 'new' });
 
   assert.deepEqual(sessionEnd({ cwd: s.app, session: id, reason: 'prompt_input_exit' }, { env, host: 'claude' }), {});
-  assert.deepEqual(sessionEnd({ cwd: s.app, session: 'vs-1', reason: 'complete' }, { env, host: 'vscode' }), {});
+  assert.deepEqual(sessionEnd({ cwd: s.app, session: 'vs-1', reason: 'complete' }, { env, host: 'other-host' }), {});
   assert.deepEqual(sessionEnd({ cwd: s.app, session: '', reason: 'complete' }, { env, host: 'copilot-cli' }), {});
   assert.deepEqual(sessionEnd(null, { env, host: 'claude' }), {});
   assert.equal(lines().length, 3);
@@ -525,13 +508,10 @@ test('the hooks of a terminal harness write the start and the end of a session t
   assert.equal(records.get('cp-1').end, 0, 'the Copilot CLI session has no end yet');
 
   // The commands of the hook files: the end hook prints {} and writes the line, and a folder without a wiki gets no file.
-  const call = (args, input, extra = {}) => spawnSync(process.execPath, [cli, 'hook', ...args], { input: JSON.stringify(input), encoding: 'utf8', env: { ...env, CLAUDECODE: '', AI_AGENT: '', ...extra }, cwd: s.app });
+  const call = (args, input, extra = {}) => spawnSync(process.execPath, [cli, 'hook', ...args], { input: JSON.stringify(input), encoding: 'utf8', env: { ...env, CLAUDECODE: '', ...extra }, cwd: s.app });
   const ended = call(['session-end'], { cwd: s.app, sessionId: 'cp-1', reason: 'user_exit' });
   assert.deepEqual([ended.status, JSON.parse(ended.stdout)], [0, {}]);
   assert.equal(readSessions(raw).get('cp-1').reason, 'user_exit');
-  const before = lines().length;
-  assert.deepEqual(JSON.parse(call(['session-end'], { cwd: s.app, sessionId: 'cp-2', reason: 'user_exit' }, { AI_AGENT: 'github_copilot_vscode_agent' }).stdout), {}, 'the Copilot hook file also runs in VS Code');
-  assert.equal(lines().length, before, 'a VS Code session has no terminal to continue');
   const outside = mkdtempSync(path.join(os.tmpdir(), 'forge-hook-none-'));
   t.after(() => rmSync(outside, { recursive: true, force: true }));
   assert.deepEqual(sessionEnd({ cwd: outside, session: id, reason: 'other' }, { env, host: 'claude' }), {});

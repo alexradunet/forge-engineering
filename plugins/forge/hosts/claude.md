@@ -1,6 +1,6 @@
 # Forge host: Claude Code
 
-This session runs in Claude Code. The VS Code session tools are not available here. Write every answer for a Claude Code user.
+This session runs in Claude Code. Write every answer for a Claude Code user.
 
 ## Host verbs
 
@@ -14,9 +14,8 @@ A Forge skill names a host verb, for example `host.title`. Do the step of the ve
 | `host.spawn` | Give the user the command for a new terminal: `cd "<folder>"; claude -n "<title>" "<prompt>"`. The `Agent` tool starts only a subagent, not a ticket session. |
 | `host.message` | When cross-session messages are on, find the session with `ListAgents` and call `SendMessage`. Otherwise give the user the text to paste into the other session. |
 | `host.sessions` | Call `ListAgents` when it is available. Otherwise run `node <plugin>/scripts/forge.mjs board`. |
-| `host.groups` | Not supported: there are no session groups. Skip the step. |
 | `host.artifact` | Give a Markdown link with the absolute path of the file. Never use the `Artifact` tool: it sends the file to claude.ai. |
-| `host.open` | Give a Markdown link with the absolute path of each file. Do not run an editor command: VS Code can be missing. |
+| `host.open` | Give a Markdown link with the absolute path of each file. |
 | `host.comments` | There are no document comments. Ask the user to paste the comments into the chat. |
 | `host.write` | Run the write command. The Forge gate guard makes Claude Code ask the user in the permission prompt, and the answer is the "yes". In `bypassPermissions` mode and in a `claude -p` run, the command is denied: give the user the exact command. For a write through an MCP tool or a script, ask with `host.ask` first. |
 
@@ -28,7 +27,6 @@ The board page (`board.html` in `<forge>/raw`, from `forge.mjs board`) shows all
 - Never use the `Artifact` tool for the board page or the wiki page: it sends the page to claude.ai.
 - To start the live server, run `forge.mjs open --no-browser` with `Bash` (see Live view). Give the user the links that it prints (`http://127.0.0.1`, this machine only).
 - The link works only in a browser on the machine of the session. For a browser on another machine, run `forge.mjs open --no-browser --port <n>`, and tell the user to forward that port. Never use another address than `127.0.0.1`.
-- A code link on the page opens the file in VS Code (`vscode://file/...`). When the user has no VS Code, run `forge.mjs board --links file`.
 
 ## Live view
 

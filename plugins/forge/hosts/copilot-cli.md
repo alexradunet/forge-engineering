@@ -1,6 +1,6 @@
 # Forge host: GitHub Copilot CLI
 
-This session runs in the GitHub Copilot CLI (`copilot`) in a terminal. The VS Code session tools are not available here. Write every answer for a terminal user.
+This session runs in the GitHub Copilot CLI (`copilot`) in a terminal. Write every answer for a terminal user.
 
 ## Host verbs
 
@@ -14,9 +14,8 @@ A Forge skill names a host verb, for example `host.title`. Do the step of the ve
 | `host.spawn` | Give the user the command for a new terminal: `copilot -C "<folder>" --name "<title>" -i "<prompt>"`. |
 | `host.message` | There is no tool to send a message to another session. Give the user the text to paste into the other session. |
 | `host.sessions` | Run `node <plugin>/scripts/forge.mjs board`. The user sees the sessions with `/resume`. |
-| `host.groups` | Not supported: there are no session groups. Skip the step. |
 | `host.artifact` | Give a Markdown link with the absolute path of the file. |
-| `host.open` | Give a Markdown link with the absolute path of each file. Do not run an editor command: VS Code can be missing. |
+| `host.open` | Give a Markdown link with the absolute path of each file. |
 | `host.comments` | There are no document comments. Ask the user to paste the comments into the chat. |
 | `host.write` | Ask with `ask_user` first, and run the write command only after an explicit "yes": no check has shown yet that the Forge hook runs here. The hook can then ask again. In a prompt mode run or in autopilot, give the user the exact command. Exception: the creation of a change request whose draft is in the approved Shippable? set needs no second "yes" (see Sendable?). |
 
@@ -27,7 +26,6 @@ The board page (`board.html` in `<forge>/raw`, from `forge.mjs board`) shows all
 - Give the user the `file://` link that the command prints. The user opens it in a browser, and loads the page again after each `board` run.
 - To start the live server, run `forge.mjs open --no-browser` (see Live view). Give the user the links that it prints (`http://127.0.0.1`, this machine only).
 - The link works only in a browser on the machine of the session. For a browser on another machine, run `forge.mjs open --no-browser --port <n>`, and tell the user to forward that port. Never use another address than `127.0.0.1`.
-- A code link on the page opens the file in VS Code (`vscode://file/...`). When the user has no VS Code, run `forge.mjs board --links file`.
 
 ## Live view
 

@@ -6,7 +6,7 @@ import { client } from './kit.mjs';
 export const GATE_TEXT = { approved: 'approved', 'in-review': 'needs you', todo: 'not open', blocked: 'blocked', skipped: 'skipped' };
 
 /**
- * The words of a ticket state on a page. The pages say "Needs you" for the state needs-me. The board file (raw/board.md) and the session groups keep
+ * The words of a ticket state on a page. The pages say "Needs you" for the state needs-me. The board file (raw/board.md) keeps
  * the label "Needs me" of board.mjs, so this map is for the pages only. `label` is the label of the board model for any other state.
  */
 const PAGE_LABEL = { 'needs-me': 'Needs you' };

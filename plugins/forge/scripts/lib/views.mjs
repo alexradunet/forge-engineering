@@ -35,13 +35,13 @@ function writePage(file, text, dryRun) {
  * Writes the board page and the wiki page of a wiki. `dryRun` writes no file.
  * Gives the board model, the result of each page ({ file, changed, written }), and the wiki facts (pages, closed, errors, mermaid).
  */
-export function writeViews(wikiPath, { links = 'vscode', today, dryRun = false } = {}) {
+export function writeViews(wikiPath, { today, dryRun = false } = {}) {
   const board = buildBoard(wikiPath, { today });
   // The wiki model: the pages, the closed tickets, and the pages that each open ticket names.
   const wiki = buildWiki(wikiPath, { board });
   const { closed } = wiki;
-  const page = writePage(boardPageFile(wikiPath), renderBoardPage(board, { links, wiki: wikiPath, nav: buildNav(board, { closed }) }), dryRun);
-  const wikiText = renderWikiPage(wiki, { links, nav: buildNav(board, { from: 'wiki', closed }) });
+  const page = writePage(boardPageFile(wikiPath), renderBoardPage(board, { nav: buildNav(board, { closed }) }), dryRun);
+  const wikiText = renderWikiPage(wiki, { nav: buildNav(board, { from: 'wiki', closed }) });
   const wikiPage = writePage(wikiPageFile(wikiPath), wikiText, dryRun);
   // A wiki page with a diagram block gets the Mermaid file of forge in raw/, next to the board page.
   const mermaid = needsMermaid(wikiText) ? copyMermaid(path.dirname(wikiPage.file), { dryRun }) : null;

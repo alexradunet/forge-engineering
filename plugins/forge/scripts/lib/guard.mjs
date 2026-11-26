@@ -304,7 +304,7 @@ export function shipActions(line, cwd, changes = []) {
 
 /**
  * The hook input of each host: { cwd, command, mode }, or null when the tool call has no shell command.
- * Claude Code and the VS Code format give `tool_input`. The Copilot format gives `toolArgs`, as an object or as JSON text.
+ * Claude Code gives `tool_input`. The Copilot CLI format gives `toolArgs`, as an object or as JSON text.
  * `mode` is the permission mode of the session (Claude Code `permission_mode`), or '' when the host gives none.
  */
 export function readToolEvent(raw) {

@@ -139,7 +139,7 @@ const script = client(function () {
     if (link && data.icons) link.setAttribute('href', hot ? data.icons.needs : data.icons.calm);
   }
   // The page got its data at render time (data.c). A later answer with another stamp means that the data of the page changed:
-  // the page says so, and it never loads again by itself, because the user can have a comment in the editor.
+  // the page says so, and it never loads again by itself.
   function checkStamp(c) {
     if (!data.c || !c) return;
     if (c === data.c) {

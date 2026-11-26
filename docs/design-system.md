@@ -375,8 +375,7 @@ The archive folder of a ticket stays on its machine, and no page shows it.
 ## 🧭 Navigation
 
 The unit of the navigation is the ticket. One ticket has one session, and the session title starts with the ticket key.
-The VS Code docs give no link that opens one session (read on 2026-11-17), so a page cannot open a session.
-A board card has the link **Worktree**, which opens the worktree folder of the ticket in VS Code.
+No host gives a link that opens one session from a page, so a page cannot open a session. A page can only give the command that continues a closed session (**Resume** and **Copy command**).
 
 | From | To | Mouse | Key |
 |---|---|---|---|
@@ -426,7 +425,7 @@ The token of the live server is a secret of this machine. `forge.mjs open --new-
 | The user wants to open Forge from a terminal | `../<repo>.forge/forge open` starts the server of that repository when none runs, prints the links, and opens the board in the browser |
 | The board has no ticket (first run) | The board shows the cold anvil and 3 numbered steps: start a session, give it a work item key, and see the ticket after its first step |
 | A filter finds nothing | The board banner says "No ticket agrees with the filter." and the wiki banner says "No page has these words.". Each has **Show all**. A hidden status line tells a screen reader the result |
-| A ticket file changed while a live page is open | The notice says "The board changed." with **Reload** and **Later**. The page never loads again by itself, because the user can have a comment in the editor. **Later** hides the notice until the next change |
+| A ticket file changed while a live page is open | The notice says "The board changed." with **Reload** and **Later**. The page never loads again by itself,. **Later** hides the notice until the next change |
 | The address is wrong, or the server fails | An error page in the style of the kit (403, 404, or 500) with the cold anvil, a short text, and a link to the board. It has no script. A script or `curl` gets the plain text |
 | The user has the board in another tab | The title shows `(2) Forge board` when 2 tickets need the user, and the tab icon has the hot spot. A live page updates them from the answer of the server |
 | A gate is approved while the user watches the page | The new ingot shows the spark one time. A first visit shows no spark |
@@ -441,7 +440,7 @@ The token of the live server is a secret of this machine. `forge.mjs open --new-
 | The Mermaid file is missing in `raw/` | A toast says to run `forge.mjs board` again, and the blocks stay as code |
 | A link names a wiki page that is gone | The wiki page says that it has no such page, and it shows the first page |
 | The wiki has no page yet | The wiki page shows the cold anvil and says so, and the board has no list of closed tickets |
-| The page is old (a file page) | The footer gives the time. The next `forge.mjs board` run writes it again, and VS Code can load it again (`workbench.browser.autoReloadOnFileChange`). A page that did not change is not written again |
+| The page is old (a file page) | The footer gives the time. The next `forge.mjs board` run writes it again, and you load the page again by hand. A page that did not change is not written again |
 | A narrow window (below 760 px) | The bar wraps, the lanes go below each other, and the cards take the full width |
 | A dark editor with a light system | The theme button. The early script sets the stored theme before the first paint, so the page does not flash |
 | No keyboard, or no mouse | Each step has a button and a key. A dialog keeps the focus, and `Esc` closes it. The focus ring uses `--accent` |
@@ -513,7 +512,7 @@ Tests do not show a page. Look at each page change in a browser.
 - The skip link covers the logo while it has the focus.
 - The pages say "needs you". `raw/board.md` and the session groups keep "Needs me".
 - A file page shows the tickets of its last run. Only a served page reads the files on each load, and only a page of the live server says that the data changed.
-- The live activity comes from Claude Code sessions only. The hooks of Copilot CLI and VS Code have no background option, so those hosts send no events yet. A Copilot CLI session shows as a closed session row ("no end seen" while it runs), and a VS Code session does not show.
+- The live activity comes from Claude Code sessions only. The hooks of Copilot CLI have no background option, so it sends no events yet. A Copilot CLI session shows as a closed session row ("no end seen" while it runs).
 - **Resume** opens a terminal on Windows and Linux. On macOS the page gives the command to copy. A terminal that starts and shows no window still counts as open, so each row also has **Copy command**.
 - A file page (`raw/board.html`) has no closed session rows: only the live server reads the session list.
 - The live server learns of a session at its first event. A session that started before the server shows after its next prompt or tool call.

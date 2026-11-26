@@ -1,6 +1,6 @@
 ---
 name: agents
-description: Coordinate work across agent sessions (VS Code Agents window, Copilot CLI, Claude Code). Reuse a suitable Git worktree or start an implementer session, run a reviewer subagent, hand work from one session to another, and report the status of sessions. Use when asked to "start an implementer", "hand this off", "run a reviewer", "review this diff", "work on these in parallel", "what are my sessions doing", or when the ticket skill reaches Implement.
+description: Coordinate work across agent sessions (Copilot CLI, Claude Code). Reuse a suitable Git worktree or start an implementer session, run a reviewer subagent, hand work from one session to another, and report the status of sessions. Use when asked to "start an implementer", "hand this off", "run a reviewer", "review this diff", "work on these in parallel", "what are my sessions doing", or when the ticket skill reaches Implement.
 ---
 
 # 🤖 Agent sessions
@@ -11,7 +11,6 @@ description: Coordinate work across agent sessions (VS Code Agents window, Copil
 > [forge.md](../../context/forge.md) (the `forge` rule), and [style.md](../../context/style.md) (the `style` rule) unless `policy.styleRules` is `false`.
 
 The host is the orchestrator. A task can continue in its current isolated session.
-In the VS Code Agents window, you see all sessions in the sessions list and in the session grid.
 This skill decides when to use which host verb (the `# Forge host` table). It does not repeat the host documentation.
 
 ```mermaid
@@ -21,7 +20,7 @@ flowchart LR
   check -->|no| impl["Implementer session<br/>verified worktree"]
   lead -->|subagent| rev["Reviewer subagent<br/>(read-only)"]
   lead -->|host.message| impl
-  impl -->|user reviews Changes| pr["Change request<br/>(user merges in the host web UI)"]
+  impl -->|user reviews the diff| pr["Change request<br/>(user merges in the host web UI)"]
 ```
 
 ## 🧭 Choose the tool
@@ -43,19 +42,18 @@ flowchart LR
 3. Only when another session is needed, start it with `host.spawn`:
    - title: `<KEY> - ▶️ - <short>` (for example `APP-123 - ▶️ - Implement outbox retry on timeout`). The session keeps it current. See "Session title" in the `ticket` skill.
    - folder: the verified worktree path when one already exists; otherwise the checkout from `repo.checkouts` or the task repository.
-   - `worktree`: `false` for an existing verified worktree; `true` only when a new worktree is needed (VS Code). The spawn tool has no base-branch parameter. Never assume that a new worktree selects the ticket branch or a required commit. For a pinned baseline, use the manual step below.
-   - relationship: a nested session for work on the current ticket. An independent session only for an unrelated task.
+   - a new worktree: only when no suitable worktree exists (see "Select the execution worktree"). Never assume that a new worktree selects the ticket branch or a required commit. For a pinned baseline, use the pinned baseline step below.
 4. Write a self-contained `prompt`:
    - the goal, and the paths to the approved `story.md` and `plan.md`, and to `map.md` (the code map of the area)
    - the ticket's workflow marker (`full-v4`), README, and approval manifest/record paths; revalidate the exact approved revisions before editing, and stop if stale or unverifiable
-   - the branch name from `repo.branchPattern`, as `<F> worktree` prints it (see "Worktrees" in the `ticket` skill). In a **New Worktree** session on an `agents/...` branch, rename the branch with `git branch -m <branch>` before the first commit.
+   - the branch name from `repo.branchPattern`, as `<F> worktree` prints it (see "Worktrees" in the `ticket` skill).
    - the selected worktree, repository identity, branch, resolved baseline SHA, and whether the task requires an exact HEAD or resumes existing implementation. Verify these before edits, builds, or fixtures. Continue in that worktree; do not delegate again merely to obtain isolation.
    - the scope, and what is out of scope
    - the stop condition: "Stop after the tests pass and report. Do not push or create a change request."
    - the report: changed files and the tests run, in a form that the lead session can copy into `map.md` and `review.md`
    - the rules: ask before CI triggers and tracker writes; never merge; plus the rules of the `## Implement` section of `<config>/policy.md`
-   - the main session rules, in short form. A session that `host.spawn` starts loads the plugin skills and runs the Forge `sessionStart` hook, which gives the `forge`, `style`, and company rules. It gets no `AGENTS.md` text of the repository, and it can start without MCP servers. When a capability row names an MCP server and its tools are not in the session, it asks the ticket session to do that step. When the hook fails, the prompt is its only source of the rules. Include the response style with the "No AI tells" list of the `style` rule, the paths `<wiki>` and the ticket folder as resolved absolute paths, and the safety rules above.
-5. Give the user the session link only when a new session was created.
+   - the main session rules, in short form. A session that `host.spawn` starts runs the Forge `sessionStart` hook, which gives the `forge`, `style`, and company rules. When a capability row names an MCP server and its tools are not in the session, it asks the ticket session to do that step. When the hook fails, the prompt is its only source of the rules. Include the response style with the "No AI tells" list of the `style` rule, the paths `<wiki>` and the ticket folder as resolved absolute paths, and the safety rules above.
+5. Give the user the command of `host.spawn` only when a new session was needed.
 6. Record the session title, worktree path, branch, baseline SHA, and selection reason in the ticket `README.md` and as a `log` entry in `journal.md` (`log.md` in an older ticket). Keep approval records outside hashed documents.
 
 ### Select the execution worktree
@@ -69,8 +67,8 @@ Read the ticket `README.md`, approved plan, and current request. Inspect Git in 
 | Situation | Action |
 |---|---|
 | Current linked worktree belongs to this task and meets its baseline rule | Reuse the current session. A different generated branch name alone does not require another worktree. |
-| Another recorded worktree belongs to this task and meets its baseline rule | Resume its existing session, or start a session there with `workspace` set to that path and `worktree: false`. |
-| No suitable worktree exists | Create one from the selected baseline: `<F> worktree <KEY> --summary "<short>" --base <full SHA> --create`, after one `host.ask` confirmation. Then move this session to the new folder (`host.move`), or start a session there (`host.spawn` with `worktree: false`). Verify its actual HEAD before any edits, builds, or fixtures. |
+| Another recorded worktree belongs to this task and meets its baseline rule | Resume its existing session, or start a session there (`host.spawn` with that path as the folder). |
+| No suitable worktree exists | Create one from the selected baseline: `<F> worktree <KEY> --summary "<short>" --base <full SHA> --create`, after one `host.ask` confirmation. Then move this session to the new folder (`host.move`), or start a session there (`host.spawn`). Verify its actual HEAD before any edits, builds, or fixtures. |
 | Repository, task ownership, or local changes are uncertain | Report the evidence and ask before switching, moving, or replacing work. |
 
 Baseline rules:
@@ -79,22 +77,17 @@ Baseline rules:
 - For resumed implementation, preserve known task commits and local edits. Verify the recorded baseline is an ancestor with `git merge-base --is-ancestor <baseline> HEAD`, and inspect the intervening commits and diff. Ancestry alone does not prove that the changes belong to this task.
 - Never reset, force-switch, stash, delete, or change the approved baseline to make these checks pass. A mismatch blocks execution, not read-only diagnosis. Do not edit approved documents or their manifests to repair it.
 
-Manual step for a pinned baseline:
+Pinned baseline step:
 
-1. In the Agents window, select **New Worktree** and choose the ticket branch as the base only after its tip matches the required SHA.
-2. If no branch names that SHA, ask for approval to create a dedicated branch there. Never move an existing branch.
-3. Give the user a self-contained prompt with the absolute ticket path and required SHA. Require the Git checks above before execution.
-4. After verification, continue in that session. Do not request another worktree at Implement.
-
-See the current [Agents window documentation](https://code.visualstudio.com/docs/agents/run/agents-window#_choose-where-an-agent-makes-changes) for base selection.
+1. Create the worktree from the required SHA: `<F> worktree <KEY> --summary "<short>" --base <full SHA> --create`, after one `host.ask` confirmation. Never move an existing branch to that SHA.
+2. Give the new session a self-contained prompt with the absolute ticket path and the required SHA. Require the Git checks above before execution.
+3. After verification, continue in that session. Do not create another worktree at Implement.
 
 Limits:
 
-- A VS Code worktree shares local resources (for example a database) with the main checkout. The `## Implement` section of `<config>/policy.md` names the limits.
-- Worktree sessions run with **Allow all**. The instructions are the only guard for CI and tracker writes.
-- Tool-started sessions have no plugin skills. When the implementer needs a skill, tell the user to start the session from **New** in the Agents window instead, and give them the prompt to paste.
+- A Git worktree shares local resources (for example a database) with the main checkout. The `## Implement` section of `<config>/policy.md` names the limits.
 - Run at most `policy.maxImplementers` implementer sessions at the same time (default 6).
-- Worktree end of life: **Mark as Done** (archive) removes a clean worktree that VS Code created and keeps the branch. A restore creates the worktree again. It keeps a worktree with uncommitted or outgoing changes. **Delete** never removes the worktree ([vscode#332442](https://github.com/microsoft/vscode/issues/332442)). VS Code does not remove repository resources, for example a database per worktree. **Chat: Open Worktree Cleanup** lists inactive worktrees. See the `ticket` skill Close step.
+- Worktree end of life: Git does not remove repository resources, for example a database per worktree. See the `ticket` skill Close step.
 
 ## 🔎 Reviewer subagent
 
@@ -104,8 +97,6 @@ Use a subagent for a quick review. It stays inside the current session.
 2. Give it the plan or acceptance criteria to check against.
 3. Ask for findings only: bugs, risks, missing tests. No style comments. No edits.
 4. Verify each finding before you report it to the user.
-
-For a full code review before Shippable?, the user can also use the **Run Code Review** button in the Changes panel.
 
 ## 🐟 Cold read
 
@@ -221,5 +212,5 @@ Only when the user asks:
 - Never answer a session's question, trust prompt, or permission prompt for the user. Report it.
 - Never merge a change request. The user merges in the web UI of the repository host.
 - A policy section can allow a host-side agent to fix blockers. It never allows a merge.
-- Delete or archive only sessions that the user asks you to remove. A delete cannot be undone.
+- Delete or archive only sessions that the user asks you to remove.
 - Verify a session's claims (tests, builds) before you build on them.

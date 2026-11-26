@@ -4,14 +4,14 @@
     "name": "Radu Alexandru"
   },
   "metadata": {
-    "description": "forge: an engineering workflow plugin for the VS Code Agents window, GitHub Copilot CLI, and Claude Code.",
-    "version": "12.4.0"
+    "description": "forge: an engineering workflow plugin for GitHub Copilot CLI and Claude Code.",
+    "version": "13.0.0"
   },
   "plugins": [
     {
       "name": "forge",
       "description": "Ticket workspace (GitHub by default, or Forgejo; issues, pull requests, and CI) with review gates, plain ticket documents, ticket worktrees and session titles, a ticket board skill, and a repository wiki.",
-      "version": "12.4.0",
+      "version": "13.0.0",
       "source": "./plugins/forge"
     }
   ]

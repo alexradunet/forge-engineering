@@ -68,14 +68,13 @@ test('from the main checkout the plan creates <repo>.worktrees/<key>-<slug> on t
   assert.deepEqual(inside.commands, []);
 });
 
-test('a New Worktree session on an agents/ branch gets a branch rename, and other ticket worktrees are listed', (t) => {
+test('other worktrees of the ticket are listed', (t) => {
   const r = repo(t);
-  const agents = path.join(`${r.app}.worktrees`, 'start-ticket-app-8');
-  git(r.app, 'worktree', 'add', '-q', '-b', 'agents/start-ticket-app-8', agents);
-  const plan = planWorktree({ repoPath: r.app, cwd: agents, config: r.config, key: 'APP-8', summary: 'Retry outbox' });
-  assert.equal(plan.action, 'rename-current');
-  assert.deepEqual(plan.commands, ['git branch -m users/alex_radu/APP-8-retry-outbox']);
-  assert.deepEqual(plan.related.map((item) => item.branch), ['agents/start-ticket-app-8']);
+  const older = path.join(`${r.app}.worktrees`, 'app-8-older-name');
+  git(r.app, 'worktree', 'add', '-q', '-b', 'APP-8-older-name', older);
+  const plan = planWorktree({ repoPath: r.app, config: r.config, key: 'APP-8', summary: 'Retry outbox' });
+  assert.equal(plan.action, 'create');
+  assert.deepEqual(plan.related.map((item) => item.branch), ['APP-8-older-name']);
   const other = planWorktree({ repoPath: r.app, config: r.config, key: 'APP-80', summary: 'Other ticket' });
   assert.deepEqual(other.related, [], 'APP-8 is not APP-80.');
 });
