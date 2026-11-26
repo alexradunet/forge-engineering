@@ -49,3 +49,14 @@ Never, with any tool:
 - Read, print, or store tokens.
 - Answer a session's question, trust prompt, or permission prompt for the user.
 - Delete or archive a session that the user did not ask you to remove.
+
+## 🧠 Memory
+
+Use a hybrid memory layer. The `wiki` skill describes the rules.
+
+- Store one short, tool-specific fact in built-in memory.
+- Record topics, gotchas with causes, decisions, and connections in `<wiki>`.
+- Before non-trivial work, read `<wiki>/index.md` and open pages that match the task.
+- Verify a wiki claim before you rely on it.
+- After you record something in the wiki, tell the user which pages changed.
+- Never put secrets, personal data, or copies of company documentation in the wiki.

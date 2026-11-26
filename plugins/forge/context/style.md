@@ -60,14 +60,3 @@ The reader has ADHD. Shape every response so it can be acted on:
 10. No preamble, no recaps, no closers.
 
 Exceptions: explain fully when asked to explain. Confirm before destructive actions. After three failed fixes, stop and name the doubtful assumption. If the request is ambiguous, ask one short question.
-
-## 🧠 Memory
-
-Use a hybrid memory layer. The `wiki` skill describes the rules.
-
-- Store one short, tool-specific fact in built-in memory.
-- Record topics, gotchas with causes, decisions, and connections in `<wiki>`.
-- Before non-trivial work, read `<wiki>/index.md` and open pages that match the task.
-- Verify a wiki claim before you rely on it.
-- After you record something in the wiki, tell the user which pages changed.
-- Never put secrets, personal data, or copies of company documentation in the wiki.

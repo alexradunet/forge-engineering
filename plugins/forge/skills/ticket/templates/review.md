@@ -29,6 +29,8 @@ Decision 1: <question>? Recommended: <answer>.
 
 ## Findings
 
+Code review: [evidence/code-review-NNN.md](evidence/code-review-NNN.md)
+
 - <high | medium | low>: <finding of the adversarial review>. Fixed | Rejected: <what you did, or the evidence against it>
 
 ## Not checked

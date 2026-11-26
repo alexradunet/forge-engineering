@@ -12,12 +12,12 @@ After a compaction of the session, read this file again before you use its steps
 - Follow the repository's own instructions and skills for the code change.
 - After each plan step, add a `step <n> done` entry to `journal.md` with the commit or the files and the test result. Set **Change** to `done` in `map.md` for the components of that step.
 - For a quick code review before Shippable?, use a reviewer subagent (the `agents` skill).
-- Before Shippable?, and so before any push or change request (draft too), run the adversarial review subagent (the `agents` skill, "Adversarial review"). Handle its findings. Record them in **Findings** of `review.md`.
+- Before Shippable?, and so before any push or change request (draft too), run the adversarial review subagent (the `agents` skill, "Adversarial review"). The reviewer gets no story of the change. Save its report in `evidence/code-review-NNN.md`, and handle its findings. Record what you did in **Findings** of `review.md`. `gate-open <key> shippable` needs this file.
 - Find the end-to-end and regression tests that cover the changed code (search the test projects for the changed classes, jobs, and features). Add them to **Tests** of `map.md`.
 - Write `review.md` from [templates/review.md](../templates/review.md): the summary, **Changes** (area, files, why, user impact), **Before and after** when the behavior changes, **Tests run**, **Findings**, and **Not checked**. If no regression test covers the change, write that in **Not checked**.
 - Draft every external text (tracker comment, change request title and description, shared document) in `outbox/<target>.draft.md` from [templates/outbox.draft.md](../templates/outbox.draft.md). Run a full pass of the `writing` skill (outbound mode) on the text between the `send` markers. Send only that text. Run Sendable? before the write.
 - Keep this order before the push:
-  1. Run the adversarial review and handle its findings.
+  1. Run the adversarial review, save its report in `evidence/code-review-NNN.md`, and handle its findings. Shippable? cannot open without that file.
   2. When `policy.evidenceOnDeployedEnv` is `false`: do Evidence Testing and write `proof.md` ([evidence.md](evidence.md)).
   3. Write `review.md`.
   4. Write the change request draft `outbox/change.draft.md` from [templates/outbox.draft.md](../templates/outbox.draft.md), with `target: change`. Run a full pass of the `writing` skill on the text between the `send` markers.
