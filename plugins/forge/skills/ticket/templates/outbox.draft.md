@@ -2,7 +2,7 @@
 type: outbox
 ticket: <KEY>
 target: tracker-comment   # tracker-comment | tracker-item | change | email | chat | other
-status: draft          # authoring metadata; freeze all bytes at review
+status: draft          # draft | sent. Set sent after the write, change nothing else; a change draft never changes
 updated: <yyyy-mm-dd>
 ---
 # Outbox <KEY>: <target, for example "tracker comment on APP-123">

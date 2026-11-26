@@ -177,6 +177,7 @@ Run it before Planned?, after the cold read, only when `policy.planReview` is `a
    ```
 
    - Write each finding in one bullet, with its reviewer, its evidence, and what you did.
+   - Write `plan-sha256` only after your last edit of `plan.md` in this round, and never change it later.
    - To get the hash, run `<F> gate-open <key> planned --dry-run`. It prints the hash when no review covers the plan. You can also use the hash tool of the shell.
    - `gate-open` shows **Open blockers** and **Concerns** in the form text. Write them for the user: plain words, one line each.
 9. Add one `check` entry to `journal.md`: the mode, the rounds, the counts by severity, and what changed in the plan.

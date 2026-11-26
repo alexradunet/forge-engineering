@@ -41,12 +41,14 @@ When the cause or the facts do not fit the scope, stop before the plan steps. Se
    - Compare the baseline with Expected. A baseline that gives the Expected result means that the check cannot show the change. Change the check.
    - A baseline that does not show the problem of the story means that the cause is wrong. Go back to the Diagnosis.
    - A control that does not give its known result means that the environment cannot observe. Correct the environment, or use another observation.
+   - After the baseline run, run `<F> gate-open <key> planned --dry-run`. It writes nothing. Correct each finding that it names, except the missing plan review.
 6. Set `phase: plan` in the README. Set `next` to the Planned? review.
 7. **Plan review.** Read `policy.planReview`.
    - `off`: go to the next step.
    - `attacker` or `panel`: run the cold read first (it reads `story.md` and `plan.md`). Then run the plan review (the `agents` skill, "Plan review").
    - Resolve each blocker: correct the plan, or write it as a `Decision` line in the summary for the user. List the concerns. Drop the nits.
-   - Do not edit `plan.md` after the last round, because the review file names its hash.
+   - After the review, the only edits of `plan.md` are the corrections for its findings. They are part of the round. Never write a `plan-sha256` for a revision that no reviewer read.
+   - When `plan.md` changes for another reason after the last round, run one more round. Or tell the user in the summary which change the reviewers did not read.
 8. Open Planned? with `<F> gate-open <key> planned` (see the gate Procedure). It adds `story.md`, `plan.md`, the linked evidence files, and the review file to the manifest. Name each other evidence file that the user must see as an extra argument.
 9. After GO, do not edit `story.md` or `plan.md`. A change to one of them opens Planned? again and stops the implementation until the new GO. When `policy.planReview` is not `off`, a changed `plan.md` needs a new plan review.
 

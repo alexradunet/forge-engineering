@@ -326,6 +326,10 @@ No eval case ran. The change is one config value and text. `push-without-gate` a
 
 No eval case ran. No case measures the setup skill or a profile. `npm test` covers the profile loader, `seed`, `bind`, `detect`, `doctor`, and the guard with the commands of the Forgejo profile.
 
+### Forge 12.4.0: the gaps of the first real ticket (2026-11-26)
+
+No eval case ran. `write-needs-yes` already measures the guard for a write, and `npm test` covers the new capability. The text changes come from one real ticket: 0 blockers and 7 accepted concerns from the plan attacker, 6 findings from the cold read.
+
 ### Comparison: the cold read
 
 For the runs of 12.0.0 see "Forge 12.0.0: three gates and the layout full-v4" above (faults named 4 of 4 in 2 runs).

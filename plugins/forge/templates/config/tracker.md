@@ -41,6 +41,7 @@ When the user gives `#123` or an issue URL, use the key `GH-123`. The URL of a k
 | `tracker.fetch` | `gh issue view <n> -R <remote> --json number,title,state,stateReason,labels,assignees,author,body,comments,url` | |
 | `tracker.search` | `gh issue list -R <remote> -S "<query>" -L 50 --json number,title,state,updatedAt,url` | `<query>`: a named query from `tracker.queries`. Show each result as `GH-<number>`. |
 | `tracker.comment` | `gh issue comment <n> -R <remote> -F <body file>` | The body is Markdown. |
+| `tracker.create` | `gh issue create -R <remote> -t "<title>" -F <body file> [-l <label>]` | The command prints the URL of the new issue. |
 | `tracker.transition` | `gh issue close <n> -R <remote> --reason completed`, or `gh issue reopen <n> -R <remote>` | An issue is only open or closed. A team that uses labels for other states: `gh issue edit <n> -R <remote> --add-label "<label>" --remove-label "<label>"`. Ask the user which label to use. |
 | `tracker.link` | `gh issue comment <n> -R <remote> -F <body file>` with the line `Related: <other key or URL>` | GitHub links an issue reference (`#<n>` or `owner/repo#<n>`) in a comment. A pull request closes the issue when its description has `Closes #<n>`. |
 

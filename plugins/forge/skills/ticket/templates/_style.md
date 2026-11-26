@@ -34,10 +34,10 @@ A gate document (`story.md`, `plan.md`, `review.md`, `close.md`) has these parts
 
 1. Frontmatter: copy it from the template. Keep `type`, `ticket`, `gate`, and `updated` correct.
 2. Title: `# <Document> <KEY>: <short title>`.
-3. Summary: at most 150 words, directly under the title, before the first `##` heading. The approval form shows only this text, so it must make sense alone. It has one short paragraph for each label of the template, then `Need from you:`, then at most 3 `Decision <n>:` lines with the recommended answer.
+3. Summary: at most 150 words, directly under the title, before the first `##` heading. The approval form shows only this text, so it must make sense alone. It has one short paragraph for each label of the template, then `Need from you:`, then at most 3 `Decision <n>:` lines with the recommended answer. `story.md` has no `Need from you:` line, because `plan.md` asks for the GO on Planned? for both documents.
 4. Sections: only the sections that have content, in the order of the template.
 
-- Leave out a section that has no content. Do not write "None". The exceptions are the summary and `Need from you:`.
+- Leave out a section that has no content. Do not write "None". The exceptions are the summary and `Need from you:` (not in `story.md`).
 - Keep the section names of the template. `forge.mjs lint` and the plan checks find the content by these names.
 - Keep the line shapes of the template inside a section (for example `Files:` under a step, or `A -> B: text` in the flow). The plan checks read them.
 - The whole document has at most 1,500 words. Code and link targets do not count. Put longer material in an `evidence/` file, and give the link. Do not drop a fact to make a document shorter.

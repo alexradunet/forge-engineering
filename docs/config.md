@@ -115,7 +115,7 @@ node "<plugin>/scripts/forge.mjs" config row checkouts "old" --delete
 
 Skills never name a tool. They name a **capability**. The file `plugins/forge/context/tools.md` tells the agent how to find its row in the config file.
 A **write** changes something outside the workspace. The agent drafts the text in `outbox/`, runs the Sendable? steps, and asks before every write.
-The write capabilities are `tracker.comment`, `tracker.transition`, `tracker.link`, `repo.open-change`, `repo.update-change`, `repo.reply`, and `ci.trigger`. The gate guard reads the commands of these rows (the code spans of the Command and Notes cells, up to the first option or placeholder) and makes the host ask the user before each one. When a code span names an HTTP method option (`-X POST` or `--method POST`), only a command with a method other than GET is a write.
+The write capabilities are `tracker.comment`, `tracker.create`, `tracker.transition`, `tracker.link`, `repo.open-change`, `repo.update-change`, `repo.reply`, and `ci.trigger`. The gate guard reads the commands of these rows (the code spans of the Command and Notes cells, up to the first option or placeholder) and makes the host ask the user before each one. When a code span names an HTTP method option (`-X POST` or `--method POST`), only a command with a method other than GET is a write.
 A code span needs 2 words or more before the first option or placeholder (for example `gh issue comment`). A one-word span such as `curl -X POST <url>` gives no write command, so the guard does not ask for it: the written rule applies.
 `manual` in a row means that the agent tells the user the exact step, and waits.
 
@@ -124,6 +124,7 @@ A code span needs 2 words or more before the first option or placeholder (for ex
 | `tracker.fetch` | read | key | summary, type, status, priority, reporter, assignee, description, comments, links, URL |
 | `tracker.search` | read | a named query or a native query | list of key, summary, status, updated |
 | `tracker.comment` | **write** | key, Markdown text | comment URL or id |
+| `tracker.create` | **write** | title, Markdown text, labels | issue URL |
 | `tracker.transition` | **write** | key, target status | new status |
 | `tracker.link` | **write** | key, other key or URL, relation | nothing |
 | `repo.open-change` | **write** | repo, branch, base, title, body, draft flag | change URL and number |

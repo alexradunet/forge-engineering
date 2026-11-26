@@ -28,7 +28,7 @@ const METHOD_OPTIONS = new Set(['-X', '--method']);
 const SHELLS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'fish', 'pwsh', 'powershell']);
 const HELP = new Set(['--help', '-h']);
 // The capabilities that change something outside the workspace. The core holds the names; the trusted config gives the commands.
-export const WRITE_CAPABILITIES = ['tracker.comment', 'tracker.transition', 'tracker.link', 'repo.open-change', 'repo.update-change', 'repo.reply', 'ci.trigger'];
+export const WRITE_CAPABILITIES = ['tracker.comment', 'tracker.create', 'tracker.transition', 'tracker.link', 'repo.open-change', 'repo.update-change', 'repo.reply', 'ci.trigger'];
 // Permission modes in which a host runs a command with no prompt, also after a hook `ask` (GH-2: Claude Code bypassPermissions).
 const NO_PROMPT_MODES = new Set(['bypassPermissions']);
 

@@ -114,7 +114,7 @@ test('the guard reads the commands of the forgejo profile', () => {
   const texts = Object.fromEntries(['tracker', 'repo', 'ci'].map((kind) => [kind, readFileSync(profileFile(pluginDir, 'forgejo', `config/${kind}.md`), 'utf8')]));
   assert.deepEqual(changeCommands(texts.repo), [['tea', 'pulls', 'create']]);
   const writes = writeCommands(texts).map((w) => w.words.join(' '));
-  for (const word of ['tea pulls edit', 'tea comment', 'tea issues close', 'tea issues reopen', 'tea issues edit', 'tea actions workflows dispatch']) {
+  for (const word of ['tea issues create', 'tea pulls edit', 'tea comment', 'tea issues close', 'tea issues reopen', 'tea issues edit', 'tea actions workflows dispatch']) {
     assert.ok(writes.includes(word), `${word} is a write`);
   }
   const options = { changes: changeCommands(texts.repo), writes: writeCommands(texts) };
@@ -122,6 +122,9 @@ test('the guard reads the commands of the forgejo profile', () => {
     assert.deepEqual(guardActions(line, repo, options), [], `${line} is no write`);
   }
   assert.equal(guardActions('tea pulls edit 4 --title x', repo, options)[0].kind, 'write');
+  assert.equal(guardActions('tea issues create --title T --description D < /dev/null', repo, options)[0].kind, 'write');
+  const github = Object.fromEntries(['tracker', 'repo', 'ci'].map((kind) => [kind, readFileSync(path.join(pluginDir, 'templates', 'config', `${kind}.md`), 'utf8')]));
+  assert.equal(guardActions('gh issue create -R o/r -t T -F b.md', repo, { changes: changeCommands(github.repo), writes: writeCommands(github) })[0].kind, 'write');
   assert.equal(guardActions('tea pulls create --base main --head x', repo, options)[0].kind, 'change');
 });
 

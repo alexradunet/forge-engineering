@@ -41,6 +41,7 @@ When the user gives `#43` or an issue URL, use the key `<tracker.prefix>-43`. Th
 | `tracker.fetch` | `tea issues <n> --comments --output json` | |
 | `tracker.search` | `tea issues list <query> --limit 50 --output json` | `<query>`: a named query, or `--state all --keyword "<text>"`. Show each result as `<tracker.prefix>-<number>`. |
 | `tracker.comment` | `tea comment <n> "$(cat <body file>)"` | The body is Markdown. |
+| `tracker.create` | `tea issues create --title "<title>" --description "$(cat <body file>)" [--labels <labels>] < /dev/null` | The command prints the new issue. `< /dev/null` stops the questions that `tea` asks when it has a terminal. |
 | `tracker.transition` | `tea issues close <n>`, or `tea issues reopen <n>` | An issue is only open or closed. A label change is also a transition: `tea issues edit <n> --add-labels <label> --remove-labels <label>`. |
 | `tracker.link` | `tea comment <n> "$(cat <body file>)"` with the line `Related: #<other n>` | Forgejo links an issue reference (`#<n>`) in a comment. |
 

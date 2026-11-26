@@ -36,7 +36,7 @@ A config file can name an MCP server for a capability that has no good CLI. Then
 
 ## External writes
 
-A write capability changes something outside the workspace: `tracker.comment`, `tracker.transition`, `tracker.link`, `repo.open-change`, `repo.update-change`, `repo.reply`, and `ci.trigger`. Before each one:
+A write capability changes something outside the workspace: `tracker.comment`, `tracker.create`, `tracker.transition`, `tracker.link`, `repo.open-change`, `repo.update-change`, `repo.reply`, and `ci.trigger`. Before each one:
 
 1. Draft the text as `outbox/<target>.draft.md` in the ticket folder, from the template `<plugin>/skills/ticket/templates/outbox.draft.md`. Send only the text between its `send` markers. Run a full pass of the `writing` skill (outbound mode) on it. A write with no text (for example a close) needs no draft.
 2. Run the Sendable? steps of the `ticket` skill: show the text, the draft link, the target, and the exact command in chat.

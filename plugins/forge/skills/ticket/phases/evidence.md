@@ -14,6 +14,7 @@ Timing follows `policy.evidenceOnDeployedEnv`:
 
 - `false` (default): do Evidence Testing after the implementation and the adversarial review, and before Shippable?. `gate-open` needs `proof.md` with no `open` and no `failed` check, and it puts `proof.md` into the Shippable? manifest. After the approval, do not edit `proof.md`: an edit makes Shippable? stale and stops each later push. Put later evidence into a new file in `evidence/` and a `log` entry in `journal.md`. The change request draft can hold its "Evidence" section from the start, so it needs no description update.
 - `true`: start it after Shippable? and the change request, because a deployed check needs the pushed code. `proof.md` is outside the manifests, and its updates open no gate again. The "Evidence" section goes to the change request with `outbox/change-update.draft.md` and its own "yes" (rule 13).
+- A ticket with no code change has no push. Its checks run before Shippable? in each case (see Implement).
 
 Rules:
 

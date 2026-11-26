@@ -2,7 +2,7 @@
 type: outbox
 ticket: <KEY>
 target: tracker-comment
-status: draft          # authoring metadata; freeze all bytes at review
+status: draft          # draft | sent. Set sent after the write, change nothing else; a change draft never changes
 updated: <yyyy-mm-dd>
 ---
 # QA handover <KEY>: <short title>

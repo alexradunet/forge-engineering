@@ -99,6 +99,7 @@ flowchart LR
 - Diagnosis stop: when the investigation shows that the scope is wrong or too small (see Investigate), stop before the plan and ask.
 - The plan has design options, a baseline run, and a plan review before Planned? (see Investigate).
 - Evidence Testing is a required step, not a gate. It comes before Shippable?. When `policy.evidenceOnDeployedEnv` is `true`, it comes after the push. It blocks the merge proposal.
+- A ticket with no code change has the same gates. `review.md` then holds the results of its checks (see Implement).
 - QA handover runs only when `policy.qaHandover` is `true`. It uses Sendable?, not a new gate.
 
 Two goals for every ticket:

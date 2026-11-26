@@ -37,3 +37,13 @@ After a compaction of the session, read this file again before you use its steps
 - Record test results, change request links, and CI results (`ci.status`) as `log` entries in `journal.md`. Record build and test problems as `problem` entries.
 - Set the phase to `implement` and then to `review` in `README.md`. Set `review` when the implementation is done.
 - When `policy.evidenceOnDeployedEnv` is `true`, run the Evidence Testing step ([evidence.md](evidence.md)) after the change request. Do not report a change request as ready to merge before that step is done.
+
+### 🧾 Ticket with no code change
+
+Use this block when the plan has no step that changes a file of the repository. For example, the ticket checks deployed work, or it is an investigation.
+
+- Make no worktree and no branch. Leave `branch` and `worktree` empty in the README.
+- Run the checks of the plan as Evidence Testing ([evidence.md](evidence.md)). Do this also when `policy.evidenceOnDeployedEnv` is `true`. Write `proof.md` with one result for each check.
+- Write `review.md`. **Changes** says that no file changed. **Tests run** and **Findings** hold the results of the checks. **Not checked** holds each check that has no result.
+- Open Shippable? with `<F> gate-open <key> shippable`. The gate question is: are the results complete? No push and no change request follow.
+- When a check fails and needs a fix, the ticket has a code change. Make the worktree and follow the normal order above.

@@ -114,11 +114,11 @@ test('changeCommands reads the change request command of the repo.open-change ro
   assert.deepEqual(changeCommands(''), []);
 });
 
-test('writeCommands reads the commands of the 7 write capabilities, also from the Notes cell', () => {
+test('writeCommands reads the commands of the 8 write capabilities, also from the Notes cell', () => {
   const texts = Object.fromEntries(['tracker', 'repo', 'ci'].map((kind) => [kind, readFileSync(path.join(templates, `${kind}.md`), 'utf8')]));
   const found = writeCommands(texts).map(({ capability, words, method }) => `${capability}: ${words.join(' ')}${method ? ` (${method})` : ''}`);
   assert.deepEqual(found, [
-    'tracker.comment: gh issue comment',
+    'tracker.comment: gh issue comment', 'tracker.create: gh issue create',
     'tracker.transition: gh issue close', 'tracker.transition: gh issue reopen', 'tracker.transition: gh issue edit',
     'tracker.link: gh issue comment',
     'repo.open-change: gh pr create',
@@ -312,6 +312,7 @@ test('guardActions finds each write command of the config, and a read with the s
   const base = path.resolve('/base');
   const found = (line) => guardActions(line, base, { changes, writes }).map((action) => (action.kind === 'write' ? `${action.words.join(' ')} [${action.capabilities.join(', ')}]` : action.kind));
   assert.deepEqual(found('gh issue comment 2 -R a/b -F /tmp/body.md'), ['gh issue comment [tracker.comment, tracker.link]']);
+  assert.deepEqual(found('gh issue create -R a/b -t T -F /tmp/b.md'), ['gh issue create [tracker.create]']);
   assert.deepEqual(found('gh issue close 2 -R a/b --reason completed'), ['gh issue close [tracker.transition]']);
   assert.deepEqual(found('gh issue edit 2 --add-label x'), ['gh issue edit [tracker.transition]']);
   assert.deepEqual(found('gh pr edit 3 -t T'), ['gh pr edit [repo.update-change]']);
@@ -451,6 +452,20 @@ test('in bypassPermissions the host shows no prompt, so each ask becomes a deny'
   assert.equal(push.decision, 'deny', 'The ask mode of a push also needs a prompt.');
   assert.match(push.reason, /APP-7 has no valid approval for a push\./);
   assert.equal(preTool({ cwd: s.worktree, command: 'gh issue view 7', mode: 'bypassPermissions' }, { env }), null);
+});
+
+test('tracker.create is a write: ask in a ticket folder, deny with no prompts, and no verdict for a read of the same tool', (t) => {
+  const s = setup(t);
+  const where = resolve({ cwd: s.app, env });
+  const file = path.join(seed(where, templates).configDir, 'tracker.md');
+  writeFileSync(file, readFileSync(file, 'utf8').replace(/^\| `tracker\.create` .*$/m, '| `tracker.create` | `tea issues create --title "<title>" --description "$(cat <body file>)" [--labels <labels>] < /dev/null` | n |'));
+  approve(where, trustStatus(where, { env }).files.filter((f) => f.rel.startsWith('config/')).map((f) => `${f.rel}=${f.sha.slice(0, 12)}`), { env });
+  const create = 'tea issues create --title "T" --description "$(cat /tmp/b.md)" --labels to-check < /dev/null';
+  assert.equal(run(s.worktree, create).decision, 'ask');
+  assert.equal(preTool({ cwd: s.worktree, command: create, mode: 'bypassPermissions' }, { env }).decision, 'deny');
+  assert.equal(run(s.worktree, 'tea issues list --state open'), null);
+  const texts = { tracker: readFileSync(file, 'utf8') };
+  assert.deepEqual(guardActions(create, s.app, { changes: [], writes: writeCommands(texts) }).map((action) => action.kind), ['write'], 'The real row: a quoted substitution and a redirect.');
 });
 
 test('each host gets its own output format, and no verdict gives an empty object', () => {

@@ -177,6 +177,25 @@ test('the plan has design options, a baseline run, and a plan review, and the ga
   assert.ok(gates.includes('change-update.draft.md'));
   assert.ok(phase('evidence').includes('change-update.draft.md'));
   assert.match(phase('implement'), /Keep this order before the push/);
+  assert.ok(plan.includes('gate-open <key> planned --dry-run'));
+  assert.ok(plan.indexOf('gate-open <key> planned --dry-run') < plan.indexOf('**Plan review.**'), 'The plan checks run before the plan review.');
+  assert.match(plan, /Never write a \`plan-sha256\` for a revision that no reviewer read/);
+  assert.match(agents, /Write \`plan-sha256\` only after your last edit of \`plan\.md\` in this round, and never change it later/);
+});
+
+test('a ticket with no code change has steps, the write capability tracker.create is named, and story.md has no Need from you line', () => {
+  const implement = phase('implement');
+  assert.match(implement, /### .*Ticket with no code change/);
+  assert.match(implement, /Leave \`branch\` and \`worktree\` empty in the README/);
+  assert.match(phase('evidence'), /A ticket with no code change has no push\. Its checks run before Shippable\? in each case/);
+  assert.match(ticketCore, /A ticket with no code change has the same gates/);
+  for (const file of ['context/tools.md', 'profiles/forgejo/config/tracker.md', 'templates/config/tracker.md']) {
+    assert.ok(readFileSync(new URL(`../plugins/forge/${file}`, import.meta.url), 'utf8').includes('tracker.create'), file);
+  }
+  assert.match(read('ticket/templates/_style.md'), /\`story\.md\` has no \`Need from you:\` line/);
+  assert.doesNotMatch(read('ticket/templates/story.md'), /Need from you:/);
+  assert.match(plan, /Need from you: GO on Planned\?/);
+  assert.match(phase('gates'), /set \`status: sent\` in the frontmatter of the draft, and change nothing else in it/);
 });
 
 test('the team size values are the same in the setup skill, the policy template, and docs/config.md', () => {

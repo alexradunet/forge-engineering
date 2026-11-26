@@ -60,7 +60,7 @@ Each external write has its own draft and its own "yes". The "yes" is the answer
    - With the gate guard, run the command. The guard makes the host ask the user, and the answer of the user is the "yes".
    - When the row says so, and for a write through an MCP tool or a script, ask with `host.ask` first. Run the command only after an explicit "yes" for this one write.
 5. When the guard or the host denies the command (for example a mode with no prompt), do not run it in another form. Give the user the exact command, and ask the user to tell you when it ran.
-6. After the write, add a `log` entry to `journal.md`: the command, the target, the draft, and the returned id or link. Set Sendable? to `status: todo`, and set `state` for the next step. Do not change the draft after the write.
+6. After the write, add a `log` entry to `journal.md`: the command, the target, the draft, and the returned id or link. Set Sendable? to `status: todo`, and set `state` for the next step. After the write, set `status: sent` in the frontmatter of the draft, and change nothing else in it. Do not do this for a change request draft of the approved Shippable? set: that draft never changes.
 7. A second write needs its own "yes", also for the same text. A retry after a failure is a second write.
 
 Exception: the draft of a new change request (`target: change` in its frontmatter) needs no second "yes" when it is in the approved Shippable? set.
