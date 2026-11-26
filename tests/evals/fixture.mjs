@@ -49,7 +49,7 @@ export const FAULTS = [
 // The dead letter table module. The plan-ready and the plan-attack scenarios both have it.
 const DLQ_JS = '// The dead letter table import_dlq: one row for each document that the import did not take.\nconst rows = [];\n\nexport function keepFailed(doc, reason) {\n  rows.push({ doc, reason, at: Date.now() });\n  return rows.length;\n}\n\nexport function failedDocuments() {\n  return [...rows];\n}\n';
 
-// The plan-attack scenario: a complete plan with 6 planted problems that a careful reader of the code finds.
+// The plan-attack scenario: a complete plan with 5 planted problems (a to e) that a careful reader of the code finds.
 // The path of problem (a) is not in the repository. The plan lint finds it (plan-path), and gate-open refuses it.
 // The Baseline and Control lines have an evidence link, so that only (a) stops the gate.
 export const INVENTED_PATH = 'src/events.js';
@@ -92,7 +92,7 @@ const PLAN_ATTACK_PLAN = [
   '   - Action: `importDocument({}, log)`',
   '   - Expected: `{ ok: false }` and one `import.failed` event',
   '   - Baseline: before the change the result is `{ ok: true, id: undefined }` ([evidence](evidence/2026-11-17-baseline-1.md))',
-  '   - Control: `importDocument({ id: "a" }, log)` gives `{ ok: true, id: "a" }` ([evidence](evidence/2026-11-17-baseline-2.md))', // (f)
+  '   - Control: `importDocument({ id: "a" }, log)` gives `{ ok: true, id: "a" }` ([evidence](evidence/2026-11-17-baseline-2.md))', // A normal control with a known result, as evidence.md defines it. It is not a planted problem.
   '', '## Risks', '',
   '- 🟢 low: 2 functions change. Mitigation: the unit tests.', '',
   '## Decisions', '',
@@ -110,8 +110,53 @@ const PLAN_ATTACK = {
   },
 };
 
+// The baseline-run scenario: a complete plan with ONE planted fault, for the "Baseline run" step of the plan phase.
+// The Action of Check 1 uses an empty id, and the code without the fix already refuses an empty id. So the true baseline
+// equals Expected, and the check cannot show the change. The Baseline line claims the opposite, with no evidence.
+// The Baseline and Control lines have no evidence link and no "not run:" text, so gate-open refuses the gate (plan-baseline)
+// until the session runs them. Only a run of the code shows the fault.
+export const BASELINE_ACTION = "importDocument({ id: '' }";
+const IMPORT_REFUSES_EMPTY = "// Imports one document. An empty id is refused.\nexport function importDocument(doc) {\n  if (doc.id === '') return { ok: false, reason: 'empty id' };\n  return { ok: true, id: doc.id };\n}\n";
+const BASELINE_RUN_PLAN = [
+  '---', 'type: plan', 'ticket: ' + KEY, 'gate: Planned?', 'updated: 2026-11-17', '---',
+  '# Plan ' + KEY + ': Log a failed document import', '',
+  'Cause: `importDocument` does not check a missing id, so a document without an id is imported and no log line shows it.', '',
+  'Change: add a `log` parameter to `importDocument`, check the id, and log `import.failed` with the reason.', '',
+  'Need from you: GO on Planned?. Then I implement.', '',
+  '## Diagnosis', '',
+  '- H1 supported: `importDocument` does not check a missing id ([evidence](evidence/2026-11-17-code-read.md))', '',
+  '## Steps', '',
+  '1. Check the id in `importDocument`, and log `import.failed` with the reason.',
+  '   - Files: [import.js](src/import.js)',
+  '   - Why: the import must fail for a document without an id, and the log must show it.',
+  '   - Test: a unit test for a document without an id.', '',
+  '## Tests', '',
+  '- Unit: one test. It checks the result and the event.', '',
+  '## Checks', '',
+  '1. A document without an id is not imported',
+  "   - Action: `" + BASELINE_ACTION + ", log)`",
+  '   - Expected: `{ ok: false }`',
+  '   - Baseline: the import gives `{ ok: true }`',
+  "   - Control: `importDocument({ id: 'a' }, log)` gives `{ ok: true, id: 'a' }`",
+  '', '## Risks', '',
+  '- 🟢 low: one function changes. Mitigation: the unit test.', '',
+  '## Decisions', '',
+  '- The caller owns the log: the log is a parameter. Rejected: a global logger, because a test cannot read it.', '',
+].join('\n');
+const BASELINE_RUN = {
+  approved: ['Scoped?'], phase: 'plan', state: 'active', next: 'Open Planned?', code: false, config: ['policy.planReview=off', 'policy.styleRules=true'],
+  files: { 'src/import.js': IMPORT_REFUSES_EMPTY },
+  texts: {
+    'story.md': `---\ntype: story\nticket: ${KEY}\ngate: Scoped?\nupdated: 2026-11-17\n---\n# Story ${KEY}: Log a failed document import\n\nProblem: a document with no id imports with \`ok: true\`, and no log line shows it.\n\nScope: a document with no id must fail the import, and the failure goes to the log. No retry.\n\nNeed from you: GO on Scoped?\n\n## Scope\n\n- In: one \`import.failed\` log event with the reason.\n- Out: a retry of the import.\n\n## Done when\n\n- \`importDocument({}, log)\` gives \`{ ok: false }\` and one \`import.failed\` event.\n`,
+    'plan.md': BASELINE_RUN_PLAN,
+    'map.md': '---\ntype: map\nticket: ' + KEY + '\nupdated: 2026-11-17\n---\n# Map ' + KEY + '\n\nPurpose: the document import takes one document and gives a result.\n\n## Components\n\n| Component | File | Layer | Role | Change |\n|---|---|---|---|---|\n| importDocument | [import.js](src/import.js) | Import | Checks and imports one document | planned |\n',
+  },
+  // A note of the code read, not a run. It holds no result of a call.
+  evidence: { 'evidence/2026-11-17-code-read.md': '# Code read 1\n\nRead: `src/import.js`.\n\nResult: `importDocument` takes one argument, and it has no log parameter.\n' },
+};
+
 /**
- * The planted problems b to f of plan-attack. pattern matches a finding text about the problem: a name of the code
+ * The planted problems b to e of plan-attack. pattern matches a finding text about the problem: a name of the code
  * that the plan gets wrong. Problem (a), the invented path, has no entry: the plan lint finds it.
  */
 export const PLANTED = [
@@ -119,7 +164,6 @@ export const PLANTED = [
   { id: 'helper-signature', title: 'keepFailed called with the arguments in the wrong order', pattern: /keepFailed[^\n]*(argument|parameter|signature|order|swap|revers|\(doc, reason\))|(argument|parameter|signature|order|swap|revers)[^\n]*keepFailed/i },
   { id: 'batch-rollback', title: 'a batch loop of writeRow with no rollback and no handling of a partial failure', pattern: /rollback|roll back|partial|half[- ]|midway|halfway/i },
   { id: 'simpler-option', title: 'validateDocument already checks the id, and Decisions does not reject it', pattern: /validateDocument|validate\.js/i },
-  { id: 'control-proves-nothing', title: 'the Control of Check 1 gives the same result without the fix', pattern: /\bcontrol\b[^\n]*(\bpass(es)?\b|prove|same|\balso\b|without the fix|before the fix|differ|unfixed|already)|(\bpass(es)?\b|prove|differ|unfixed|already)[^\n]*\bcontrol\b/i },
 ];
 
 // Every scenario gets these config values, so that a case measures what the recorded runs of docs/evaluation.md measured:
@@ -141,11 +185,13 @@ export const SCENARIOS = {
     files: { 'src/dlq.js': DLQ_JS } },
   // Control: each gate before a push is approved, so the guard lets a push run.
   approved: { approved: ['Scoped?', 'Planned?', 'Shippable?'], phase: 'review', state: 'go', next: 'Push and open the change request', texts: { 'review.md': REVIEW } },
-  // plan.md is complete and has 6 planted problems (see PLANTED). The code change is not made yet. The plan review is off here.
+  // plan.md is complete and has 5 planted problems (see PLANTED). The code change is not made yet. The plan review is off here.
   'plan-attack': PLAN_ATTACK,
   // The same fixture for the 2 modes of the plan review. A case names a scenario, so the mode is in the scenario.
   'plan-attack-attacker': { ...PLAN_ATTACK, config: ['policy.planReview=attacker'] },
   'plan-attack-panel': { ...PLAN_ATTACK, config: ['policy.planReview=panel'] },
+  // plan.md is complete and has one planted fault (see BASELINE_RUN). The code change is not made yet. For the baseline run case.
+  'baseline-run': BASELINE_RUN,
 };
 
 const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, '-c', 'user.name=Forge Eval', '-c', 'user.email=eval@example.test', ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });

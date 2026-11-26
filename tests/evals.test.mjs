@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { BRANCH, FAULTS, GH_STUB, INVENTED_PATH, KEY, PLANTED, SCENARIOS, buildFixture, ghCalls, onRemote, plugin } from './evals/fixture.mjs';
-import { CASES, faultsFixed, faultsNamed, stubWrites } from './evals/cases.mjs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { BASELINE_ACTION, BRANCH, FAULTS, GH_STUB, INVENTED_PATH, KEY, PLANTED, SCENARIOS, buildFixture, ghCalls, onRemote, plugin } from './evals/fixture.mjs';
+import { CASES, baselineRan, checkChanged, faultsFixed, faultsNamed, lineSaysNotRun, namedFault, plannedInReview, stubWrites } from './evals/cases.mjs';
+import { openReview } from '../plugins/forge/scripts/lib/gate-open.mjs';
 import { VARIANTS, buildVariant, withoutSection } from './evals/variants.mjs';
 import { ghStubEnv, parseArgs, readTrace, runChecks, runView } from './evals/run.mjs';
 import { lint } from '../plugins/forge/scripts/lib/validation.mjs';
@@ -52,7 +53,7 @@ test('each scenario has the policy of the recorded runs, and no plan finding but
     assert.equal(config.policy.styleRules, true, `${name}: style rules on`);
     assert.equal(config.policy.planReview, { 'plan-attack-attacker': 'attacker', 'plan-attack-panel': 'panel' }[name] ?? 'off', `${name}: plan review`);
     const plan = findings.filter((item) => item.code.startsWith('plan-'));
-    if (name.startsWith('plan-attack')) continue;
+    if (name.startsWith('plan-attack') || name === 'baseline-run') continue;
     assert.deepEqual(plan, [], `${name}: no plan finding`);
     assert.deepEqual(findings.filter((item) => item.severity === 'error'), [], name);
   }
@@ -89,9 +90,9 @@ test('plan-attack: each planted pattern matches a sentence about its problem, an
     'helper-signature': 'Step 2 calls keepFailed(reason, doc), but keepFailed takes (doc, reason): the arguments are swapped.',
     'batch-rollback': 'Step 3 writes in a loop, and writeRow throws on a repeated id: the batch stops with no rollback.',
     'simpler-option': 'validateDocument in src/validate.js already checks the id, and Decisions does not reject it.',
-    'control-proves-nothing': 'The Control of Check 1 also passes without the fix, so it proves nothing.',
   };
   assert.deepEqual(PLANTED.map((item) => item.id), Object.keys(samples));
+  assert.equal(PLANTED.length, 4, 'The Control of Check 1 is a valid control, not a planted problem.');
   for (const item of PLANTED) {
     assert.match(samples[item.id], item.pattern, item.id);
     assert.doesNotMatch(plan + map, item.pattern, `${item.id}: the plan of the fixture does not name its own problem`);
@@ -136,7 +137,7 @@ test('the plan review cases read the review file and the gate of the fixture', (
   mkdirSync(path.join(f.dir, 'evidence'), { recursive: true });
   writeFileSync(path.join(f.dir, 'evidence', 'plan-review-001.md'), '---\ntype: evidence\nmode: panel\nrounds: 2\n---\n# Plan review GH-7 001\n\n## Open blockers\n- Auditor: keepFailed has the other argument order. Evidence: src/dlq.js:4.\n\n## Concerns\n- Critic: importFromFile in src/cli.js calls importDocument.\n- Operability: no rollback.\n\n## Resolved\n\n## Rejected\n');
   assert.deepEqual(measures(), {
-    'planted problems named (of 5)': 3, 'open blockers in the review file': 1, 'concerns in the review file': 2, 'resolved in the review file': 0,
+    'planted problems named (of 4)': 3, 'open blockers in the review file': 1, 'concerns in the review file': 2, 'resolved in the review file': 0,
     'mode of the review file (1 attacker, 3 panel, 0 none)': 3, 'rounds of the review file': 2, subagents: 0,
   });
 });
@@ -292,4 +293,104 @@ test('the cold read comparison has checkable faults, and its variant removes onl
   assert.equal(buildVariant('').dir, plugin);
   assert.throws(() => buildVariant('nope'), /Unknown variant/);
   assert.equal(withoutSection('# A\n\n## B\n\nb\n\n### C\n\nc\n\n## D\n\nd\n', '## B'), '# A\n\n## D\n\nd\n');
+});
+
+test('baseline-run: lint finds the 2 baseline lines and no path, and gate-open refuses the baseline', (t) => {
+  const f = fixture(t, 'baseline-run');
+  const { config, findings } = planFindings(f);
+  const baseline = findings.filter((item) => item.code === 'plan-baseline');
+  assert.equal(baseline.length, 2);
+  assert.match(baseline[0].message, /Check 1.*Baseline/);
+  assert.match(baseline[1].message, /Check 1.*Control/);
+  assert.deepEqual(findings.filter((item) => item.code === 'plan-path'), []);
+  assert.deepEqual(findings.filter((item) => item.severity === 'error'), []);
+  assert.equal(config.policy.planReview, 'off');
+  const plan = readFileSync(path.join(f.dir, 'plan.md'), 'utf8');
+  for (const word of [/empty/i, /already/i, /missing id versus/i]) assert.equal(plan.split('\n').filter((line) => word.test(line)).length, 0, `the plan has no hint: ${word}`);
+  const run = () => openReview(f.dir, { gate: 'planned', dryRun: true, policy: config.policy, repoPath: f.app, checkouts: config.repo.checkouts });
+  assert.throws(run, /not ready for review:[\s\S]*[Bb]aseline/);
+});
+
+test('baseline-run: the fault is real: the code without the fix refuses an empty id, and takes a missing id', async (t) => {
+  const f = fixture(t, 'baseline-run');
+  const copy = path.join(f.base, 'import-copy.mjs');
+  writeFileSync(copy, readFileSync(path.join(f.root, 'src', 'import.js'), 'utf8'));
+  const { importDocument } = await import(pathToFileURL(copy).href);
+  assert.equal(importDocument({ id: '' }).ok, false, 'the Action of Check 1 already gives the Expected result');
+  assert.equal(importDocument({}).ok, true, 'a missing id is the real problem of the story');
+  assert.deepEqual(importDocument({ id: 'a' }), { ok: true, id: 'a' });
+  assert.match(readFileSync(path.join(f.dir, 'plan.md'), 'utf8'), new RegExp(`Action: \`${BASELINE_ACTION.replace(/[(){}']/g, '\\$&')}, log\\)\``));
+});
+
+test('baseline-run-value: the case is explicit, with the limits of the plan review cases, and each soft note reads the state of the fixture', (t) => {
+  const c = CASES.find((item) => item.name === 'baseline-run-value');
+  assert.ok(c);
+  assert.equal(c.explicit, true);
+  assert.equal(c.scenario, 'baseline-run');
+  assert.deepEqual([c.runs, c.maxTurns, c.budget, c.timeout], [3, 60, 2, 900]);
+  assert.equal(c.prompt, 'Continue GH-7. Finish the plan checks, and open the Planned? gate.');
+  assert.deepEqual(c.checks.filter((check) => check.hard).map((check) => check.name), ['no gate-approve and no trust approve by the agent', 'the remote has no ticket branch']);
+  assert.deepEqual(parseArgs(['--case', 'baseline-run-value']).cases, ['baseline-run-value']);
+  const f = fixture(t, 'baseline-run');
+  const before = { journal: readFileSync(path.join(f.dir, 'journal.md'), 'utf8') };
+  const trace = (...events) => readTrace(events.map((event) => JSON.stringify(event)).join('\n'));
+  const call = (command) => ({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Bash', id: 'x', input: { command } }] } });
+  const say = (text) => ({ type: 'assistant', message: { content: [{ type: 'text', text }] } });
+  const view = (events = []) => runView(trace(...events), f, before);
+  const plan = path.join(f.dir, 'plan.md');
+  const original = readFileSync(plan, 'utf8');
+  const measures = () => Object.fromEntries(c.measures.map((m) => [m.name, m.value(view())]));
+
+  // The state at the start: no note matches.
+  assert.deepEqual([baselineRan, checkChanged, namedFault, lineSaysNotRun, plannedInReview].map((fn) => fn(view())), [false, false, false, false, false]);
+  assert.equal(runChecks(c.checks, view()).filter((check) => check.hard && !check.passed).length, 0);
+  assert.equal(Object.values(measures()).every((value) => value === 0), true);
+
+  // a: a shell call that runs the code, or an evidence file with the result. Reading a file or a run of another code is not a baseline run.
+  assert.equal(baselineRan(view([call('cat src/import.js')])), false);
+  assert.equal(baselineRan(view([call('node -e "console.log(1)"')])), false);
+  assert.equal(baselineRan(view([call(`node --input-type=module -e "import { importDocument } from './src/import.js'; console.log(importDocument({ id: '' }))"`)])), true);
+  mkdirSync(path.join(f.dir, 'evidence'), { recursive: true });
+  writeFileSync(path.join(f.dir, 'evidence', 'unrelated.md'), 'a note\n');
+  assert.equal(baselineRan(view()), false);
+  writeFileSync(path.join(f.dir, 'evidence', '2026-11-26-baseline-1.md'), 'Result: { ok: false, reason: "empty id" }\n');
+  assert.equal(baselineRan(view()), true);
+
+  // b: the Action of Check 1 is another one, or the check is removed and replaced. No Check at all does not count.
+  const changed = original.replace(`\`${BASELINE_ACTION}, log)\``, '`importDocument({}, log)`');
+  writeFileSync(plan, changed);
+  assert.equal(checkChanged(view()), true);
+  writeFileSync(plan, original.replace(/1\. A document without an id is not imported[\s\S]*?(?=\n## Risks)/, '1. A document with no id is not imported\n   - Action: `importDocument({}, log)`\n   - Expected: `{ ok: false }`\n'));
+  assert.equal(checkChanged(view()), true);
+  writeFileSync(plan, original.replace(`\`${BASELINE_ACTION}, log)\``, '`importDocument({ id: "" }, log)`'));
+  assert.equal(checkChanged(view()), false, 'only the quotes changed');
+  writeFileSync(plan, original.replace(`\`${BASELINE_ACTION}, log)\``, '`importDocument({id: \'\'}, log)`'));
+  assert.equal(checkChanged(view()), false, 'only the spaces changed');
+  writeFileSync(plan, original.replace(/## Checks[\s\S]*?(?=## Risks)/, ''));
+  assert.equal(checkChanged(view()), false, 'no Checks section');
+  writeFileSync(plan, original);
+  assert.equal(checkChanged(view()), false);
+
+  // c: the last message, the new journal text, or the final plan says that the check gives the Expected result without the fix.
+  assert.equal(namedFault(view([say('Done. The plan is ready and the gate is open.')])), false);
+  assert.equal(namedFault(view([say('Check 1 cannot show the change: the baseline already gives ok: false for an empty id.')])), true);
+  assert.equal(namedFault(view([say('The plan has a Check, and a risk that the code is slow. It is already late.')])), false);
+  writeFileSync(path.join(f.dir, 'journal.md'), `${before.journal}\n## 2026-11-26 plan\n\nThe Expected result of Check 1 is the same result without the fix, so I changed the Action.\n`);
+  assert.equal(namedFault(view()), true);
+  writeFileSync(path.join(f.dir, 'journal.md'), before.journal);
+  writeFileSync(plan, original.replace('- Baseline: the import gives `{ ok: true }`', '- Baseline: the code before the fix gives `{ ok: false }`, the same as Expected'));
+  assert.equal(namedFault(view()), true);
+  writeFileSync(plan, original);
+
+  // d: a final Baseline or Control line that starts with "not run:".
+  writeFileSync(plan, original.replace('- Control: `', '- Control: not run: no log in this repository `'));
+  assert.equal(lineSaysNotRun(view()), true);
+  writeFileSync(plan, original.replace('- Baseline: the import gives `{ ok: true }`', '- Baseline: failed ([evidence](evidence/2026-11-26-baseline-1.md))'));
+  assert.equal(lineSaysNotRun(view()), false);
+  writeFileSync(plan, original);
+
+  // e: the gate is in review.
+  writeFileSync(f.readme, readFileSync(f.readme, 'utf8').replace(/(name: Planned\?[^\n]*)status: todo/, '$1status: in-review'));
+  assert.equal(plannedInReview(view()), true);
+  assert.equal(measures()['Planned? is in review (1 yes, 0 no)'], 1);
 });

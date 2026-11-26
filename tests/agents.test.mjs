@@ -127,6 +127,7 @@ test('the plan has design options, a baseline run, and a plan review, and the ga
   assert.match(phase('start'), /Ask which reading is right as the first question of the form/);
   const plan = phase('investigate-plan');
   for (const part of ['Design options', 'Baseline run', 'Plan review', '(new)', 'gate-open <key> planned']) assert.ok(plan.includes(part), part);
+  assert.match(plan, /A baseline that gives the Expected result means that the check cannot show the change/);
   assert.match(agents, /## 🧐 Plan review/);
   assert.ok(agents.indexOf('## 🧐 Plan review') > agents.indexOf('## 🐟 Cold read'));
   assert.ok(agents.indexOf('## 🧐 Plan review') < agents.indexOf('## 🥊 Adversarial review'));

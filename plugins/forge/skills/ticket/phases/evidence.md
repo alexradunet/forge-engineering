@@ -20,7 +20,7 @@ Rules:
    - Check the baseline first. Ask: does this check also pass without the fix? If yes, the environment cannot show the change. Example: a test environment that never samples telemetry passes "events are not sampled" with or without the fix. Change the environment, or pick another observation.
    - Check that the observed items are not exempt by other means. Example: some event types can set their own sampling rate, so they look correct with or without the fix. Search the code for the emitter before you trust an observation.
    - A deployed run can finish with no proof (no traffic, wrong event type, telemetry not flowing). Then mark the check `⚪ not proven` with the reason. Never write a pass from rows that the baseline also produces.
-   - Add a control in the same environment: an observation that must differ when the environment is set up right. A check without a working control is `⚪ not proven`, never `🟢 verified`.
+   - Add a control: a second observation with the same tool in the same environment, with a result that you know before the run (for example, the log records an event that the code without the fix already emits). A check without a working control is `⚪ not proven`, never `🟢 verified`.
    - Test environments can expire. Plan the traffic for right after the deploy, or extend the lifetime.
    - A deploy can use a throwaway branch with test-only config. Never open a change request from it. Delete it after the run.
 6. Put each check output in `evidence/<yyyy-mm-dd>-<topic>.md`. Link it from the check. Store only aggregated or masked data (see Data rules).

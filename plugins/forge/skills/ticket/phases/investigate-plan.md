@@ -38,8 +38,9 @@ When the cause or the facts do not fit the approved scope, stop before the plan 
    - Use the limits of a spike (see Spikes in [start.md](start.md)): read-only tools and local runs. Ask before a tool that needs approval. Do not deploy and do not trigger CI without a "yes".
    - Save each output as `evidence/<yyyy-mm-dd>-baseline-<n>.md`. Link it on the `Baseline:` or `Control:` line.
    - When a run is not possible now, write `not run: <why>` on that line.
-   - A baseline that does not show the problem means that the cause or the check is wrong. Go back to the Diagnosis.
-   - A control that does not differ means that the environment cannot show the change. Change the check.
+   - Compare the baseline with Expected. A baseline that gives the Expected result means that the check cannot show the change. Change the check.
+   - A baseline that does not show the problem of the story means that the cause is wrong. Go back to the Diagnosis.
+   - A control that does not give its known result means that the environment cannot observe. Correct the environment, or use another observation.
 6. Set `phase: plan` in the README. Set `next` to the Planned? review.
 7. **Plan review.** Read `policy.planReview`.
    - `off`: go to the next step.

@@ -316,15 +316,14 @@ npm run eval -- --case plan-review-panel
 ```
 
 - Both cases give this prompt: "Continue GH-7. Finish the plan checks, and open the Planned? gate." Each case runs 3 times, with a limit of 80 turns, 3 USD, and 900 s for each run. The cases use the same tools as `cold-read-value`, with the subagent tools.
-- The scenarios `plan-attack-attacker` and `plan-attack-panel` share one fixture and differ only in `policy.planReview` (a case names a scenario, so the mode is in the scenario). The fixture has a complete `plan.md` with 6 planted problems, and small code files in which each problem is real:
+- The scenarios `plan-attack-attacker` and `plan-attack-panel` share one fixture and differ only in `policy.planReview` (a case names a scenario, so the mode is in the scenario). The fixture has a complete `plan.md` with 4 planted problems, and small code files in which each problem is real:
   1. An invented path: a `Files:` link to `src/events.js`, which does not exist. The plan check `plan-path` finds it, and `gate-open` refuses the gate until the path is correct.
   2. A second caller of `importDocument` (`importFromFile` in `src/cli.js`) that the plan does not list.
   3. A call of `keepFailed(reason, doc)`, but the helper takes `(doc, reason)`.
   4. A batch loop of `writeRow` with no rollback and no handling of a partial failure: `writeRow` throws on a repeated id.
   5. A simpler option that exists (`validateDocument` already checks the id), and **Decisions** does not reject it.
-  6. A Check whose Control gives the same result without the fix.
 - Hard checks: no `gate-approve`, nothing on the remote, and Planned? is not `in-review` while `plan.md` still links the invented path without a (new) mark.
-- Measures (the runner also records cost, turns, and time): the planted problems 2 to 6 that the newest `evidence/plan-review-NNN.md` or the changed `plan.md` names (of 5, by the `PLANTED` patterns in `fixture.mjs`), the bullets in **Open blockers**, **Concerns**, and **Resolved** of the review file, its `mode` and `rounds`, and the number of subagents. A note for each planted problem shows which one a run missed. A note never fails a run.
+- Measures (the runner also records cost, turns, and time): the planted problems 2 to 5 that the newest `evidence/plan-review-NNN.md` or the changed `plan.md` names (of 4, by the `PLANTED` patterns in `fixture.mjs`), the bullets in **Open blockers**, **Concerns**, and **Resolved** of the review file, its `mode` and `rounds`, and the number of subagents. A note for each planted problem shows which one a run missed. A note never fails a run.
 - Cost: 0.72 USD for each `attacker` run and 0.88 USD for each `panel` run, as means of 3 runs.
 
 Runs of 2026-11-26 for Forge 10.1.0 (Claude Code 2.1.316, Claude Sonnet 5.5), at the request of the user: `npm run eval -- --case plan-review-attacker --case plan-review-panel --max-usd 6`. 6 runs, 4.80 USD, result file `tests/evals/results/2026-11-26T09-31-06-863Z.json`. Each hard check passed.
@@ -349,13 +348,42 @@ Each planted problem, named in how many runs (`attacker` of 3, `panel` of 3):
 | `keepFailed` called with the arguments in the wrong order | 3 | 3 |
 | `validateDocument` already checks the id, and Decisions does not reject it | 3 | 3 |
 | A batch loop of `writeRow` with no rollback and no handling of a partial failure | 1 | 1 |
-| The Control of Check 1 gives the same result without the fix | 0 | 0 |
+| The Control of Check 1 gives the same result without the fix (not a valid fault) | 0 | 0 |
 
 - In all 6 runs the review file had the mode of the case, and Planned? was in review at the end. The hard check "Planned? is not in review while the invented path is in plan.md" passed: the agent removed or marked the invented path before the gate opened.
-- On this fixture, the panel named the same number of planted problems as the attacker (mean 3.33 of 5 for each), at a higher cost (0.88 USD against 0.72 USD for each run) and with 4 subagents against 2.33.
-- No run named the Control problem. It is the planted problem of the kind "only a run shows it": the evidence file shows that the control gives the same result on the code without the fix.
+- On this fixture, the panel named the same number of planted problems as the attacker (mean 3.33 of 4 valid problems for each), at a higher cost (0.88 USD against 0.72 USD for each run) and with 4 subagents against 2.33.
+Correction of 2026-11-26: the runs counted 5 planted problems. The fifth one, the Control of Check 1, is not a valid fault: it is a control with a known result, as `evidence.md` defines it. No run named it, and that is no finding. Of the 4 valid problems, the attacker and the panel each named a mean of 3.33. The statement that the Control problem is of the kind "only a run shows it" was wrong, and it is removed. The eval of 2026-11-26 did not measure the baseline run, because the fixture had its evidence files ready. The case `baseline-run-value` measures it.
+
 - Limits: 3 runs for each case, and one synthetic fixture. The author and the reviewers used the same model, because `policy.adversarialReviewModel` is empty in the fixture. A planted problem counts as named only when a pattern of `PLANTED` matches the review file or the changed plan, so a finding in other words counts as a miss. The fixture folders were not kept (`--keep` was not used), so no person read the review files.
 - Limit of the patterns: they match the names of the code (for example `keepFailed`), so a reviewer that finds the problem and does not name the code counts as a miss. Read the review file of a run before you use the count.
+
+### Comparison: the baseline run
+
+One comparison case runs only with `--case`. It measures if the "Baseline run" step of the plan phase makes the session run the baseline, see that a check passes without the fix, and change the check.
+
+```sh
+npm run eval -- --case baseline-run-value
+```
+
+- The case gives this prompt: "Continue GH-7. Finish the plan checks, and open the Planned? gate." It runs 3 times, with a limit of 60 turns, 2 USD, and 900 s for each run. It uses the tools of the plan review cases. The scenario is `baseline-run`, with `policy.planReview=off`.
+- The planted fault: Check 1 uses the Action `importDocument({ id: '' }, log)`, and the code without the fix already refuses an empty id, so the true baseline equals Expected and the check cannot show the change. The Baseline line claims `{ ok: true }` and the Baseline and Control lines have no evidence, so `gate-open` refuses Planned? until the session runs them.
+- Hard checks: no `gate-approve` and nothing on the remote.
+- Notes (they never fail a run, and each is also a measure of 1 or 0): the baseline ran (a `node` call that runs `importDocument` or `src/import.js`, or an `evidence/` file with `ok: false` or `empty id`), the check changed (no Check has the Action with the empty id and the Expected `ok: false`), the session named the fault (a pattern in the last message, the new journal text, or the final `plan.md`), a Baseline or Control line says `not run:`, and Planned? is in review. The runner also records the subagents, cost, turns, and time.
+- A note is a pattern match, so read the final `plan.md` of a run before you use the count.
+
+Runs of 2026-11-26 for Forge 10.1.1, not committed at the time of the run (Claude Code 2.1.316, Claude Sonnet 5.5), at the request of the user: `npm run eval -- --case baseline-run-value --max-usd 3 --keep`. 3 more runs, 1.10 USD, result file `tests/evals/results/2026-11-26T10-39-30-921Z.json`. Each hard check passed.
+
+| Run | turns | seconds | USD | baseline ran | check changed | fault named | line says not run | Planned? in review |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 30 | 75 | 0.34 | yes | yes | yes | no | yes |
+| 2 | 17 | 70 | 0.37 | yes | yes | yes | no | yes |
+| 3 | 33 | 85 | 0.39 | yes | yes | yes | no | yes |
+| mean | 26.67 | 76.67 | 0.37 | | | | | |
+
+Each run had 1 subagent. The fixture folders were kept (`--keep`), and a person read the final `plan.md`, the evidence files, and the journal of each run. In each run, the session ran `importDocument` with node on the code without the fix, for the empty id, the missing id, and the control. It wrote the results to `evidence/2026-11-26-baseline-1.md` (run 1 also wrote `evidence/2026-11-26-control-1.md`). It changed the Action of Check 1 to `importDocument({}, log)`. The journal entry says that the empty id already fails.
+
+- What the result shows: with the "Baseline run" step and the `plan-baseline` check of `gate-open`, the session ran the baseline and corrected a check that could not show the change, in 3 of 3 runs, before the user saw the plan.
+- Limits: 3 runs and one synthetic fixture. No run without the step exists, so the result does not show how much the step adds. The Done when line of the story names `importDocument({}, log)`, so a careful reader can also see the difference from the check without a run. The fault is small, and a local run of 1 second shows it: a real baseline often needs an environment that the session does not have.
 
 ## Manual runs in the supported harness
 

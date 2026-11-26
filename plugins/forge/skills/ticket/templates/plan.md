@@ -38,8 +38,8 @@ Decision 1: <question>? Recommended: <answer>.
 1. <changed behavior>
    - Action: <input or action>
    - Expected: <result>
-   - Baseline: <the result without the fix> ([evidence](evidence/<file>.md))
-   - Control: <an observation that must differ when the environment is correct> ([evidence](evidence/<file>.md))
+   - Baseline: <the result of the same action without the fix; it must differ from Expected> ([evidence](evidence/<file>.md))
+   - Control: <a second observation with a known result, which shows that the observation works> ([evidence](evidence/<file>.md))
 
 ## Risks
 
