@@ -1,15 +1,13 @@
 // The board page, the links between the pages, and the design system that the pages share.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { buildBoard } from '../plugins/forge/scripts/lib/board.mjs';
 import { BOARD_SCRIPT, renderBoardPage } from '../plugins/forge/scripts/lib/board-page.mjs';
-import { buildCanvas, renderCanvas } from '../plugins/forge/scripts/lib/canvas.mjs';
-import { CANVAS_SCRIPT, CANVAS_STYLE } from '../plugins/forge/scripts/lib/canvas-page.mjs';
 import { STATES } from '../plugins/forge/scripts/lib/ticket.mjs';
 import { UI_SCRIPT, UI_STYLE, buildNav } from '../plugins/forge/scripts/lib/ui.mjs';
 import { writeViews } from '../plugins/forge/scripts/lib/views.mjs';
@@ -18,6 +16,8 @@ const cli = fileURLToPath(new URL('../plugins/forge/scripts/forge.mjs', import.m
 const cwd = fileURLToPath(new URL('..', import.meta.url));
 const TOKEN = 'a'.repeat(32);
 const TODAY = '2026-11-17';
+// The editor link of a file of a ticket folder in a wiki (a page of the editor mode).
+const editor = (root, folder, name) => `vscode://file${path.join(root, 'raw', 'tickets', folder, name).replaceAll('\\', '/').replace(/^(?!\/)/, '/')}`;
 
 function wiki(t) {
   const root = mkdtempSync(path.join(os.tmpdir(), 'forge-page-'));
@@ -59,13 +59,12 @@ test('the design system gives each page the same tokens, both themes, and a scri
   assert.match(UI_STYLE, /@media \(prefers-color-scheme: dark\) \{ :root:not\(\[data-theme="light"\]\) \{ --bg:/, 'the system setting gives the dark theme');
   assert.match(UI_STYLE, /:root\[data-theme="dark"\] \{ color-scheme: dark; --bg:/, 'the user can select the dark theme');
   for (const state of STATES) assert.ok(UI_STYLE.includes(`.st-${state} { --st:`), `state color: ${state}`);
-  assert.ok(CANVAS_STYLE.startsWith(UI_STYLE), 'the canvas uses the tokens and the components of the design system');
   // The design document names each token, so a token change is also a change of the document.
   const doc = readFileSync(path.join(cwd, 'docs', 'design-system.md'), 'utf8');
   const root = /:root \{([\s\S]*?)\n\}/.exec(UI_STYLE)[1];
   for (const [, token] of root.matchAll(/(--[a-z0-9-]+):/g)) assert.ok(doc.includes(`\`${token}\``), `docs/design-system.md: ${token}`);
 
-  for (const [name, script] of [['board', BOARD_SCRIPT], ['canvas', CANVAS_SCRIPT]]) {
+  for (const [name, script] of [['board', BOARD_SCRIPT]]) {
     assert.ok(script.includes(UI_SCRIPT), `${name}: the shared functions`);
     assert.doesNotThrow(() => new Function(script), name);
     assert.ok(!script.includes('\r') && !script.includes('`'), name);
@@ -74,11 +73,11 @@ test('the design system gives each page the same tokens, both themes, and a scri
   // Forge 7.6 adds one request: a page of the live server asks that server for the state of the sessions.
   // Forge 9.1 adds one more: the Resume button asks that server to open a terminal for one session of the session list.
   assert.equal(BOARD_SCRIPT.match(/\bfetch\(/g).length, 3, 'the board page asks only its own server: for the next page, for the live state, and for a Resume');
-  for (const script of [BOARD_SCRIPT, CANVAS_SCRIPT]) {
+  for (const script of [BOARD_SCRIPT]) {
     assert.match(script, /fetch\(data\.resume, \{ method: 'POST', cache: 'no-store', headers: \{ 'Content-Type': 'application\/json', 'X-Forge-Token': data\.token \}, body: JSON\.stringify\(\{ id: button\.getAttribute\('data-resume'\) \}\) \}\)/, 'the request holds only the id of the session');
     assert.match(script, /if \(button\.getAttribute\('data-check'\) === '1'\) \{/, 'a session with no end seen needs a second click');
   }
-  for (const script of [BOARD_SCRIPT, CANVAS_SCRIPT]) assert.match(script, /fetch\(data\.live \+ '&v=' \+ live\.v, \{ cache: 'no-store'/);
+  for (const script of [BOARD_SCRIPT]) assert.match(script, /fetch\(data\.live \+ '&v=' \+ live\.v, \{ cache: 'no-store'/);
   assert.doesNotMatch(UI_SCRIPT, /innerHTML|insertAdjacentHTML|document\.write/, 'the text of a session goes into the page as text');
 });
 
@@ -87,27 +86,22 @@ test('the links between the pages are relative in a file page and use the server
   fill(w);
   const board = buildBoard(w.root, { today: TODAY });
   const fromBoard = buildNav(board);
-  assert.equal(fromBoard.board, '');
+  assert.deepEqual([fromBoard.board, fromBoard.wiki], ['', 'wiki.html']);
   assert.deepEqual(fromBoard.tickets.map((item) => [item.key, item.href]), [
-    ['APP-9', 'tickets/app-9/canvas.html'], ['APP-10', 'tickets/app-10/canvas.html'], ['APP-11', 'tickets/app-11/canvas.html'], ['APP-2', 'tickets/app-2/canvas.html'],
+    ['APP-9', 'tickets/app-9/README.md'], ['APP-10', 'tickets/app-10/README.md'], ['APP-11', 'tickets/app-11/README.md'], ['APP-2', 'tickets/app-2/README.md'],
   ]);
   assert.equal(fromBoard.tickets[0].gate, 'Planned? needs you'); // Forge 9.2: the one word for a gate in review is "needs you"
   assert.equal(fromBoard.file('app-9', 'evidence/a b.md'), 'tickets/app-9/evidence/a%20b.md');
+  assert.deepEqual(Object.keys(fromBoard).sort(), ['board', 'closed', 'file', 'tickets', 'wiki'], 'the links have no previous and next ticket, and no page of a ticket');
 
-  const fromTicket = buildNav(board, { from: 'app-10', broken: ['app-11'] });
-  assert.equal(fromTicket.board, '../../board.html');
-  assert.equal(fromTicket.current, 'app-10');
-  assert.deepEqual([fromTicket.prev.key, fromTicket.next.key], ['APP-9', 'APP-11'], 'the previous and the next ticket follow the board order');
-  assert.equal(fromTicket.prev.href, '../app-9/canvas.html');
-  assert.equal(fromTicket.next.href, '../app-11/README.md', 'a ticket without a canvas gets a link to its README');
-  assert.equal(buildNav(board, { from: 'app-9' }).prev, null);
-  assert.equal(buildNav(board, { from: 'app-2' }).next, null);
+  const fromWiki = buildNav(board, { from: 'wiki' });
+  assert.deepEqual([fromWiki.board, fromWiki.wiki], ['board.html', '']);
 
-  const served = buildNav(board, { from: 'app-10', token: TOKEN });
-  assert.equal(served.board, `/board?t=${TOKEN}`);
-  assert.equal(served.prev.href, `/ticket/app-9/?t=${TOKEN}`);
-  assert.equal(served.next.href, `/ticket/app-11/?t=${TOKEN}`);
-  assert.equal(served.file('app-11', 'README.md'), `/ticket/app-11/README.md?t=${TOKEN}`);
+  const served = buildNav(board, { token: TOKEN });
+  assert.deepEqual([served.board, served.wiki], ['', `/wiki?t=${TOKEN}`]);
+  assert.equal(served.tickets[0].href, `/ticket/app-9/README.md?t=${TOKEN}`);
+  assert.equal(served.file('app-11', 'plan.md'), `/ticket/app-11/plan.md?t=${TOKEN}`);
+  assert.equal(buildNav(board, { from: 'wiki', token: TOKEN }).board, `/board?t=${TOKEN}`);
 });
 
 test('the board page is one self-contained file: the tickets that wait first, one lane for each state, and escaped ticket text', (t) => {
@@ -132,8 +126,8 @@ test('the board page is one self-contained file: the tickets that wait first, on
   // Forge 9.2: the chip is the kit chip (chipHtml): its emoji, its page label, its number, and its attributes.
   assert.match(html, /<button type="button" class="chip st-go" data-state="go" title="Show only Go \(3\)" aria-pressed="false" disabled><span aria-hidden="true">🟢<\/span> Go <b>0<\/b><\/button>/);
   assert.match(html, /<button type="button" class="chip st-needs-me" data-state="needs-me" title="Show only Needs you \(1\)" aria-pressed="false"><span aria-hidden="true">🟡<\/span> Needs you <b>1<\/b><\/button>/);
-  // A ticket with a gate in review opens at the document of that gate.
-  assert.match(html, /<a class="open" href="tickets\/app-9\/canvas\.html#zone-plan" data-nav title="Title of APP-9">Fix outbox retry<\/a>/);
+  // A ticket with a gate in review opens at the document of that gate: an editor link has no data-nav.
+  assert.ok(html.includes(`<a class="open" href="${editor(w.root, 'app-9', 'plan.md')}" title="Title of APP-9">Fix outbox retry</a>`));
   // Forge 9.2: the gate row is the kit ingots (gatesHtml) with the words of the open gate. It has the key of the ticket and of each gate for the spark script.
   assert.match(html, /<p class="tline"><span class="gates" data-gates="app-9"><span class="ingots" role="img" aria-label="Gates: Scoped\? approved, Planned\? needs you"><span class="ingot ig-approved" data-gate="Scoped\?" data-status="approved" title="Scoped\? approved"><\/span><span class="ig-line"><\/span><span class="ingot ig-in-review" data-gate="Planned\?" data-status="in-review" title="Planned\? needs you"><\/span><\/span><span class="gate-words">Planned\? needs you<\/span><\/span><\/p>/);
   // The card is the kit frame with the edge of its state.
@@ -144,7 +138,7 @@ test('the board page is one self-contained file: the tickets that wait first, on
   assert.match(html, /<span class="tag">PR #12 open<\/span><span class="tag tg-bad">CI red<\/span><span class="tag">Tracker In Progress<\/span>/);
   assert.match(html, /<span class="tag tg-wait">⏳ Ana, 8 working days<\/span>/);
   assert.match(html, /<p class="tline tclamp"><span class="eyebrow">Next<\/span> /);
-  assert.match(html, /<li class="trow" id="ticket-app-2" data-state="done"[^>]*><span class="key">APP-2<\/span><a class="open" href="tickets\/app-2\/canvas\.html"/);
+  assert.ok(html.includes(`<a class="open" href="${editor(w.root, 'app-2', 'README.md')}" title="Title of APP-2">Old fix</a><span class="age">`));
   // Forge 9.2: a section name that is not a state is in pixel letters (the real text is in a .sr span), in a sunk frame.
   assert.match(html, /<section class="frame sunk bsec" id="waits"><h2 class="bhead"><span class="pxt pxt-3" style="--n:68"><svg [^>]*><path d="[^"]+"\/><\/svg><span class="sr">People waits<\/span><\/span><small>more than 3 working days<\/small><\/h2><table>/);
   assert.match(html, /<section class="frame sunk bsec" id="errors"><h2 class="bhead"><span class="pxt pxt-3" style="--n:62"><svg [^>]*><path d="[^"]+"\/><\/svg><span class="sr">Read errors<\/span><\/span><span class="count">1<\/span><\/h2><ul class="errors"><li><code>empty<\/code> README\.md is missing\.<\/li>/);
@@ -162,15 +156,16 @@ test('the board page is one self-contained file: the tickets that wait first, on
   assert.throws(() => renderBoardPage(board, { links: 'web' }), /Unknown link mode/);
   // The switcher has each ticket in board order, and the page has the keys.
   assert.ok(at('<dialog id="switcher"') < at('<dialog id="help"'));
-  assert.match(html, /<li class="group">🟡 Needs you<\/li><li><a href="tickets\/app-9\/canvas\.html" data-nav data-text="app-9 fix outbox retry needs you plan planned\? needs you">/);
+  assert.match(html, /<li class="group">🟡 Needs you<\/li><li><a href="tickets\/app-9\/README\.md" data-nav data-text="app-9 fix outbox retry needs you plan planned\? needs you">/);
   // Forge 9.2: the pages say "needs you" for the state needs-me, and "Needs me" stays in raw/board.md.
   assert.equal(renderBoardPage(buildBoard(w.root, { today: TODAY }), { wiki: w.root }), html, 'the same input gives the same bytes');
 
   const served = renderBoardPage(board, { wiki: w.root, serve: { token: TOKEN } });
   assert.match(served, new RegExp(`"token":"${TOKEN}"`));
-  assert.match(served, new RegExp(`href="/ticket/app-9/\\?t=${TOKEN}#zone-plan"`));
+  assert.doesNotMatch(served, /\/ticket\/[^"]*\/\?t=|canvas\.html/, 'a ticket has no page of its own on the server');
+  assert.match(renderBoardPage(board, { links: 'file', wiki: w.root, serve: { token: TOKEN } }), new RegExp(`<a class="open" href="/ticket/app-9/plan\\.md\\?t=${TOKEN}" data-nav title=`));
   assert.doesNotMatch(html, /"token"/);
-  assert.throws(() => renderBoardPage(board, { serve: { token: 'x' } }), /canvas token/);
+  assert.throws(() => renderBoardPage(board, { serve: { token: 'x' } }), /page token/);
 });
 
 test('a board without a waiting ticket says so, and an empty wiki gives an empty board page', (t) => {
@@ -184,100 +179,85 @@ test('a board without a waiting ticket says so, and an empty wiki gives an empty
   assert.match(calm, /<section class="frame sunk lane st-needs-me" id="lane-needs-me" data-state="needs-me">.*<div class="empty"><svg class="px"[^>]*>.*<\/svg><p>No ticket needs you\.<\/p><\/div><\/section>/);
 });
 
-test('the canvas with the links has the board link, the switcher, and the previous and the next ticket', (t) => {
+test('a ticket card links to the document of its gate in review, else to its README, in both link modes', (t) => {
   const w = wiki(t);
   fill(w);
+  // A gate in review without a doc name gets the document of its gate. A doc name that leaves the ticket folder gets the README.
+  w.ticket('APP-12', { state: 'needs-me', gates: ['  - { name: Scoped?, doc: story.md, need: required, status: approved, date: 2026-11-10 }', '  - { name: Planned?, doc: plan.md, need: required, status: approved, date: 2026-11-11 }', '  - { name: Shippable?, need: required, status: in-review }'] });
+  w.ticket('APP-13', { state: 'needs-me', gates: ['  - { name: Scoped?, doc: ../../../outside.md, need: required, status: in-review }'] });
   const board = buildBoard(w.root, { today: TODAY });
-  const model = buildCanvas(path.join(w.root, 'raw', 'tickets', 'app-10'));
-  const alone = renderCanvas(model);
-  assert.doesNotMatch(alone, /<dialog id="switcher"|id="switch-open"|<a [^>]*data-nav|"nav":/, 'a page without the links stands alone');
-  assert.match(alone, /<strong class="key">APP-10<\/strong>/);
-  const html = renderCanvas(model, { nav: buildNav(board, { from: 'app-10' }) });
-  assert.match(html, /<a class="quiet" href="\.\.\/\.\.\/board\.html" data-nav title="The board of all tickets \(b\)">Board<\/a>/);
-  assert.match(html, /<button type="button" class="crumb" id="switch-open" aria-haspopup="dialog" title="Go to a ticket \(t\)"><span class="key">APP-10<\/span><\/button>/);
-  assert.match(html, /<a class="quiet icon" href="\.\.\/app-9\/canvas\.html" data-nav rel="prev" title="Previous ticket: APP-9 \(\[\)"/);
-  assert.match(html, /<a class="quiet icon" href="\.\.\/app-11\/canvas\.html" data-nav rel="next" title="Next ticket: APP-11 \(\]\)"/);
-  assert.match(html, /<a href="\.\.\/app-10\/canvas\.html" data-nav data-text="[^"]*" aria-current="page">/);
-  // Forge 8.1 adds the link to the wiki page (tests/wiki-page.test.mjs).
-  assert.match(html, /"nav":\{"board":"\.\.\/\.\.\/board\.html","wiki":"\.\.\/\.\.\/wiki\.html","prev":"\.\.\/app-9\/canvas\.html","next":"\.\.\/app-11\/canvas\.html"\}/);
-  assert.match(html, /<span class="pill st-blocked">Blocked<\/span>/); // Forge 9.2: the bar of the canvas uses pillHtml (the kit pill has no emoji), with the page label
-  assert.equal(html.match(/<script\b/g).length, 2);
+  const card = (html, folder) => new RegExp(`<article [^>]*id="ticket-${folder}"[\\s\\S]*?<h3><a class="open" href="([^"]+)"( data-nav)? title=`).exec(html);
+  const editorMode = renderBoardPage(board, { wiki: w.root });
+  for (const [folder, name] of [['app-9', 'plan.md'], ['app-10', 'README.md'], ['app-11', 'README.md'], ['app-12', 'review.md'], ['app-13', 'README.md']]) {
+    assert.deepEqual([card(editorMode, folder)[1], card(editorMode, folder)[2] ?? ''], [editor(w.root, folder, name), ''], `${folder}: editor link, no data-nav`);
+  }
+  const fileMode = renderBoardPage(board, { links: 'file', wiki: w.root });
+  for (const [folder, name] of [['app-9', 'plan.md'], ['app-10', 'README.md'], ['app-11', 'README.md'], ['app-12', 'review.md'], ['app-13', 'README.md']]) {
+    assert.deepEqual([card(fileMode, folder)[1], card(fileMode, folder)[2]], [`tickets/${folder}/${name}`, ' data-nav'], `${folder}: relative link`);
+  }
+  // The done row and the strip use the same rule.
+  assert.ok(fileMode.includes('<a class="open" href="tickets/app-2/README.md" data-nav title="Title of APP-2">'));
+  assert.ok(fileMode.includes('<a class="primary" href="tickets/app-9/plan.md" data-nav aria-label="Open APP-9">Open</a>'));
+  assert.doesNotMatch(fileMode + editorMode, /canvas\.html|#zone-/);
 });
 
-test('writeViews writes the board page and the canvas of each ticket, and it keeps a page that did not change', (t) => {
+test('writeViews writes the board page and the wiki page, and it keeps a page that did not change', (t) => {
   const w = wiki(t);
   fill(w);
-  const canvas = (key) => path.join(w.root, 'raw', 'tickets', key, 'canvas.html');
   const dry = writeViews(w.root, { today: TODAY, dryRun: true });
   assert.equal(dry.page.written, false);
-  assert.ok(!existsSync(dry.page.file) && !existsSync(canvas('app-9')), 'a dry run writes no page');
+  assert.ok(!existsSync(dry.page.file), 'a dry run writes no page');
 
-  const first = writeViews(w.root, { today: TODAY, now: new Date('2026-11-17T08:00:00Z') });
+  const first = writeViews(w.root, { today: TODAY });
+  assert.deepEqual(Object.keys(first).sort(), ['board', 'page', 'wiki'], 'no result for a canvas');
   assert.equal(first.page.file, path.join(w.root, 'raw', 'board.html'));
   assert.equal(first.page.written, true);
-  assert.deepEqual(first.canvases.written.sort(), ['app-10', 'app-11', 'app-2', 'app-9']);
-  assert.match(readFileSync(canvas('app-9'), 'utf8'), /href="\.\.\/\.\.\/board\.html"/);
-  // Only the time is new: no page is written again, so an open browser tab does not load again.
-  const again = writeViews(w.root, { today: TODAY, now: new Date('2026-11-17T09:30:00Z') });
-  assert.equal(again.page.written, false);
-  assert.deepEqual(again.canvases.written, []);
-  assert.match(readFileSync(canvas('app-9'), 'utf8'), /Generated 2026-11-17 08:00 UTC/);
-  // A changed ticket changes its canvas, and its new state changes the links on each other page.
-  w.put('raw/tickets/app-9/plan.md', '---\ntype: plan\n---\n# Plan APP-9\n\nCause: the old key.\n');
-  assert.deepEqual(writeViews(w.root, { today: TODAY, now: new Date('2026-11-17T10:00:00Z') }).canvases.written, ['app-9']);
-
-  // The canvas command: its own ticket always, and another ticket only when it has no canvas.
-  rmSync(canvas('app-11'));
-  const focused = writeViews(w.root, { today: TODAY, focus: 'app-9', all: false, now: new Date('2026-11-17T11:00:00Z') });
-  assert.deepEqual(focused.canvases.written.sort(), ['app-11', 'app-9']);
-  assert.equal(focused.focus.key, 'APP-9');
-  assert.match(readFileSync(canvas('app-9'), 'utf8'), /Generated 2026-11-17 11:00 UTC/);
-
-  // A ticket that cannot give a canvas does not stop the other pages. Its links go to its README.
-  const outside = path.join(w.root, 'outside.md');
-  writeFileSync(outside, '# Outside\n');
-  try { symlinkSync(outside, path.join(w.root, 'raw', 'tickets', 'app-11', 'map.md')); } catch { t.skip('This platform cannot create a file link.'); return; }
-  const broken = writeViews(w.root, { today: TODAY });
-  assert.deepEqual(broken.canvases.failed.map((item) => item.folder), ['app-11']);
-  assert.match(broken.canvases.failed[0].message, /map\.md must be a regular file/);
-  assert.match(readFileSync(broken.page.file, 'utf8'), /<a class="open" href="tickets\/app-11\/README\.md" data-nav/);
-  assert.throws(() => writeViews(w.root, { today: TODAY, focus: 'app-11', all: false }), /map\.md must be a regular file/, 'the canvas command reports the error of its own ticket');
+  assert.ok(existsSync(path.join(w.root, 'raw', 'wiki.html')));
+  for (const key of ['app-9', 'app-10', 'app-11', 'app-2']) assert.ok(!existsSync(path.join(w.root, 'raw', 'tickets', key, 'canvas.html')), `${key}: no canvas page`);
+  // The same input writes no page again, so an open browser tab does not load again.
+  assert.equal(writeViews(w.root, { today: TODAY }).page.written, false);
+  // A new ticket changes the board page.
+  w.ticket('APP-12', { state: 'go' });
+  assert.equal(writeViews(w.root, { today: TODAY }).page.written, true);
+  assert.match(readFileSync(first.page.file, 'utf8'), /id="ticket-app-12"/);
 });
 
-test('forge.mjs board writes the pages, and forge.mjs canvas writes the board page and each missing canvas', (t) => {
+test('forge.mjs board writes the board page and the wiki page, and forge.mjs canvas is not a command', (t) => {
   const w = wiki(t);
   fill(w);
   const run = (...args) => spawnSync(process.execPath, [cli, ...args, '--cwd', cwd, '--wiki', w.root], { encoding: 'utf8' });
-  const one = run('canvas', 'APP-10');
-  assert.equal(one.status, 0, one.stderr);
-  assert.match(one.stdout, /APP-10: wrote .*canvas\.html\n {2}open {2}file:\/\/\S+canvas\.html\n {2}board file:\/\/\S+board\.html\n {2}wiki {2}file:\/\/\S+wiki\.html\n/);
-  for (const key of ['app-9', 'app-10', 'app-11', 'app-2']) assert.ok(existsSync(path.join(w.root, 'raw', 'tickets', key, 'canvas.html')), key);
-  assert.ok(existsSync(path.join(w.root, 'raw', 'board.html')));
+  const gone = run('canvas', 'APP-10');
+  assert.equal(gone.status, 2, 'the usage error');
+  assert.match(gone.stderr, /^Usage: node forge\.mjs <where\|/);
+  assert.doesNotMatch(gone.stderr, /canvas/);
+  assert.ok(!existsSync(path.join(w.root, 'raw', 'tickets', 'app-10', 'canvas.html')));
 
-  rmSync(path.join(w.root, 'raw', 'board.html'));
   const json = run('board', '--json', '--today', TODAY);
   assert.equal(json.status, 0, json.stderr);
   const report = JSON.parse(json.stdout);
   assert.equal(report.page.file, path.join(w.root, 'raw', 'board.html'));
   assert.match(report.page.url, /^file:\/\/.*board\.html$/);
   assert.equal(report.page.written, true);
-  assert.deepEqual(report.page.failed, []);
+  assert.deepEqual(Object.keys(report.page).sort(), ['file', 'url', 'wiki', 'written'], 'the report has no canvas count');
+  assert.ok(existsSync(path.join(w.root, 'raw', 'wiki.html')));
   assert.deepEqual(report.groups[0].tickets[0].gates, [{ name: 'Scoped?', status: 'approved', doc: 'story.md' }, { name: 'Planned?', status: 'in-review', doc: 'plan.md' }]);
   const human = run('board', '--today', TODAY, '--links', 'file');
   assert.match(human.stdout, /board\.md\n {2}open {2}file:\/\/\S+board\.html\n {2}wiki {2}file:\/\/\S+wiki\.html\n$/);
-  assert.doesNotMatch(readFileSync(path.join(w.root, 'raw', 'board.html'), 'utf8'), /vscode:/);
+  const page = readFileSync(path.join(w.root, 'raw', 'board.html'), 'utf8');
+  assert.doesNotMatch(page, /vscode:/);
+  assert.doesNotMatch(page, /canvas\.html|\/ticket\//, 'the page has no link to a canvas');
   const bad = run('board', '--links', 'web');
   assert.equal(bad.status, 1);
   assert.match(bad.stderr, /Usage: forge\.mjs board/);
 });
 
-test('the next strike strip: one banner above the lanes, with the key, the text, and one Open link to the canvas of the ticket', (t) => {
+test('the next strike strip: one banner above the lanes, with the key, the text, and one Open link to the document of the ticket', (t) => {
   const w = wiki(t);
   fill(w);
   const html = renderBoardPage(buildBoard(w.root, { today: TODAY }), { wiki: w.root, links: 'file' });
-  // A gate in review: a warn banner, and the link goes to the part of the document of that gate (as the link of the card does).
+  // A gate in review: a warn banner, and the link goes to the document of that gate (as the link of the card does).
   assert.ok(html.includes('<div class="banner bn-warn" role="status" id="strike"><p><span class="key">APP-9</span> Planned? needs you. Read plan.md.</p>'
-    + '<span class="bn-acts"><a class="primary" href="tickets/app-9/canvas.html#zone-plan" data-nav aria-label="Open APP-9">Open</a></span></div>'));
+    + '<span class="bn-acts"><a class="primary" href="tickets/app-9/plan.md" data-nav aria-label="Open APP-9">Open</a></span></div>'));
   assert.equal(html.match(/id="strike"/g).length, 1);
   assert.equal(html.match(/class="primary"/g).length, 1, 'one primary link');
   // The strip is above the lanes, and it is not a ticket: the filter and the chips (they read data-text and data-state) do not hide it.

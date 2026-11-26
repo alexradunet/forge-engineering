@@ -7,7 +7,7 @@
 // The style and the components come from ui.mjs (the kit): this file has only the layout of the wiki. The script uses no template literals: it sits in one.
 import path from 'node:path';
 import { STATE_LABEL } from './board.mjs';
-import { LINK_MODES, linkTarget, markdown } from './canvas.mjs';
+import { LINK_MODES, linkTarget, markdown } from './markdown.mjs';
 import { MERMAID_FILE, MERMAID_INTEGRITY, MERMAID_ROUTE, needsMermaid } from './mermaid.mjs';
 import { BREAK, TOOLS_HTML, UI_STYLE, bannerHtml, buildNav, countHtml, emptyHtml, esc, footHtml, helpHtml, iconHtml, navData, pageHtml as shellHtml, pageLabel, pageScript, pillHtml, pixelText, proseHtml, searchHtml, switcherHtml } from './ui.mjs';
 import { CLOSED_FOLDER, pageHash, pageOf } from './wiki.mjs';
@@ -42,12 +42,11 @@ function pageHtml(page, index, model, ctx) {
   const root = model.root;
   // A link of this page is relative to the folder of its file. A link to a page of the wiki changes only the page that shows.
   const wiki = {
-    inPage: true,
     page: (relative) => (model.byPath.has(relative) ? `#${pageHash(relative)}` : ''),
     link: (target) => { const found = pageOf(model, path.join(root, page.folder), target); return found ? `#${pageHash(found)}` : ''; },
   };
   // A relative link to another file has no target on this page: its words stay as text.
-  const body = markdown(page.body, { links: ctx.links, wiki, headings: 1, plain: true });
+  const body = markdown(page.body, { links: ctx.links, wiki, plain: true });
   const status = page.status ? pillHtml(STATUS_TEXT[page.status] ?? page.status, STATUS_STATE[page.status] ?? '') : '';
   const file = linkTarget(path.join(root, ...page.path.split('/')), ctx.links);
   const meta = [
@@ -94,7 +93,7 @@ const HELP = [
 export function renderWikiPage(model, { links = 'vscode', nav = null, serve = null } = {}) {
   if (!LINK_MODES.includes(links)) throw new Error(`Unknown link mode: ${links}. Use ${LINK_MODES.join(' or ')}.`);
   const token = serve?.token ?? '';
-  if (token && !/^[0-9a-f]{32}$/.test(token)) throw new Error('The canvas token must have 32 hexadecimal characters.');
+  if (token && !/^[0-9a-f]{32}$/.test(token)) throw new Error('The page token must have 32 hexadecimal characters.');
   const ctx = { links, nav: nav ?? buildNav({ groups: [] }, { from: 'wiki', token, closed: model.closed }) };
   const pages = model.pages.map((page, index) => pageHtml(page, index, model, ctx)).join('\n');
   const errors = model.errors.length

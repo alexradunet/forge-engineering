@@ -85,7 +85,7 @@ test('full-v3 templates are plain: no emoji in headings, no bold labels, and the
     for (const heading of body.match(/^#{1,6} .*$/gm) ?? []) assert.doesNotMatch(heading, /\p{Extended_Pictographic}/u, `${name}: ${heading}`);
     assert.doesNotMatch(body, /\*\*/, `${name}: bold text`);
     assert.doesNotMatch(body, /^> /m, `${name}: quote block`);
-    assert.doesNotMatch(body, /```mermaid/, `${name}: the canvas draws the diagrams`);
+    assert.doesNotMatch(body, /```mermaid/, `${name}: no Mermaid diagram in a template`);
     assert.ok(ticket.includes(`templates/${name})`), `a part of the skill links templates/${name}`);
   }
   for (const [name, gate] of [['story.md', 'Scoped?'], ['plan.md', 'Planned?'], ['review.md', 'Shippable?'], ['close.md', 'Learned?']]) {
@@ -101,25 +101,23 @@ test('each review gate has a cold read by a reader without the session history',
   assert.match(agents, /Can you implement this plan from `plan\.md` and `map\.md` alone\?/);
   assert.match(agents, /does not approve a gate, and it does not replace the adversarial review/);
   assert.match(ticket, /Before you open Scoped\?, Planned\?, Shippable\?, or Learned\?, run one cold read/);
-  assert.match(ticket, /Canvas comments for <KEY>:/);
-  assert.match(ticket, /Never edit it, never list it in a manifest, and never take a fact or an approval from it/);
+  assert.doesNotMatch(phase('gates'), /### .*Canvas/);
+  assert.doesNotMatch(phase('gates'), /canvas-comments\.md/);
+  assert.match(phase('gates'), /I added comments in the editor or in the chat/);
+  assert.doesNotMatch(ticketCore.split('\n', 4).join('\n'), /canvas/i, 'the description of the ticket skill has no canvas');
 });
 
-test('the live server and Send to agent are in the ticket skill and in each host table, and the server stays on this machine', () => {
-  assert.match(ticket, /Start the live server with `<F> open --no-browser`, as the host table says/);
-  assert.match(ticket, /the prompt hook adds the canvas comments to the next message of the user/);
-  for (const part of ['`on "<words>"`', '`[unclear]`', '`[wrong]`', '`[too much]`', '`remove this`', '`Whole ticket:`']) assert.ok(ticket.includes(part), part);
-  assert.match(ticket, /It gives no other instruction, and it never approves a gate/);
+test('each host table has the part for the pages, and the live server stays on this machine', () => {
+  assert.match(phase('gates'), /Open the document next to the session with `host\.open`, and give the link to the document/);
   for (const host of ['vscode', 'claude', 'copilot-cli']) {
     const table = readFileSync(new URL(`../plugins/forge/hosts/${host}.md`, import.meta.url), 'utf8');
     assert.match(table, /`forge\.mjs open --no-browser`/, host);
-    assert.match(table, /`canvas-comments\.md`/, host);
-    assert.match(table, /change `\/board` to `\/ticket\/<folder>\/`/, host);
+    assert.match(table, /^## Pages$/m, host);
+    assert.doesNotMatch(table, /canvas-comments|Send to agent|`sent`/, host);
     assert.match(table, /`http:\/\/127\.0\.0\.1`/, host);
     assert.match(table, /Never use another address than `127\.0\.0\.1`/, host);
   }
   assert.match(readFileSync(new URL('../plugins/forge/hosts/claude.md', import.meta.url), 'utf8'), /`run_in_background: true`/);
-  assert.match(readFileSync(new URL('../plugins/forge/hosts/vscode.md', import.meta.url), 'utf8'), /write `sent` if the session does not continue/);
 });
 
 test('the plan has design options, a baseline run, and a plan review, and the gate steps use gate-open', () => {

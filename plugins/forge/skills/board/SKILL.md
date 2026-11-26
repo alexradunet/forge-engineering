@@ -30,11 +30,11 @@ the folder two levels above the folder of this file.
 1. Run `<F> board --json`. For each ticket it gives: state, phase, open gate, next step, waiting on, days since the
    update, `sessionTitle`, `worktree`, `branch`, change requests, the sync note, and the people `waits`
    (`waiting` people after more than 3 working days).
-   It also writes `<forge>/raw/board.md` and the pages: the board page `<forge>/raw/board.html`, the wiki page `<forge>/raw/wiki.html`, and the `canvas.html` of each ticket.
+   It also writes `<forge>/raw/board.md` and the pages: the board page `<forge>/raw/board.html` and the wiki page `<forge>/raw/wiki.html`.
    `page.url` is the link of the board page, and `page.wiki.url` is the link of the wiki page.
 2. Show the count for each state, then the 🟡 tickets with their open gate, then one short line for each other ticket.
 3. Give the link of the board page (`page.url`), and then the link of `<forge>/raw/board.md`.
-   On the board page, the user filters the tickets and opens the canvas of each ticket. The page also lists the closed tickets, and it has a link to the wiki page. The host table says how the user opens a local HTML page.
+   On the board page, the user filters the tickets, and a card opens the document of its ticket. The page also lists the closed tickets, and it has a link to the wiki page. The host table says how the user opens a local HTML page.
 
 ## 📚 Questions
 
@@ -43,9 +43,7 @@ Use the sources in this order. Stop when you can answer.
 1. `<F> board --json`.
 2. The Now card at the top of `<forge>/raw/tickets/<folder>/README.md`, then the latest entries of `journal.md` (`log.md` in an older ticket).
 3. The summary of the open gate document (the text under its title), when the user asks what to approve. An older ticket has the ⚡ 1 min section in its place.
-4. `<F> canvas <KEY>`, when the user asks to see a ticket: it writes `canvas.html` in the ticket folder. Give the `file://` link.
-   The page has links to the board page and to the canvas of each other ticket.
-5. `host.sessions`, only for the sessions that the question needs.
+4. `host.sessions`, only for the sessions that the question needs.
 
 Answer in a few lines. Give the ticket key, the session title, and a link to the README.
 When a source is old (a large `days` value, or an old `checked` time in the sync note), say so.
@@ -93,7 +91,7 @@ When the user asks to see the sessions live ("live view", "show the board live",
 
 1. Run `<F> open --no-browser`. It starts the live server of this repository in the background when none runs, and it prints the links of the board and the wiki. Give the links.
 2. When the command says that the server did not start, start `<F> live` as a background command, as the host file says for a background command. Give the link from its first line.
-3. Tell the user what the page shows: one live line for each session on the card of its ticket (working, needs you, idle, or ended), and the Live panel on each canvas. A session of Claude Code or of Copilot CLI that is not live shows as closed, with the buttons **Resume** and **Copy command**.
+3. Tell the user what the page shows: one live line for each session on the card of its ticket (working, needs you, idle, or ended). A session of Claude Code or of Copilot CLI that is not live shows as closed, with the buttons **Resume** and **Copy command**.
 
 One server runs for each repository, and a session reports to the server of its repository. `<F> open --list` gives each server of the user, and `<F> open --stop` stops the server of this repository.
 The live server sends no text to a session. The live activity comes from Claude Code sessions, and a Copilot CLI session shows only with its start and its end.
@@ -103,9 +101,9 @@ A "needs you" line is a report: never answer that prompt for the user.
 ## 🚫 Rules
 
 - The board steps write only `<forge>/raw/sync/<KEY>.md` and, through `<F> board`, `<forge>/raw/board.md` and the pages
-  (`<forge>/raw/board.html`, `<forge>/raw/wiki.html`, and `canvas.html` in each ticket folder). The pages are views: no approval lists them.
+  (`<forge>/raw/board.html` and `<forge>/raw/wiki.html`). The pages are views: no approval lists them.
   The board steps change no code, no ticket document, no approval, and no wiki page.
-- In the terminal, the board steps run only `<F> board`, `<F> canvas <KEY>`, `<F> live`, `<F> open`, `<F> where`, read-only `git` commands, and the read-only
+- In the terminal, the board steps run only `<F> board`, `<F> live`, `<F> open`, `<F> where`, read-only `git` commands, and the read-only
   tracker, change request, and CI commands of the refresh.
 - No external writes. Never comment on, move, or change a work item, a change request, or a CI job.
 - Never answer a session's question, trust prompt, or permission prompt for the user. Report it.

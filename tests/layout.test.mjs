@@ -112,7 +112,10 @@ test('the launcher runs forge.mjs of the plugin for its own Forge folder, from e
   assert.ok(existsSync(path.join(home, 'raw', 'board.html')) && existsSync(path.join(home, 'raw', 'wiki.html')));
   // The exit code and the arguments go through.
   assert.equal(launch(s.root, 'open', '--status').status, 1);
-  assert.match(launch(s.root, 'canvas', 'A B', '--port', 'x').stderr, /Usage: forge\.mjs canvas/);
+  const gone = launch(s.root, 'canvas', 'X');
+  assert.equal(gone.status, 2, 'the canvas command is removed: the usage error');
+  assert.match(gone.stderr, /^Usage: node forge\.mjs <where\|/);
+  assert.doesNotMatch(gone.stderr, /canvas/);
   // Without the path of the plugin, the launcher says what to do.
   writeFileSync(path.join(home, '.plugin'), `${path.join(s.root, 'gone')}\n`);
   const lost = launch(s.root, 'where');

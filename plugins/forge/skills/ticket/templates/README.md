@@ -36,7 +36,6 @@ updated: <yyyy-mm-dd>
 
 ## Files
 
-- [canvas.html](canvas.html): the whole ticket on one board. Make it again with `forge.mjs canvas <KEY>`.
 - [story.md](story.md): the problem, the scope, and your answers
 - [plan.md](plan.md): the diagnosis and the steps
 - [review.md](review.md) and [proof.md](proof.md): what changed, and the proof that it works

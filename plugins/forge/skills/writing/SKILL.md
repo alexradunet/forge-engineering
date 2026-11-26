@@ -34,7 +34,7 @@ Find the mode of the text. Then apply its row.
 | User text | Text that the user asks you to check or rewrite | Match the voice of the text | Full pass | Keep the format of the text |
 
 A ticket document has no bold labels. Its fixed parts are the section names and the plain line labels of the ticket templates, for example `Need from you:`, `Files:`, and `A -> B:` in the flow of `map.md`.
-Forge lint and the ticket canvas find the content by these names. Do not change them.
+Forge lint and the plan checks find the content by these names. Do not change them.
 
 ## ⚖️ Precedence
 

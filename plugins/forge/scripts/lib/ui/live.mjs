@@ -149,7 +149,7 @@ const script = client(function () {
     }
     if (c === live.later || (noticeIs('changed') && live.shown === c)) return;
     live.shown = c;
-    notice('info', data.live.indexOf('ticket=') >= 0 ? 'This ticket changed.' : 'The board changed.', [
+    notice('info', 'The board changed.', [
       { text: 'Reload', run: function () { go(location.href, true); } },
       { text: 'Later', quiet: true, run: function () { live.later = c; clearNotice(); } },
     ], { tag: 'changed' });

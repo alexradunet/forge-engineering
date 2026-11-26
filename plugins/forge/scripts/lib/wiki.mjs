@@ -1,4 +1,4 @@
-// The canonical pages of a wiki, as a model for the wiki page (wiki-page.mjs), the board page, and the ticket canvas.
+// The canonical pages of a wiki, as a model for the wiki page (wiki-page.mjs) and the board page.
 // A canonical page is a Markdown file outside .git, raw/, archive/, and forge/: the same set that `forge.mjs lint` checks.
 // The model also gives the links between the pages, the open tickets that name a page, and the summary pages of the closed tickets.
 // It reads files only. A page that it cannot read is in `errors`, and the other pages still show.
@@ -114,13 +114,13 @@ function ticketDocs(dir) {
       const file = path.join(dir, entry.name);
       const info = lstatSync(file);
       if (!info.isSymbolicLink() && info.size <= MAX_DOC) out.push(readFileSync(file, 'utf8'));
-    } catch { /* The canvas reports a document that it cannot read. */ }
+    } catch { /* A document that cannot be read names no page. */ }
   }
   return out;
 }
 
 /** The paths of the canonical pages that the documents of a ticket folder name: with a Markdown link, or with the path of the page in the text. */
-export function ticketRefs(model, dir) {
+function ticketRefs(model, dir) {
   const found = new Set();
   for (const text of ticketDocs(dir)) {
     for (const target of linkTargets(text)) { const page = pageOf(model, dir, target); if (page) found.add(page); }
@@ -134,7 +134,6 @@ export function ticketRefs(model, dir) {
  * - `pages`: each canonical page, the pages at the top of the wiki first (index.md at the start), then each folder by name.
  * - `groups`: the same pages, one group for each folder.
  * - `closed`: the summary pages of the closed tickets (tickets/<key>.md), the newest first.
- * - `refs`: for each ticket folder of the board, the paths of the pages that the ticket names.
  */
 export function buildWiki(wikiPath, { board = null } = {}) {
   const root = path.resolve(wikiPath);
@@ -148,7 +147,7 @@ export function buildWiki(wikiPath, { board = null } = {}) {
   for (const relative of found.slice(0, MAX_PAGES)) {
     try { pages.push(readPage(root, relative)); } catch (error) { errors.push({ path: relative, message: error.message }); }
   }
-  const model = { version: 1, root, pages, byPath: new Map(pages.map((page) => [page.path, page])), groups: [], closed: [], refs: {}, errors };
+  const model = { version: 1, root, pages, byPath: new Map(pages.map((page) => [page.path, page])), groups: [], closed: [], errors };
   for (const page of pages) {
     const base = path.join(root, page.folder);
     const seen = new Set();
@@ -163,9 +162,7 @@ export function buildWiki(wikiPath, { board = null } = {}) {
     for (const other of page.links) model.byPath.get(other).usedBy.push(page.path);
   }
   for (const item of board?.groups.flatMap((group) => group.tickets) ?? []) {
-    const refs = ticketRefs(model, path.join(ticketRoot(root), item.folder));
-    model.refs[item.folder] = refs;
-    for (const ref of refs) model.byPath.get(ref).tickets.push({ key: item.key, folder: item.folder, title: item.short || item.title, state: item.state });
+    for (const ref of ticketRefs(model, path.join(ticketRoot(root), item.folder))) model.byPath.get(ref).tickets.push({ key: item.key, folder: item.folder, title: item.short || item.title, state: item.state });
   }
   for (const page of pages) {
     const group = model.groups.at(-1)?.folder === page.folder ? model.groups.at(-1) : model.groups[model.groups.push({ folder: page.folder, pages: [] }) - 1];
@@ -177,21 +174,4 @@ export function buildWiki(wikiPath, { board = null } = {}) {
     return { key, title: title || page.title, updated: page.updated, path: page.path };
   }).sort((a, b) => byName(b.updated, a.updated) || byName(a.key, b.key));
   return model;
-}
-
-/**
- * The links from a page to the wiki page. `from` is 'board', 'wiki', or the folder of a ticket, as in buildNav (ui.mjs).
- * - `home`: the wiki page. `page(path)`: one page of it, or '' when the wiki has no such page.
- * - `link(target)`: the same for the target of a Markdown link in a file of the folder `dir`.
- * - `refs`: the pages that the ticket of `dir` names.
- */
-export function wikiLinks(model, { from = 'board', token = '', dir = '' } = {}) {
-  const home = from === 'wiki' ? '' : token ? `/wiki?t=${token}` : from === 'board' ? 'wiki.html' : '../../wiki.html';
-  const page = (relative) => (model.byPath.has(relative) ? `${home}#${pageHash(relative)}` : '');
-  const base = dir || model.root;
-  return {
-    home, page, inPage: from === 'wiki',
-    link: (target) => page(pageOf(model, base, target)),
-    refs: dir ? ticketRefs(model, dir).map((relative) => ({ path: relative, title: model.byPath.get(relative).title, href: page(relative) })) : [],
-  };
 }

@@ -20,32 +20,31 @@ A Forge skill names a host verb, for example `host.title`. Do the step of the ve
 | `host.comments` | There are no document comments. Ask the user to paste the comments into the chat. |
 | `host.write` | Run the write command. The Forge gate guard makes Claude Code ask the user in the permission prompt, and the answer is the "yes". In `bypassPermissions` mode and in a `claude -p` run, the command is denied: give the user the exact command. For a write through an MCP tool or a script, ask with `host.ask` first. |
 
-## Ticket canvas
+## Pages
 
-The ticket canvas is a local HTML page (`canvas.html` in the ticket folder, from `forge.mjs canvas <KEY>`).
+The board page (`board.html` in `<forge>/raw`, from `forge.mjs board`) shows all tickets, and a card opens the document of its ticket. The wiki page (`wiki.html`, in the same folder) shows the pages of the wiki and the summary pages of the closed tickets. The two pages have links to each other.
 
-- Give the user the `file://` link that the command prints. The user opens it in a browser, and loads the page again after each `canvas` run.
-- The board page (`board.html` in `<forge>/raw`, from `forge.mjs board`) shows all tickets. The board page and each canvas have links to each other. The wiki page (`wiki.html`, in the same folder) shows the pages of the wiki and the summary pages of the closed tickets. Give its `file://` link in the same way.
-- Never use the `Artifact` tool for the canvas, the board page, or the wiki page: it sends the page to claude.ai.
-- For comments, run `forge.mjs open --no-browser` with `Bash` (see Live view). Give the user the canvas link of the ticket (`http://127.0.0.1`, this machine only): take the board link that the command prints, and change `/board` to `/ticket/<folder>/` (the folder is the key in lower case, for example `app-9`). When the user selects **Send to agent**, the server adds the comment message to `canvas-comments.md` in the ticket folder, and it keeps running. The user tells the session `sent`. The prompt hook adds the comments to that message and removes the file. Handle the comments.
+- Give the user the `file://` link that the command prints. The user opens it in a browser, and loads the page again after each `board` run.
+- Never use the `Artifact` tool for the board page or the wiki page: it sends the page to claude.ai.
+- To start the live server, run `forge.mjs open --no-browser` with `Bash` (see Live view). Give the user the links that it prints (`http://127.0.0.1`, this machine only).
 - The link works only in a browser on the machine of the session. For a browser on another machine, run `forge.mjs open --no-browser --port <n>`, and tell the user to forward that port. Never use another address than `127.0.0.1`.
-- A code link on the page opens the file in VS Code (`vscode://file/...`). When the user has no VS Code, run `forge.mjs canvas <KEY> --links file`.
+- A code link on the page opens the file in VS Code (`vscode://file/...`). When the user has no VS Code, run `forge.mjs board --links file`.
 
 ## Live view
 
-The live view shows the board page and each ticket canvas with what each Claude Code session does now (`forge.mjs open`).
+The live view shows the board page with what each Claude Code session does now (`forge.mjs open`).
 
 - Start it only when the user asks for it, for example "live view" or "show the sessions live". Run `forge.mjs open --no-browser` with `Bash`. It starts the server of this repository as a process of its own and prints the links of the board and the wiki. Give them to the user.
 - A second run starts no second server: it prints the same links. One server runs for each repository, and `forge.mjs open --list` gives each one.
 - When the command says that the server did not start, run `forge.mjs live` with `Bash` and `run_in_background: true`, and read the link from its output.
-- A page cannot send text to a session. **Send to agent** on a canvas saves the comments in the ticket folder (see Ticket canvas), and **Copy all** gives the same message.
+- A page cannot send text to a session.
 - A session that is not live shows as "closed" or "no end seen", with the buttons **Resume** and **Copy command**. **Resume** opens a terminal of the user with `claude --resume <id>` in the folder of the session.
 - **Resume** is a button for the user. Never send a request to the `/resume` route, and never start or continue a session for the user without a "yes".
 - The Forge hooks write the session list `<forge>/raw/sessions.jsonl` at the start and at the end of a session. Do not change that file.
 - A session shows on its ticket when it runs in the worktree of the ticket, or when its title starts with the ticket key. Each other session is in the list **Other sessions**.
 - A session shows after its next prompt or tool call. The hooks load at session start, so a session that started before an update of forge reports after a restart.
 - A "needs you" line is a report. Never answer that prompt for the user.
-- The rules of the ticket canvas apply: the link works only in a browser on the machine of the session, `--port <n>` gives a fixed port to forward, and the `Artifact` tool is never used.
+- The rules of the Pages part apply: the link works only in a browser on the machine of the session, `--port <n>` gives a fixed port to forward, and the `Artifact` tool is never used.
 - The server stops after 8 hours with no event and no request of a page. To stop it before that, run `forge.mjs open --stop`.
 
 ## Claude Code features

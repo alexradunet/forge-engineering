@@ -1,9 +1,9 @@
 # 🎨 Forge design system
 
-The forge pages are the board page (`raw/board.html`), the wiki page (`raw/wiki.html`), the ticket canvas (`raw/tickets/<key>/canvas.html`), and the styleguide (`raw/styleguide.html`).
+The forge pages are the board page (`raw/board.html`), the wiki page (`raw/wiki.html`), and the styleguide (`raw/styleguide.html`). The live server also writes the error pages.
 All of them use one UI kit: the folder [`scripts/lib/ui/`](../plugins/forge/scripts/lib/ui/). Read this document before you change a page.
 [`scripts/lib/ui.mjs`](../plugins/forge/scripts/lib/ui.mjs) only re-exports the kit, so each importer keeps its path.
-`board-page.mjs`, `wiki-page.mjs`, and `canvas-page.mjs` add only the parts of their own page.
+`board-page.mjs` and `wiki-page.mjs` add only the parts of their own page.
 `tests/ui-kit.test.mjs` and `tests/board-page.test.mjs` keep this document and the code the same.
 
 ## 🧭 Principles
@@ -29,18 +29,17 @@ One file for each part. The folder is `plugins/forge/scripts/lib/ui/`.
 | `tokens.mjs` | `TOKENS` (data), `PAIRS` (the contrast contract), `BREAK`, `tokensCss()`, `tokenTable()`, `ratio()`, `mix()` |
 | `pixel.mjs` | The sprites (`SPRITES`, `iconHtml()`), the 5 by 7 letters (`FONT`, `pixelText()`), `faviconUri()`, and `step()` |
 | `page.mjs` | `pageHtml()`, `pageScript()`, `NOTICE_HTML`, `errorPage()`, and `ERROR_POLICY` |
-| `nav.mjs` | `buildNav()`, `navData()`, `gateLine()`, `GATE_TEXT`, `pageLabel()`, the links script, and the shared keys |
+| `nav.mjs` | `buildNav()`, `navData()`, `GATE_TEXT`, `pageLabel()`, the links script, and the shared keys |
 | `base.mjs` | The reset, the focus ring, `kbd`, `code`, `.sr`, `.skip`, `.eyebrow`, the table, the `st-*` classes, and the script helpers |
 | `button.mjs` | The buttons, `TOOLS_HTML`, and the theme script |
 | `pill.mjs` | `pillHtml()`, `chipHtml()`, `tagHtml()`, and `countHtml()` |
 | `frame.mjs` | `frameHtml()`: the box of the pages |
-| `gates.mjs` | `gatesHtml()`, `ingotHtml()`, and the spark script |
+| `gates.mjs` | `gatesHtml()` and the spark script |
 | `search.mjs` | `searchHtml()` |
 | `banner.mjs` | `bannerHtml()` and the notice script (`notice()`, `clearNotice()`, `noticeIs()`) |
 | `empty.mjs` | `emptyHtml()` |
 | `prose.mjs` | `proseHtml()`: the style of text from Markdown |
 | `live.mjs` | The live line, the closed session row, **Resume**, **Copy command**, the live request, the tab icon swap, and the changed notice |
-| `menu.mjs` | The menu of the bar (`details.refs`) |
 | `diagram.mjs` | The drawing box (`.mermaid`) and the Mermaid script |
 | `bar.mjs` | `brandHtml()`, `footHtml()`, the bar (`#rail`, `.bar`), and the foot (`#foot`) |
 | `dialog.mjs` | `switcherHtml()`, `helpHtml()`, and their scripts |
@@ -69,7 +68,7 @@ A component is one object. `checkComponent()` throws at import when a field is w
 ## 🎚️ Tokens
 
 Each token is a CSS custom property on `:root`. The table is `tokenTable()` of `tokens.mjs`, and `tests/ui-kit.test.mjs` checks that this document has each row.
-A page never uses a color or a size that is not a token, with two exceptions: the sizes of the canvas board (zones, cards, and the code map), and the width of a command line in the notice.
+A page never uses a color or a size that is not a token, with one exception: the width of a command line in the notice.
 
 | Token | Light | Dark | Use |
 |---|---|---|---|
@@ -105,7 +104,7 @@ A page never uses a color or a size that is not a token, with two exceptions: th
 | `--s-6` | 32px | 32px | A gap between sections. |
 | `--s-7` | 48px | 48px | The largest gap. |
 | `--sh-1` | 2px 2px 0 var(--line-2) | 2px 2px 0 var(--line-2) | A card: a hard shadow of one pixel unit. |
-| `--sh-2` | 4px 4px 0 var(--shade) | 4px 4px 0 var(--shade) | A menu, a dialog, and the toast. |
+| `--sh-2` | 4px 4px 0 var(--shade) | 4px 4px 0 var(--shade) | A dialog and the toast. |
 | `--font` | system-ui, -apple-system, "Segoe UI", Roboto, sans-serif | system-ui, -apple-system, "Segoe UI", Roboto, sans-serif | The text font. |
 | `--mono` | ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace | ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace | Keys, code, and paths. |
 | `--px` | 2px | 2px | The pixel unit: a border, a stepped corner, and a pixel of a letter. |
@@ -157,7 +156,7 @@ The pixel text is not real text for a browser:
 
 ### Gate ingots
 
-One `gates` component serves the board card, the bar of a canvas, and the title of a zone. Each status differs by shape and by color.
+One `gates` component serves the board card. Each status differs by shape and by color.
 
 | Status | Words | Look |
 |---|---|---|
@@ -178,19 +177,18 @@ Each component has its helpers in the kit. A page makes the HTML with the helper
 | Component | Helpers and classes | Rules |
 |---|---|---|
 | Base | `.sr`, `.skip`, `.key`, `.tools`, `.eyebrow`, `kbd`, `code`, `table`, `.st-<state>` | `.st-<state>` sets `--st`. `.key` is a ticket key in the mono font |
-| Button | `button`, `.primary`, `.quiet`, `.icon`, `TOOLS_HTML` | One `.primary` for each surface (**Send to agent** on the canvas, **Open** on the next strike). `a.primary` has the same look. A quiet button has no frame until the pointer is on it. `aria-pressed="true"` shows a pressed state |
+| Button | `button`, `.primary`, `.quiet`, `.icon`, `TOOLS_HTML` | One `.primary` for each surface (**Open** on the next strike). `a.primary` has the same look. A quiet button has no frame until the pointer is on it. `aria-pressed="true"` shows a pressed state |
 | Pill | `pillHtml(label, state)`, `.pill` | The label of one state, with its color |
 | Chip | `chipHtml(label, state, count, opts)`, `.chip` | A pill that filters. It is a button with `aria-pressed`, and it can show a count and a mark |
 | Tag | `tagHtml(text, kind)`, `.tag`, `.tg-ok`, `.tg-bad`, `.tg-wait` | One short quiet fact |
 | Count | `countHtml(value)`, `.count` | A small box with a number |
 | Frame | `frameHtml(inner, opts)`, `.frame`, `.edge`, `.sunk` | A square face with a one-unit border and the shadow `--sh-1`. `.edge` adds a left edge in the state color. `.sunk` is a quiet panel with no shadow (a lane) |
-| Gates | `gatesHtml(gates, opts)`, `ingotHtml(status)`, `.gates`, `.ingot`, `.ig-<status>` | See Gate ingots. `names: true` gives a list with the name of each gate. `folder` gives the row its key for the spark |
+| Gates | `gatesHtml(gates, opts)`, `.gates`, `.ingot`, `.ig-<status>` | See Gate ingots. `folder` gives the row its key for the spark |
 | Search | `searchHtml(opts)`, `.search` | One field for the board and the wiki. A `.sr` label, the input, and the key cap of its shortcut. The focus is a ring around the whole field |
 | Banner | `bannerHtml(inner, opts)`, `.banner`, `.bn-info`, `.bn-warn`, `.bn-bad` | A frame with a left edge in the color of its kind, a text, and buttons. A banner is a status region unless `live: false` |
 | Empty | `emptyHtml(text, opts)`, `.empty` | An optional sprite, one sentence, and optional numbered steps. One component on each page |
 | Prose | `proseHtml(inner)`, `.prose` | The style of text from Markdown: headings, lists, code, quote, and table |
 | Live line | `.live`, `.lv-<state>`, `.lv-acts` | One session: the state and its time, the tool that runs now, the count of subagents, and the text of a wait. A closed row is `.live.past` with **Resume** and **Copy command** |
-| Menu | `details.refs` | The menu of the bar. It closes at a click outside of it and at `Esc` |
 | Diagram | `.mermaid`, `#mermaid-stage` | The drawing of a Mermaid block. Mermaid draws in a stage outside of the page parts. A block that Mermaid cannot draw stays as code |
 | Bar and foot | `brandHtml()`, `footHtml()`, `#rail`, `.bar`, `#foot` | See The page shell |
 | Switcher | `switcherHtml(nav)`, `#switcher` | One dialog with a filter and each ticket in board order, and then the closed tickets |
@@ -204,7 +202,6 @@ Parts that belong to one page:
 |---|---|
 | Board | The next strike (`#strike`), the lanes (`.lane`, `.side`), the ticket card (`.tcard`), the lists of other sessions, people waits, closed tickets, and read errors |
 | Wiki | The page list (`#tree`), the page text (`.wpage`, `.wmeta`), the sources, and **Used by** |
-| Canvas | The zones, the document cards (`.card`), the code map (`.graph`, `.node`, `.mlane`), the view switch (`.views`), the title strips (`.folded`), the bundle line (`.bundle`), the comments panel (`#tray`), the Live panel (`#live`), and the editor of a comment (`.echips`) |
 
 ## 🧱 The page shell
 
@@ -212,7 +209,7 @@ Parts that belong to one page:
 
 - `pageScript(dataId, body, { before })` makes the one script. Its first part runs at once and sets the theme (`data-theme` from `forge-ui:theme`) before the first paint, so a user of the dark theme on a light system sees no light flash. The rest waits for `DOMContentLoaded`.
 - The icon is one `<link rel="icon" href="data:image/svg+xml,...">`. A live page swaps it between `calm` and `needs` with the two addresses in the data block. The script holds no drawing.
-- The title of the board is `(2) Forge board` when 2 tickets need the user, and `Forge board` when none does. The canvas title is `<KEY> · <short title>`.
+- The title of the board is `(2) Forge board` when 2 tickets need the user, and `Forge board` when none does.
 - The skip link is the first element of the body. It names the main part of the page (`main`), and it shows when it has the focus.
 - `NOTICE_HTML` is the hidden notice. It comes after the body.
 - A page has a bar `header#rail > div.bar`, a main part, and the foot `#foot` with the line "Press ? for the keys".
@@ -259,28 +256,27 @@ A served page has this policy (`policy()` in `live-serve.mjs`): `default-src 'no
 
 - A kit class has no page prefix: `.frame`, `.pill`, `.banner`, `.empty`.
 - A new page class has a page prefix, and no page class has the name of a kit class or of a class of another page. `tests/ui-kit.test.mjs` finds each collision.
-- The prefixes are: `t` and `b` on the board (`.tcard`, `.bhead`), `w` on the wiki page (`.wmeta`, `.wpage`), and `m`, `z`, `e` on the canvas (`.mlane`, `.zone`, `.echips`). Some older classes have none (`.lane`, `.side`, `.cards`, and `.chips` on the board). The test needs only that no name collides.
-- A page rule for a kit class must start with an id or a class of the page (`#rail .bar`, `.zgate .ingot`). Then it styles a place of the page, not the part.
+- The prefixes are: `t` and `b` on the board (`.tcard`, `.bhead`), and `w` on the wiki page (`.wmeta`, `.wpage`). Some older classes have none (`.lane`, `.side`, `.cards`, and `.chips` on the board). The test needs only that no name collides.
+- A page rule for a kit class must start with an id or a class of the page (`#rail .bar`, `.tcard .open`). Then it styles a place of the page, not the part.
 - A page rule never styles a bare tag that the kit styles (`table`, `th`, `td`, `button`, `kbd`, `code`, `a`).
-- The state classes are `st-<state>` (variable `--st`). The live classes are `lv-<state>`. The names that ended a collision are gone: the canvas `.lane`, `.lanes`, and `.chips`, and the wiki `.meta`.
+- The state classes are `st-<state>` (variable `--st`). The live classes are `lv-<state>`. The name that ended a collision is gone: the wiki `.meta`.
 
 ## ♿ Access rules
 
 - Each focusable element has a visible focus ring: `outline: 2px solid var(--accent)` from the kit. A rule with `outline: none` must have a rule that shows the focus (`tests/ui-kit.test.mjs`). The search field shows its ring on the whole field.
 - The skip link is the first element of the body. It shows when it has the focus, and then it covers the logo.
-- A part that changes with no action of the user is a live region (`role="status"` or `aria-live="polite"`): the filter result of the board and the wiki, the live note of the foot, the comment count, the live hint, and the notice. A banner that starts hidden is not a live region. A separate region says its result.
+- A part that changes with no action of the user is a live region (`role="status"` or `aria-live="polite"`): the filter result of the board and the wiki, the live note of the foot, and the notice. A banner that starts hidden is not a live region. A separate region says its result.
 - An age or a time is never a live region.
 - The theme button shows its state in its text (`Theme: auto`).
 - A decoration is `aria-hidden`. An ingot row is one image for a screen reader, and its label lists each gate.
-- The canvas has these keys: a code-map node (`role="button"`, `tabindex="0"`) acts at `Enter` and `Space`. A part title (`h2`, `tabindex="0"`) goes to its part at `Enter` and `Space`. A title strip opens at `Enter`. A comment row is a real button (`.tjump`). The arrow keys move the board.
-- A user who asks for less motion gets no animation: the spark, the pulse of a working session, and the move of the board.
+- A user who asks for less motion gets no animation: the spark and the pulse of a working session.
 
 ## 🔔 The notice and the toast
 
 | | Toast | Notice |
 |---|---|---|
 | Element | `#toast` | `#notice` |
-| Use | A result that is over in a moment: a copy, a theme change, a refusal | A state that stays until it ends: the server stopped, the link is old, the ticket changed |
+| Use | A result that is over in a moment: a copy, a theme change, a refusal | A state that stays until it ends: the server stopped, the link is old, the board changed |
 | Time | 4 seconds | Until the script clears it |
 | Actions | None | Buttons: **Copy command**, **Try again**, **Reload**, **Later** |
 | Region | `role="status"` | `aria-live="polite"`, and the banner is not a status region |
@@ -313,27 +309,6 @@ The board page:
 ```
 
 The strip at the top is the next strike: the one next step for the user. `nextStrike(board)` in `board.mjs` picks it, and it is not part of `board --json`. The order is: a ticket that needs the user with a gate in review (the oldest first), another ticket that needs the user, a blocked ticket, and a ticket that can start.
-
-The ticket canvas:
-
-```text
-+--------------------------------------------------------------------------+
-| [anvil] Board / [KEY v]  Title  (state) phase  < >  [Wiki 3] [Comments 0] ?|
-| (o)-(o)-(O) Shippable? needs you   Next ...                              |
-| View [Now: Planned] [Must read] [+ Good to know] [All]     Story Plan .. |
-+--------------------------------------------------------------------------+
-|                                                                          |
-|   STORY         CODE MAP                       REVIEW AND PROOF          |
-|    [summary]     [summary] [components]         [summary]                |
-|    > Scope      PLAN                            > Changes                |
-|    > 3 more      [summary] [steps] [Risks]      > 9 more                |
-|                                    the board: move, zoom, read, comment  |
-+--------------------------------------------------------------------------+
-| Generated ... This page is a view.   Press ? for the keys  - 100% + Fit  |
-+--------------------------------------------------------------------------+
-```
-
-A canvas of the live server has the Live panel at the left of the board.
 
 The wiki page:
 
@@ -397,10 +372,6 @@ One file holds all pages. The address of a page is the path of its Markdown file
 A closed ticket has no folder on the board. Its summary page (`tickets/<key>.md`) is in the wiki, so the board lists the closed tickets below the lanes, and each row opens the summary page on the wiki page.
 The archive folder of a ticket stays on its machine, and no page shows it.
 
-On a canvas, a link to a wiki page opens the wiki page. The path of a wiki page in the text of a ticket document is also a link, for example `tooling/build.md`.
-The **Wiki** menu of the bar lists each wiki page that the ticket names.
-A Mermaid block in a card of a canvas becomes a drawing, in the same way as on the wiki page. The file page finds the Mermaid file in `raw/`, two folders above its own folder.
-
 ## 🧭 Navigation
 
 The unit of the navigation is the ticket. One ticket has one session, and the session title starts with the ticket key.
@@ -409,31 +380,23 @@ A board card has the link **Worktree**, which opens the worktree folder of the t
 
 | From | To | Mouse | Key |
 |---|---|---|---|
-| Board | A ticket canvas | The card | `j` and `k`, then `Enter` |
+| Board | The document of a ticket (the document of the gate in review, else the README) | The card | `j` and `k`, then `Enter` |
 | Each page | A ticket by its key or its words | The key in the bar, or **Go to a ticket** | `t` |
-| Canvas | The board | **Board** in the bar | `b` |
-| Canvas | The previous or the next ticket of the board | The arrows in the bar | `[` and `]` |
-| Canvas | A part of the ticket | The part name in the bar | `1` to `9` |
-| Canvas | The next view | The view buttons in the bar | `v` |
-| Canvas | The text of a folded card | The title strip | `Tab` to the strip, then `Enter` |
-| Canvas of the live server | The Live panel | **Live** in the bar | `l` |
 | Each page | The wiki page | **Wiki** in the bar | `w` |
-| Canvas | A wiki page that the ticket names | The **Wiki** menu of the bar, or a link in a card | None |
+| Wiki | The board | **Board** in the bar | `b` |
 | Board | The summary page of a closed ticket | The row in **Closed tickets** | `j` and `k`, then `Enter` |
 | Wiki | Another page | The list at the left, or a link in the text | `j` and `k` |
 | Wiki | A page by its words | The filter | `/`, then `Enter` |
 | Wiki | A ticket that names the page | **Used by** below the text | None |
 
-The order of the tickets is the order of the board: the state lanes, and the key in each lane.
-So `]` on a ticket that waits for the user goes to the next ticket that waits for the user.
+The order of the tickets is the order of the board: the state lanes, and the key in each lane. The key `j` goes to the next ticket in that order.
 
 The links have two forms:
 
-| Page | Board | Another ticket | Made by |
+| Page | Board | A ticket file | Made by |
 |---|---|---|---|
-| File page | `../../board.html` | `../<folder>/canvas.html` | `forge.mjs board` writes each page. `forge.mjs canvas <KEY>` writes its page, the board page, and each canvas that is missing |
-| Served page | `/board?t=<token>` | `/ticket/<folder>/?t=<token>` | `forge.mjs open` reads the files again for each page |
-| Page of the live server | `/board?t=<token>` | `/ticket/<folder>/?t=<token>` | `forge.mjs live` reads the files again for each page. Each ticket has the same route, and no page can send. The token is stable: it is in a key file, so a bookmark works after a restart |
+| File page | `board.html` | `tickets/<folder>/README.md` | `forge.mjs board` writes the board page and the wiki page |
+| Page of the live server | `/board?t=<token>` | `/ticket/<folder>/README.md?t=<token>` | `forge.mjs live` reads the files again for each page. No page can send. The token is stable: it is in a key file, so a bookmark works after a restart |
 
 The wiki page is next to the board page: `wiki.html` in a file page, and `/wiki?t=<token>` on a served page.
 The switcher of each page also lists the closed tickets, after the tickets of the board.
@@ -444,27 +407,18 @@ The token of the live server is a secret of this machine. `forge.mjs open --new-
 | Case | What the page does |
 |---|---|
 | The user opens the board to see what waits | The strip at the top gives the next step. The **Needs you** lane is first and has the full width. Without such a ticket, the lane says "No ticket needs you." and shows the cold anvil |
-| A ticket waits at a gate | The card shows the gate steps and "<gate> needs you". The card link opens the canvas at the document of that gate |
+| A ticket waits at a gate | The card shows the gate steps and "<gate> needs you". The card link opens the document of that gate |
 | The wiki has many tickets | The filter (`/`) hides tickets by their words. A chip or a number key shows one state. **Done** is a closed list. A banner gives the count and **Show all** |
 | The filter finds nothing | The banner says "No ticket agrees with the filter." and has **Show all** |
 | An open ticket has no update for 7 days or more | The age is amber and bold, and its tooltip gives the days |
 | A person does not answer for more than 3 working days | A tag on the card, and the **People waits** table |
-| A ticket folder cannot be read | The **Read errors** list. A ticket that cannot give a canvas has a link to its README |
-| The ticket has more text than the user can read at one gate | Each card has a tier: must read, good to know, or AI artifact (a working note of the agent). The table `TIERS` in `canvas.mjs` gives the tier of each template section. A view opens the cards of its tiers, and each other card is a title strip |
-| A ticket waits at a gate, and the user opens its canvas | The view **Now** is first: the cards to read of the gate in focus are open, and the border of its parts has the accent color. Each other part shows its summary, its cards to read as title strips, and one line for the other cards. Without a gate in review, the focus is the next gate. After the last gate, the page opens with **Must read** |
-| A card holds an exception | A failed check, an open hypothesis, and a problem in the journal are cards to read, and each view shows them open |
-| The user wants one more card, or one card less | A click on a title strip opens the card, and **Fold** on a card folds it. The browser keeps these choices for the gate in focus. A view button removes them |
-| A link or a comment names a folded card | The page opens the card, and the code map of a component, before it shows it |
-| The user wants the whole ticket at a glance | The far view (zoom below 50%): each card shows its title in a large size, and a tint shows its state. A title strip is a thin line without words, so the cards to read stand out |
-| The user wants to read one part | A part name, a number key, or a double-click on a title shows that part at a size to read. The bar marks the current part |
-| The user goes to another ticket and comes back | The browser keeps the position, the zoom, the view, the opened and the folded cards, and the comments of each ticket. A saved position that shows no part of the board gives the whole board |
-| The user comments on a ticket that is not the ticket of the server | That page has no **Send to agent**. The Comments panel says to use **Copy all** and to paste the message into the session of that ticket |
-| The server stopped (the live server after a stop or 8 hours with no event and no page request) | The page stays and keeps its data and its comments. The notice says that the server stopped. On a live page it shows the command that starts the server (**Copy command**) and **Try again**. The page keeps asking, and the notice goes away when the server answers again with the same link. |
+| A ticket folder cannot be read | The **Read errors** list names the folder and the problem |
+| The server stopped (the live server after a stop or 8 hours with no event and no page request) | The page stays and keeps its data. The notice says that the server stopped. On a live page it shows the command that starts the server (**Copy command**) and **Try again**. The page keeps asking, and the notice goes away when the server answers again with the same link. |
 | The link is old (`open --new-link`) | A live page that is open shows the notice "This link is old" with the command for the new link. A direct load gets an error page (403) that says so. On the live server the error page names the command for the new link. Another caller gets the plain text |
-| A session works on a ticket | The board card shows the live line: "working", the time, the tool that runs now, and the count of subagents that run. The canvas shows the same line and the tree of the turn in the Live panel |
-| A session waits for the user | The live line is amber and says "needs you", with the text of the prompt of the host. The **Live** button of the canvas says "Live: needs you". The user answers in the session, not on the page |
+| A session works on a ticket | The board card shows the live line: "working", the time, the tool that runs now, and the count of subagents that run |
+| A session waits for the user | The live line is amber and says "needs you", with the text of the prompt of the host. The user answers in the session, not on the page |
 | A session of the repository has no ticket on the board | The board lists it under **Other sessions**, with its title or its folder name |
-| The user closed a session and wants it back | The card of its ticket, **Other sessions**, or the Live panel shows "closed" with the time. **Resume** opens a new tab or window of the terminal of the user in the folder of the session, with the resume command of the harness. A toast says that a terminal opened |
+| The user closed a session and wants it back | The card of its ticket or **Other sessions** shows "closed" with the time. **Resume** opens a new tab or window of the terminal of the user in the folder of the session, with the resume command of the harness. A toast says that a terminal opened |
 | No terminal starts on the machine, or the live server stopped | The page puts the command on the clipboard, and a toast says to paste it into a terminal. **Copy command** does the same with no request. Without clipboard access, a dialog shows the command |
 | The session list has the start of a session and no end (a closed terminal window, an end hook without time, or a Copilot CLI session that runs) | The row says "no end seen". The first click on **Resume** gives a toast: the session can be open in a terminal. The button becomes **Resume anyway** |
 | The folder of a closed session is gone (a removed worktree) | The terminal opens in the main checkout, and the toast names that folder |
@@ -472,33 +426,27 @@ The token of the live server is a secret of this machine. `forge.mjs open --new-
 | The user wants to open Forge from a terminal | `../<repo>.forge/forge open` starts the server of that repository when none runs, prints the links, and opens the board in the browser |
 | The board has no ticket (first run) | The board shows the cold anvil and 3 numbered steps: start a session, give it a work item key, and see the ticket after its first step |
 | A filter finds nothing | The board banner says "No ticket agrees with the filter." and the wiki banner says "No page has these words.". Each has **Show all**. A hidden status line tells a screen reader the result |
-| A ticket file changed while a live page is open | The notice says "This ticket changed." (or "The board changed.") with **Reload** and **Later**. The page never loads again by itself, because the user can have a comment in the editor. **Later** hides the notice until the next change |
+| A ticket file changed while a live page is open | The notice says "The board changed." with **Reload** and **Later**. The page never loads again by itself, because the user can have a comment in the editor. **Later** hides the notice until the next change |
 | The address is wrong, or the server fails | An error page in the style of the kit (403, 404, or 500) with the cold anvil, a short text, and a link to the board. It has no script. A script or `curl` gets the plain text |
 | The user has the board in another tab | The title shows `(2) Forge board` when 2 tickets need the user, and the tab icon has the hot spot. A live page updates them from the answer of the server |
 | A gate is approved while the user watches the page | The new ingot shows the spark one time. A first visit shows no spark |
 | Two repositories are open | Each repository has its own server, port, and pages. A session shows only on the pages of its repository, and a session in another folder shows on no page |
-| No session reports for a ticket | The Live panel says so, and it names the 2 ways that give a session its ticket: the worktree of the ticket, or the ticket key at the start of the title |
 | A session works for 10 minutes without an event | The live line says "working, quiet" and shows the time since the last event |
-| A turn has more than 200 tool calls | The Live panel shows the newest calls, and one line gives the count of the older calls |
-| The live server does not answer, or it stopped | The page keeps the last state. The foot of the board and the hint of the Live panel say that the server does not answer, the notice shows the command, and the page asks again with longer waits |
+| The live server does not answer, or it stopped | The page keeps the last state. The foot of the board says that the server does not answer, the notice shows the command, and the page asks again with longer waits |
 | The page is not in view (another tab) | The page stops its requests, and it asks again when the user comes back |
-| The user comments on a canvas of the live server | That page has no **Send to agent**. The Comments panel says to use **Copy all** |
-| The user reads a ticket and wants the background | A link to a wiki page in a card opens that page on the wiki page. The **Wiki** menu of the canvas lists each wiki page that the ticket names |
 | The user reads a wiki page and wants its tickets | **Used by** names each open ticket and each closed ticket that names the page |
 | The user wants an old ticket | The board lists the closed tickets at its end, and the switcher (`t`) finds one by its key or its words. Each one opens its summary page in the wiki |
 | The user looks for a fact in the wiki | The filter of the wiki page reads the title, the path, and the text of each page |
-| A wiki page or a card has a Mermaid block | The wiki page draws the diagram when the page shows, and the canvas draws each diagram after its load. A theme change draws them again. A block with an error stays as code |
+| A wiki page has a Mermaid block | The wiki page draws the diagram when the page shows. A theme change draws them again. A block with an error stays as code |
 | The Mermaid file is missing in `raw/` | A toast says to run `forge.mjs board` again, and the blocks stay as code |
 | A link names a wiki page that is gone | The wiki page says that it has no such page, and it shows the first page |
 | The wiki has no page yet | The wiki page shows the cold anvil and says so, and the board has no list of closed tickets |
-| The page is old (a file page) | The footer gives the time. The next `forge.mjs board` or `forge.mjs canvas <KEY>` run writes it again, and VS Code can load it again (`workbench.browser.autoReloadOnFileChange`). A page that did not change is not written again |
-| The ticket has only a README, or a document is missing | A card says which document is missing. No frame is empty |
-| An older ticket (not `full-v3`) | The canvas shows its files as columns. The bar, the links, and the comments are the same. It has no tiers and no views: each card is open |
+| The page is old (a file page) | The footer gives the time. The next `forge.mjs board` run writes it again, and VS Code can load it again (`workbench.browser.autoReloadOnFileChange`). A page that did not change is not written again |
 | A narrow window (below 760 px) | The bar wraps, the lanes go below each other, and the cards take the full width |
 | A dark editor with a light system | The theme button. The early script sets the stored theme before the first paint, so the page does not flash |
 | No keyboard, or no mouse | Each step has a button and a key. A dialog keeps the focus, and `Esc` closes it. The focus ring uses `--accent` |
-| The system asks for less motion | The spark, the pulse of a working session, and the move of the board have no animation (`prefers-reduced-motion`) |
-| The browser has no storage | The page works. It does not keep the position, the view, the theme, or the comments after a load, and it opens in its first view |
+| The system asks for less motion | The spark and the pulse of a working session have no animation (`prefers-reduced-motion`) |
+| The browser has no storage | The page works. It does not keep the theme or the open lists after a load, and it opens in its first view |
 
 ## 🛠️ Change or add a component
 
@@ -515,9 +463,8 @@ The token of the live server is a secret of this machine. `forge.mjs open --new-
 |---|---|
 | `tests/ui-kit.test.mjs` | The contract, the order lists, the script rules, the tokens, the contrast pairs, the sprites and glyphs, the class collisions, the one breakpoint, the focus rings, the live regions, the skip link, the icon and the title, the content policy, the notice, the error page, and the token table of this document |
 | `tests/board-page.test.mjs` | The board page, the tokens in `:root` named in this document, the fetch counts of the scripts, and the next strike |
-| `tests/canvas.test.mjs` | The canvas model |
 | `tests/wiki-page.test.mjs` | The wiki page and the hash of the vendored Mermaid file |
-| `tests/live-serve.test.mjs` | The live server: the key file, the idle time, the stamp, the policy, the error pages, and Send to agent |
+| `tests/live-serve.test.mjs` | The live server: the key file, the idle time, the stamp, the policy, and the error pages |
 
 Page code rules:
 
@@ -528,10 +475,9 @@ Page code rules:
 - Change the live event (`live-event.mjs`), the live state (`live.mjs`), and the live parts of the pages together (`tests/live.test.mjs`, `tests/live-serve.test.mjs`).
 - **Resume** is the only control that starts something on the machine of the user. Its request holds only the id of a session. Do not add a control that gives text, a command, or a folder to the server.
 - Change the session list (`sessions.mjs`), the harness table (`harness.mjs`), the terminal table (`terminal.mjs`), and the closed session rows together (`tests/sessions.test.mjs`, `tests/terminal.test.mjs`).
-- Change the wiki model (`wiki.mjs`), the wiki page (`wiki-page.mjs`), and the wiki links of the board and the canvas together (`tests/wiki-page.test.mjs`).
+- Change the wiki model (`wiki.mjs`), the wiki page (`wiki-page.mjs`), and the wiki links of the board together (`tests/wiki-page.test.mjs`).
 - The text of a wiki page goes through `markdown()`, which escapes each character. The script of the wiki page makes no HTML.
 - Mermaid makes the HTML of a drawing, with its security level `strict`. Do not change a byte of `plugins/forge/vendor/mermaid/mermaid.tiny.js`: `tests/wiki-page.test.mjs` checks its hash, and `vendor/mermaid/NOTICE.md` gives the update steps.
-- Change a ticket template and the canvas together (`tests/canvas.test.mjs`). Give each new template section a tier in `TIERS`.
 
 ## 👀 Look at a change
 
@@ -547,12 +493,12 @@ Tests do not show a page. Look at each page change in a browser.
 | Option | Meaning |
 |---|---|
 | `--out <folder>` | Keep the PNG files in this folder. Without it, they go to a temporary folder |
-| `--only <page>` | One page, and each page that starts with its name (`canvas` takes `canvas-plan`, `canvas-code`, and so on) |
+| `--only <page>` | One page, and each page that starts with its name (`board` takes `board-none`, `board-skip`, and so on) |
 | `--live` | Do not take pictures. Start the demo live server, print the link of its board, and wait for Ctrl+C |
 
 - It seeds the demo of `tests/fixtures/demo.mjs` in a temporary folder: tickets in the 6 states, one full ticket with a Mermaid block, a people wait, a read error, and wiki pages. All names are invented.
 - It starts its own live server on a free port with its own data folder, so a live server of a real repository stays untouched. It sends synthetic events for the live lines.
-- The pages are the styleguide, the board, the wiki page, the canvas (the whole board and each part at reading size, the comment tray, and the Live panel), the filter with no result, the skip link, the error pages, the changed notice, and the stopped notice.
+- The pages are the styleguide, the board, the wiki page, the filter with no result, the skip link, the error pages, the changed notice, and the stopped notice.
 - Each page is shot in the light and the dark theme, at 1500 px and at 620 px (some pages at 1500 px only).
 - It exits with 1 on a console error, a content-policy violation, or a `--bg` that does not match the theme.
 - Always look at each page in both themes at 620 px and at 1500 px, with the PNG files or in a browser. Read the picture. A pass of the script is not a look.
@@ -564,22 +510,16 @@ Tests do not show a page. Look at each page change in a browser.
 - An error page has no script, so it follows the system theme, not the stored choice.
 - The stable link of the live server is in the browser history and in the argument of the command that starts the browser. Another program of the same user can read it. `forge.mjs open --new-link` is the answer to a leaked link.
 - The key file of the link has the mode that only the user can read. Windows has no such mode, so the file is not checked there.
-- A code-map node has the button role, and it holds a **Comment** button.
 - The skip link covers the logo while it has the focus.
 - The pages say "needs you". `raw/board.md` and the session groups keep "Needs me".
-- The canvas has no pinch zoom on a touch screen.
 - A file page shows the tickets of its last run. Only a served page reads the files on each load, and only a page of the live server says that the data changed.
 - The live activity comes from Claude Code sessions only. The hooks of Copilot CLI and VS Code have no background option, so those hosts send no events yet. A Copilot CLI session shows as a closed session row ("no end seen" while it runs), and a VS Code session does not show.
 - **Resume** opens a terminal on Windows and Linux. On macOS the page gives the command to copy. A terminal that starts and shows no window still counts as open, so each row also has **Copy command**.
 - A file page (`raw/board.html`) has no closed session rows: only the live server reads the session list.
-- The Live panel shows the last text at the end of a turn or of a subagent. It does not show the text while the model writes it.
-- A `claude -p` run stops its background hooks when it ends, so its last text can be missing.
-- Two subagents of one type that start at the same time can show below the wrong call, until the result of each call comes.
 - The live server learns of a session at its first event. A session that started before the server shows after its next prompt or tool call.
 - The Markdown of the wiki page has no italic text and no images.
 - The Mermaid build of Forge has no mindmap diagram, no architecture diagram, and no math.
-- A wiki page or a canvas with a Mermaid block needs the file `mermaid.tiny.js` (2.7 MB) in `raw/`. `forge.mjs board` and `forge.mjs canvas <KEY>` put it there.
-- A drawing on a canvas has no comment on a part of it: a comment on the card still works.
+- A wiki page with a Mermaid block needs the file `mermaid.tiny.js` (2.7 MB) in `raw/`. `forge.mjs board` puts it there.
 - One file holds all pages of the wiki. The model stops at 3,000 pages, and it leaves out a page with more than 512 KB.
 - A link to a heading of a wiki page opens the page at its top.
 - The wiki page shows no file of `raw/` and `archive/`, so the working folder of a closed ticket has no page.

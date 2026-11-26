@@ -28,7 +28,7 @@ test('the session context is a short form: the rules and the verb table of the h
     assert.ok(table.length <= HOST_BUDGET, `${host}: the verb table has ${table.length} characters. The budget is ${HOST_BUDGET}.`);
     assert.match(table, /^# Forge host: /);
     assert.match(table, /\| `host\.title` \|/, `${host}: the verb rows are in the context`);
-    assert.doesNotMatch(table, /\n## Ticket canvas/, `${host}: the canvas steps stay in the file`);
+    assert.doesNotMatch(table, /\n## Pages/, `${host}: the steps for the pages stay in the file`);
     assert.ok(table.includes(path.join(plugin, 'hosts', `${host}.md`)), `${host}: the context names the host file`);
     // A folder outside a repository: the paths line, the rules, and the verb table. A ticket part and company rules add to it.
     const context = contextText({ cwd: os.tmpdir(), source: '', prompt: '' }, { cli, env, host });
@@ -78,7 +78,7 @@ test('each heading that another file names is in one part of the ticket skill', 
     'start.md': ['## 🚀 Start', '### 🧭 Research', '### 🧪 Spikes', '### 🎤 Interview', '### 🎯 Scope'],
     'state.md': ['### 🏷️ Frontmatter', '### 👥 People', '### 🏷️ Session title (info bar)', '### 📌 Artifacts panel', '### 📋 Ticket overview'],
     'worktrees.md': ['### 🌳 Worktrees'],
-    'gates.md': ['### 🐟 Cold read', '### Procedure for each gate', '### Approval revisions', '### Sendable? for each write', '### ✅ Approval form', '### 🖼️ Canvas'],
+    'gates.md': ['### 🐟 Cold read', '### Procedure for each gate', '### Approval revisions', '### Sendable? for each write', '### ✅ Approval form'],
     'investigate-plan.md': ['## 🔎 Investigate', '### 🛑 Diagnosis stop', '## 📝 Plan'],
     'implement.md': ['## 🛠️ Implement'],
     'evidence.md': ['## 🔬 Evidence Testing', '## 🧑‍🔬 QA handover'],

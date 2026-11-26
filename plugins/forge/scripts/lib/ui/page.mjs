@@ -1,4 +1,4 @@
-// The one page shell of the forge pages: the board, the wiki page, the canvas, and the styleguide.
+// The one page shell of the forge pages: the board, the wiki page, and the styleguide.
 // The head holds everything that the page needs: the meta tags, the title, the icon, the style, the data block, and the one script.
 // The script is in the head, so its first part can set the theme before the first paint: a user of the dark theme on a light system sees no light flash.
 // The rest of the script waits for the DOM (the page code finds its elements by id).

@@ -14,7 +14,7 @@ button.quiet, a.quiet, span.quiet { color: var(--muted); background: transparent
 button.quiet:hover, a.quiet:hover { color: var(--ink); background: color-mix(in srgb, var(--muted) 14%, transparent); box-shadow: ${step('var(--accent)')}; }
 button.icon, a.icon, span.icon { min-width: 30px; padding: 2px 6px; text-align: center; }
 .icon.off { opacity: 0.3; }
-button[aria-pressed="true"], button[aria-current="true"] { background: color-mix(in srgb, var(--accent) 16%, var(--card)); box-shadow: ${step('var(--accent)')}; }
+button[aria-pressed="true"] { background: color-mix(in srgb, var(--accent) 16%, var(--card)); box-shadow: ${step('var(--accent)')}; }
 `.trim();
 
 /** The buttons that each page has at the end of its bar. */

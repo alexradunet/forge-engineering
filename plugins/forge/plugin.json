@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "forge",
-  "version": "10.1.1",
-  "description": "Engineering workflow for one repository in the VS Code Agents window, GitHub Copilot CLI, and Claude Code (GitHub Issues, pull requests, and Actions with gh): full research and investigation for every new ticket, revision-aware review gates with one plain document each, a ticket canvas in the browser, named ticket worktrees and session titles, a ticket board skill for any session, and a repository wiki. Existing tickets retain their original process. Say 'set up forge' to seed the config in the repository wiki.",
+  "version": "11.0.0",
+  "description": "Engineering workflow for one repository in the VS Code Agents window, GitHub Copilot CLI, and Claude Code (GitHub Issues, pull requests, and Actions with gh): full research and investigation for every new ticket, revision-aware review gates with one plain document each, named ticket worktrees and session titles, a ticket board skill for any session, and a repository wiki. Existing tickets retain their original process. Say 'set up forge' to seed the config in the repository wiki.",
   "author": {
     "name": "Radu Alexandru"
   },

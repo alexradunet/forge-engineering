@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EVENTS, checkEvent, cleanText, maskSecrets, normalize, toolLabel } from '../plugins/forge/scripts/lib/live-event.mjs';
-import { ENDED_MS, GONE_MS, MAX_ITEMS, QUIET_MS, createLive, detail, prune, reduce, summary, ticketOfSession } from '../plugins/forge/scripts/lib/live.mjs';
+import { ENDED_MS, GONE_MS, MAX_ITEMS, QUIET_MS, createLive, prune, reduce, summary, ticketOfSession } from '../plugins/forge/scripts/lib/live.mjs';
 
 const char = (code) => String.fromCharCode(code);
 const CWD = '/code/app.worktrees/APP-9';
@@ -14,7 +14,9 @@ const ev = (event, extra = {}) => checkEvent({ v: 1, host: 'claude', event, ts: 
 const tool = (id, name, label = '', more = {}) => ({ id, name, label, ...more });
 const feed = (state, ...events) => { for (const event of events) { assert.ok(event, 'the event is valid'); reduce(state, event); } return state; };
 const one = (state, tickets = []) => summary(state, tickets, clock)[0];
-const rows = (state) => detail(state, ['s1'])[0];
+// The calls and the subagents that the reducer keeps for the session S1: summary() shows only the call that runs and the count of subagents.
+const calls = (state) => [...state.sessions.get('S1').tools.values()];
+const agents = (state) => state.sessions.get('S1').agents;
 
 test('the reporter makes a small event from a Claude Code payload: a short label, and no tool result', () => {
   const start = normalize('', claude('PreToolUse', { tool_name: 'Bash', tool_use_id: 'T1', tool_input: { command: `npm test\n  --   ${'x'.repeat(200)}` } }), 'claude', 5);
@@ -61,8 +63,8 @@ test('the reporter reads each event that the hooks file names, in both payload s
   assert.equal(normalize('', claude('UserPromptSubmit', { prompt: '  Another Claude session sent a message:\n<agent-message from="x">hi</agent-message>' }), 'claude').text, undefined);
   assert.equal(normalize('', claude('UserPromptSubmit', { prompt: 'see the task-notification text' }), 'claude').text, 'see the task-notification text');
   assert.deepEqual(normalize('', claude('Notification', { notification_type: 'permission_prompt', message: 'Claude needs your permission to use Bash' }), 'claude').kind, 'permission_prompt');
-  assert.equal(normalize('', claude('SubagentStop', { agent_id: 'A1', agent_type: 'Explore', last_assistant_message: 'Found 3 files.', agent_transcript_path: '/x/y.jsonl' }), 'claude').text, 'Found 3 files.');
-  assert.equal(normalize('', claude('Stop', { last_assistant_message: 'The tests pass.' }), 'claude').text, 'The tests pass.');
+  assert.equal(normalize('', claude('SubagentStop', { agent_id: 'A1', agent_type: 'Explore', last_assistant_message: 'Found 3 files.', agent_transcript_path: '/x/y.jsonl' }), 'claude').text, undefined, 'A stop sends no text: no page shows it.');
+  assert.equal(normalize('', claude('Stop', { last_assistant_message: 'The tests pass.' }), 'claude').text, undefined);
   assert.equal(normalize('', claude('StopFailure'), 'claude').kind, 'failed');
   assert.equal(normalize('', claude('SessionStart', { source: 'resume' }), 'claude').kind, 'resume');
   assert.equal(normalize('', claude('SessionEnd', { reason: 'prompt_input_exit' }), 'claude').event, 'session-end');
@@ -102,7 +104,7 @@ test('the server checks each event again: wrong shapes are refused, and unknown 
   ]) assert.equal(checkEvent(bad), null, JSON.stringify(bad));
 });
 
-test('one turn: the prompt starts the work, a tool shows while it runs, and the stop gives the last text', () => {
+test('one turn: the prompt starts the work, a tool shows while it runs, and the stop ends the turn', () => {
   const state = createLive();
   feed(state, ev('session-start'), ev('prompt', { text: 'run the tests', title: 'APP-9 - ▶️ - Fix outbox retry', ts: 2000 }));
   assert.deepEqual([one(state).state, one(state).since, one(state).title], ['working', 2000, 'APP-9 - ▶️ - Fix outbox retry']);
@@ -110,32 +112,30 @@ test('one turn: the prompt starts the work, a tool shows while it runs, and the 
   assert.deepEqual(one(state).now, { name: 'Bash', label: 'npm test', start: 2100 });
   feed(state, ev('tool-end', { tool: tool('T1', 'Bash', 'npm test', { ok: true, ms: 4187 }), ts: 6300 }));
   assert.equal(one(state).now, undefined);
-  feed(state, ev('stop', { text: 'The tests pass.', ts: 6400 }));
+  feed(state, ev('stop', { ts: 6400 }));
   assert.deepEqual([one(state).state, one(state).since], ['idle', 6400]);
-  assert.deepEqual(rows(state), { id: 's1', prompt: 'run the tests', text: 'The tests pass.', more: 0, items: [{ kind: 'tool', name: 'Bash', label: 'npm test', state: 'done', start: 2100, ms: 4187 }] });
+  assert.deepEqual(calls(state).map((item) => [item.name, item.label, item.state, item.start, item.ms]), [['Bash', 'npm test', 'done', 2100, 4187]]);
   assert.equal(one(state).id, 's1', 'the page gets a short id, not the session id of the host');
   assert.equal(one(state).dir, 'APP-9', 'and only the last name of the session folder');
   assert.doesNotMatch(JSON.stringify(summary(state)), /S1|\/code\//);
 
   // The next prompt starts a new list.
   feed(state, ev('prompt', { text: 'next', ts: 7000 }));
-  assert.deepEqual(rows(state), { id: 's1', prompt: 'next', text: '', more: 0, items: [] });
+  assert.deepEqual(calls(state), []);
   feed(state, ev('tool-start', { tool: tool('T2', 'Bash', 'false'), ts: 7100 }), ev('tool-end', { tool: tool('T2', 'Bash', 'false', { ok: false }), ts: 7200 }), ev('stop', { kind: 'failed', ts: 7300 }));
-  assert.equal(rows(state).items[0].state, 'failed');
+  assert.equal(calls(state)[0].state, 'failed');
   feed(state, ev('session-end', { ts: 7400 }));
   assert.equal(one(state).state, 'ended');
 });
 
-test('a turn that Claude Code started by itself keeps the prompt of the user on show, and the session still works', () => {
+test('a turn that Claude Code started by itself makes the session work', () => {
   const state = createLive();
   feed(state, ev('prompt', { text: 'fix the retry', ts: 100 }), ev('stop', { text: 'done', ts: 200 }));
   assert.equal(one(state).state, 'idle');
   feed(state, ev('prompt', { kind: 'own-turn', ts: 300 }));
   assert.equal(one(state).state, 'working');
-  assert.equal(rows(state).prompt, 'fix the retry');
-  assert.equal(rows(state).text, '');
-  feed(state, ev('prompt', { text: 'next', ts: 400 }));
-  assert.equal(rows(state).prompt, 'next');
+  feed(state, ev('stop', { ts: 350 }));
+  assert.equal(one(state).state, 'idle');
 });
 
 test('a permission prompt gives "needs you", and the answer gives "working" again', () => {
@@ -165,15 +165,14 @@ test('events in another order than they happened give the same state', () => {
   feed(state, ev('prompt', { text: 'p', ts: 100 }), ev('tool-end', { tool: tool('T1', 'Read', 'a.md', { ok: true, ms: 20 }), ts: 150 }), ev('tool-start', { tool: tool('T1', 'Read', 'a.md'), ts: 130 }),
     ev('stop', { text: 'done', ts: 300 }), ev('tool-start', { tool: tool('T2', 'Bash', 'ls'), ts: 290 }), ev('prompt', { text: 'old prompt', ts: 50 }));
   assert.equal(one(state).state, 'idle');
-  assert.equal(rows(state).prompt, 'p');
-  assert.deepEqual(rows(state).items.map((item) => [item.name, item.state, item.start, item.ms]), [['Read', 'done', 130, 20], ['Bash', 'running', 290, 0]]);
+  assert.deepEqual(calls(state).map((item) => [item.name, item.state, item.start, item.ms]), [['Read', 'done', 130, 20], ['Bash', 'running', 290, 0]]);
   // An end without an id closes the open call of the same tool.
   const other = createLive();
   feed(other, ev('tool-start', { tool: tool('', 'bash', 'ls'), ts: 10 }), ev('tool-end', { tool: tool('', 'bash', 'ls', { ok: true }), ts: 30 }));
-  assert.deepEqual(rows(other).items.map((item) => [item.state, item.ms]), [['done', 20]]);
+  assert.deepEqual(calls(other).map((item) => [item.state, item.ms]), [['done', 20]]);
 });
 
-test('the subagent tree: a call gets its subagent, the calls of the subagent stand below it, and a wrong pair is corrected', () => {
+test('the subagents: a call gets its subagent, the calls of the subagent belong to it, and a wrong pair is corrected', () => {
   const state = createLive();
   const explore = { id: 'A1', type: 'Explore' };
   feed(state, ev('prompt', { text: 'review', ts: 100 }),
@@ -183,14 +182,13 @@ test('the subagent tree: a call gets its subagent, the calls of the subagent sta
     ev('tool-start', { tool: tool('T3', 'Grep', 'checkRequest'), agent: explore, ts: 130 }));
   assert.equal(one(state).agents, 1);
   assert.deepEqual(one(state).now, { name: 'Grep', label: 'checkRequest', start: 130 });
-  let tree = rows(state).items;
-  assert.deepEqual(tree.map((item) => [item.kind, item.name, item.state]), [['tool', 'Read', 'done'], ['agent', 'Explore', 'running']]);
-  assert.deepEqual(tree[1].items, [{ kind: 'tool', name: 'Grep', label: 'checkRequest', state: 'running', start: 130, ms: 0 }]);
-  assert.equal(tree[1].label, 'Find the checks');
+  const session = state.sessions.get('S1');
+  assert.deepEqual([agents(state).get('A1').call, agents(state).get('A1').state], ['T2', 'running']);
+  assert.deepEqual(calls(state).filter((item) => item.owner === 'A1').map((item) => [item.name, item.state]), [['Grep', 'running']]);
+  assert.equal(session.tools.get('T1').owner, '', 'a call of the main agent has no owner');
 
   feed(state, ev('agent-stop', { agent: explore, text: 'Found 3 checks.', ts: 400 }), ev('tool-end', { tool: tool('T2', 'Agent', 'Find the checks', { sub: 'Explore', ok: true, child: 'A1' }), ts: 410 }));
-  tree = rows(state).items;
-  assert.deepEqual([tree[1].state, tree[1].text, tree[1].ms, tree[1].items[0].state], ['done', 'Found 3 checks.', 275, 'done'], 'the stop of a subagent closes its open calls');
+  assert.deepEqual([agents(state).get('A1').state, agents(state).get('A1').end, session.tools.get('T3').state], ['done', 400, 'done'], 'the stop of a subagent closes its open calls');
   assert.equal(one(state).agents, 0);
 
   // Two calls of one type at the same time: the first guess can be wrong, and the result of each call names its subagent.
@@ -199,50 +197,46 @@ test('the subagent tree: a call gets its subagent, the calls of the subagent sta
     ev('tool-start', { tool: tool('C1', 'Agent', 'first', { sub: 'Explore' }), ts: 110 }), ev('tool-start', { tool: tool('C2', 'Agent', 'second', { sub: 'Explore' }), ts: 111 }),
     ev('agent-start', { agent: { id: 'B2', type: 'Explore' }, ts: 120 }), ev('agent-start', { agent: { id: 'B1', type: 'Explore' }, ts: 121 }),
     ev('tool-start', { tool: tool('X', 'Read', 'for-second'), agent: { id: 'B2', type: 'Explore' }, ts: 130 }));
-  assert.deepEqual(detail(two, ['s1'])[0].items.map((item) => [item.label, item.items.length]), [['first', 1], ['second', 0]], 'the guess: the oldest open call');
+  assert.deepEqual(['B2', 'B1'].map((id) => agents(two).get(id).call), ['C1', 'C2'], 'the guess: the oldest open call');
   feed(two, ev('tool-end', { tool: tool('C2', 'Agent', 'second', { sub: 'Explore', ok: true, child: 'B2' }), ts: 140 }));
-  assert.deepEqual(detail(two, ['s1'])[0].items.map((item) => [item.label, item.items.length, item.state]), [['first', 0, 'running'], ['second', 1, 'running']], 'a background call ends at once, and its subagent works on');
+  assert.deepEqual(['B2', 'B1'].map((id) => [agents(two).get(id).call, agents(two).get(id).state]), [['C2', 'running'], ['C1', 'running']], 'a background call ends at once, and its subagent works on');
 });
 
-test('the subagent tree: nested subagents, internal agents, a stop before the start, and a subagent across two prompts', () => {
+test('the subagents: nested subagents, internal agents, a stop before the start, and a subagent across two prompts', () => {
   const state = createLive();
   const outer = { id: 'A1', type: 'general-purpose' };
   const inner = { id: 'A2', type: 'Explore' };
   feed(state, ev('prompt', { text: 'p', ts: 100 }), ev('tool-start', { tool: tool('T1', 'Agent', 'outer', { sub: 'general-purpose' }), ts: 110 }), ev('agent-start', { agent: outer, ts: 111 }),
     ev('tool-start', { tool: tool('T2', 'Agent', 'inner', { sub: 'Explore' }), agent: outer, ts: 120 }), ev('agent-start', { agent: inner, ts: 121 }),
     ev('tool-start', { tool: tool('T3', 'Glob', '**/*.mjs'), agent: inner, ts: 130 }));
-  const tree = rows(state).items;
-  assert.deepEqual([tree.length, tree[0].label, tree[0].items[0].label, tree[0].items[0].items[0].name], [1, 'outer', 'inner', 'Glob']);
+  assert.deepEqual([agents(state).get('A1').call, agents(state).get('A2').call, agents(state).get('A2').parent, calls(state).find((item) => item.id === 'T3').owner], ['T1', 'T2', 'A1', 'A2']);
   assert.equal(one(state).agents, 2);
 
-  // Claude Code also sends a stop event for internal agents. They make no row.
+  // Claude Code also sends a stop event for internal agents. They make no subagent.
   feed(state, ev('agent-stop', { agent: { id: 'INTERNAL', type: '' }, text: 'suggestion', ts: 140 }));
-  assert.equal(rows(state).items.length, 1);
+  assert.equal(agents(state).has('INTERNAL'), false);
   assert.equal(one(state).agents, 2);
   // The stop of a fast subagent can come before its start.
   feed(state, ev('agent-stop', { agent: { id: 'A3', type: 'Explore' }, text: 'fast', ts: 160 }), ev('agent-start', { agent: { id: 'A3', type: 'Explore' }, ts: 150 }));
   assert.equal(one(state).agents, 2, 'the fast subagent is done');
-  assert.deepEqual(rows(state).items.map((item) => [item.name, item.state, item.text]).at(-1), ['Explore', 'done', 'fast']);
+  assert.deepEqual([agents(state).get('A3').state, agents(state).get('A3').end], ['done', 160]);
 
   // A new prompt keeps the subagents that still run, with their place in the tree.
   feed(state, ev('tool-end', { tool: tool('T1', 'Agent', 'outer', { sub: 'general-purpose', ok: true, child: 'A1' }), ts: 170 }), ev('stop', { ts: 180 }), ev('prompt', { text: 'second prompt', ts: 200 }));
-  const next = rows(state);
-  assert.equal(next.prompt, 'second prompt');
-  assert.deepEqual(next.items.map((item) => [item.label, item.state, item.items.length]), [['outer', 'running', 1]]);
+  assert.deepEqual([...agents(state).keys()], ['A1', 'A2'], 'the finished subagent goes, and the running ones stay');
+  assert.equal(agents(state).get('A2').call, 'T2');
   // A Copilot subagent names its parent.
   const copilot = createLive();
   feed(copilot, ev('tool-start', { host: 'copilot-cli', tool: tool('', 'view', 'a.md'), agent: { id: 'C2', type: 'explore', parent: 'C1' }, ts: 10 }), ev('agent-start', { host: 'copilot-cli', agent: { id: 'C1', type: 'task' }, ts: 5 }));
-  assert.deepEqual(detail(copilot, ['s1'])[0].items.map((item) => [item.name, item.items[0]?.name]), [['task', 'explore']]);
+  assert.deepEqual([agents(copilot).get('C2').parent, agents(copilot).get('C1').type], ['C1', 'task']);
 });
 
 test('the limits: a long list drops its oldest calls, and an old session goes away', () => {
   const state = createLive();
   feed(state, ev('prompt', { text: 'p', ts: 100 }));
   for (let index = 0; index < MAX_ITEMS + 25; index++) feed(state, ev('tool-start', { tool: tool(`T${index}`, 'Read', `f${index}`), ts: 200 + index }), ev('tool-end', { tool: tool(`T${index}`, 'Read', `f${index}`, { ok: true }), ts: 201 + index }));
-  const list = rows(state);
-  assert.equal(list.items.length, MAX_ITEMS);
-  assert.equal(list.more, 25);
-  assert.equal(list.items.at(-1).label, `f${MAX_ITEMS + 24}`);
+  assert.equal(calls(state).length, MAX_ITEMS);
+  assert.equal(calls(state).at(-1).label, `f${MAX_ITEMS + 24}`);
 
   const last = 201 + MAX_ITEMS + 24;
   assert.equal(summary(state, [], last + QUIET_MS - 1)[0].quiet, undefined);

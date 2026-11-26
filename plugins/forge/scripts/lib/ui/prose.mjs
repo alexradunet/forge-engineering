@@ -1,4 +1,4 @@
-// The prose: the style of a text that comes from Markdown (a wiki page, and later a document on the canvas).
+// The prose: the style of a text that comes from Markdown (a wiki page).
 // Put the class "prose" on the box of the text. The headings, the paragraphs, the lists, the code, the quote, the links, and the table are inside it.
 import { esc } from './kit.mjs';
 

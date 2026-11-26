@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { CLAUDE_PARTS, END_MARKER, MAX_COMMENTS_CONTEXT, PROMPT_HEAD, buildContext, detectHost, promptSubmit, readEvent, resolveHost, ruleBody, sessionEnd, sessionStart, splitParts } from '../plugins/forge/scripts/lib/hook.mjs';
+import { CLAUDE_PARTS, END_MARKER, PROMPT_HEAD, buildContext, detectHost, promptSubmit, readEvent, resolveHost, ruleBody, sessionEnd, sessionStart, splitParts } from '../plugins/forge/scripts/lib/hook.mjs';
 import { OWN_TURN_STARTS, ownTurn } from '../plugins/forge/scripts/lib/own-turn.mjs';
 import { readSessions } from '../plugins/forge/scripts/lib/sessions.mjs';
 import { status as trustStatus, approve } from '../plugins/forge/scripts/lib/trust.mjs';
@@ -346,27 +346,19 @@ test('the Claude Code prompt hook gives the ticket part and title once, when the
   assert.deepEqual(promptSubmit({ cwd: s.app, prompt: 'what is the board status', title: '' }, { cli, env }), {});
 });
 
-test('the prompt hook brings the canvas comments of the ticket of the session, and takes the file', (t) => {
+test('the prompt hook ignores an old canvas-comments.md file: it adds nothing and keeps the file', (t) => {
   const s = setup(t);
   const folder = path.join(`${s.app}.worktrees`, 'app-7-doc-import');
   git(s.app, 'worktree', 'add', '-q', '-b', 'APP-7-doc-import', folder);
   writeFileSync(s.readme, readFileSync(s.readme, 'utf8').replace('worktree: ""', `worktree: "${folder.replaceAll('\\', '/')}"`));
   const file = path.join(path.dirname(s.readme), 'canvas-comments.md');
+  const text = 'Canvas comments for APP-7:\n1. [unclear] README.md, Now: text\n\n';
+  writeFileSync(file, text);
   const call = (prompt) => promptSubmit({ cwd: folder, prompt, title: 'My own name' }, { cli, env });
-  assert.deepEqual(call('sent'), {}, 'no file: no change');
-  writeFileSync(file, 'Canvas comments for APP-7:\n1. [unclear] README.md, Now: text\n\n');
-  assert.deepEqual(call('<task-notification>\n<task-id>a1</task-id>'), {}, 'a turn that Claude Code starts: the file stays');
-  assert.ok(existsSync(file));
-  const out = call('sent').hookSpecificOutput;
-  assert.equal(out.hookEventName, 'UserPromptSubmit');
-  assert.match(out.additionalContext, /^The user sent these comments from the ticket canvas:\n\nCanvas comments for APP-7:\n1\. \[unclear\]/);
-  assert.equal(out.sessionTitle, undefined);
-  assert.ok(!existsSync(file) && !existsSync(`${file}.taking`), 'the hook removes the file');
-  assert.deepEqual(call('sent'), {}, 'the file is taken once');
-  writeFileSync(file, 'x'.repeat(MAX_COMMENTS_CONTEXT + 1));
-  const big = call('sent').hookSpecificOutput.additionalContext;
-  assert.equal(big, `Canvas comments wait in ${file}. Read that file, handle the comments, and delete it.`);
-  assert.ok(existsSync(file), 'a large file stays');
+  assert.deepEqual(call('sent'), {}, 'the session ticket has a comment file: no context');
+  assert.deepEqual(call('<task-notification>\n<task-id>a1</task-id>'), {});
+  assert.equal(readFileSync(file, 'utf8'), text, 'the hook does not read, rename, or delete the file');
+  assert.ok(!existsSync(`${file}.taking`));
 });
 
 // A setup with the tracker prefix APP approved, so a later prompt can start a new ticket.

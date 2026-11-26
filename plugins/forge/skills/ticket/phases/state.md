@@ -29,7 +29,7 @@ The ticket README starts with YAML frontmatter (`type: ticket`), see [templates/
 ### 👥 People
 
 The README `people` list holds every person you work with on the ticket, in every phase.
-It is the source for the people on the canvas and the board.
+It is the source for the people on the board.
 
 - Add people when they appear: reporter and experts at Start, the PO or domain owner at the interview, reviewers at the change request, QA at the QA handover.
 - Write a name or tracker handle only. Never store email addresses, phone numbers, or other personal data.

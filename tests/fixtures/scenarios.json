@@ -2,9 +2,9 @@
   {
     "id": "v3-small-fix-full-research",
     "workflow": "full-v3",
-    "sequence": ["research", "canvas", "interview", "scope", "cold-read", "investigate", "plan", "implement", "review", "evidence", "close", "distill", "archive"],
+    "sequence": ["research", "interview", "scope", "cold-read", "investigate", "plan", "implement", "review", "evidence", "close", "distill", "archive"],
     "gateAfterActions": {
-      "Scoped?": ["research", "canvas", "interview", "scope", "cold-read"],
+      "Scoped?": ["research", "interview", "scope", "cold-read"],
       "Planned?": ["investigate", "plan"],
       "Shippable?": ["review"],
       "Learned?": ["evidence"]
@@ -24,8 +24,7 @@
       { "path": "review.md", "includes": ["Need from you:", "## Changes", "## Findings"] },
       { "path": "proof.md", "includes": ["Baseline", "Control"] },
       { "path": "journal.md", "includes": ["check: cold read"] },
-      { "path": "close.md", "includes": ["Need from you:", "## Wiki changes"] },
-      { "path": "canvas.html" }
+      { "path": "close.md", "includes": ["Need from you:", "## Wiki changes"] }
     ],
     "forbiddenArtifacts": ["context.md", "briefing.md", "interview.md", "scope.md", "investigation.md", "plan.draft.md", "test-plan.md", "evidence-testing.md", "close.draft.md", "decisions.md", "log.md", "troubleshooting.md"],
     "forbiddenActions": ["external-write", "select-track", "skip-phase"]
@@ -33,9 +32,9 @@
   {
     "id": "v3-large-change-full-research",
     "workflow": "full-v3",
-    "sequence": ["research", "canvas", "interview", "scope", "cold-read", "investigate", "plan", "implement", "review", "evidence", "close", "distill", "archive"],
+    "sequence": ["research", "interview", "scope", "cold-read", "investigate", "plan", "implement", "review", "evidence", "close", "distill", "archive"],
     "gateAfterActions": {
-      "Scoped?": ["research", "canvas", "interview", "scope", "cold-read"],
+      "Scoped?": ["research", "interview", "scope", "cold-read"],
       "Planned?": ["investigate", "plan"],
       "Shippable?": ["review"],
       "Learned?": ["evidence"]

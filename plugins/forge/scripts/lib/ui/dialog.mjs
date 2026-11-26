@@ -13,7 +13,6 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.34); }
 #switch-list a { display: flex; gap: 12px; align-items: baseline; padding: 6px 10px; color: inherit; text-decoration: none; }
 #switch-list a:hover { background: color-mix(in srgb, var(--muted) 12%, transparent); }
 #switch-list a.on { background: color-mix(in srgb, var(--accent) 18%, transparent); }
-#switch-list a[aria-current] .what { font-weight: 600; }
 #switch-list .key { flex: none; min-width: 64px; }
 #switch-list .what { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #switch-list small, #switcher .none { color: var(--muted); white-space: nowrap; }
@@ -37,10 +36,10 @@ export function switcherHtml(nav) {
   for (const item of nav.tickets) {
     if (item.state !== state) { state = item.state; rows.push(`<li class="group">${item.emoji ?? ''} ${esc(item.label)}</li>`); }
     const text = [item.key, item.title, item.label, item.phase, item.gate].join(' ').toLowerCase();
-    rows.push(`<li><a href="${esc(item.href)}" data-nav data-text="${esc(text)}"${item.folder === nav.current ? ' aria-current="page"' : ''}>`
+    rows.push(`<li><a href="${esc(item.href)}" data-nav data-text="${esc(text)}">`
       + `<span class="key">${esc(item.key)}</span><span class="what">${esc(item.title)}</span><small>${esc(item.gate || item.phase)}</small></a></li>`);
   }
-  // A closed ticket has no canvas: its link goes to its summary page in the wiki. A link inside the wiki page changes only the page that shows.
+  // A closed ticket has no folder on the board: its link goes to its summary page in the wiki. A link inside the wiki page changes only the page that shows.
   if (nav.closed?.length) rows.push('<li class="group">Closed</li>');
   for (const item of nav.closed ?? []) {
     rows.push(`<li><a href="${esc(item.href)}"${item.href.startsWith('#') ? '' : ' data-nav'} data-text="${esc([item.key, item.title, 'closed'].join(' ').toLowerCase())}">`
@@ -87,8 +86,7 @@ const switcher = client(function () {
     if (group) group.hidden = !any;
     var links = switchLinks(true);
     byId('switch-none').hidden = links.length > 0;
-    var here = links.filter(function (link) { return link.hasAttribute('aria-current'); })[0];
-    markLink(words.length ? links[0] : here || links[0]);
+    markLink(links[0]);
   }
   function openSwitcher() {
     if (!switcher || switcher.open) return;
@@ -105,14 +103,13 @@ const switcher = client(function () {
       if (event.key === 'ArrowDown') markLink(links[Math.min(links.length - 1, at + 1)]);
       else if (event.key === 'ArrowUp') markLink(links[Math.max(0, at - 1)]);
       else if (event.key === 'Enter' && document.activeElement.tagName !== 'A') {
-        if (links[at]) { switcher.close(); if (!links[at].hasAttribute('aria-current')) go(links[at].getAttribute('href')); }
+        if (links[at]) { switcher.close(); go(links[at].getAttribute('href')); }
       } else if (event.key === 'Escape') switcher.close();
       else return;
       event.preventDefault();
     });
     switcher.addEventListener('click', function (event) {
       var link = event.target.closest('a');
-      if (link && link.hasAttribute('aria-current')) event.preventDefault();
       if (link || event.target === switcher) switcher.close();
     });
     if (byId('switch-open')) byId('switch-open').addEventListener('click', openSwitcher);
@@ -142,7 +139,7 @@ export const dialog = {
       + '<ul id="switch-list"><li class="group">Needs you</li>'
       + '<li><a href="#" class="on"><span class="key">APP-101</span><span class="what">Fix outbox retry</span><small>Planned? needs you</small></a></li>'
       + '<li class="group">Active</li>'
-      + '<li><a href="#" aria-current="page"><span class="key">APP-104</span><span class="what">Port the settings grid</span><small>implement</small></a></li></ul>'
+      + '<li><a href="#"><span class="key">APP-104</span><span class="what">Port the settings grid</span><small>implement</small></a></li></ul>'
       + '<footer><span><kbd>↑</kbd> <kbd>↓</kbd> move</span><span><kbd>Enter</kbd> open</span><span><kbd>Esc</kbd> close</span></footer></dialog>',
   }, {
     title: 'The help dialog',

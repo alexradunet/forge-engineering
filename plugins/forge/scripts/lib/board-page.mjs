@@ -1,29 +1,39 @@
 // The board page: <forge>/raw/board.html. One page for all tickets of the wiki: one lane for each state,
-// the tickets that wait for the user first, a link from each ticket to its canvas, and the closed tickets with a link to their summary page in the wiki.
+// the tickets that wait for the user first, a link from each ticket to its document, and the closed tickets with a link to their summary page in the wiki.
 // It shows the model of board.mjs (the same data as raw/board.md). It loads nothing from a network, and it is never a source.
 // The style and the components come from ui.mjs (the kit): this file has only the layout of the board. The script uses no template literals: it sits in one.
 import path from 'node:path';
 import { WAIT_WORKDAYS, nextStrike } from './board.mjs';
-import { LINK_MODES, linkTarget } from './canvas.mjs';
+import { LINK_MODES, linkTarget } from './markdown.mjs';
 import { rawDir } from './layout.mjs';
-import { BREAK, TOOLS_HTML, UI_STYLE, bannerHtml, brandHtml, buildNav, chipHtml, countHtml, emptyHtml, esc, faviconUri, footHtml, frameHtml, gateLine, gatesHtml, helpHtml, navData, pageHtml, pageLabel, pageScript, pixelText, searchHtml, switcherHtml, tagHtml } from './ui.mjs';
+import { GATE_DOCS } from './ticket.mjs';
+import { BREAK, TOOLS_HTML, UI_STYLE, bannerHtml, brandHtml, buildNav, chipHtml, countHtml, emptyHtml, esc, faviconUri, footHtml, frameHtml, gatesHtml, helpHtml, navData, pageHtml, pageLabel, pageScript, pixelText, searchHtml, switcherHtml, tagHtml } from './ui.mjs';
 
 export const BOARD_PAGE = 'board.html';
 // An open ticket without an update for this number of days gets a mark.
 export const STALE_DAYS = 7;
 
-// The part of the canvas that shows the document of a gate.
-const GATE_ZONE = { 'story.md': 'story', 'plan.md': 'plan', 'review.md': 'review', 'close.md': 'close' };
-
 // The steps of the first run: the board has no ticket yet.
 const FIRST_STEPS = ['Start an agent session in the repository.', 'Give it a work item key, for example APP-123.', 'The ticket shows here after its first step.'];
 
-/** The link to the canvas of a ticket. A full-v3 ticket with a gate in review opens at the document of that gate. */
-function canvasHref(item, ctx) {
-  const href = ctx.nav.tickets.find((ticket) => ticket.folder === item.folder)?.href ?? '';
-  const doc = item.workflow === 'full-v3' && item.openGate?.status === 'in-review' ? item.gates.find((gate) => gate.name === item.openGate.name)?.doc : '';
-  return href && GATE_ZONE[doc] && !/README\.md/.test(href) ? `${href}#zone-${GATE_ZONE[doc]}` : href;
+/** The link to a file of the ticket folder: the editor link of a local page, else the link of the nav (a relative link, or the route of the live server). */
+function ticketHref(item, ctx, name) {
+  return ctx.links === 'vscode' && ctx.wiki
+    ? linkTarget(path.join(rawDir(ctx.wiki), 'tickets', item.folder, ...name.split('/')))
+    : ctx.nav.file(item.folder, name);
 }
+
+/** The link to the document of a ticket: the document of the gate in review (its `doc`, else the document of the gate name), else the README. */
+function docHref(item, ctx) {
+  const gate = item.gates.find((one) => one.status === 'in-review');
+  const doc = gate ? (gate.doc || GATE_DOCS[gate.name]?.[0] || '').replaceAll('\\', '/') : '';
+  // The name comes from the README of the ticket: it must stay inside the ticket folder.
+  const inside = doc && !doc.startsWith('/') && !/^[a-z]:/i.test(doc) && !doc.split('/').includes('..');
+  return ticketHref(item, ctx, inside ? doc : 'README.md');
+}
+
+// A link to a page of the live server or a file of the page folder changes the page through the script (data-nav). An editor link does not.
+const navAttr = (href) => (/^[a-z][a-z0-9+.-]*:/i.test(href) ? '' : ' data-nav');
 
 const age = (days) => (days === null ? '' : days <= 0 ? 'today' : days === 1 ? '1 day' : `${days} days`);
 const external = (url, label) => {
@@ -46,19 +56,16 @@ function searchText(item, label) {
 }
 
 function cardHtml(item, label, ctx) {
-  const href = canvasHref(item, ctx);
+  const href = docHref(item, ctx);
   const stale = item.state !== 'done' && item.days !== null && item.days >= STALE_DAYS;
   const allDone = !item.openGate && item.gates.length && item.gates.every((one) => ['approved', 'skipped'].includes(one.status));
   const links = [];
-  const readme = ctx.links === 'vscode' && ctx.wiki
-    ? linkTarget(path.join(rawDir(ctx.wiki), 'tickets', item.folder, 'README.md'))
-    : ctx.nav.file(item.folder, 'README.md');
-  links.push(`<a href="${esc(readme)}">README</a>`);
+  links.push(`<a href="${esc(ticketHref(item, ctx, 'README.md'))}">README</a>`);
   const worktree = ctx.links === 'vscode' && item.worktree ? linkTarget(item.worktree) : '';
   if (worktree.startsWith('vscode://')) links.push(`<a href="${esc(worktree)}" title="${esc(item.worktree)}">Worktree</a>`);
   for (const change of item.changes) links.push(external(change.url, change.label || 'Change'));
   const inner = `<header><span class="key">${esc(item.key)}</span><span class="age"${stale ? ` title="No update for ${item.days} days"` : ''}>${age(item.days)}</span></header>`
-    + `<h3><a class="open" href="${esc(href)}" data-nav title="${esc(item.title)}">${esc(item.short || item.title)}</a></h3>`
+    + `<h3><a class="open" href="${esc(href)}"${navAttr(href)} title="${esc(item.title)}">${esc(item.short || item.title)}</a></h3>`
     + (item.gates.length ? `<p class="tline">${gatesHtml(item.gates, { folder: item.folder })}${allDone ? ' <span class="tnote">All gates approved</span>' : ''}</p>` : '')
     + (item.next ? `<p class="tline tclamp"><span class="eyebrow">Next</span> ${esc(item.next)}</p>` : '')
     + (item.waitingOn ? `<p class="tline tclamp"><span class="eyebrow">Waiting on</span> ${esc(item.waitingOn)}</p>` : '')
@@ -71,9 +78,9 @@ function cardHtml(item, label, ctx) {
 }
 
 function rowHtml(item, label, ctx) {
-  const href = canvasHref(item, ctx);
+  const href = docHref(item, ctx);
   return `<li class="trow" id="ticket-${esc(item.folder)}" data-state="${esc(item.state)}" data-text="${esc(searchText(item, label))}"><span class="key">${esc(item.key)}</span>`
-    + `<a class="open" href="${esc(href)}" data-nav title="${esc(item.title)}">${esc(item.short || item.title)}</a><span class="age">${age(item.days)}</span></li>`;
+    + `<a class="open" href="${esc(href)}"${navAttr(href)} title="${esc(item.title)}">${esc(item.short || item.title)}</a><span class="age">${age(item.days)}</span></li>`;
 }
 
 // The name of a section in pixel letters, at one size for each section of the page. `inner` is more HTML after the name (a count or a note).
@@ -85,8 +92,9 @@ function strikeHtml(board, ctx) {
   const strike = nextStrike(board);
   const item = strike ? board.groups.flatMap((group) => group.tickets).find((one) => one.folder === strike.folder) : null;
   if (!item) return '';
+  const href = docHref(item, ctx);
   return bannerHtml(`<span class="key">${esc(strike.key)}</span> ${esc(strike.text)}`, {
-    kind: STRIKE_KIND[strike.kind], id: 'strike', actions: `<a class="primary" href="${esc(canvasHref(item, ctx))}" data-nav aria-label="Open ${esc(strike.key)}">Open</a>`,
+    kind: STRIKE_KIND[strike.kind], id: 'strike', actions: `<a class="primary" href="${esc(href)}"${navAttr(href)} aria-label="Open ${esc(strike.key)}">Open</a>`,
   });
 }
 
@@ -132,7 +140,7 @@ const HELP = [
   [['1', '…', '6'], 'Show only one state. The same key shows all states again'],
   [['0'], 'Show all tickets'],
   [['j', 'k'], 'Go to the next or the previous ticket'],
-  [['Enter'], 'Open the canvas of the ticket'],
+  [['Enter'], 'Open the document of the ticket'],
   'Go',
   [['t'], 'Go to a ticket by its key or its words'],
   [['w'], 'Go to the wiki of the repository'],
@@ -150,7 +158,7 @@ const HELP = [
 export function renderBoardPage(board, { links = 'vscode', nav = null, serve = null, wiki = '' } = {}) {
   if (!LINK_MODES.includes(links)) throw new Error(`Unknown link mode: ${links}. Use ${LINK_MODES.join(' or ')}.`);
   const token = serve?.token ?? '';
-  if (token && !/^[0-9a-f]{32}$/.test(token)) throw new Error('The canvas token must have 32 hexadecimal characters.');
+  if (token && !/^[0-9a-f]{32}$/.test(token)) throw new Error('The page token must have 32 hexadecimal characters.');
   const live = token && serve.live ? String(serve.live) : '';
   const resume = live && serve.resume ? String(serve.resume) : '';
   const ctx = { links, wiki, nav: nav ?? buildNav(board, { token }) };

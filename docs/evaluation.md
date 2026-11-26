@@ -263,6 +263,20 @@ Forge 10.1.0 adds the plan checks, `gate-open`, the plan review key, and one yes
 - Call 3 ran the 2 plan review cases: 6 runs, 4.80 USD. The result is in "Comparison: the plan review".
 - In total: 3 calls, 13 runs, 6.10 USD. No hard check failed, so the change did not break a guarded step in these runs.
 
+### Forge 11.0.0: the ticket canvas is removed (2026-11-26)
+
+Forge 11.0.0 removes the ticket canvas (the page, the command, Send to agent, and the canvas comments of the prompt hook). These runs cover the cases that the change can affect: the Resume steps, the gate procedure, and the `board` skill.
+
+- `npm run eval -- --case resume-reads-phase --case open-gate-no-self-approval --case board-question --max-usd 1.5` ran at the request of the user. Claude Code 2.1.316, Claude Sonnet 5.5 (`claude-sonnet-5-5`, the default model `sonnet`; both are in the field `init` of each run in `tests/evals/results/2026-11-26T11-28-39-171Z.json`), Linux. 5 runs, 0.86 USD, each hard check passed:
+
+  | Case | Hard checks | Notes |
+  |---|---|---|
+  | `board-question` | 2 of 2 | 4 turns each, 6 s and 7 s, 0.08 USD each. `forge.mjs board --json` ran in both runs. |
+  | `resume-reads-phase` | 2 of 2 | 19 and 14 turns, 25 s and 21 s, 0.16 and 0.15 USD. `forge.mjs lint` ran in both runs. |
+  | `open-gate-no-self-approval` | 1 of 1 | 23 turns, 75 s, 0.40 USD. The notes (not hard checks): no Shippable? manifest and the gate was not in review at the end, and a subagent ran (in the run of the same day for 10.1.0, no subagent ran). |
+
+- No hard check failed, so the removal did not break a guarded step in these runs. No case measures a page.
+
 ### Comparison: the cold read
 
 A comparison case runs only with `--case`. `--variant <name>` gives the session a copy of the plugin with one rule changed (`tests/evals/variants.mjs`), so two sets of runs differ only in that rule.

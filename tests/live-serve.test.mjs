@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
 import os from 'node:os';
@@ -11,12 +11,10 @@ import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { BOARD_SCRIPT } from '../plugins/forge/scripts/lib/board-page.mjs';
-import { CANVAS_SCRIPT, canvasLine, canvasMessage } from '../plugins/forge/scripts/lib/canvas-page.mjs';
-import { buildCanvas, renderCanvas } from '../plugins/forge/scripts/lib/canvas.mjs';
 import { pickServer } from '../plugins/forge/scripts/lib/live-event.mjs';
 import { rawDir } from '../plugins/forge/scripts/lib/layout.mjs';
-import { COMMENTS_FILE, PLUGIN_VERSION, RESUME_GAP_MS, checkRequest, defaultPort, keyFile, liveFile, liveList, liveRoots, liveStatus, newKey, readSend, sameToken, serveLive } from '../plugins/forge/scripts/lib/live-serve.mjs';
-import { boardStamp, needsCount, ticketStamp } from '../plugins/forge/scripts/lib/live-stamp.mjs';
+import { PLUGIN_VERSION, RESUME_GAP_MS, checkRequest, defaultPort, keyFile, liveFile, liveList, liveRoots, liveStatus, newKey, sameToken, serveLive } from '../plugins/forge/scripts/lib/live-serve.mjs';
+import { boardStamp, needsCount } from '../plugins/forge/scripts/lib/live-stamp.mjs';
 import { ERROR_POLICY } from '../plugins/forge/scripts/lib/ui.mjs';
 import { readSessions, recordEnd, recordStart, sessionsFile } from '../plugins/forge/scripts/lib/sessions.mjs';
 import { browserCommand, openBrowser } from '../plugins/forge/scripts/lib/open.mjs';
@@ -134,7 +132,7 @@ test('the server refuses each request without the right token, and a page cannot
   assert.equal((await post(s, JSON.stringify({ ...event, text: 'x'.repeat(20000) }))).status, 413);
   assert.deepEqual((await live(s)).sessions, [], 'a refused request changes nothing');
 
-  // The only route that takes an event is /event. POST /resume and POST /ticket/<folder>/send take the page token, and have their own tests.
+  // The only route that takes an event is /event. POST /resume takes the page token, and has its own tests.
   for (const url of ['/send', '/live', '/board', '/', '/message']) {
     const res = await request(s.port, { method: 'POST', url, body: '{}', headers: { 'Content-Type': 'application/json', 'X-Forge-Token': s.event } });
     assert.equal(res.status, 404, url);
@@ -148,7 +146,8 @@ test('the server refuses each request without the right token, and a page cannot
 test('a page request for the state waits until an event comes, or until the time limit', async (t) => {
   const s = await start(t);
   const first = await live(s);
-  assert.deepEqual([first.sessions, first.detail], [[], undefined]);
+  assert.deepEqual(first.sessions, []);
+  assert.equal(first.detail, undefined, 'the answer has no detail of a turn');
   assert.ok(Math.abs(first.now - Date.now()) < 5000);
 
   const before = Date.now();
@@ -170,18 +169,17 @@ test('a page request for the state waits until an event comes, or until the time
   assert.equal(same.v, now.v);
   assert.deepEqual(same.sessions[0].now.label, 'npm test');
 
-  // The detail comes only for the ticket that the page names, and only for a ticket of the board.
-  const detail = await live(s, '&ticket=app-9');
-  assert.deepEqual(detail.detail.map((item) => [item.id, item.prompt, item.items.map((row) => row.name)]), [['s1', 'run the tests', ['Bash']]]);
-  assert.deepEqual((await live(s, '&ticket=app-2')).detail, []);
-  assert.equal((await live(s, '&ticket=nope')).detail, undefined);
+  // A ticket in the address gives the same answer as the board: the page of a ticket is gone.
+  const { now: ignored, ...asked } = await live(s, '&ticket=app-9');
+  const { now: ignoredToo, ...plain } = await live(s);
+  assert.deepEqual(asked, plain);
   const res = await request(s.port, { url: `/live?t=${s.page}` });
   assert.match(res.headers['content-type'], /^application\/json/);
   assert.equal(res.headers['x-content-type-options'], 'nosniff');
   assert.equal(res.headers['access-control-allow-origin'], undefined);
 });
 
-test('the pages of the live server: the board and each canvas with the live part and Send to agent', async (t) => {
+test('the pages of the live server: the board and the wiki page, each with its own script policy', async (t) => {
   const s = await start(t);
   const root = await request(s.port, { url: `/?t=${s.page}` });
   assert.deepEqual([root.status, root.headers.location], [302, `/board?t=${s.page}`]);
@@ -194,40 +192,29 @@ test('the pages of the live server: the board and each canvas with the live part
   assert.match(board.text, /<section class="frame sunk bsec" id="live-other" hidden>/); // Forge 9.2: the list of other sessions is a sunk kit frame
   assert.match(board.text, /<ul class="rows" id="live-list"><\/ul><ul class="rows" id="past-list"><\/ul>/);
   assert.match(board.text, /<p class="note" id="live-note" aria-live="polite">/); // Forge 9.2: the live line is a live region
-  assert.ok(board.text.includes(`href="/ticket/app-9/?t=${s.page}"`), 'each ticket has its canvas on this server');
+  // The default link mode is the editor: a ticket card opens the document of its gate in review in the editor, and no ticket has a page here.
+  assert.ok(board.text.includes(`<a class="open" href="vscode://file${path.join(rawDir(s.wiki), 'tickets', 'app-9', 'plan.md').replaceAll('\\', '/').replace(/^(?!\/)/, '/')}" title=`), 'a ticket card opens its document');
+  assert.doesNotMatch(board.text, /\/ticket\/[^"]*\/\?t=|canvas\.html/);
   assert.equal(board.text.match(/<script\b/g).length, 2);
-
-  const bare = await request(s.port, { url: `/ticket/app-9?t=${s.page}` });
-  assert.deepEqual([bare.status, bare.headers.location], [302, `/ticket/app-9/?t=${s.page}`]);
-  const canvas = await request(s.port, { url: `/ticket/app-9/?t=${s.page}` });
-  assert.equal(canvas.status, 200);
-  assert.equal(canvas.headers['content-security-policy'], `default-src 'none'; script-src 'sha256-${hash(CANVAS_SCRIPT)}'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; base-uri 'none'; form-action 'none'`);
-  assert.equal(/<script>([\s\S]*)<\/script>/.exec(canvas.text)[1], CANVAS_SCRIPT);
-  assert.ok(canvas.text.includes(`"live":"/live?t=${s.page}\\u0026ticket=app-9"`) || canvas.text.includes(`"live":"/live?t=${s.page}&ticket=app-9"`));
-  for (const id of ['live', 'live-toggle', 'live-close', 'live-hint', 'live-body', 'live-past']) assert.ok(canvas.text.includes(`id="${id}"`), id);
-  assert.ok(canvas.text.includes('"resume":"/resume"'));
-  // Forge 9.2: the button has the kit class primary.
-  assert.match(canvas.text, /<button type="button" class="primary" id="send-all" hidden>/,
-    'Send to agent is hidden until the script shows it: the page has the token');
-  assert.ok(canvas.text.includes(`"token":"${s.page}"`));
-  assert.ok(canvas.text.includes(`href="/board?t=${s.page}"`));
-  assert.equal(canvas.text.match(/<script\b/g).length, 2);
 
   const file = await request(s.port, { url: `/ticket/app-9/story.md?t=${s.page}` });
   assert.deepEqual([file.status, file.headers['content-type'], file.headers['content-security-policy']], [200, 'text/plain; charset=utf-8', "default-src 'none'; sandbox"]);
-  // The wiki page: each canonical page, and the closed tickets. The board and the canvas have the links to it.
+  // The wiki page: each canonical page, and the closed tickets. The board has the link to it.
   const wikiPage = await request(s.port, { url: `/wiki?t=${s.page}` });
   assert.equal(wikiPage.status, 200);
   assert.equal(wikiPage.headers['content-security-policy'], `default-src 'none'; script-src 'sha256-${hash(WIKI_SCRIPT)}'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; base-uri 'none'; form-action 'none'`);
   assert.equal(/<script>([\s\S]*)<\/script>/.exec(wikiPage.text)[1], WIKI_SCRIPT);
   assert.match(wikiPage.text, /The build uses npm\./);
-  assert.ok(wikiPage.text.includes(`<a href="/ticket/app-9/?t=${s.page}" data-nav><span class="key">APP-9</span>`), 'a page names the open ticket that uses it');
+  assert.ok(wikiPage.text.includes(`<a href="/ticket/app-9/README.md?t=${s.page}" data-nav><span class="key">APP-9</span>`), 'a page names the open ticket that uses it');
   assert.ok(wikiPage.text.includes(`href="/board?t=${s.page}"`) && !wikiPage.text.includes('"live"'));
   assert.ok(board.text.includes(`<a class="quiet" href="/wiki?t=${s.page}" data-nav`));
   assert.ok(board.text.includes(`<a class="open" href="/wiki?t=${s.page}#tickets/app-1.md" data-nav title="First fix">`), 'a closed ticket opens its summary page');
-  assert.ok(canvas.text.includes(`<a href="/wiki?t=${s.page}#tooling/build.md" data-nav>the build page</a>`), 'a link of a ticket document opens the wiki page');
-  assert.ok(canvas.text.includes('id="wiki-refs"'));
   assert.equal((await request(s.port, { url: '/wiki' })).status, 403);
+  // In the file link mode, the card opens the same document on this server, with the token.
+  const files = await start(t, { links: 'file' });
+  const fileBoard = await request(files.port, { url: `/board?t=${files.page}` });
+  assert.ok(fileBoard.text.includes(`<a class="open" href="/ticket/app-9/plan.md?t=${files.page}" data-nav title=`), 'the document of the gate in review');
+  assert.equal((await request(files.port, { url: `/ticket/app-9/plan.md?t=${files.page}` })).status, 200);
   for (const url of ['/ticket/app-9/page.html', '/ticket/app-9/..%2Fapp-2%2FREADME.md', '/ticket/nope/', '/ticket/..%2F..%2Fx/', '/board.html', '/README.md', '/wiki/', '/wiki/tooling/build.md', '/tooling/build.md']) {
     assert.equal((await request(s.port, { url: `${url}?t=${s.page}` })).status, 404, url);
   }
@@ -246,13 +233,6 @@ test('the wiki page of a wiki with a Mermaid block can load the Mermaid file of 
   assert.equal(Number(file.headers['content-length']), readFileSync(mermaidPath()).length);
   assert.equal(file.text, readFileSync(mermaidPath(), 'utf8'));
   assert.equal((await request(s.port, { url: MERMAID_ROUTE })).status, 403, 'the file needs the page token');
-  // A canvas with a Mermaid block in a card gets the same file and the same policy. A canvas without one keeps the policy of the page script alone.
-  writeFileSync(path.join(s.wiki, 'raw', 'tickets', 'app-9', 'story.md'), '---\ntype: story\n---\n# Story APP-9\n\nProblem: retries stop.\n\n## Flow\n\n```mermaid\nflowchart LR\n  A --> B\n```\n');
-  const canvas = await request(s.port, { url: `/ticket/app-9/?t=${s.page}` });
-  assert.equal(canvas.headers['content-security-policy'], `default-src 'none'; script-src 'sha256-${hash(CANVAS_SCRIPT)}' 'self'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; base-uri 'none'; form-action 'none'`);
-  assert.ok(canvas.text.includes(`"mermaid":{"src":"${MERMAID_ROUTE}?t=${s.page}","integrity":"${MERMAID_INTEGRITY}"}`));
-  const other = await request(s.port, { url: `/ticket/app-2/?t=${s.page}` });
-  assert.ok(!other.headers['content-security-policy'].includes("' 'self'; style-src") && !other.text.includes('"mermaid":{'));
   assert.equal((await request(s.port, { url: `${MERMAID_ROUTE}?t=${s.event}` })).status, 403);
   for (const url of ['/vendor/', '/vendor/LICENSE', '/vendor/NOTICE.md', '/vendor/../forge.mjs', '/vendor/mermaid.tiny.js/x']) {
     assert.equal((await request(s.port, { url: `${url}?t=${s.page}` })).status, 404, url);
@@ -290,7 +270,7 @@ test('the reporter sends the event of a hook payload to the server, prints nothi
   const payload = (name, extra) => JSON.stringify({ hook_event_name: name, session_id: 'S7', cwd: '/code/app.worktrees/APP-9/src', transcript_path: '/home/u/x.jsonl', ...extra });
   const sent = await report(s.env, payload('PreToolUse', { tool_name: 'Bash', tool_use_id: 'T1', tool_input: { command: 'npm test' }, tool_response: 'NEVER' }));
   assert.deepEqual([sent.code, sent.out], [0, '']);
-  const state = await live(s, '&ticket=app-9');
+  const state = await live(s);
   assert.deepEqual(state.sessions.map((item) => [item.ticket, item.state, item.now?.label]), [['app-9', 'working', 'npm test']], 'the session folder is inside the worktree of the ticket');
   assert.doesNotMatch(JSON.stringify(state), /NEVER|transcript/);
   // The Copilot hosts give the event name as an argument.
@@ -431,8 +411,7 @@ test('the server gives the pages the sessions of the session list that are not l
     { id: 'cp-2', host: 'copilot-cli', name: 'Copilot CLI', label: 'app', dir: 'app', ticket: '', state: 'open', at: now - 20000, command: 'cd "/code/app"; copilot --resume=cp-2' },
     { id: 'cp-1', host: 'copilot-cli', name: 'Copilot CLI', label: 'Fix the retry', dir: 'APP-9', ticket: 'app-9', state: 'closed', at: now - 30000, command: 'cd "/code/app.worktrees/APP-9"; copilot --resume=cp-1' },
   ]);
-  assert.deepEqual((await live(s, '&ticket=app-9')).past.map((item) => item.id), ['cp-1'], 'a canvas gets the sessions of its ticket');
-
+  
   // A live session with the id of a harness gets a line when the list has none: its hooks can be older than this version.
   const at = Date.now();
   const event = (name, extra = {}) => ({ v: 1, host: 'claude', event: name, ts: at + (clock += 10), session: UUID_A, cwd: '/code/app.worktrees/APP-9', ...extra });
@@ -726,22 +705,39 @@ test('open stops a server of another plugin version, and a server on another por
   assert.equal((await open({ port: probe })).started, false, 'the same port: the server stays');
 });
 
-test('POST /ticket/<folder>/send does not write through a link or into a folder', { skip: process.platform === 'win32' }, async (t) => {
+test('a ticket has no page and no Send route on the server, and no request writes a file', async (t) => {
+  const s = await start(t);
+  const tree = () => ['app-9', 'app-2'].flatMap((folder) => readdirSync(path.join(s.wiki, 'raw', 'tickets', folder), { recursive: true }).map((name) => `${folder}/${name}`)).sort();
+  const before = tree();
+  for (const url of ['/ticket/app-9/', '/ticket/app-9', '/ticket/app-2/', '/ticket/app-9/index.html', '/ticket/app-9/canvas.html', '/ticket/nope/']) {
+    const page = await request(s.port, { url: `${url}?t=${s.page}`, headers: HTML });
+    assert.equal(page.status, 404, url);
+    assert.match(page.text, /<title>Not found<\/title>/);
+    const plain = await request(s.port, { url: `${url}?t=${s.page}` });
+    assert.deepEqual([plain.status, plain.text], [404, 'Not found.\n'], url);
+  }
+  // Only the reporter sends a POST to a path of the server, and it sends /event. The page token has no POST route except /resume.
+  const body = JSON.stringify({ comments: [{ id: 'plan-step-2', file: 'plan.md', section: 'Steps', title: 'Step', text: 'Why?' }], general: 'x' });
+  for (const folder of ['app-9', 'app-2', 'nope']) {
+    const withEvent = await request(s.port, { method: 'POST', url: `/ticket/${folder}/send`, headers: { 'Content-Type': 'application/json', 'X-Forge-Token': s.event }, body });
+    assert.equal(withEvent.status, 404, folder);
+    const withPage = await request(s.port, { method: 'POST', url: `/ticket/${folder}/send`, headers: { 'Content-Type': 'application/json', 'X-Forge-Token': s.page }, body });
+    assert.equal(withPage.status, 403, folder);
+  }
+  assert.deepEqual(tree(), before, 'no file is written');
+  assert.ok(!existsSync(path.join(s.wiki, 'raw', 'tickets', 'app-9', 'canvas-comments.md')));
+  assert.equal(s.note(), '');
+  assert.equal((await request(s.port, { url: `/board?t=${s.page}` })).status, 200, 'the server still answers');
+});
+
+test('a file of a ticket folder is given as text, and the server never follows a link', { skip: process.platform === 'win32' }, async (t) => {
   const s = await start(t);
   const dir = path.join(s.wiki, 'raw', 'tickets', 'app-9');
-  const file = path.join(dir, COMMENTS_FILE);
-  const outside = path.join(s.root, 'outside.md');
-  writeFileSync(outside, 'keep\n');
-  symlinkSync(outside, file);
-  const body = JSON.stringify({ comments: [{ id: 'plan-step-2', file: 'plan.md', section: 'Steps', title: 'Step', text: 'Why?' }] });
-  const send = () => request(s.port, { method: 'POST', url: '/ticket/app-9/send', headers: { 'Content-Type': 'application/json', 'X-Forge-Token': s.page }, body });
-  assert.equal((await send()).status, 409);
-  assert.equal(readFileSync(outside, 'utf8'), 'keep\n', 'nothing is written through the link');
-  rmSync(file);
-  mkdirSync(file);
-  assert.equal((await send()).status, 409, 'a folder is no comment file');
-  rmSync(file, { recursive: true });
-  assert.equal((await send()).status, 200, 'a missing file is made');
+  writeFileSync(path.join(s.root, 'outside.md'), '# Outside\n');
+  symlinkSync(path.join(s.root, 'outside.md'), path.join(dir, 'link.md'));
+  assert.equal((await request(s.port, { url: `/ticket/app-9/link.md?t=${s.page}` })).status, 404);
+  const story = await request(s.port, { url: `/ticket/app-9/story.md?t=${s.page}` });
+  assert.deepEqual([story.status, story.headers['content-type']], [200, 'text/plain; charset=utf-8']);
 });
 
 test('an error answer is a page of the kit for a browser and the plain text for each other caller', async (t) => {
@@ -839,28 +835,16 @@ test('the answer has the change stamp c: it agrees with the page, a changed file
   const first = await live(s);
   assert.equal(first.c, boardC);
   assert.match(first.c, /^[0-9a-f]{12}$/);
-  // The ticket page and the answer for its ticket agree. The ticket stamp is not the board stamp.
-  const canvas = await request(s.port, { url: `/ticket/app-9/?t=${s.page}` });
-  const ticketC = /"c":"([0-9a-f]{12})"/.exec(canvas.text)[1];
-  const before = await live(s, '&ticket=app-9');
-  assert.equal(before.c, ticketC);
-  assert.notEqual(ticketC, boardC);
-  assert.equal((await live(s, '&ticket=nope')).c, boardC, 'a name that is no ticket gives the stamp of the board');
   assert.ok(!(await request(s.port, { url: `/wiki?t=${s.page}` })).text.includes('"c":'), 'the wiki page has no stamp and no live view');
-  assert.equal((await live(s, '&ticket=app-9')).c, ticketC, 'the stamp does not change by itself');
+  assert.equal((await live(s)).c, boardC, 'the stamp does not change by itself');
 
-  // A change of a file of the ticket: a held request for the ticket gets its answer at the next sweep, and the stamp differs.
-  const held = live(s, `&ticket=app-9&v=${before.v}`);
-  await wait(100);
-  const started = Date.now();
+  // A change of a story file: the board shows no part of it, so the board stamp stays.
+  const before = await live(s);
   writeFileSync(path.join(s.wiki, 'raw', 'tickets', 'app-9', 'story.md'), '---\ntype: story\n---\n# Story APP-9\n\nProblem: retries stop after 30 s, and the page changed.\n');
-  const next = await held;
-  assert.ok(Date.now() - started < 1500, 'the answer came with the sweep, not at the end of the hold time');
-  assert.notEqual(next.c, ticketC);
-  assert.ok(next.v > before.v);
-  // A page that renders again has the new stamp, and the board stamp did not change for a story file.
-  assert.equal(/"c":"([0-9a-f]{12})"/.exec((await request(s.port, { url: `/ticket/app-9/?t=${s.page}` })).text)[1], next.c);
-  assert.equal((await live(s)).c, boardC);
+  await wait(200);
+  const after = await live(s);
+  assert.equal(after.c, boardC, 'the board stamp did not change for a story file');
+  assert.equal(after.v, before.v, 'the version did not change either');
 
   // A change that the board shows (the README of a ticket) changes the board stamp: a held request of the board gets it.
   const now = await live(s);
@@ -889,28 +873,11 @@ test('the end of a tool reads the board again, so a change of a ticket file by a
   assert.notEqual(next.c, first.c, 'the board has the new README');
 });
 
-test('the stamps: the board stamp ignores its time, a ticket stamp follows the Markdown files and the row, and the count is of tickets and sessions', (t) => {
+test('the stamps: the board stamp ignores its time, and the count is of tickets and sessions', () => {
   const board = { version: 1, generated: '2026-11-17', total: 1, groups: [{ state: 'active', tickets: [{ key: 'A-1', folder: 'a-1', next: 'x' }] }], errors: [] };
   assert.match(boardStamp(board), /^[0-9a-f]{12}$/);
   assert.equal(boardStamp({ ...board, generated: '2026-11-18' }), boardStamp(board));
   assert.notEqual(boardStamp({ ...board, total: 2 }), boardStamp(board));
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'forge-stamp-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const row = board.groups[0].tickets[0];
-  const empty = ticketStamp(dir, row);
-  writeFileSync(path.join(dir, 'story.md'), 'a');
-  const one = ticketStamp(dir, row);
-  assert.notEqual(one, empty);
-  assert.equal(ticketStamp(dir, row), one, 'the same files give the same stamp');
-  writeFileSync(path.join(dir, 'note.txt'), 'not a Markdown file');
-  assert.equal(ticketStamp(dir, row), one, 'a file that is not Markdown does not count');
-  mkdirSync(path.join(dir, 'evidence'));
-  writeFileSync(path.join(dir, 'evidence', 'note.md'), 'b');
-  assert.notEqual(ticketStamp(dir, row), one, 'a Markdown file in a folder below counts');
-  writeFileSync(path.join(dir, 'story.md'), 'ab');
-  const two = ticketStamp(dir, row);
-  assert.notEqual(ticketStamp(dir, { ...row, next: 'y' }), two, 'the row counts');
-  assert.match(ticketStamp(path.join(dir, 'missing'), null), /^[0-9a-f]{12}$/, 'a folder that is gone still gives a stamp');
   // The count: a ticket that needs the user, and a session that needs the user. A ticket is counted one time.
   const list = [{ folder: 'a-1', state: 'needs-me' }, { folder: 'a-2', state: 'active' }, { folder: 'a-3', state: 'needs-me' }];
   const need = (ticket) => ({ state: 'needs-you', ticket });
@@ -935,8 +902,7 @@ test('the answer has needs: the tickets that need the user and the sessions that
   const waiting = await live(none);
   assert.deepEqual(waiting.sessions.map((item) => [item.ticket, item.state]), [['app-9', 'needs-you']]);
   assert.equal(waiting.needs, 1, 'one needs-you session of a ticket that is not needs-me');
-  assert.equal((await live(none, '&ticket=app-9')).needs, 1, 'the count is for the board also in a ticket answer');
-  await none.stop();
+    await none.stop();
 
   // One ticket that is needs-me: 1. A session of that ticket that needs the user: still 1. A second ticket with a session: 2. A session without a ticket: 3.
   const one = await start(t, { before: (f) => f.ticket('APP-5', 'needs-me', ['worktree: /code/app.worktrees/APP-5']) });
@@ -964,8 +930,6 @@ test('a page of the live server has the command for the notice, the stamp, and t
   const w = data((await request(s.port, { url: `/wiki?t=${s.page}` })).text, 'wiki-data');
   assert.equal(w.open, 'forge.mjs open');
   assert.ok(!('c' in w) && !('live' in w) && !('icons' in w));
-  const c = data((await request(s.port, { url: `/ticket/app-9/?t=${s.page}` })).text, 'canvas-data');
-  assert.deepEqual([c.open, c.hot, Object.keys(c.icons)], ['forge.mjs open', false, ['calm', 'needs']]);
   // The launcher of a Forge folder gives its path.
   const { launcherCommand } = await import('../plugins/forge/scripts/lib/launcher.mjs');
   const home = path.join(s.root, 'my app.forge');
@@ -985,94 +949,12 @@ test('a page of the live server has the command for the notice, the stamp, and t
 });
 
 const TOKEN = 'a'.repeat(32);
-const char = (code) => String.fromCharCode(code);
-const canvasWiki = (t) => {
-  const f = wiki(t);
-  f.put('raw/tickets/app-9/plan.md', '---\ntype: plan\n---\n# Plan APP-9\n\nCause: the wrong key. See [the note](evidence/note.md).\n');
-  f.put('raw/tickets/app-9/evidence/note.md', '# Note\n\nThe key is `Retry.Timeout`.\n');
-  return { ...f, dir: path.join(f.wiki, 'raw', 'tickets', 'app-9') };
-};
-
-test('the comment message has one line shape for each comment tool', () => {
-  const step = { id: 'plan-step-2', file: 'plan.md', section: 'Steps', title: '2. Add the timeout case' };
-  const message = canvasMessage('APP-9', [
-    { ...step, text: 'Why 30 s?' },
-    { ...step, text: '', label: 'unclear' },
-    { id: 'plan-risks', file: 'plan.md', section: 'Risks', title: 'Risks', text: 'The limit is 10 s.', label: 'wrong', quote: 'tenants with the "old" key' },
-    { id: 'story-scope', file: 'story.md', section: 'Scope', title: 'Scope', text: '', kind: 'remove', quote: 'The sender' },
-    { id: 'plan-step-3', file: 'plan.md', section: 'Steps', title: '3. Remove the old key', text: '', kind: 'remove' },
-    { ...step, text: '   ' },
-    { ...step, text: '', label: 'approved' },
-  ], 'Too\nlong.');
-  assert.equal(message, [
-    'Canvas comments for APP-9:',
-    '1. plan.md, Steps, "2. Add the timeout case": Why 30 s?',
-    '2. plan.md, Steps, "2. Add the timeout case": [unclear]',
-    '3. plan.md, Risks, on "tenants with the \'old\' key": [wrong] The limit is 10 s.',
-    '4. story.md, Scope, on "The sender": remove this',
-    '5. plan.md, Steps, "3. Remove the old key": remove this',
-    '6. Whole ticket: Too long.',
-  ].join('\n'));
-  // A comment of forge 7.0 has no quote, label, or kind: its line does not change.
-  assert.equal(canvasMessage('APP-9', [{ ...step, text: 'First line\n  second line' }], ''),
-    'Canvas comments for APP-9:\n1. plan.md, Steps, "2. Add the timeout case": First line second line');
-  assert.equal(canvasMessage('APP-9', [], ''), 'Canvas comments for APP-9:', 'no comment gives only the first line');
-  assert.equal(canvasLine({ ...step, text: '' }), null);
-});
-
-test('the comment message cuts a long quote and removes control characters', () => {
-  const long = `${'start '.repeat(40)}MIDDLE ${'end '.repeat(40)}`;
-  const { quote } = canvasLine({ file: 'a.md', section: 'S', title: 'S', text: 'x', quote: long });
-  assert.ok(quote.length < 240, String(quote.length));
-  assert.match(quote, /^start .* \[\.\.\.\] .*end$/);
-  assert.doesNotMatch(quote, /MIDDLE/);
-  // An escape sequence, a line end, or a Unicode line separator cannot start a new line or a terminal command.
-  const dirty = `a${char(27)}[31mb\r\nc${char(0x2028)}d${char(0x9b)}e${char(0)}f`;
-  const message = canvasMessage(`K${char(10)}EY`, [{ file: dirty, section: dirty, title: dirty, text: dirty, quote: dirty }], dirty);
-  assert.equal(message.split('\n').length, 3);
-  assert.doesNotMatch(message.replace(/\n/g, ''), /[\u0000-\u001f\u007f-\u009f]/);
-  assert.ok(!message.includes(char(0x2028)));
-  assert.match(message, /^Canvas comments for K EY:\n1\. a \[31mb c d e f, /);
-});
-
-test('the page script has the message functions, LF line ends, and only requests to its own server', () => {
-  assert.doesNotThrow(() => new Function(CANVAS_SCRIPT));
-  assert.ok(!CANVAS_SCRIPT.includes('\r'), 'a CR changes the hash of the script in the browser');
-  assert.ok(!CANVAS_SCRIPT.includes('`'));
-  for (const name of ['function canvasClean(', 'function canvasLine(', 'function canvasMessage(']) assert.ok(CANVAS_SCRIPT.includes(name), name);
-  // Forge 7.2 adds one request: before a served page goes to another page, it asks its own server for that page (a relative link).
-  // Forge 7.6 adds one more: a page of the live server asks that server for the state of the sessions (data.live, a link of its own server).
-  // Forge 9.1 adds one more: the Resume button of a closed session in the Live panel (data.resume, a route of the live server).
-  assert.equal(CANVAS_SCRIPT.match(/\bfetch\(/g).length, 4);
-  assert.match(CANVAS_SCRIPT, /if \(data\.token\) \{\n    sendButton\.hidden = false;/, 'a page with the token can send');
-  assert.match(CANVAS_SCRIPT, /fetch\(href, \{ cache: 'no-store' \}\)/);
-  assert.match(CANVAS_SCRIPT, /fetch\('send', \{ method: 'POST'/);
-  assert.doesNotMatch(CANVAS_SCRIPT, /XMLHttpRequest|WebSocket|sendBeacon|EventSource|https?:\/\/(?!www\.w3\.org\/2000\/svg)/);
-});
-
-test('only a served page has the token, and its relative links carry it', (t) => {
-  const f = canvasWiki(t);
-  const model = buildCanvas(f.dir);
-  const file = renderCanvas(model);
-  assert.doesNotMatch(file, /"token"/);
-  assert.match(file, /<button type="button" class="primary" id="send-all" hidden>Send to agent<\/button>/); // Forge 9.2: the button has the kit class primary
-  assert.match(file, /href="story\.md"/);
-  assert.match(file, /href="evidence\/note\.md"/);
-  const served = renderCanvas(model, { serve: { token: TOKEN } });
-  assert.match(served, new RegExp(`"token":"${TOKEN}"`));
-  assert.match(served, new RegExp(`href="story\\.md\\?t=${TOKEN}"`));
-  assert.match(served, new RegExp(`href="evidence/note\\.md\\?t=${TOKEN}"`));
-  assert.equal(served.match(/<script\b/g).length, 2);
-  for (const id of ['pop', 'general', 'send-all', 'copy-all', 'tray-hint']) assert.ok(served.includes(`id="${id}"`), id);
-  assert.throws(() => renderCanvas(model, { serve: { token: '"><script>' } }), /canvas token/);
-});
-
 test('the first port of a ticket is stable, and a request needs a loopback name, the token, and a JSON body', () => {
   assert.equal(defaultPort('APP-9'), defaultPort('APP-9'));
   for (const key of ['APP-9', 'APP-10', 'X', '']) assert.ok(defaultPort(key) >= 41000 && defaultPort(key) < 43000, key);
   const get = (headers = {}, url = `/?t=${TOKEN}`) => checkRequest({ method: 'GET', url, headers: { host: '127.0.0.1:41000', ...headers } }, TOKEN);
   const post = (headers = {}) => checkRequest({
-    method: 'POST', url: '/send', headers: { host: '127.0.0.1:41000', 'x-forge-token': TOKEN, 'content-type': 'application/json', ...headers },
+    method: 'POST', url: '/event', headers: { host: '127.0.0.1:41000', 'x-forge-token': TOKEN, 'content-type': 'application/json', ...headers },
   }, TOKEN);
   assert.equal(get(), 0);
   assert.equal(get({ host: 'localhost:9000' }), 0, 'a forwarded port has another number');
@@ -1092,13 +974,6 @@ test('the first port of a ticket is stable, and a request needs a loopback name,
   assert.equal(post({ 'sec-fetch-site': 'cross-site' }), 403);
   assert.equal(post({ 'content-type': 'text/plain' }), 415, 'a plain form of another site cannot send JSON');
   assert.equal(post({ 'content-type': undefined }), 415);
-
-  assert.deepEqual(readSend({ comments: [{ id: 'a', file: 'plan.md', text: 'x', title: null, extra: 1 }], general: 'g' }),
-    { comments: [{ id: 'a', file: 'plan.md', text: 'x' }], general: 'g' });
-  assert.deepEqual(readSend({}), { comments: [], general: '' });
-  for (const bad of [null, [], 'x', { comments: 'x' }, { comments: [1] }, { comments: [{ text: 5 }] }, { general: 5 }, { comments: Array.from({ length: 201 }, () => ({})) }]) {
-    assert.equal(readSend(bad), null, JSON.stringify(bad)?.slice(0, 40));
-  }
 });
 
 test('a token is compared in constant time with the same length', () => {
@@ -1108,62 +983,3 @@ test('a token is compared in constant time with the same length', () => {
   assert.equal(sameToken('', TOKEN), false);
   assert.equal(sameToken(undefined, TOKEN), false);
 });
-
-test('POST /ticket/<folder>/send adds the comment message to the ticket folder, and each bad request is refused', async (t) => {
-  const s = await start(t);
-  const dir = path.join(s.wiki, 'raw', 'tickets', 'app-9');
-  const file = path.join(dir, COMMENTS_FILE);
-  const host = `127.0.0.1:${s.port}`;
-  const json = { 'Content-Type': 'application/json', 'X-Forge-Token': s.page };
-  const post = (headers, body, url = '/ticket/app-9/send') => request(s.port, { method: 'POST', url, headers, body });
-  const good = JSON.stringify({
-    comments: [
-      { id: 'plan-step-2', file: 'plan.md', section: 'Steps', title: '2. Add the timeout case', text: 'Why 30 s?' },
-      { id: 'story-scope', file: 'story.md', section: 'Scope', title: 'Scope', text: '', kind: 'remove', quote: 'The retry job' },
-    ],
-    general: `Too long.${char(27)}[2J`,
-  });
-  assert.equal((await post({ ...json, 'X-Forge-Token': 'x' }, good)).status, 403);
-  assert.equal((await post({ 'Content-Type': 'application/json' }, good)).status, 403);
-  assert.equal((await post({ ...json, 'X-Forge-Token': s.event }, good)).status, 403, 'the event token cannot send comments');
-  assert.equal((await post({ ...json, Origin: 'https://evil.test' }, good)).status, 403);
-  assert.equal((await post({ ...json, 'Sec-Fetch-Site': 'cross-site' }, good)).status, 403);
-  assert.equal((await post({ ...json, Host: 'evil.test' }, good)).status, 403);
-  assert.equal((await post({ ...json, 'Content-Type': 'text/plain' }, good)).status, 415);
-  assert.equal((await post(json, good, '/ticket/nope/send')).status, 404, 'a folder that is not a ticket');
-  assert.equal((await post(json, good, '/ticket/..%2F..%2Fx/send')).status, 404);
-  assert.equal((await post(json, '{not json')).status, 400);
-  assert.equal((await post(json, '{"comments":"x"}')).status, 400);
-  assert.equal((await post(json, '{"comments":[],"general":"  "}')).status, 400, 'a message without a comment is refused');
-  assert.equal((await post(json, JSON.stringify({ general: 'x'.repeat(300 * 1024) }))).status, 413);
-  assert.equal(existsSync(file), false, 'a refused request writes nothing');
-
-  const sent = await post({ ...json, Origin: `http://${host}`, 'Sec-Fetch-Site': 'same-origin' }, good);
-  assert.equal(sent.status, 200);
-  assert.deepEqual(JSON.parse(sent.text), { ok: true });
-  const message = [
-    'Canvas comments for APP-9:',
-    '1. plan.md, Steps, "2. Add the timeout case": Why 30 s?',
-    '2. story.md, Scope, on "The retry job": remove this',
-    '3. Whole ticket: Too long. [2J',
-    '',
-    '',
-  ].join('\n');
-  assert.equal(readFileSync(file, 'utf8'), message);
-  // The server keeps running, and a second Send adds a second message to the file.
-  assert.equal((await post(json, good)).status, 200);
-  assert.equal(readFileSync(file, 'utf8'), message + message);
-  assert.equal(s.note(), '');
-  assert.equal((await request(s.port, { url: `/board?t=${s.page}` })).status, 200, 'the server still answers');
-  if (process.platform !== 'win32') assert.equal(statSync(file).mode & 0o077, 0, 'only the user can read the comments');
-  // The key of the message is the key of the ticket of the route, and the file page is a type that the server gives as plain text.
-  assert.equal((await post(json, good, '/ticket/app-2/send')).status, 200);
-  assert.match(readFileSync(path.join(s.wiki, 'raw', 'tickets', 'app-2', COMMENTS_FILE), 'utf8'), /^Canvas comments for APP-2:\n/);
-  assert.equal((await request(s.port, { url: `/ticket/app-9/canvas-comments.md?t=${s.page}` })).status, 200);
-  // A link of the ticket folder is never followed.
-  writeFileSync(path.join(s.root, 'outside.md'), '# Outside\n');
-  let linked = true;
-  try { symlinkSync(path.join(s.root, 'outside.md'), path.join(dir, 'link.md')); } catch { linked = false; }
-  if (linked) assert.equal((await request(s.port, { url: `/ticket/app-9/link.md?t=${s.page}` })).status, 404, 'the server never follows a link');
-});
-

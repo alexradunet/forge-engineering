@@ -7,11 +7,10 @@
 // so the text goes in parts. Each host gets its verb table from <plugin>/hosts/<host>.md.
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, lstatSync, readFileSync, renameSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { loadConfig } from './config.mjs';
 import { harness } from './harness.mjs';
-import { COMMENTS_FILE } from './live-event.mjs';
 import { archiveDir } from './layout.mjs';
 import { writeLauncher, writePointer } from './launcher.mjs';
 import { resolve, samePath } from './repo.mjs';
@@ -190,7 +189,7 @@ function pathsLine(pluginDir, where) {
 
 /**
  * The verb table of the host: the text of <plugin>/hosts/<host>.md up to the heading after "## Host verbs",
- * and a line that names the file for the other parts (the ticket canvas, the feature documentation).
+ * and a line that names the file for the other parts (the board page, the feature documentation).
  * Returns '' when the file cannot be read.
  */
 export function hostTable(pluginDir, host) {
@@ -200,7 +199,7 @@ export function hostTable(pluginDir, host) {
   const verbs = text.indexOf('\n## Host verbs');
   const next = verbs === -1 ? -1 : text.indexOf('\n## ', verbs + 1);
   if (next === -1) return text;
-  return `${text.slice(0, next).trimEnd()}\n\nMore steps for this host are in \`${file}\`: the ticket canvas, the board page, and the feature documentation. Read that file before you show a canvas or a board page, start the live server, or advise on a feature of the host.`;
+  return `${text.slice(0, next).trimEnd()}\n\nMore steps for this host are in \`${file}\`: the board page and the feature documentation. Read that file before you show a board page, start the live server, or advise on a feature of the host.`;
 }
 
 /**
@@ -434,36 +433,9 @@ export function sessionStart(event, { cli, env = process.env, host = 'vscode', p
   return { hookSpecificOutput: output };
 }
 
-/** Comments over this size are not put in the context: the session reads the file. */
-export const MAX_COMMENTS_CONTEXT = 32 * 1024;
-
-/**
- * The text of the canvas comments of the ticket of the session (Send to agent), or ''. The file is renamed first, so a Send that comes
- * later makes a new file. A file over MAX_COMMENTS_CONTEXT stays, and the text only says where it waits.
- */
-function takeComments(event, where, env) {
-  const here = where.top;
-  const tickets = listTickets(where.wiki.path).filter((entry) => entry.ticket);
-  const inMain = Boolean(here) && samePath(here, where.repo.path);
-  const branch = git(event.cwd || process.cwd(), ['branch', '--show-current']);
-  const match = ticketOfFolder(tickets, { here, branch, inMain, getConfig: () => trustedConfig(where, env) });
-  if (!match) return '';
-  const file = path.join(match.dir, COMMENTS_FILE);
-  let stat;
-  try { stat = lstatSync(file); } catch { return ''; }
-  if (!stat.isFile()) return '';
-  if (stat.size > MAX_COMMENTS_CONTEXT) return `Canvas comments wait in ${file}. Read that file, handle the comments, and delete it.`;
-  const taken = `${file}.taking`;
-  try { renameSync(file, taken); } catch { return ''; }
-  let text = '';
-  try { text = readFileSync(taken, 'utf8'); } finally { rmSync(taken, { force: true }); }
-  return text.trim() ? `The user sent these comments from the ticket canvas:\n\n${text.trim()}` : '';
-}
-
 /**
  * The Claude Code UserPromptSubmit result, or {}. When the prompt names a ticket key and the session
  * has no custom title yet, it gives the ticket part and sets the session title.
- * It also adds the canvas comments of the ticket of the session (takeComments) and removes their file.
  * A turn that Claude Code started by itself (ownTurn) gives {}. A key after the first PROMPT_HEAD characters and a closed ticket give no ticket part.
  */
 export function promptSubmit(event, { cli, env = process.env } = {}) {
@@ -480,7 +452,6 @@ export function promptSubmit(event, { cli, env = process.env } = {}) {
       if (found.lines.length && !found.closed) { parts.push(`# Forge ticket context\n\n${ticketText(found.lines, forge)}`); sessionTitle = found.title; }
     } catch { /* No ticket part. */ }
   }
-  try { const comments = takeComments(event, where, env); if (comments) parts.push(comments); } catch { /* The prompt goes on without the comments. */ }
   if (!parts.length) return {};
   return { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: parts.join('\n\n'), ...(sessionTitle ? { sessionTitle } : {}) } };
 }

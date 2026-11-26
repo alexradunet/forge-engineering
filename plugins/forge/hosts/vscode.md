@@ -20,19 +20,17 @@ A Forge skill names a host verb, for example `host.title`. Do the step of the ve
 | `host.comments` | Read the comment threads of a document with `listComments`. Answer a question with `replyToComment`. Resolve a handled thread with `resolveComments`. Comments that the user sends with the comment submit button (`/act-on-feedback`) arrive the same way. |
 | `host.write` | Ask with `ask_user` first, and run the write command only after an explicit "yes": no check has shown yet that the plugin hook runs in a Copilot harness session. When `ask_user` says that the user is not available, give the user the exact command. Exception: the creation of a change request whose draft is in the approved Shippable? set needs no second "yes" (see Sendable?). |
 
-## Ticket canvas
+## Pages
 
-The ticket canvas is a local HTML page (`canvas.html` in the ticket folder, from `forge.mjs canvas <KEY>`).
+The board page (`board.html` in `<forge>/raw`, from `forge.mjs board`) shows all tickets, and a card opens the document of its ticket. The wiki page (`wiki.html`, in the same folder) shows the pages of the wiki and the summary pages of the closed tickets. The two pages have links to each other.
 
-- Give the user the `file://` link, and this step: in the Explorer, right-click `canvas.html` and select **Open in Integrated Browser**. The address bar of the integrated browser also accepts the `file://` link.
-- Tell the user one time to turn on `workbench.browser.autoReloadOnFileChange`. Then the page loads again after each `canvas` run.
-- The board page (`board.html` in `<forge>/raw`, from `forge.mjs board`) shows all tickets. The board page and each canvas have links to each other. The wiki page (`wiki.html`, in the same folder) shows the pages of the wiki and the summary pages of the closed tickets. Open it the same way. The user can make it a favorite with the star in the address bar of the integrated browser.
-- The first **Copy all** on the page can ask for the clipboard permission of the site. The page also shows the text for a manual copy.
-- For comments, run `forge.mjs open --no-browser` with the shell tool. Give the user the canvas link of the ticket (`http://127.0.0.1`, this machine only): take the board link that the command prints, and change `/board` to `/ticket/<folder>/` (the folder is the key in lower case, for example `app-9`). VS Code opens the link in the integrated browser. When the user selects **Send to agent**, the server adds the comment message to `canvas-comments.md` in the ticket folder, and it keeps running. This host has no prompt hook. Tell the user to write `sent` if the session does not continue. Then read that file, handle the comments, and delete the file.
+- Give the user the `file://` link, and this step: in the Explorer, right-click the page and select **Open in Integrated Browser**. The address bar of the integrated browser also accepts the `file://` link.
+- Tell the user one time to turn on `workbench.browser.autoReloadOnFileChange`. Then the page loads again after each `board` run. The user can make a page a favorite with the star in the address bar of the integrated browser.
+- To start the live server, run `forge.mjs open --no-browser` with the shell tool. Give the user the links that it prints (`http://127.0.0.1`, this machine only). VS Code opens a link in the integrated browser.
 - The link works only in a browser on the machine of the session. For a browser on another machine, run `forge.mjs open --no-browser --port <n>`, and tell the user to forward that port. Never use another address than `127.0.0.1`.
 - For a comment on one element of a page, the user can also use **Add Element to Chat** in the toolbar of the integrated browser. It is native, but it gives no ticket file and no section.
 - A code link on the page opens the file in VS Code (`vscode://file/...`).
-- Do not use the native canvas tools of VS Code for the ticket canvas. They run only in a Copilot harness session, and the page must be the same in each host.
+- Do not use the native canvas tools of VS Code for the pages. They run only in a Copilot harness session, and the page must be the same in each host.
 - The board page of the live server (`forge.mjs open`) has **Resume** for the sessions of Claude Code and of Copilot CLI in a terminal. A session of the Agents window is not in its session list.
 
 ## VS Code features
@@ -55,7 +53,7 @@ The ticket canvas is a local HTML page (`canvas.html` in the ticket folder, from
 | Manage sessions (groups, pins, move a chat, cleanup) | https://code.visualstudio.com/docs/agents/run/sessions/manage-sessions |
 | Session tools (coordinate work across sessions) | https://code.visualstudio.com/docs/agents/run/tools |
 | Artifacts panel | https://code.visualstudio.com/docs/agents/run/artifacts |
-| Integrated browser (the ticket canvas) | https://code.visualstudio.com/docs/debugtest/integrated-browser |
+| Integrated browser (the pages) | https://code.visualstudio.com/docs/debugtest/integrated-browser |
 | Hooks | https://code.visualstudio.com/docs/agent-customization/hooks |
 | Custom agents | https://code.visualstudio.com/docs/agents/reference/custom-agent-file-reference |
 | Custom instructions and AGENTS.md | https://code.visualstudio.com/docs/agent-customization/custom-instructions |

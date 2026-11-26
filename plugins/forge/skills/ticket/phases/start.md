@@ -16,7 +16,7 @@ After a compaction of the session, read this file again before you use its steps
 8. Seed `map.md` from [templates/map.md](../templates/map.md): the purpose, the terms, and a first guess of the components. Mark each guess `(unverified)`.
 9. Start `journal.md` from [templates/journal.md](../templates/journal.md) with one `log` entry.
 10. Add the ticket to the "Tickets → Active" list in `<wiki>/index.md`. Mark its raw folder as local-only. Append a `create` entry to `<wiki>/log.md`.
-11. Do the research (next section). Then run `<F> canvas <KEY>`, give the link, do the interview, and write the scope. Open Scoped?.
+11. Do the research (next section). Then do the interview and write the scope. Open Scoped?.
 12. After Scoped?, investigate, then write the plan steps, and open Planned? before implementation. Do not skip a phase for a small fix, and do not run a blocked phase in auto mode.
 
 ### 🧭 Research
@@ -33,7 +33,7 @@ Do this automatically. It is read-only, so it needs no approval. Research depth 
 7. Write `story.md` from [templates/story.md](../templates/story.md), without the summary and the Scope section for now: Problem, History, Related work, Facts, Preserve, and Open questions. Put tool outputs in `evidence/`. Add what you learned about the code to `map.md`.
 8. List the colleagues who know the area: reporter, authors and reviewers of related change requests, owners of sibling items and related documents. Add each one to the README `people` list with `status: to-contact`, with why and what to ask (see People).
 9. Write draft messages to them in `outbox/colleague-questions.md`. The user sends them. Never contact people yourself. Set each drafted person to `status: drafted` with `draft: outbox/colleague-questions.md`.
-10. Present the context in plain words, in at most 10 lines, with the link to the canvas. Answer questions.
+10. Present the context in plain words, in at most 10 lines. Answer questions.
 
 #### 💬 Colleague questions do not block
 
@@ -55,7 +55,7 @@ A spike is a short read-only check that answers one fact before a scope question
 
 ### 🎤 Interview
 
-Start after the research, when the user has the canvas link. Ground each question in the story or its evidence.
+Start after the research. Ground each question in the story or its evidence.
 
 1. Before you ask, run a spike for each question that depends on a checkable fact.
 2. State your reading of the work item in 1 or 2 lines. Give 2 other possible readings, for example a smaller scope, another cause, or another user group. Do this also when the item looks clear: a wrong reading passes each review that only repeats it. Ask which reading is right as the first question of the form (step 3).

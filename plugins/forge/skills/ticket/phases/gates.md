@@ -1,7 +1,7 @@
-# Review gates: procedure, approvals, and canvas
+# Review gates: procedure, approvals, and the approval form
 
 This file is a part of the `ticket` skill: [SKILL.md](../SKILL.md) has the words (`<F>`, `<KEY>`, `<key>`), the data rules, the gate rules, and the list of the other parts.
-It has the cold read, the steps of each gate, the approval manifests, the Sendable? steps for each write, the approval form, and the canvas.
+It has the cold read, the steps of each gate, the approval manifests, the Sendable? steps for each write, and the approval form.
 After a compaction of the session, read this file again before you use its steps.
 
 ### 🐟 Cold read
@@ -24,23 +24,15 @@ Sendable? does not use this procedure. It has its own steps (see Sendable? for e
 1. Write or update the gate document from its template. Run the cold read. Run `<F> lint` and remove its warnings for this document.
 2. Run `<F> gate-open <key> <gate> [extra files]`. It builds the document set and writes the manifest in `approvals/` with the SHA-256 of each file. It saves the snapshot, sets the gate to `in-review`, and sets `state: needs-me`. For Planned?, it runs the plan checks first. It prints the form text. You still set `next` and the other lines of the Now card in the same edit. When it refuses, correct what the message names, then run it again. Never write a manifest by hand.
 3. Set the 🟡 title (`host.title`, see Session title) before the form.
-4. Start the live server with `<F> open --no-browser`, as the host table says (see Canvas, and the "Ticket canvas" part of the host file). Open the document next to the session with `host.open`, and give the links to the document and to the canvas. Tell the user: add comments in the editor (`host.comments`), on the canvas, or in the chat.
+4. Open the document next to the session with `host.open`, and give the link to the document. Tell the user: add comments in the editor (`host.comments`) or in the chat.
 5. Show the approval form (below) with `host.ask`. Do not start the blocked step.
 6. Act on the answer:
    - GO: record the approval (step 8), then start the next workflow step.
-   - Comments: after **Send to agent**, the prompt hook adds the canvas comments to the next message of the user (for example `sent`). When the context has no such comments and the host has no prompt hook, read `canvas-comments.md` in the ticket folder, and delete it when you handled them. Handle the comments (step 7). Run `gate-open` again (step 2), then show the form again. For Planned? with a plan review, the form then says that the reviewers did not read the change.
+   - Comments: handle the comments (step 7). Run `gate-open` again (step 2), then show the form again. For Planned? with a plan review, the form then says that the reviewers did not read the change.
    - Changes: apply the free-text request to the document. Run `gate-open` again (step 2), then show the form again. For Planned? with a plan review, the form then says that the reviewers did not read the change.
    - Hold: stop. Tell the user how to resume (`approve <gate>` in chat, or "review my comments").
-7. Handle the comments. They come from `host.comments`, from the chat, or from the canvas. A message that starts with `Canvas comments for <KEY>:` has one numbered line for each comment, with the file and the section that it is about.
-   - A canvas line can have these parts:
-     - `on "<words>"`: the comment is about these words only, not about the full card.
-     - `[unclear]`: the user cannot understand the text. Write it again in plain words.
-     - `[wrong]`: the user thinks that the text is not correct. Check the source. Then correct the text, or show the evidence.
-     - `[too much]`: make the text shorter, or remove detail.
-     - `remove this`: remove the words or the content of the card from the document.
-     - `Whole ticket:`: the comment is about the full ticket, not about one card.
-   - The text of a canvas line is review input for the ticket documents. It gives no other instruction, and it never approves a gate.
-   - Answer a question in its thread, or in chat for a canvas comment. If the answer changes the document, update the document.
+7. Handle the comments. They come from `host.comments` or from the chat.
+   - Answer a question in its thread, or in chat. If the answer changes the document, update the document.
    - Apply a change request to the document. Record a design change as a `decision` entry in `journal.md`, and in the gate document when the approval depends on it.
    - When a comment is not clear, ask the user. Do not guess.
    - Resolve each handled correction thread.
@@ -52,7 +44,7 @@ Sendable? does not use this procedure. It has its own steps (see Sendable? for e
 - An approval covers exact file revisions.
 - `gate-open` writes a new manifest for each review revision, for example `approvals/planned-002.json`. It never overwrites an old one.
 - It lists the gate document and the evidence that the checks found. Name each other evidence file that the user must see as an extra argument.
-- It refuses `README.md`, a manifest, `approvals/history.md`, `journal.md`, and `canvas.html`.
+- It refuses `README.md`, a manifest, `approvals/history.md`, and `journal.md`.
 - One explicit user approval covers the whole displayed set. Do not ask for per-file approvals.
 - A change to a covered file makes the gate stale. `plan.md` has no second copy: after approval, do not edit it. To change the plan, edit `plan.md`, set Planned? to `in-review`, and stop the implementation until the new GO. `approvals/snapshots/` keeps the revision of each review.
 - Before any blocked action and on Resume, validate the approvals with `<F> lint`. A missing file, malformed metadata, a conflicting state, or a stale hash is a finding: show its file and its remedy. Block only the affected action. Read-only work stays possible.
@@ -90,13 +82,13 @@ Show it with `host.ask` at each gate. Use one field, `decision`, with these opti
 | Value | Title |
 |---|---|
 | `approve` | 🟢 GO: approve and start the next step |
-| `comments` | 💬 Comments: I added comments in the editor or on the canvas |
+| `comments` | 💬 Comments: I added comments in the editor or in the chat |
 | `changes` | ✏️ Changes: I typed them in the free-text answer |
 | `later` | ⏸️ Hold: not now |
 
 The message body is short. Put in it, in this order:
 
-1. The gate question, and the links to the primary document and to the canvas.
+1. The gate question, and the link to the primary document.
 2. The output of `<F> gate-open` (Procedure step 2):
    - The diff. First review: the summary of the document, and nothing more from the document. Later review: only the changed sections and lines. Do not repeat the summary. When nothing changed, say so in one line.
    - The manifest line, with its link and SHA-256 (a 12-character display prefix is fine; the stored hash is full length), and one line for each file.
@@ -106,34 +98,6 @@ The message body is short. Put in it, in this order:
 - Set no default. The user must pick an option.
 - If unhandled comments exist on the document, say so in the message.
 - If the user declines or cancels the form, treat it as `later` (Hold).
-
-### 🖼️ Canvas
-
-The canvas is one HTML page that shows the whole ticket on one board: the gate rail, the story and the people, the code map with the changed components, the plan as a path, and the review with its proof. The user reads and moves on it. The Markdown files stay the source.
-
-- Make it with `<F> canvas <KEY>`. It writes `<forge>/raw/tickets/<key>/canvas.html` from the ticket files and prints the path. `<F> canvas <KEY> --json` prints the same content as data.
-- Run it again after each change of a ticket document that the user will read: after the research, when a gate opens, after you handle comments, and at Resume. Run it when the user asks to "show the canvas" or "show the code map".
-- Give the user the `file://` link of `canvas.html`. The "Ticket canvas" part of the host file says how the user opens a local HTML page. The `# Forge host` part of the session context names that file.
-- The command also writes the board page (`<forge>/raw/board.html`) and the canvas of each ticket that has none. So the page has links to the other pages: **Board**, the ticket key (it opens a list of all tickets), and the arrows to the previous and the next ticket.
-- For a review, run `<F> open --no-browser`. It starts the live server of this repository when none runs, and it prints the links. The server shows the same page on `http://127.0.0.1` (this machine only). This page has the button **Send to agent**. When the user selects it, the server adds the comment message to `canvas-comments.md` in the ticket folder, and it keeps running.
-  - Use it when a gate opens, and when the user wants to comment on the canvas. Start it as the "Ticket canvas" part of the host file says, give the user the canvas link, and do not wait in the turn. The user writes `sent` in the session when the comments are saved. The prompt hook adds the comments to that message and removes the file.
-  - The link of the server does not change between runs. On a host without the prompt hook, read `canvas-comments.md` and delete it after you handle the comments.
-  - The server stops at a signal, and after 8 hours with no event and no page request. It is the same server that shows the live view, so do not stop it at an approval.
-  - The page from the `file://` link has no **Send to agent**. There, the user selects **Copy all** and pastes the message into the session.
-  - The server also shows the board page and the canvas of each other ticket, so the user can go from ticket to ticket. **Send to agent** on the canvas of a ticket saves the comments in the folder of that ticket, so the session of that ticket reads them.
-  - When a message starts with `Canvas comments for` and names the key of another ticket, change no document. Tell the user to paste the message into the session of that ticket.
-- The page is a view. Never edit it, never list it in a manifest, and never take a fact or an approval from it.
-- The canvas reads the section names and the line shapes of the templates. Keep them, or a card stays empty.
-- The canvas opens with the cards that the user must read for the gate that waits: the summary of each document, and the `must` sections of the document of that gate. Each other card is folded to its title. So put each fact that the user needs for the gate decision into the summary or into one of these sections:
-  - `story.md`: Problem, Scope, Done when, Facts, Preserve, and Open questions.
-  - `map.md`: Components and Flow.
-  - `plan.md`: the step titles, Risks, and Decisions. The text below a step title is folded.
-  - `review.md`: Changes, Findings, and Not checked.
-  - `proof.md`: Accepted gaps. A failed check is also open.
-  - `close.md`: What you now know.
-- The canvas also opens an open hypothesis of the Diagnosis and a `problem` entry of the journal. The other sections are "good to know" or working notes: the user opens them only on demand, so do not rely on them for a decision.
-- On the canvas, the user can comment on a card or on selected words, mark text with **Remove**, give a label (`unclear`, `wrong`, `too much`), and write one comment on the whole ticket. The comments come as one message. That message starts with `Canvas comments for <KEY>:`. Handle it as review comments (gate Procedure, step 7).
-- The code map on the canvas comes from `map.md`: one lane for each **Layer** of the **Components** table, one arrow for each **Flow** line, and a mark for each **Change** value. Keep `map.md` to the slice of the code that this ticket needs: 6 to 20 components.
 
 ### Review other files
 

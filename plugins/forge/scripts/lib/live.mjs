@@ -8,7 +8,6 @@ import { AGENT_TOOLS } from './live-event.mjs';
 export const MAX_SESSIONS = 50;
 export const MAX_ITEMS = 200;
 export const MAX_AGENTS = 40;
-export const MAX_DEPTH = 4;
 /** A session that works without an event for this time gets the mark `quiet`. */
 export const QUIET_MS = 10 * 60 * 1000;
 /** An ended session goes away after this time. */
@@ -40,7 +39,7 @@ function openSession(state, event) {
     session = {
       id: event.session, sid: `s${++state.count}`, host: event.host, cwd: event.cwd, title: '',
       state: 'idle', since: event.ts, stateTs: 0, seen: event.ts,
-      prompt: '', text: '', note: '', tools: new Map(), agents: new Map(), stops: new Map(), waits: [], more: 0, auto: 0,
+      note: '', tools: new Map(), agents: new Map(), stops: new Map(), waits: [], auto: 0,
     };
     state.sessions.set(event.session, session);
     if (state.sessions.size > MAX_SESSIONS) dropSession(state, session);
@@ -62,12 +61,12 @@ function dropSession(state, keep) {
 function openAgent(session, id, type, ts) {
   let agent = session.agents.get(id);
   if (!agent) {
-    agent = { id, type: type ?? '', state: 'running', start: ts, end: 0, text: '', parent: '', call: '' };
+    agent = { id, type: type ?? '', state: 'running', start: ts, end: 0, parent: '', call: '' };
     session.agents.set(id, agent);
     guess(session, agent);
     // The stop event of this subagent came before its first event.
     const stop = session.stops.get(id);
-    if (stop && stop.ts >= ts) { agent.state = 'done'; agent.end = stop.ts; agent.text = stop.text; }
+    if (stop && stop.ts >= ts) { agent.state = 'done'; agent.end = stop.ts; }
     session.stops.delete(id);
     if (session.agents.size > MAX_AGENTS) {
       const old = [...session.agents.values()].find((item) => item.state === 'done' && item !== agent);
@@ -81,7 +80,7 @@ function openAgent(session, id, type, ts) {
 function dropAgent(session, agent) {
   session.agents.delete(agent.id);
   for (const item of [...session.tools.values()]) {
-    if (item.owner === agent.id || item.id === agent.call) { session.tools.delete(item.id); session.more += 1; }
+    if (item.owner === agent.id || item.id === agent.call) session.tools.delete(item.id);
   }
 }
 
@@ -125,7 +124,7 @@ function openTool(session, event) {
     session.tools.set(id, item);
     if (session.tools.size > MAX_ITEMS) {
       const old = [...session.tools.values()].find((one) => one.state !== 'running' && one !== item);
-      if (old) { session.tools.delete(old.id); session.more += 1; }
+      if (old) session.tools.delete(old.id);
     }
   }
   if (!item.name) item.name = tool.name;
@@ -162,11 +161,7 @@ export function reduce(state, event) {
       if (item.state !== 'running' && !item.child) session.tools.delete(item.id);
     }
     session.stops.clear();
-    // A turn that Claude Code started by itself keeps the last prompt of the user on show.
-    if (event.kind !== 'own-turn') session.prompt = event.text ?? '';
-    session.text = '';
     session.note = '';
-    session.more = 0;
     session.waits = [];
   } else if (event.event === 'tool-start') {
     const item = openTool(session, event);
@@ -196,16 +191,14 @@ export function reduce(state, event) {
     if (agent) {
       agent.state = 'done';
       agent.end = ts;
-      if (event.text) agent.text = event.text;
       closeOpen(session, ts, agent.id);
     } else if (event.agent) {
       // The subagent is not known. Keep the stop in a short list, in case its start event comes later.
-      session.stops.set(event.agent.id, { ts, text: event.text ?? '' });
+      session.stops.set(event.agent.id, { ts });
       if (session.stops.size > MAX_AGENTS) session.stops.delete(session.stops.keys().next().value);
     }
   } else if (event.event === 'stop') {
     if (!setState(session, 'idle', ts)) return;
-    if (event.text) session.text = event.text;
     session.note = event.kind === 'failed' ? 'The turn stopped with an error.' : '';
     closeOpen(session, ts, '');
   } else if (event.event === 'session-end') {
@@ -259,36 +252,3 @@ export function summary(state, tickets = [], now = Date.now()) {
   });
 }
 
-function tree(session, owner, depth) {
-  const rows = [];
-  for (const item of session.tools.values()) {
-    if (item.owner !== owner) continue;
-    if (!isAgentTool(item.name)) { rows.push({ kind: 'tool', name: item.name, label: item.label, state: item.state, start: item.start, ms: item.ms }); continue; }
-    const agent = item.child ? session.agents.get(item.child) : null;
-    rows.push(agentRow(session, agent, item, depth));
-  }
-  for (const agent of session.agents.values()) {
-    // A subagent without a call in the list stands at its parent, or at the top.
-    const loose = !agent.call || !session.tools.has(agent.call);
-    const parent = agent.parent && session.agents.has(agent.parent) ? agent.parent : '';
-    if (loose && parent === owner && agent.id !== owner) rows.push(agentRow(session, agent, null, depth));
-  }
-  return rows.sort((a, b) => a.start - b.start);
-}
-
-function agentRow(session, agent, call, depth) {
-  // A call with a subagent shows the state of the subagent: a background call ends at once, and its subagent works on.
-  const state = agent ? (agent.state === 'running' ? 'running' : call?.state === 'failed' ? 'failed' : 'done') : call.state;
-  return {
-    kind: 'agent', name: agent?.type || call?.sub || 'agent', label: call?.label ?? '', state,
-    start: call?.start ?? agent.start, ms: agent ? (agent.end ? Math.max(0, agent.end - agent.start) : 0) : call.ms,
-    text: agent?.text ?? '', items: agent && depth < MAX_DEPTH ? tree(session, agent.id, depth + 1) : [],
-  };
-}
-
-/** The prompt, the last text, and the tree of tool calls and subagents of the sessions with these short ids. */
-export function detail(state, ids) {
-  return [...state.sessions.values()].filter((session) => ids.includes(session.sid)).map((session) => ({
-    id: session.sid, prompt: session.prompt, text: session.text, more: session.more, items: tree(session, '', 1),
-  }));
-}

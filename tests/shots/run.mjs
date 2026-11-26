@@ -1,11 +1,10 @@
-// Screenshots of the forge pages: the styleguide, the board, the wiki page, and the canvas of the demo ticket, in 2 themes and 2 widths.
-// Run: npm run shots [-- --out <folder>] [--only <page>] [--live]. `--only canvas` takes the canvas and each page that starts with "canvas-".
+// Screenshots of the forge pages: the styleguide, the board, and the wiki page, in 2 themes and 2 widths.
+// Run: npm run shots [-- --out <folder>] [--only <page>] [--live]. `--only board` takes the board and each page that starts with "board-".
 // Forge 9.2 stage 5 adds the pictures of the server states: error-403 and error-404 (the error pages of the live server, for a request that wants HTML),
 // board-changed (the notice "The board changed.", after a ticket file changed), and board-stopped (the notice that the server stopped; it stops the demo server and starts it again,
 // and it checks that the notice goes by itself when the server is back). The stopped picture has failed requests by design: only a request for /live that fails with a refused or
 // closed connection is not a problem in that picture. Each other error counts.
-// The canvas has one picture for each part at reading size (canvas-plan, canvas-code, canvas-review, canvas-story), one with the comment tray open (canvas-tray),
-// and one with the Live panel and 2 sessions (canvas-live). Each picture has its own browser context, so no saved view or comment crosses from one to the next.
+// Each picture has its own browser context, so no saved view crosses from one to the next.
 // The styleguide also gives preview-<width>.png (the top of a board) and icons-1500.png (the sprites and the letters, at 2 times the size).
 // It needs Chromium (FORGE_CHROMIUM, or chromium, chromium-browser, or google-chrome on the PATH) and Node 22 or later (the global WebSocket).
 // It uses no dependency. It seeds the demo of tests/fixtures/demo.mjs in a new temporary folder, and it starts its own live server on a free port
@@ -13,13 +12,12 @@
 // It exits with 1 when a page has a console error, a content-policy violation, or a wrong --bg for its theme. It is not part of npm test.
 import { spawn, spawnSync } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { rawDir } from '../../plugins/forge/scripts/lib/layout.mjs';
-import { liveDir, serveLive } from '../../plugins/forge/scripts/lib/live-serve.mjs';
-import { recordEnd, recordStart } from '../../plugins/forge/scripts/lib/sessions.mjs';
+import { serveLive } from '../../plugins/forge/scripts/lib/live-serve.mjs';
 import { tokenValue } from '../../plugins/forge/scripts/lib/ui/tokens.mjs';
 import { renderStyleguide } from '../../plugins/forge/scripts/lib/ui/styleguide.mjs';
 import { writeViews } from '../../plugins/forge/scripts/lib/views.mjs';
@@ -30,14 +28,11 @@ const WIDTHS = [1500, 620];
 const HEIGHT = 950;
 const MAX_FULL = 16000;
 // wiki-outbox is the wiki page with a Mermaid drawing. board-none and wiki-none are the pages after a filter that finds nothing.
-// canvas-live is the last of the canvas pages, and it comes after the other pages' work: its sessions show on the board line of a later page.
 // The pictures of the server states come last: board-stopped stops the demo server.
-const PAGES = ['styleguide', 'board', 'wiki', 'canvas', 'canvas-plan', 'canvas-code', 'canvas-review', 'canvas-story', 'canvas-tray', 'wiki-outbox', 'board-none', 'wiki-none', 'board-skip', 'board-focus', 'canvas-node', 'canvas-live', 'error-403', 'error-404', 'board-changed', 'board-stopped'];
-// A part of the canvas is shot at reading size, with a tall window: the page opens that part at 100%.
-const HEIGHTS = { 'canvas-plan': 1500, 'canvas-code': 1300, 'canvas-node': 1300, 'canvas-review': 1300, 'canvas-story': 1100 };
-const NARROW_TOO = ['styleguide', 'board', 'wiki', 'canvas', 'canvas-plan', 'canvas-code', 'wiki-outbox', 'board-none', 'wiki-none', 'error-403', 'board-changed'];
+const PAGES = ['styleguide', 'board', 'wiki', 'wiki-outbox', 'board-none', 'wiki-none', 'board-skip', 'board-focus', 'error-403', 'error-404', 'board-changed', 'board-stopped'];
+const NARROW_TOO = ['styleguide', 'board', 'wiki', 'wiki-outbox', 'board-none', 'wiki-none', 'error-403', 'board-changed'];
 // These pictures show the window and not the whole page: a notice is fixed at the bottom of the window.
-const WINDOW_ONLY = (name) => name.startsWith('canvas') || name === 'board-changed' || name === 'board-stopped';
+const WINDOW_ONLY = (name) => name === 'board-changed' || name === 'board-stopped';
 
 function fail(text) {
   console.error(`shots: ${text}`);
@@ -97,19 +92,11 @@ const URLS = {
   styleguide: pathToFileURL(styleguideFile).href,
   board: `${origin}/board?t=${token}`,
   wiki: `${origin}/wiki?t=${token}`,
-  canvas: `${origin}/ticket/${FULL_TICKET}/?t=${token}`,
-  'canvas-plan': `${origin}/ticket/${FULL_TICKET}/?t=${token}#zone-plan`,
-  'canvas-code': `${origin}/ticket/${FULL_TICKET}/?t=${token}#code-graph`,
-  'canvas-review': `${origin}/ticket/${FULL_TICKET}/?t=${token}#zone-review`,
-  'canvas-story': `${origin}/ticket/${FULL_TICKET}/?t=${token}#zone-story`,
-  'canvas-tray': `${origin}/ticket/${FULL_TICKET}/?t=${token}#zone-story`,
-  'canvas-live': `${origin}/ticket/${FULL_TICKET}/?t=${token}#zone-plan`,
   'wiki-outbox': `${origin}/wiki?t=${token}#app/outbox.md`,
   'board-none': `${origin}/board?t=${token}`,
   'wiki-none': `${origin}/wiki?t=${token}`,
   'board-skip': `${origin}/board?t=${token}`,
   'board-focus': `${origin}/board?t=${token}`,
-  'canvas-node': `${origin}/ticket/${FULL_TICKET}/?t=${token}#code-graph`,
   // A request that a browser makes for a page has the header Accept with text/html: the error pages need no other help.
   'error-403': `${origin}/board?t=${'0'.repeat(32)}`,
   'error-404': `${origin}/nope?t=${token}`,
@@ -117,49 +104,13 @@ const URLS = {
   'board-stopped': `${origin}/board?t=${token}`,
 };
 // A page that needs a step before the picture: the filter gets words that no ticket and no page has.
-// The step of the tray picture, in the page: a comment on the summary card of the story, and then the tray.
-const COMMENT_STEP = 'var card = document.querySelector("#zone-story .k-summary") || document.querySelector("#zone-story .card"); card.querySelector(".cbtn").click();'
-  + ' card.querySelector(".editor textarea").value = "Which tenants still use the old key? Mara knows.";'
-  + ' Array.prototype.filter.call(card.querySelectorAll(".editor button"), function (b) { return b.textContent === "Save"; })[0].click();'
-  + ' document.getElementById("tray-toggle").click();';
-// The view All shows each card, also a table, a code block, and a Mermaid drawing. The open cards move the zone, so the page goes to the zone again (and the browser scroll of a link goes back).
-const ALL_VIEW = (id) => `document.querySelector('[data-view="all"]').click(); history.replaceState(null, '', location.pathname + location.search); location.hash = '#${id}'; setTimeout(function () { var v = document.getElementById('viewport'); v.scrollTop = 0; v.scrollLeft = 0; }, 60);`;
 const AFTER = {
-  'canvas-plan': ALL_VIEW('zone-plan'),
-  'canvas-review': ALL_VIEW('zone-review'),
-  'canvas-story': ALL_VIEW('zone-story'),
-  'canvas-tray': COMMENT_STEP,
   'board-none': 'var f = document.getElementById("filter"); f.value = "zzzz"; f.dispatchEvent(new Event("input"));',
   'wiki-none': 'var f = document.getElementById("filter"); f.value = "zzzz"; f.dispatchEvent(new Event("input"));',
-  // The focus pictures: the skip link, a card link, and a component of the code map (it gets the focus, and Enter shows its arrows).
+  // The focus pictures: the skip link and a card link.
   'board-skip': 'document.querySelector(".skip").focus();',
   'board-focus': 'document.querySelector(".tcard .open").focus();',
-  'canvas-node': 'var n = document.querySelector(".node"); n.focus(); n.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));',
 };
-
-// The Live picture needs one working session and one closed session of the ticket. The working session is a Claude Code session with a few calls
-// (its events go to the server as the hooks send them), and the closed session is a line of the session list (as the session hooks write it).
-// This server is the only one in its data folder, so its state file is the only file of the folder.
-const stateDir = liveDir(DATA);
-const state = { token: JSON.parse(readFileSync(path.join(stateDir, readdirSync(stateDir).filter((name) => name.endsWith('.json'))[0]), 'utf8')).token };
-async function seedSessions() {
-  const session = '3f1c2d4e-5a6b-4c7d-8e9f-0a1b2c3d4e5f';
-  const base = { v: 1, host: 'claude', session, cwd: '/code/demo.worktrees/APP-101', title: 'APP-101 - 🛠️ - Fix outbox retry' };
-  let ts = Date.now() - 4000;
-  const send = (event, extra = {}) => fetch(`${origin}/event`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Forge-Token': state.token }, body: JSON.stringify({ ...base, event, ts: (ts += 400), ...extra }),
-  });
-  await send('prompt', { text: 'Run the tests for the retry job and fix what fails.' });
-  await send('tool-start', { tool: { id: 'T1', name: 'Read', label: 'src/RetryJob.cs' } });
-  await send('tool-end', { tool: { id: 'T1', name: 'Read', label: 'src/RetryJob.cs' } });
-  await send('tool-start', { tool: { id: 'T2', name: 'Edit', label: 'src/RetryJob.cs' } });
-  await send('tool-end', { tool: { id: 'T2', name: 'Edit', label: 'src/RetryJob.cs' } });
-  await send('tool-start', { tool: { id: 'T3', name: 'Bash', label: 'dotnet test' } });
-  const raw = rawDir(demo.wiki);
-  const now = Date.now();
-  recordStart(raw, { host: 'copilot-cli', id: 'cp-demo-1', cwd: '/code/demo.worktrees/APP-101', prompt: 'Write the plan for APP-101' }, now - 3 * 3600 * 1000);
-  recordEnd(raw, { host: 'copilot-cli', id: 'cp-demo-1', cwd: '/code/demo.worktrees/APP-101', reason: 'user_exit' }, now - 2 * 3600 * 1000);
-}
 
 async function stopServer() {
   server.signals.emit('SIGTERM');
@@ -280,8 +231,7 @@ const EXPECTED = {
 };
 
 async function shoot(name, theme, width) {
-  const height = HEIGHTS[name] ?? HEIGHT;
-  if (name === 'canvas-live') await seedSessions();
+  const height = HEIGHT;
   const { browserContextId } = await send('Target.createBrowserContext');
   const { targetId } = await send('Target.createTarget', { url: 'about:blank', browserContextId });
   const { sessionId } = await send('Target.attachToTarget', { targetId, flatten: true });
@@ -307,14 +257,6 @@ async function shoot(name, theme, width) {
   await Promise.race([loaded, sleep(15000)]);
   if (AFTER[name]) await call('Runtime.evaluate', { expression: AFTER[name] });
   if (SETUP[name]) await SETUP[name]({ call, mine, theme, width });
-  // The Live panel fills after its first answer from the server.
-  if (name === 'canvas-live') {
-    for (let tries = 0; tries < 40; tries++) {
-      const { result } = await call('Runtime.evaluate', { expression: 'document.querySelectorAll("#live-body .lv-session, #live-past .lv-session").length', returnByValue: true });
-      if (result.value >= 2) break;
-      await sleep(100);
-    }
-  }
   // Wait until each Mermaid block is a drawing, or 3 seconds at most.
   for (let tries = 0; tries < 30; tries++) {
     const { result } = await call('Runtime.evaluate', { expression: 'Array.prototype.every.call(document.querySelectorAll(\'pre[data-lang="mermaid"]\'), function (pre) { return pre.hasAttribute("data-drawn"); })', returnByValue: true });

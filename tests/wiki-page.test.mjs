@@ -1,4 +1,4 @@
-// The wiki page: the model of the canonical pages, the links from a ticket and from the board to the wiki, and the closed tickets.
+// The wiki page: the model of the canonical pages, the links from a page to the wiki, from the board to the wiki, and the closed tickets.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -7,13 +7,12 @@ import os from 'node:os';
 import path from 'node:path';
 import { buildBoard } from '../plugins/forge/scripts/lib/board.mjs';
 import { renderBoardPage } from '../plugins/forge/scripts/lib/board-page.mjs';
-import { buildCanvas, markdown, renderCanvas } from '../plugins/forge/scripts/lib/canvas.mjs';
-import { CANVAS_SCRIPT } from '../plugins/forge/scripts/lib/canvas-page.mjs';
+import { markdown } from '../plugins/forge/scripts/lib/markdown.mjs';
 import { MERMAID_FILE, MERMAID_INTEGRITY, MERMAID_ROUTE, MERMAID_SHA256, MERMAID_VERSION, copyMermaid, mermaidPath, needsMermaid, readMermaid } from '../plugins/forge/scripts/lib/mermaid.mjs';
 import { UI_SCRIPT, UI_STYLE, buildNav } from '../plugins/forge/scripts/lib/ui.mjs';
 import { writeViews } from '../plugins/forge/scripts/lib/views.mjs';
 import { WIKI_SCRIPT, WIKI_STYLE, renderWikiPage } from '../plugins/forge/scripts/lib/wiki-page.mjs';
-import { buildWiki, linkTargets, pageOf, ticketRefs, wikiLinks } from '../plugins/forge/scripts/lib/wiki.mjs';
+import { buildWiki, linkTargets, pageHash, pageOf } from '../plugins/forge/scripts/lib/wiki.mjs';
 
 const TOKEN = 'a'.repeat(32);
 const TODAY = '2026-11-17';
@@ -77,9 +76,8 @@ test('the wiki model has each canonical page, in the order of the folders, with 
     { key: 'APP-1', title: 'First ticket', updated: '2026-10-01', path: 'tickets/app-1.md' },
   ]);
   // The open ticket names 3 pages: with a link, with a path in the text, and with a path in code.
-  assert.deepEqual(model.refs, { 'app-9': ['app/retry.md', 'tickets/app-2.md', 'tooling/build.md'] });
+  assert.deepEqual(model.pages.filter((item) => item.tickets.length).map((item) => item.path), ['app/retry.md', 'tickets/app-2.md', 'tooling/build.md']);
   assert.deepEqual(model.byPath.get('app/retry.md').tickets, [{ key: 'APP-9', folder: 'app-9', title: 'Fix outbox retry', state: 'active' }]);
-  assert.deepEqual(ticketRefs(model, path.join(w.root, 'raw', 'tickets', 'nope')), []);
   assert.deepEqual(model.errors, []);
 });
 
@@ -135,18 +133,18 @@ test('the wiki page is one self-contained file: the list of the pages, each page
   assert.match(build, /<pre data-lang="sh"><code>cat \[not a link\]\(app\/retry\.md\)<\/code><\/pre>/);
   assert.match(build, /<span class="pill st-go">verified<\/span><span>updated 2026-11-10<\/span><code>tooling\/build\.md<\/code><a href="vscode:\/\/file\/[^"]*tooling\/build\.md"/);
   assert.match(build, /<h3 class="eyebrow">Sources<\/h3><ul><li><a href="https:\/\/example\.com\/build" target="_blank" rel="noopener noreferrer">https:\/\/example\.com\/build<\/a><\/li><li><a href="#app\/retry\.md"><code>app\/retry\.md<\/code><\/a><\/li><li><code>scripts\/build\.mjs:12<\/code><\/li>/);
-  assert.match(build, /<h3 class="eyebrow">Used by<\/h3><ul><li><a href="tickets\/app-9\/canvas\.html" data-nav><span class="key">APP-9<\/span> Fix outbox retry<\/a> <small>ticket, active<\/small><\/li><li><a href="#tickets\/app-2\.md">APP-2: Old fix<\/a> <small>closed ticket<\/small><\/li>/);
+  assert.match(build, /<h3 class="eyebrow">Used by<\/h3><ul><li><a href="tickets\/app-9\/README\.md" data-nav><span class="key">APP-9<\/span> Fix outbox retry<\/a> <small>ticket, active<\/small><\/li><li><a href="#tickets\/app-2\.md">APP-2: Old fix<\/a> <small>closed ticket<\/small><\/li>/);
   assert.match(html, /<span class="pill st-needs-me">needs a check<\/span>/);
   // The links to the other pages.
   assert.match(html, /<a class="quiet" href="board\.html" data-nav title="The board of all tickets \(b\)">Board<\/a>/);
-  assert.match(html, /"nav":\{"board":"board\.html","wiki":"","prev":"","next":""\}/);
+  assert.match(html, /"nav":\{"board":"board\.html","wiki":""\}/);
   assert.match(html, /<li class="group">Closed<\/li><li><a href="#tickets\/app-2\.md" data-text="app-2 old fix closed">/, 'the switcher has the closed tickets, and their links stay in the page');
   assert.match(renderWikiPage(model, { links: 'file' }), /<a href="file:\/\/[^"]*tooling\/build\.md"/);
   assert.throws(() => renderWikiPage(model, { links: 'web' }), /Unknown link mode/);
   // A served page: the token is in the data, and the links use the routes of the server.
   const served = renderWikiPage(model, { serve: { token: TOKEN }, nav: buildNav(board, { from: 'wiki', token: TOKEN, closed: model.closed }) });
   assert.match(served, new RegExp(`"token":"${TOKEN}","nav":\\{"board":"/board\\?t=${TOKEN}","wiki":""`));
-  assert.match(served, new RegExp(`<a href="/ticket/app-9/\\?t=${TOKEN}" data-nav><span class="key">APP-9</span>`));
+  assert.match(served, new RegExp(`<a href="/ticket/app-9/README\\.md\\?t=${TOKEN}" data-nav><span class="key">APP-9</span>`));
   assert.throws(() => renderWikiPage(model, { serve: { token: 'short' } }), /32 hexadecimal/);
   // An empty wiki still gives a page.
   const empty = mkdtempSync(path.join(os.tmpdir(), 'forge-wiki-'));
@@ -163,35 +161,21 @@ test('the wiki script sits in the page and asks only its own server', () => {
   assert.match(UI_SCRIPT, /event\.key === 'w' && nav\.wiki\) go\(nav\.wiki\)/);
 });
 
-test('a link from a ticket to a wiki page opens the wiki page, and the canvas has the Wiki menu', (t) => {
+test('markdown turns a link or a path of a wiki page into a link of that page, and each other link stays as it was', (t) => {
   const w = wiki(t);
-  const board = buildBoard(w.root, { today: TODAY });
-  const model = buildWiki(w.root, { board });
+  const model = buildWiki(w.root);
   const dir = path.join(w.root, 'raw', 'tickets', 'app-9');
-  const links = wikiLinks(model, { from: 'app-9', dir });
-  assert.equal(links.home, '../../wiki.html');
-  assert.deepEqual(links.refs.map((ref) => [ref.path, ref.title, ref.href]), [
-    ['app/retry.md', 'Retry', '../../wiki.html#app/retry.md'], ['tickets/app-2.md', 'APP-2: Old fix', '../../wiki.html#tickets/app-2.md'],
-    ['tooling/build.md', 'Build <fast> & "safe"', '../../wiki.html#tooling/build.md'],
-  ]);
-  const html = renderCanvas(buildCanvas(dir), { nav: buildNav(board, { from: 'app-9', closed: model.closed }), wiki: links });
-  assert.match(html, /The limits are in <a href="\.\.\/\.\.\/wiki\.html#app\/retry\.md" data-nav>the retry page<\/a>\./);
-  assert.match(html, /The build steps are in <a href="\.\.\/\.\.\/wiki\.html#tooling\/build\.md" data-nav>tooling\/build\.md<\/a>, and the old fix is <a href="\.\.\/\.\.\/wiki\.html#tickets\/app-2\.md" data-nav><code>tickets\/app-2\.md<\/code><\/a>\./);
+  const wikiLinks = {
+    page: (relative) => (model.byPath.has(relative) ? `#${pageHash(relative)}` : ''),
+    link: (target) => { const found = pageOf(model, dir, target); return found ? `#${pageHash(found)}` : ''; },
+  };
+  const story = readFileSync(path.join(dir, 'story.md'), 'utf8');
+  const html = markdown(story, { links: 'vscode', wiki: wikiLinks });
+  assert.match(html, /The limits are in <a href="#app\/retry\.md">the retry page<\/a>\./);
+  assert.match(html, /The build steps are in <a href="#tooling\/build\.md">tooling\/build\.md<\/a>, and the old fix is <a href="#tickets\/app-2\.md"><code>tickets\/app-2\.md<\/code><\/a>\./);
   assert.match(html, /Not a page: evidence\/run\.md and <a href="plan\.md">the plan<\/a>\./, 'each other link stays as it was');
-  assert.match(html, /<details class="refs" id="wiki-refs"><summary [^>]*>Wiki <span>3<\/span><\/summary><ul><li><a href="\.\.\/\.\.\/wiki\.html#app\/retry\.md" data-nav><span class="what">Retry<\/span><small>app\/retry\.md<\/small><\/a><\/li>/);
-  assert.match(html, /<li class="all"><a href="\.\.\/\.\.\/wiki\.html" data-nav>All wiki pages<\/a><\/li><\/ul><\/details>/);
-  assert.match(html, /<dt><kbd>w<\/kbd><\/dt><dd>Go to the wiki of the repository<\/dd>/);
-  assert.match(html, /<li class="group">Closed<\/li><li><a href="\.\.\/\.\.\/wiki\.html#tickets\/app-2\.md" data-nav data-text="app-2 old fix closed">/);
-  // A served page: the wiki route with the token, and the token is not added a second time.
-  const served = wikiLinks(model, { from: 'app-9', token: TOKEN, dir });
-  assert.equal(served.page('app/retry.md'), `/wiki?t=${TOKEN}#app/retry.md`);
-  assert.equal(served.page('app/nope.md'), '');
-  assert.match(renderCanvas(buildCanvas(dir), { serve: { token: TOKEN }, wiki: served }), new RegExp(`<a href="/wiki\\?t=${TOKEN}#app/retry\\.md" data-nav>the retry page</a>`));
-  // Without the wiki, the canvas has no menu and the links are the same as before.
-  const alone = renderCanvas(buildCanvas(dir));
-  assert.doesNotMatch(alone, /wiki-refs|wiki\.html/);
-  assert.match(alone, /<a href="\.\.\/\.\.\/\.\.\/app\/retry\.md">the retry page<\/a>/);
-  assert.match(renderCanvas(buildCanvas(dir), { wiki: wikiLinks(buildWiki(w.root), { from: 'x', dir: path.join(w.root, 'raw', 'tickets', 'none') }) }), /This ticket names no wiki page\./);
+  // Without the wiki, the links are the same as before.
+  assert.match(markdown(story), /<a href="\.\.\/\.\.\/\.\.\/app\/retry\.md">the retry page<\/a>/);
   // The marks that keep a finished link do not change the other rules of a line.
   assert.equal(markdown('[' + String.fromCharCode(0xE000) + '0' + String.fromCharCode(0xE001) + '](https://e.com/a)'), '<p><a href="https://e.com/a" target="_blank" rel="noopener noreferrer">0</a></p>', 'a mark in the source is removed');
   assert.equal(markdown('A **bold** `x.md` and [**b** `c`](https://e.com/a) at https://e.com/b.'),
@@ -203,16 +187,16 @@ test('the board page has the link to the wiki and the closed tickets, and writeV
   const board = buildBoard(w.root, { today: TODAY });
   const model = buildWiki(w.root, { board });
   const nav = buildNav(board, { closed: model.closed });
-  assert.deepEqual([nav.wiki, nav.page('app/a b.md')], ['wiki.html', 'wiki.html#app/a%20b.md']);
+  assert.equal(nav.wiki, 'wiki.html');
   assert.deepEqual(nav.closed.map((item) => [item.key, item.href]), [['APP-2', 'wiki.html#tickets/app-2.md'], ['APP-1', 'wiki.html#tickets/app-1.md']]);
-  assert.equal(buildNav(board, { from: 'wiki' }).tickets[0].href, 'tickets/app-9/canvas.html');
-  assert.equal(buildNav(board, { from: 'app-9', token: TOKEN }).wiki, `/wiki?t=${TOKEN}`);
+  assert.equal(buildNav(board, { from: 'wiki' }).tickets[0].href, 'tickets/app-9/README.md', 'a ticket of the list opens at its README');
+  assert.equal(buildNav(board, { token: TOKEN }).wiki, `/wiki?t=${TOKEN}`);
   const html = renderBoardPage(board, { wiki: w.root, nav });
   assert.match(html, /<a class="quiet" href="wiki\.html" data-nav title="The wiki of the repository \(w\)">Wiki<\/a>/);
   // Forge 9.2: the closed list is a sunk kit frame with a pixel name (the real text is in a .sr span) and a kit count.
   assert.match(html, /<details class="frame sunk lane bsec st-done" id="lane-closed" data-state="closed"><summary><h2 class="bhead"><span class="pxt pxt-3" style="--n:\d+"><svg [^>]*><path d="[^"]+"\/><\/svg><span class="sr">Closed tickets<\/span><\/span><span class="count">2<\/span><small>their summary pages in the wiki<\/small><\/h2><\/summary>/);
   assert.match(html, /<li class="trow" data-state="closed" data-text="app-2 old fix closed"><span class="key">APP-2<\/span><a class="open" href="wiki\.html#tickets\/app-2\.md" data-nav title="Old fix">Old fix<\/a><span class="age">2026-11-12<\/span><\/li>/);
-  assert.match(html, /"nav":\{"board":"","wiki":"wiki\.html","prev":"","next":""\}/);
+  assert.match(html, /"nav":\{"board":"","wiki":"wiki\.html"\}/);
   assert.doesNotMatch(renderBoardPage(board, { wiki: w.root }), /lane-closed/, 'a board without closed tickets has no such list');
   // A wiki with closed tickets only: the board says that no ticket is open.
   rmSync(path.join(w.root, 'raw', 'tickets'), { recursive: true });
@@ -222,15 +206,13 @@ test('the board page has the link to the wiki and the closed tickets, and writeV
 
 test('writeViews writes the wiki page with the other pages, and it keeps a page that did not change', (t) => {
   const w = wiki(t);
-  const first = writeViews(w.root, { today: TODAY, now: new Date('2026-11-17T10:00:00Z') });
+  const first = writeViews(w.root, { today: TODAY });
   const file = path.join(w.root, 'raw', 'wiki.html');
   assert.deepEqual([first.wiki.file, first.wiki.written, first.wiki.pages, first.wiki.closed], [file, true, 7, 2]);
   assert.ok(existsSync(file));
-  assert.match(readFileSync(path.join(w.root, 'raw', 'tickets', 'app-9', 'canvas.html'), 'utf8'), /id="wiki-refs"/);
   assert.match(readFileSync(path.join(w.root, 'raw', 'board.html'), 'utf8'), /id="lane-closed"/);
-  const again = writeViews(w.root, { today: TODAY, now: new Date('2026-11-17T11:00:00Z') });
+  const again = writeViews(w.root, { today: TODAY });
   assert.equal(again.wiki.written, false, 'the same wiki gives the same page');
-  assert.deepEqual(again.canvases.written, []);
   w.put('tooling/new.md', page('New page', 'Text.'));
   assert.equal(writeViews(w.root, { today: TODAY }).wiki.written, true);
   assert.equal(writeViews(w.root, { today: TODAY, dryRun: true }).wiki.written, false);
@@ -285,28 +267,11 @@ test('only a wiki with a Mermaid block loads the Mermaid file: from the folder o
   assert.deepEqual(readFileSync(copy), readFileSync(mermaidPath()));
 });
 
-test('a ticket canvas draws the Mermaid block of a card with the same file, and only when the caller gives the file', (t) => {
+test('the page script draws a Mermaid block with the shared drawing code, and the board page has no diagram', (t) => {
   const w = wiki(t);
-  const dir = path.join(w.root, 'raw', 'tickets', 'app-9');
-  assert.doesNotMatch(renderCanvas(buildCanvas(dir), { mermaid: true }), /"mermaid":\{/, 'a canvas without a diagram block has no link to the file');
-  w.put('raw/tickets/app-9/story.md', ['---', 'type: story', '---', '# Story APP-9', '', 'Problem: retries stop.', '', '## Flow', '', '```mermaid', 'flowchart LR', '  A --> B', '```', ''].join('\n'));
-  const model = buildCanvas(dir);
-  assert.match(renderCanvas(model), /<pre data-lang="mermaid"><code>flowchart LR\n {2}A --&gt; B<\/code><\/pre>/);
-  assert.doesNotMatch(renderCanvas(model), /"mermaid":\{/, 'a canvas that stands alone has no Mermaid file: the block stays as code');
-  assert.match(renderCanvas(model, { mermaid: true }), /"mermaid":\{"src":"\.\.\/\.\.\/mermaid\.tiny\.js"\}/, 'the file is in raw/, two folders above the canvas');
-  const served = renderCanvas(model, { mermaid: true, serve: { token: TOKEN } });
-  assert.ok(served.includes(`"mermaid":{"src":"${MERMAID_ROUTE}?t=${TOKEN}","integrity":"${MERMAID_INTEGRITY}"}`));
-  assert.equal(served.match(/<script\b/g).length, 2);
-  // The drawing code is shared: one stage outside of the page parts, and the canvas places its arrows again after a draw.
-  for (const script of [WIKI_SCRIPT, CANVAS_SCRIPT]) assert.ok(script.includes(UI_SCRIPT) && UI_SCRIPT.includes("stage.id = 'mermaid-stage';"));
-  assert.match(CANVAS_SCRIPT, /drawMermaid\(function \(\) \{ return board; \}, function \(\) \{ drawEdges\(\);/);
+  assert.ok(WIKI_SCRIPT.includes(UI_SCRIPT) && UI_SCRIPT.includes("stage.id = 'mermaid-stage';"), 'one stage outside of the page parts');
   assert.match(WIKI_SCRIPT, /drawMermaid\(function \(\) \{ return pages\[at\]; \}\);/);
   assert.doesNotMatch(renderBoardPage(buildBoard(w.root, { today: TODAY }), { wiki: w.root }), /"mermaid":\{/, 'the board page has no diagram');
-  // The wiki of this test has no diagram, so the canvas alone makes writeViews copy the file.
-  const views = writeViews(w.root, { today: TODAY });
-  assert.deepEqual(views.wiki.mermaid, { file: path.join(w.root, 'raw', MERMAID_FILE), written: true });
-  assert.match(readFileSync(path.join(dir, 'canvas.html'), 'utf8'), /"mermaid":\{"src":"\.\.\/\.\.\/mermaid\.tiny\.js"\}/);
-  assert.deepEqual(writeViews(w.root, { today: TODAY }).canvases.written, [], 'the same ticket gives the same canvas');
 });
 
 test('the wiki page is built from the kit: the bar shape, a pixel title, the prose, the status pill, and the notices', (t) => {
@@ -317,7 +282,7 @@ test('the wiki page is built from the kit: the bar shape, a pixel title, the pro
   const html = renderWikiPage(model, { nav: buildNav(board, { from: 'wiki', closed: model.closed }) });
   // The bar: the anvil (a decoration), the Board link, the separator, the title in pixel letters with its real text, the search field, and the tools.
   assert.match(html, /<header id="rail"><div class="bar"><svg class="px"[^>]*aria-hidden="true">.*<\/svg><a class="quiet" href="board\.html" data-nav title="The board of all tickets \(b\)">Board<\/a><span class="sep" aria-hidden="true">\/<\/span><h1><span class="pxt pxt-3" style="--n:\d+"><svg [^>]*><path d="[^"]+"\/><\/svg><span class="sr">Wiki<\/span><\/span><\/h1><label class="search"><span class="sr">Filter the pages<\/span><input type="search" id="filter"/);
-  // A page: the text is one kit prose box, and the facts line is .wmeta (the canvas keeps .meta for another thing).
+  // A page: the text is one kit prose box, and the facts line is .wmeta.
   assert.match(html, /<p class="wmeta"><span class="pill st-go">verified<\/span>/);
   assert.match(html, /<div class="prose">/);
   assert.doesNotMatch(html, /class="md"|class="meta"/);

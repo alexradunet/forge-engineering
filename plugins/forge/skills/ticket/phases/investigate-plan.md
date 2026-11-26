@@ -9,7 +9,7 @@ After a compaction of the session, read this file again before you use its steps
 - Start only after Scoped? is fresh. Investigate every ticket, also a small fix.
 - Start `plan.md` from [templates/plan.md](../templates/plan.md) with only the **Diagnosis** section: one line for each suspected cause, with the status `open`, `supported`, or `rejected`.
 - Save each tool result that supports a finding as `evidence/<yyyy-mm-dd>-<topic>.md`, with the tool and its parameters, the time window, and a sanitized excerpt. Link each hypothesis to its evidence file.
-- Add each verified code fact to `map.md`: the components with their layer, the flow, the data, the toggles, the jobs, and the tests. Remove `(unverified)` when you verify a guess.
+- Add each verified code fact to `map.md`: the components with their layer, the flow, the data, the toggles, the jobs, and the tests. Remove `(unverified)` when you verify a guess. Keep `map.md` to the slice of the code that this ticket needs: 6 to 20 components.
 - Read-only tools that the `## Investigate` policy section allows do not need approval. CI reads (`ci.status`, `ci.logs`) do not need approval.
 - Write each environment, build, and test problem with its fix as a `problem` entry in `journal.md`. Append one `log` entry per work session.
 - Update `phase`, `state`, `next`, `updated`, and the Now card in `README.md`.

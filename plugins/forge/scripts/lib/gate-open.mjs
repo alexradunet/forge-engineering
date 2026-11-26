@@ -11,6 +11,7 @@ import { diffGate, gateName, renderDiff, saveSnapshot, sections } from './readin
 import { rewriteFrontmatter } from './readme-write.mjs';
 
 // The files that a review set never holds, besides the files that a manifest must not list.
+// canvas.html is a stale page that an older ticket folder can still hold (Forge 11 removed the ticket canvas).
 const KEPT_OUT = ['approvals/history.md', 'journal.md', 'canvas.html'];
 const REVIEW_FILE = /^evidence\/plan-review-(\d{3})\.md$/;
 
@@ -31,7 +32,7 @@ function documentPath(dir, value) {
 /** The bytes of one document of the set. It refuses a missing file, a link, and a file that a manifest must not hold. */
 function readDocument(dir, relative) {
   const key = relative.toLowerCase();
-  if (barredFromManifest(key) || KEPT_OUT.includes(key)) throw new Error(`${relative} cannot be in a review set: approval records, logs, and the canvas stay outside it.`);
+  if (barredFromManifest(key) || KEPT_OUT.includes(key)) throw new Error(`${relative} cannot be in a review set: approval records, logs, and a stale canvas page stay outside it.`);
   try { return regular(within(dir, relative)); }
   catch (error) { throw new Error(error.code === 'ENOENT' ? `${relative} does not exist.` : `${relative}: ${error.message}`); }
 }

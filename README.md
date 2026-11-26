@@ -3,7 +3,7 @@
 `forge` is an agent plugin for the [VS Code Agents window](https://code.visualstudio.com/docs/agents/run/agents-window).
 The same plugin folder also runs in GitHub Copilot CLI and Claude Code (see Hosts).
 It gives every agent session a ticket workflow with review gates, a small set of plain ticket documents,
-a ticket canvas in the browser, a repository wiki, coordinated agent sessions, and a ticket board that any session can show.
+a repository wiki, coordinated agent sessions, and a ticket board that any session can show.
 
 forge has a generic core and one profile (see Profile). This build has the GitHub profile:
 
@@ -122,13 +122,13 @@ Setup offers the native wiki of the private repository, a separate private `<rep
 | `plugins/forge/plugin.json` | Plugin manifest ([Agent Plugins 1.0](https://agent-plugins.org)) for all hosts. Claude Code takes the name from the folder and the version from its marketplace. |
 | `.github/plugin/marketplace.json`, `.claude-plugin/marketplace.json` | The marketplaces for VS Code and Copilot CLI, and for Claude Code. `tests/packaging.test.mjs` keeps the name, the version, and the source the same in each manifest, and runs each hook command. |
 | `plugins/forge/context/` | The session rules, in a short form: `forge` (paths, ticket sessions, host verbs, the rules for external writes) and `style` (response style, "No AI tells", response shape, memory). The `sessionStart` hook gives them to each session. `tools.md` holds the steps that the agent reads before the first external call: capabilities, tool choice, external writes, the gate guard, and the manual step. `tests/context-budget.test.mjs` keeps the sizes. |
-| `plugins/forge/hosts/` | One verb table for each host: `vscode.md`, `copilot-cli.md`, `claude.md`. The hook adds the verb table of the current host to the context. The other parts of the file (the ticket canvas, the feature documentation) stay in the file, and the agent reads them at the step. |
+| `plugins/forge/hosts/` | One verb table for each host: `vscode.md`, `copilot-cli.md`, `claude.md`. The hook adds the verb table of the current host to the context. The other parts of the file (the pages, the feature documentation) stay in the file, and the agent reads them at the step. |
 | `plugins/forge/com.github.copilot/hooks/` | `hooks.json`: the `sessionStart` hook. It gives each session the paths, the ticket context, the `forge` and `style` rules, and the approved company rules of `<wiki>/rules/`. The `preToolUse` hook is the gate guard (`forge.mjs hook pre-tool`, see Review gates). Forge 9.1 adds the `sessionEnd` hook: with `sessionStart`, it writes the session list of a Copilot CLI session (see [Live view](#-live-view)). |
 | `plugins/forge/hooks/` | `hooks.json`: the same context for Claude Code (spike). `SessionStart` gives it in parts of at most 9,000 characters (2 parts for a session without company rules), `UserPromptSubmit` sets the ticket title, and `PreToolUse` is the gate guard. See `Claude Code host` in [vscode-baseline.md](docs/vscode-baseline.md) Forge 7.6 adds the live reporter (`scripts/live-hook.mjs`) as a background hook on the activity events of a session: see [Live view](#-live-view). Forge 9.1 adds the session list: part 1 of `SessionStart` writes the start of a session, and `forge.mjs hook session-end` at `SessionEnd` writes its end. |
 | `plugins/forge/skills/` | `ticket`, `agents`, `board`, `wiki`, `forge-setup`, `writing` |
 | `plugins/forge/templates/` | The profile: config (`config/`), rule pages (`rules/`), setup values (`profile.md`), and machine values with the list of the other profile files (`profile.json`) |
-| `plugins/forge/scripts/` | `forge.mjs` (init, config, trust, lint, board, worktree, snapshot, diff, canvas, live, open, gate-open, gate-approve, hook, wiki scripts), `cred.mjs`, `live-hook.mjs` (the reporter of the live view) |
-| `plugins/forge/vendor/mermaid/` | The only third-party program of the plugin: the small Mermaid build that draws the diagrams of the wiki page and the ticket canvas, with its license and a [notice](plugins/forge/vendor/mermaid/NOTICE.md) (version, hash, update steps) |
+| `plugins/forge/scripts/` | `forge.mjs` (init, config, trust, lint, board, worktree, snapshot, diff, live, open, gate-open, gate-approve, hook, wiki scripts), `cred.mjs`, `live-hook.mjs` (the reporter of the live view) |
+| `plugins/forge/vendor/mermaid/` | The only third-party program of the plugin: the small Mermaid build that draws the diagrams of the wiki page, with its license and a [notice](plugins/forge/vendor/mermaid/NOTICE.md) (version, hash, update steps) |
 | `docs/` | [config.md](docs/config.md) (config format), [wiki.md](docs/wiki.md) (sharing and scripts), [evaluation.md](docs/evaluation.md) (behavioral runs: `npm run eval` gives the cases of `tests/evals/` to a real agent session), and [vscode-baseline.md](docs/vscode-baseline.md) (the VS Code features that forge uses) |
 | `AGENTS.md` | [Rules for agents that develop forge](AGENTS.md): docs-first checks, tests, and file format |
 
@@ -136,7 +136,7 @@ Setup offers the native wiki of the private repository, a separate private `<rep
 
 | Skill | Use |
 |---|---|
-| `ticket` | One folder per work item in `<forge>/raw/tickets/<key>`, full research and investigation, review gates, code map, ticket canvas, evidence, outbox. `SKILL.md` is short, and the steps of each phase are in `phases/`. |
+| `ticket` | One folder per work item in `<forge>/raw/tickets/<key>`, full research and investigation, review gates, code map, evidence, outbox. `SKILL.md` is short, and the steps of each phase are in `phases/`. |
 | `agents` | Implementer sessions in worktrees, reviewer subagents, the cold read of gate documents, hand-off, session status |
 | `board` | "Show the board" in any session: ticket status, refresh, session titles and state groups |
 | `wiki` | Query, record, and lint the repository wiki |
@@ -172,10 +172,10 @@ No mode allows em dashes or en dashes in prose. License texts are in [NOTICE.md]
    - **Folder** session on the main checkout: after one "yes", the agent creates the worktree and moves the session there with `set_workspace`.
    - When a worktree of the ticket exists, the agent continues there.
 3. Every new ticket uses `workflow: full-v3`, with no sizing question:
-   research → canvas and scope interview → **Scoped?** →
+   research → scope interview → **Scoped?** →
    investigation (🛑 diagnosis stop) → plan → **Planned?** → implement → **Shippable?** → Evidence Testing.
    A small fix has the same phases and gates. Its documents are shorter.
-4. Read the gate document, or read the ticket canvas, and add your comments. One explicit user approval covers the
+4. Read the gate document, and add your comments (in VS Code, comment threads of the editor; in Claude Code and Copilot CLI, the chat). One explicit user approval covers the
    displayed file and revision set, recorded in a SHA-256 manifest. `forge.mjs gate-open <key> <gate>` builds that set, writes the manifest and the snapshot, sets the gate to `in-review`, and prints the form text. `forge.mjs gate-approve <key> <gate> --answer "<your exact answer>" --method form|chat`
    accepts only `approve` in the form or `approve <gate>` in chat, and refuses a changed document or manifest. It checks the manifest and the documents, then records the approval in the README and in `approvals/history.md`. When a write fails, it restores both files.
    Unavailable sources and test gaps are recorded, not treated as safety evidence.
@@ -185,7 +185,7 @@ No mode allows em dashes or en dashes in prose. License texts are in [NOTICE.md]
 
 ```mermaid
 flowchart LR
-  R[Research, canvas, interview] --> S{{Scoped?}} --> I[Investigation] --> P{{Planned?}}
+  R[Research, interview] --> S{{Scoped?}} --> I[Investigation] --> P{{Planned?}}
   P --> C[Implement] --> SH{{Shippable?}} --> E[Evidence Testing] --> L{{Learned?}}
   I -. the scope is wrong .-> S
 ```
@@ -250,46 +250,6 @@ A ticket has about 7 Markdown files, and each fact has one home. A file starts t
 - `forge.mjs lint` warns when a summary is missing or too long, a document is over its budget, or a section is empty.
 - `proof.md` is not in `review.md`, because Evidence Testing writes its results after Shippable?, and a changed file makes an approval stale.
 
-### 🗺️ Ticket canvas
-
-`forge.mjs canvas <KEY>` writes `canvas.html` into the ticket folder: one page that shows the whole ticket on one board.
-Open it in a browser tab, or in VS Code with **Open in Integrated Browser**.
-`forge.mjs open` shows the same page on `http://127.0.0.1` (the live server of the repository): open the canvas link of the ticket from the board page.
-The canvas and the [board page](#-ticket-overview) have links to each other, so you go from ticket to ticket in the browser.
-
-| Part | Shows |
-|---|---|
-| Gate rail | The state, each gate with its status, the next step, and who the ticket waits on |
-| Story | The summary and each section of `story.md`, the open questions, and the people |
-| Code map | One lane for each layer of `map.md`, an arrow for each flow line, and a mark on each planned or changed component |
-| Plan | The diagnosis, then the steps as a path with their state (planned, done, verified) |
-| Review and proof | The review sections and each Evidence Testing check with its result |
-| Journal | The newest entries |
-
-- Each card has one of 3 tiers. The page opens with the cards that you must read for the gate that waits for you (the view **Now**). Each other card is a title strip: one line with the title, the tier, and the count of words. The other parts show their summary.
-
-  | Tier | Cards |
-  |---|---|
-  | Must read (`must`): you decide a gate with it | Story: the summary, Problem, Scope, Done when, Facts, Preserve, and the open questions. Code map: the summary, and the components with the flow. Plan: the summary, the step titles, Risks, and Decisions. Review: the summary, Changes, Findings, and Not checked. Proof: Accepted gaps. Close: the summary, and What you now know |
-  | Good to know (`good`) | Story: Answers, and the people. Plan: Diagnosis, the text of each step, Tests, Checks, and Assumptions. Review: Before and after, and Tests run. Proof: the summary, Checks, and Regression. Close: Ticket summary |
-  | AI artifact (`ai`): a working note of the agent | Story: History, Related work, and Sources not available. Code map: Data, toggles, jobs, Tests, and Terms. Plan: Details. Proof: Automated test. Close: Wiki changes. Journal: each entry |
-
-- An exception is always a card to read: a failed check, an open hypothesis, and a problem in the journal.
-- The views **Must read**, **+ Good to know**, and **All** open more tiers, for each part (key `v`). A click on a title strip opens one card, and **Fold** on a card folds it again. A line such as `5 verified checks` or `3 more` shows the strips of its cards. The browser keeps the view and your choices until the next gate.
-- Scroll to move, hold Ctrl and scroll to zoom, and drag the background. Zoomed out, each card shows its title in a large size and its state as a tint. A click on a part name or a double-click on a card title zooms in to read.
-- Go to another ticket: **Board** opens the board page (key `b`), the ticket key opens a list of all tickets with a filter (key `t`), and the arrows go to the previous and the next ticket of the board (keys `[` and `]`). The browser keeps your view and your comments for each ticket.
-- The `?` key shows all keys. The foot of each page says so. The theme button changes between the system theme, light, and dark.
-- The keyboard reaches each part: a component of the code map, a part title, and a title strip work with `Enter` and `Space`, and the arrow keys move the board. The first key `Tab` shows a link that skips to the content.
-- A click on a component of the code map shows its arrows and their labels.
-- **Comment** on a card saves a note in the browser. Select words on a card to comment on those words only, to mark them with **Remove**, or to give them a label (`unclear`, `wrong`, `too much`). The Comments panel has one box for a comment on the whole ticket.
-- On a page of the live server, **Send to agent** saves the comments in `canvas-comments.md` in the ticket folder. The message starts with `Canvas comments for <KEY>:`. Write `sent` in the ticket session: it reads the file and removes it. The server listens only on `127.0.0.1`, and `--port <n>` of `open` sets a fixed port for a forwarded port.
-- On a file page, **Copy all** gives the same message. Paste it into the ticket session.
-- The live server also shows the board page and the other tickets. **Send to agent** on the page of a ticket saves the comments in the folder of that ticket.
-- The page is a view of the Markdown files. It loads nothing from a network, it sends the comments only to the forge server on your machine, it is in `raw/` and so never committed, and no approval comes from it. Gate approval stays in the session.
-- A link can name one part, for example `canvas.html#zone-plan` or `canvas.html#plan-step-2`.
-- A code link opens the file in VS Code. `--links file` writes plain `file://` links. `--json` prints the content of the page as data.
-- An older ticket gets a simple canvas: one column for each of its files.
-
 ### 📍 Where a ticket is
 
 - The Now card at the top of each ticket README shows the state, the phase, the open gate, the next step,
@@ -343,13 +303,13 @@ and groups the tickets by state: 🟡 Needs me, 🔴 Blocked, 🟢 Go, ▶️ Ac
 Each row shows the session title, the open gate, the next step, who the ticket waits on, and the days since the update.
 When `<forge>/raw/sync/<KEY>.md` exists, the row also shows the change request, CI, and tracker status.
 
-The same command writes the board page, `<forge>/raw/board.html`, and the canvas of each ticket. Open the page in a browser tab, or in VS Code with **Open in Integrated Browser**.
+The same command writes the board page, `<forge>/raw/board.html`, and the wiki page. Open the page in a browser tab, or in VS Code with **Open in Integrated Browser**.
 
 - The look is a forge: square frames, hard shadows, a pixel anvil, pixel headings, and gate ingots. Text that you read keeps the system font. The pages say "needs you" for a ticket that waits for you. `raw/board.md` keeps "Needs me".
-- A strip at the top names the next step for you: the ticket with a gate in review first, then another ticket that needs you, a blocked ticket, or a ticket that can start. **Open** goes to its canvas.
+- A strip at the top names the next step for you: the ticket with a gate in review first, then another ticket that needs you, a blocked ticket, or a ticket that can start. **Open** goes to its document.
 - The tab of the board says `(2) Forge board` when 2 tickets need you, and its icon has a hot spot. Each page has a pixel anvil as its tab icon.
 - The tickets that wait for you are first, in a lane with the full width. The other open states are side by side, and **Done** is a closed list.
-- A card shows the key, the title, the gates as steps, the next step, who the ticket waits on, and the change request, CI, and tracker status. A click on the card opens the ticket canvas. A ticket with a gate in review opens at the document of that gate.
+- A card shows the key, the title, the gates as steps, the next step, who the ticket waits on, and the change request, CI, and tracker status. A click on the card opens the document of the gate that is in review, or the `README.md` of the ticket. The link is an editor link or a file link. On the live server, a link gives the file as text.
 - The filter (key `/`) hides tickets by their words. A state chip or a number key shows one state. The keys `j` and `k` go from ticket to ticket, and `t` opens the list of all tickets.
 - An open ticket without an update for 7 days has a mark. Long waits for people and read errors have their own lists.
 - The page loads nothing from a network, and it is in `raw/`, so it is never committed. [design-system.md](docs/design-system.md) gives the tokens, the components, and the UX cases of the pages.
@@ -379,7 +339,7 @@ A question that names a key does not start or resume that ticket.
 | "Refresh" | Reads the tracker, the change requests, and CI (read-only), writes `raw/sync/`, then fixes titles and state groups |
 | "Fix the session titles" | Renames stale ticket session titles and, in VS Code, moves the sessions to their state groups |
 
-The board does not edit code, ticket documents, or wiki pages. It writes only `raw/board.md`, `raw/sync/`, and the pages (`raw/board.html`, `raw/wiki.html`, and the `canvas.html` of each ticket).
+The board does not edit code, ticket documents, or wiki pages. It writes only `raw/board.md`, `raw/sync/`, and the pages (`raw/board.html`, and `raw/wiki.html`).
 It never approves a gate and never answers a question of a session for you,
 because an approval covers the exact revision that the ticket session shows.
 It never merges, pushes, or writes to the tracker.
@@ -391,13 +351,12 @@ Forge 6.5 had a **Forge Master** custom agent for this. Forge 6.6 removes it: VS
 
 ## 📖 Wiki page
 
-`forge.mjs board` also writes `raw/wiki.html`: one page for the wiki of the repository. The board page and each ticket canvas have a link to it (key `w`).
+`forge.mjs board` also writes `raw/wiki.html`: one page for the wiki of the repository. The board page has a link to it (key `w`).
 
 - The page lists each wiki page by folder, and a filter finds a page by the words of its text.
 - A page shows its status, its date, its sources, and **Used by**: the open tickets and the other pages that name it.
-- On a ticket canvas, a link to a wiki page opens that page on the wiki page. The **Wiki** menu of the canvas lists each wiki page that the ticket names.
 - The board lists the closed tickets. Each one opens its summary page (`tickets/<key>.md`), not its archive folder.
-- A Mermaid block of a wiki page or of a card on a ticket canvas shows as a drawing. Forge has the small Mermaid build for this (`plugins/forge/vendor/mermaid/`, MIT), and the page loads it from your disk or from the Forge server, never from a network.
+- A Mermaid block of a wiki page shows as a drawing. Forge has the small Mermaid build for this (`plugins/forge/vendor/mermaid/`, MIT), and the page loads it from your disk or from the Forge server, never from a network.
 - The live server shows the wiki page at `/wiki`.
 
 The page is a view. It shows no file of `raw/` and `archive/`, and it changes no wiki page.
@@ -421,7 +380,7 @@ Each repository has a launcher in its Forge folder. Run it in a terminal, from t
 ## 📡 Live view
 
 `forge.mjs open` starts the live server of a repository in the background, prints the links of the board and the wiki, and opens the board in your browser.
-The server (`forge.mjs live`) shows the board page and each ticket canvas on `http://127.0.0.1`, with what each agent session does now.
+The server (`forge.mjs live`) shows the board page on `http://127.0.0.1`, with what each agent session does now.
 Forge stays a plugin, and it has no terminal. Your sessions run where you start them, for example in Orca or in a terminal.
 A page has one action for a session: **Resume** opens your terminal with the command that continues a closed session.
 
@@ -430,26 +389,24 @@ flowchart LR
   S[Claude Code session and its subagents] -->|hook in the background| R[live-hook.mjs]
   R -->|one small event| L[forge.mjs live on 127.0.0.1]
   L --> B[Board: one live line on each card]
-  L --> C[Canvas: the Live panel]
   H[Session start hook and session end hook] -->|one line| F[raw/sessions.jsonl]
   F --> L
   L -->|Resume| T[Your terminal with the resume command]
 ```
 
 - A board card shows the state of its session (working, needs you, idle, or ended), the tool that runs now, and the count of subagents that run. A session of the repository without a ticket is in the list **Other sessions**.
-- The canvas has the **Live** panel (key `l`): the prompt, the tool calls, the subagents as a tree, and the last text of the turn.
-- A session that is not live any more shows as **closed**, with the buttons **Resume** and **Copy command**. It is on the card of its ticket, in the Live panel of its canvas, or in **Other sessions**.
+- A session that is not live any more shows as **closed**, with the buttons **Resume** and **Copy command**. It is on the card of its ticket or in **Other sessions**.
 - **Resume** opens a new tab or window of your terminal in the folder of the session, with `claude --resume <id>` or `copilot --resume=<id>`. When no terminal opens, the page puts the command on the clipboard.
 - The session list is `<forge>/raw/sessions.jsonl`. The session start hook and the session end hook of Claude Code and of Copilot CLI write it, also when no server runs. A VS Code session is not in the list.
 - A session with a start and no end in the list shows as **no end seen**: it can be open in a terminal, so its **Resume** needs a second click. A Copilot CLI session that runs shows in this way.
 - The terminal is the first one of this list that starts. Windows: Windows Terminal, then a console window. Linux: Orca (when the server runs in Orca), `$TERMINAL`, `xdg-terminal-exec`, `x-terminal-emulator`, then `ghostty`, `gnome-terminal`, `konsole`, `kitty`, `alacritty`, `wezterm`, and `foot`. On macOS, use **Copy command**.
 - To name the terminal that Forge tries first, set `FORGE_TERMINAL` to a name of that list (`wt`, `cmd`, `orca`, or a Linux terminal), or write `{"terminal": "<name>"}` to `settings.json` in the forge data folder.
 - A session shows on a ticket when it runs in the worktree of the ticket, or when its title starts with the ticket key.
-- The server has no route that sends text or a permission answer to a session, and its pages have no **Send to agent**. The route of **Resume** takes only the id of a session of the list, and only from a page of this server. The folder and the command come from the list and from the harness table (`scripts/lib/harness.mjs`).
-- The reporter sends only short text: the prompt (at most 1,000 characters), the tool name with a short label (the first 80 characters of a command, a file path, or a search pattern), and the last message. It never sends a tool result or a file. It puts a mask on the value after a word such as `token` or `password`.
+- The server has no route that sends text or a permission answer to a session. The route of **Resume** takes only the id of a session of the list, and only from a page of this server. The folder and the command come from the list and from the harness table (`scripts/lib/harness.mjs`).
+- The reporter sends only short text: the prompt (at most 1,000 characters), the tool name with a short label (the first 80 characters of a command, a file path, or a search pattern), and the text of a notice, for example a permission request. It never sends a tool result or a file. It puts a mask on the value after a word such as `token` or `password`.
 - The events stay in the memory of the server. The server writes its state file in the forge data folder, which only you can read: it holds the port and the token for the reporter. The token of the reporter is new at each start. The token of the page link is in a key file next to the state file, and it stays (see **Open Forge**). It also adds lines to the session list.
 - When no live server runs, the reporter stops at once, and a session gets no delay and no message.
-- A page tells you when its server changes. When the server stops, a notice shows the command that starts it (**Copy command**) and **Try again**, and it goes away when the server runs again. When the link is old, the notice says so and shows the command for a new link. When a ticket file changes, the notice says "This ticket changed." with **Reload** and **Later**. The page never loads again by itself. A wrong address gives an error page with a link to the board, not plain text.
+- A page tells you when its server changes. When the server stops, a notice shows the command that starts it (**Copy command**) and **Try again**, and it goes away when the server runs again. When the link is old, the notice says so and shows the command for a new link. When the board changes, the notice says "The board changed." with **Reload** and **Later**. The page never loads again by itself. A wrong address gives an error page with a link to the board, not plain text.
 - One server runs for each repository, each on its own port, so more than one repository can be open at the same time. A session reports to the server of its repository: its folder is in the main checkout, in `<repo>.worktrees`, in the wiki folder, or in the worktree of a ticket. A session in another folder reports to no server.
 - `forge.mjs open --status` prints the links of the server of this repository, `forge.mjs open --list` prints each server that runs, and `forge.mjs open --stop` stops the server of this repository. The server also stops after 8 hours with no event and no page view.
 

@@ -1,6 +1,7 @@
 // The live event: the small record that a session hook sends to the live server (forge.mjs live).
 // The reporter (live-hook.mjs) makes it from a hook payload with normalize(), and the server checks it again with checkEvent().
 // It holds only what the pages show: short text, no tool result, and no file content.
+// Only a prompt (the label of a session) and a notice (the note of a session) carry text. A stop sends no text, because no page shows it.
 // This file imports only own-turn.mjs, which has no import, so the reporter starts fast.
 import { ownTurn } from './own-turn.mjs';
 
@@ -12,8 +13,6 @@ export const LIVE_HOSTS = ['claude', 'copilot-cli', 'vscode'];
 export const LIVE_FILE = 'live.json';
 /** The folder of the state files in the forge data folder: one file for the live server of each repository. */
 export const LIVE_DIR = 'live';
-/** The file in the ticket folder that holds the comments of Send to agent, until the prompt hook or the ticket session takes them. */
-export const COMMENTS_FILE = 'canvas-comments.md';
 
 /**
  * The live server for a session, from the state of each server that runs: the server with the longest root folder
@@ -153,7 +152,6 @@ export function normalize(name, payload, host, now = Date.now()) {
     out.kind = cleanText(str(p.notification_type) || str(p.notificationType), LIMIT.kind);
     out.text = cleanText(p.message, LIMIT.text);
   } else if (event === 'agent-stop' || event === 'stop') {
-    out.text = cleanText(str(p.last_assistant_message) || str(p.response), LIMIT.text);
     if (FAILED.includes(hookName)) out.kind = 'failed';
   } else if (event === 'session-start') {
     out.kind = cleanText(p.source, LIMIT.kind);

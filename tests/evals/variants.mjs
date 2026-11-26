@@ -31,7 +31,7 @@ export const VARIANTS = {
       'Write or update the gate document from its template. Run the cold read. Run `<F> lint`', 'Write or update the gate document from its template. Run `<F> lint`'),
     'It has the cold read, the steps of each gate,', 'It has the steps of each gate,'),
     'skills/ticket/SKILL.md': (text) => swap(swap(swap(text,
-      '(Cold read, Procedure, Approval revisions, Sendable? for each write, Approval form, Canvas)', '(Procedure, Approval revisions, Sendable? for each write, Approval form, Canvas)'),
+      '(Cold read, Procedure, Approval revisions, Sendable? for each write, Approval form)', '(Procedure, Approval revisions, Sendable? for each write, Approval form)'),
     '| Worktree sessions, implementers, reviewers, cold read, hand-off | the `agents` skill |', '| Worktree sessions, implementers, reviewers, hand-off | the `agents` skill |'),
     'the cold read, the manifest, the approval form,', 'the manifest, the approval form,'),
     'skills/agents/SKILL.md': (text) => swap(swap(swap(withoutSection(text, '## 🐟 Cold read'),

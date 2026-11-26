@@ -14,7 +14,6 @@ import { empty } from './empty.mjs';
 import { frame } from './frame.mjs';
 import { gates } from './gates.mjs';
 import { live } from './live.mjs';
-import { menu } from './menu.mjs';
 import { nav } from './nav.mjs';
 import { pill } from './pill.mjs';
 import { pixel } from './pixel.mjs';
@@ -24,14 +23,14 @@ import { toast } from './toast.mjs';
 
 export { esc, client, checkComponent } from './kit.mjs';
 export { BREAK, PAIRS, TOKENS, mix, ratio, themeVars, tokenTable, tokenValue, tokensCss } from './tokens.mjs';
-export { GATE_TEXT, buildNav, gateLine, navData, pageLabel } from './nav.mjs';
+export { GATE_TEXT, buildNav, navData, pageLabel } from './nav.mjs';
 export { helpHtml, switcherHtml } from './dialog.mjs';
 export { TOOLS_HTML } from './button.mjs';
 export { brandHtml, footHtml } from './bar.mjs';
 export { bannerHtml } from './banner.mjs';
 export { emptyHtml } from './empty.mjs';
 export { frameHtml } from './frame.mjs';
-export { gatesHtml, ingotHtml } from './gates.mjs';
+export { gatesHtml } from './gates.mjs';
 export { faviconUri, iconHtml, pixelText, step } from './pixel.mjs';
 export { ERROR_POLICY, NOTICE_HTML, errorPage, pageHtml, pageScript } from './page.mjs';
 export { chipHtml, countHtml, pillHtml, tagHtml } from './pill.mjs';
@@ -39,7 +38,7 @@ export { proseHtml } from './prose.mjs';
 export { searchHtml } from './search.mjs';
 
 /** The components, in the order of the styleguide. */
-export const COMPONENTS = [base, button, pill, pixel, frame, gates, search, banner, empty, prose, nav, live, menu, diagram, bar, dialog, toast].map(checkComponent);
+export const COMPONENTS = [base, button, pill, pixel, frame, gates, search, banner, empty, prose, nav, live, diagram, bar, dialog, toast].map(checkComponent);
 
 // A group is a list of [component, part]. The groups of the style text are joined by a blank line, and the parts of one group by a line end.
 // The part 'css' (or 'script') is the main text of the component, and any other name is a key of cssParts (or scriptParts).
@@ -54,7 +53,6 @@ const STYLE_ORDER = [
   [[empty, 'css']],
   [[prose, 'css']],
   [[live, 'css']],
-  [[menu, 'css']],
   [[diagram, 'css']],
   [[bar, 'css']],
   [[dialog, 'css']],
@@ -64,7 +62,7 @@ const STYLE_ORDER = [
 // The script parts, one after the other, each one in its place. A part can use a name of a part after it (the theme part calls drawMermaid).
 const SCRIPT_ORDER = [
   [base, 'script'], [toast, 'script'], [banner, 'script'], [button, 'script'], [diagram, 'script'], [nav, 'script'], [live, 'script'], [gates, 'script'],
-  [dialog, 'script'], [menu, 'script'], [dialog, 'help'], [nav, 'keys'],
+  [dialog, 'script'], [dialog, 'help'], [nav, 'keys'],
 ];
 
 function partOf(component, part, kind) {

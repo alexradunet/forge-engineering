@@ -1,18 +1,16 @@
 // The UI kit (scripts/lib/ui/), its styleguide page, the forge.mjs styleguide command, and the demo data of the screenshots.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { buildBoard } from '../plugins/forge/scripts/lib/board.mjs';
-import { buildCanvas, renderCanvas } from '../plugins/forge/scripts/lib/canvas.mjs';
 import { STATES } from '../plugins/forge/scripts/lib/ticket.mjs';
 import { BOARD_SCRIPT, BOARD_STYLE, renderBoardPage } from '../plugins/forge/scripts/lib/board-page.mjs';
-import { CANVAS_SCRIPT, CANVAS_STYLE } from '../plugins/forge/scripts/lib/canvas-page.mjs';
-import { BREAK, COMPONENTS, GATE_TEXT, TOOLS_HTML, buildNav, PAIRS, TOKENS, UI_SCRIPT, UI_STYLE, bannerHtml, brandHtml, checkComponent, chipHtml, client, ERROR_POLICY, NOTICE_HTML, errorPage, faviconUri, footHtml, frameHtml, mix, pageHtml, pageLabel, pageScript, proseHtml, ratio, tagHtml, tokensCss, tokenTable, tokenValue } from '../plugins/forge/scripts/lib/ui.mjs';
-import { gatesHtml, ingotHtml } from '../plugins/forge/scripts/lib/ui/gates.mjs';
+import { BREAK, COMPONENTS, GATE_TEXT, TOOLS_HTML, PAIRS, TOKENS, UI_SCRIPT, UI_STYLE, bannerHtml, brandHtml, checkComponent, chipHtml, client, ERROR_POLICY, NOTICE_HTML, errorPage, faviconUri, footHtml, frameHtml, mix, pageHtml, pageLabel, pageScript, proseHtml, ratio, tagHtml, tokensCss, tokenTable, tokenValue } from '../plugins/forge/scripts/lib/ui.mjs';
+import { gatesHtml } from '../plugins/forge/scripts/lib/ui/gates.mjs';
 import { FONT, SPRITES, canPixel, iconHtml, pixelText, spritePath } from '../plugins/forge/scripts/lib/ui/pixel.mjs';
 import { renderStyleguide } from '../plugins/forge/scripts/lib/ui/styleguide.mjs';
 import { policy } from '../plugins/forge/scripts/lib/live-serve.mjs';
@@ -103,7 +101,7 @@ test('forge.mjs styleguide --out writes the page, and without --out it writes ra
   assert.notEqual(run('extra').status, 0, 'a stray word is refused');
 });
 
-test('the demo has a ticket in each of the 6 states, a read error, a people wait, and a full ticket that renders', (t) => {
+test('the demo has a ticket in each of the 6 states, a read error, a people wait, and a full ticket', (t) => {
   const root = temp(t);
   const demo = seedDemo(root);
   assert.ok(existsSync(demo.repo));
@@ -112,11 +110,9 @@ test('the demo has a ticket in each of the 6 states, a read error, a people wait
   assert.deepEqual(board.errors.map((error) => error.folder), ['app-107']);
   assert.equal(board.groups.flatMap((group) => group.tickets).filter((item) => item.waits.length).length, 1, 'one people wait');
   assert.ok(board.groups.flatMap((group) => group.tickets).some((item) => item.sync), 'a sync note');
-  const model = buildCanvas(path.join(demo.forge, 'raw', 'tickets', FULL_TICKET), { now: new Date('2026-11-17T09:00:00Z') });
-  assert.deepEqual(model.missing, [], 'the 6 documents of the full-v3 layout');
-  const html = renderCanvas(model, { mermaid: true });
-  assert.match(html, /data-lang="mermaid"/);
-  assert.ok(model.zones.some((zone) => zone.hypotheses?.length) && model.zones.some((zone) => zone.steps?.length) && model.zones.some((zone) => zone.graph?.edges.length));
+  const folder = path.join(demo.forge, 'raw', 'tickets', FULL_TICKET);
+  for (const name of ['README.md', 'story.md', 'map.md', 'plan.md', 'review.md', 'proof.md']) assert.ok(existsSync(path.join(folder, name)), `the full ticket has ${name}`);
+  assert.ok(board.groups.flatMap((group) => group.tickets).some((item) => item.folder === FULL_TICKET), 'the full ticket is on the board');
   assert.ok(existsSync(path.join(demo.wiki, 'tickets', 'app-90.md')), 'a closed ticket summary');
 });
 
@@ -221,10 +217,7 @@ const rulesOf = (css) => [...css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{
   .filter((rule) => !rule.selector.startsWith('@'));
 // The first class name of each selector of a rule: `.tcard .open::after` gives `tcard`.
 const firstClasses = (css) => new Set(rulesOf(css).flatMap((rule) => rule.selector.split(',').map((part) => /\.([A-Za-z_][\w-]*)/.exec(part)?.[1]).filter(Boolean)));
-// The canvas style is the kit style and then the canvas own rules: the own part is what the page adds.
-assert.ok(CANVAS_STYLE.startsWith(UI_STYLE), 'the canvas style starts with the style of the kit');
-const CANVAS_OWN = CANVAS_STYLE.slice(UI_STYLE.length);
-const PAGE_STYLES = [['the kit', UI_STYLE], ['the board', BOARD_STYLE], ['the wiki page', WIKI_STYLE], ['the canvas', CANVAS_OWN]];
+const PAGE_STYLES = [['the kit', UI_STYLE], ['the board', BOARD_STYLE], ['the wiki page', WIKI_STYLE]];
 
 test('a class of the board page or the wiki page is never a class of the kit', () => {
   const kit = firstClasses(UI_STYLE);
@@ -240,25 +233,15 @@ test('a class of the board page or the wiki page is never a class of the kit', (
   }
 });
 
-test('a class of the canvas is never a class of the kit or of another page, and no canvas rule restyles a bare tag of the kit', () => {
-  const kit = firstClasses(UI_STYLE);
-  const own = firstClasses(CANVAS_OWN);
-  assert.ok(own.size >= 40 && own.has('card') && own.has('node') && own.has('mlane') && own.has('zone') && own.has('echips'), 'the canvas classes are found');
-  // A word that the kit uses is fine when the rule starts with an id or with a class of the page (`#rail .bar`, `.zgate .ingot`): then it is a rule for a place of the page.
-  const startsOwn = (selector) => /^#/.test(selector) || (/^\.([\w-]+)/.test(selector) && !kit.has(/^\.([\w-]+)/.exec(selector)[1]));
-  for (const rule of rulesOf(CANVAS_OWN)) {
-    for (const part of rule.selector.split(',').map((item) => item.trim())) {
-      const first = /\.([A-Za-z_][\w-]*)/.exec(part)?.[1];
-      if (first && kit.has(first)) assert.ok(startsOwn(part), `the canvas rule ${part} restyles the kit class .${first}`);
-      assert.doesNotMatch(part, /^(table|th|td|button|kbd|code|pre|a)\b/, `a canvas rule for a tag of the kit: ${part}`);
-    }
-  }
-  for (const [name, css] of [['the board', BOARD_STYLE], ['the wiki page', WIKI_STYLE]]) {
-    for (const className of firstClasses(css)) assert.ok(!own.has(className), `.${className} is a class of the canvas and of ${name}`);
-  }
-  // The names that ended a collision are gone: the code-map lane, the labels of the comment editor, and the old gate list.
-  assert.doesNotMatch(CANVAS_OWN, /\.(lane|lanes|chips|badge|gates)\b/);
-  assert.doesNotMatch(CANVAS_SCRIPT, /'(lane|lanes|chips)'/);
+// A class that a rule names has a user: a name in the page code, outside of the rules. The classes st-, tg-, pxt-, ig-, and bn- are built from a state or a size.
+test('each class of a rule of the kit or of the pages has a user in the scripts', () => {
+  const root = path.join(cwd, 'plugins', 'forge', 'scripts');
+  const files = readdirSync(root, { recursive: true }).filter((name) => name.endsWith('.mjs') && !name.includes('vendor')).map((name) => path.join(root, name));
+  const code = files.map((file) => readFileSync(file, 'utf8').replace(/[^{}\n`]*\{[^{}`]*;[^{}`]*\}/g, ' ')).join('\n');
+  const classes = new Set(PAGE_STYLES.flatMap(([, css]) => rulesOf(css).flatMap((rule) => [...rule.selector.matchAll(/\.([A-Za-z_][\w-]*)/g)].map((match) => match[1]))));
+  assert.ok(classes.size > 90 && files.length > 30, 'the classes and the files are found');
+  const unused = [...classes].filter((name) => !/^(st|tg|pxt|ig|bn)-/.test(name) && !new RegExp(`(?<![\\w-])${name}(?![\\w-])`).test(code));
+  assert.deepEqual(unused, [], 'a class with no user');
 });
 
 test('the pages have one breakpoint: each width in a media query is BREAK.narrow', () => {
@@ -269,9 +252,7 @@ test('the pages have one breakpoint: each width in a media query is BREAK.narrow
       else assert.match(condition, /prefers-color-scheme|prefers-reduced-motion|\(hover: none\)/, `${name}: ${condition.trim()}`);
     }
   }
-  assert.ok(BOARD_STYLE.includes(`@media (max-width: ${BREAK.narrow}px)`) && WIKI_STYLE.includes(`@media (max-width: ${BREAK.narrow}px)`) && CANVAS_OWN.includes(`@media (max-width: ${BREAK.narrow}px)`));
-  // The canvas keeps its queries for a pointer without hover and for reduced motion.
-  assert.ok(CANVAS_OWN.includes('@media (hover: none)') && CANVAS_OWN.includes('@media (prefers-reduced-motion: reduce)'));
+  assert.ok(BOARD_STYLE.includes(`@media (max-width: ${BREAK.narrow}px)`) && WIKI_STYLE.includes(`@media (max-width: ${BREAK.narrow}px)`));
 });
 
 test('no rule of the kit or of the pages has a round corner', () => {
@@ -282,7 +263,7 @@ test('no rule of the kit or of the pages has a round corner', () => {
 });
 
 test('a rule with outline none has a rule that shows the focus, and the pages hold no other outline none', () => {
-  const all = [UI_STYLE, BOARD_STYLE, WIKI_STYLE, CANVAS_OWN].join('\n');
+  const all = [UI_STYLE, BOARD_STYLE, WIKI_STYLE].join('\n');
   const rules = rulesOf(all);
   // Each selector with no outline has the rule that gives the visible focus mark: its own :focus-visible rule, or the rule of its box.
   const ring = {
@@ -303,46 +284,12 @@ test('a rule with outline none has a rule that shows the focus, and the pages ho
   assert.deepEqual([...seen].sort(), Object.keys(ring).sort(), 'the list of allowed selectors has no unused row');
 });
 
-test('the board page, the wiki page, and the canvas name the ? key in their foot', (t) => {
+test('the board page and the wiki page name the ? key in their foot', (t) => {
   const root = temp(t);
   const demo = seedDemo(root);
   const board = buildBoard(demo.wiki, { today: '2026-11-17' });
   assert.ok(renderBoardPage(board, { wiki: demo.wiki }).includes('Press ? for the keys'));
   assert.ok(renderWikiPage(buildWiki(demo.wiki, { board })).includes('Press ? for the keys'));
-  const canvas = renderCanvas(buildCanvas(path.join(demo.forge, 'raw', 'tickets', FULL_TICKET), { now: new Date('2026-11-17T09:00:00Z') }));
-  assert.ok(canvas.includes('<p class="hint">Press ? for the keys</p>'));
-  assert.match(canvas, /<p class="hint">Press \? for the keys<\/p><div class="zoomer" role="group" aria-label="Zoom">.*<\/div><\/footer>/, 'the zoom tools stay at the end of the foot');
-});
-
-test('gatesHtml with names gives each gate its ingot and its name, and the words only for a gate that needs attention', () => {
-  const html = gatesHtml([{ name: 'Scoped?', status: 'approved', note: 'approved 2026-11-10' }, { name: 'Planned?', status: 'in-review' }, { name: 'Sendable?', status: 'blocked' }, { name: 'Learned?', status: 'todo' }], { names: true });
-  assert.ok(html.startsWith('<ol class="gates gates-named" aria-label="Gates">'));
-  assert.ok(html.includes('<li class="gi-approved" title="Scoped? approved 2026-11-10"><span class="ingot ig-approved" aria-hidden="true"></span><span class="gate-name">Scoped?</span><span class="sr">approved 2026-11-10</span></li>'));
-  assert.ok(html.includes('<li class="gi-in-review" title="Planned? needs you"><span class="ingot ig-in-review" aria-hidden="true"></span><span class="gate-name">Planned?</span><span class="gate-words">needs you</span></li>'));
-  assert.ok(html.includes('<span class="gate-name">Sendable?</span><span class="gate-words">blocked</span>'));
-  assert.ok(html.includes('<span class="gate-name">Learned?</span><span class="sr">not open</span>'));
-  assert.equal(gatesHtml([], { names: true }), '');
-  assert.equal(ingotHtml('in-review'), '<span class="ingot ig-in-review" aria-hidden="true"></span>');
-  assert.equal(ingotHtml('nope', 'T'), '<span class="ingot ig-todo" title="T" aria-hidden="true"></span>', 'an unknown status is a gate that is not open');
-});
-
-test('the canvas page uses the kit: the bar, the gates, the zone frames, the tags, the eyebrow labels, the prose, and the foot', (t) => {
-  const demo = seedDemo(temp(t));
-  const html = renderCanvas(buildCanvas(path.join(demo.forge, 'raw', 'tickets', FULL_TICKET), { now: new Date('2026-11-17T09:00:00Z') }), { nav: buildNav(buildBoard(demo.wiki, { today: '2026-11-17' }), { from: FULL_TICKET }) });
-  // The bar: the anvil sprite, then the Board link, the separator, the key, the title, the state pill with the page label, and the phase.
-  assert.match(html, /<div class="bar"><svg class="px"[^>]*aria-hidden="true"[^>]*>.*?<\/svg><a class="quiet" href="[^"]*board\.html" data-nav title="The board of all tickets \(b\)">Board<\/a><span class="sep" aria-hidden="true">\/<\/span><button type="button" class="crumb"/);
-  assert.ok(html.includes('<span class="pill st-needs-me">Needs you</span><span class="phase">review</span>'));
-  // Forge 9.2: the row has the stable key of the ticket for the spark script.
-  assert.ok(/<ol class="gates gates-named" aria-label="Gates" data-gates="[^"]+">/.test(html) && html.includes('<span class="gate-words">needs you</span>'));
-  assert.equal(html.match(/<section class="frame sunk zone z-/g).length, html.match(/ data-zone="/g).length, 'each part is a sunk frame');
-  assert.ok(html.match(/ data-zone="/g).length >= 5);
-  assert.ok(html.includes('<span class="tag tg-ok">verified</span>') && html.includes('<span class="tag tg-wait">planned</span>'), 'the badges are kit tags');
-  assert.ok(html.includes('<h4 class="eyebrow sethead">Steps</h4>') && html.includes('<h4 class="eyebrow">Service</h4>') && html.includes('<h3 class="eyebrow">'), 'the labels are kit eyebrows');
-  assert.ok(html.includes('<div class="mlanes">') && html.includes('<div class="mlane">') && !/class="lanes?"/.test(html));
-  assert.ok(html.includes('<div class="body prose">'), 'the text of a card is kit prose');
-  assert.ok(html.includes('<span class="pxt pxt-3"') && html.includes('<h2 tabindex="0"><span class="pxt pxt-3"'), 'the titles of the tray and the parts are bitmap letters');
-  assert.doesNotMatch(html, /waits for you|class="badge"|class="hint" id=|class="g-/);
-  assert.doesNotMatch(renderCanvas(buildCanvas(path.join(demo.forge, 'raw', 'tickets', FULL_TICKET), { now: new Date('2026-11-17T09:00:00Z') })), /<span class="emoji"|[🟡🔴✔]<\/span> /u);
 });
 
 test('the token table of docs/design-system.md has each row of tokenTable()', () => {
@@ -374,13 +321,11 @@ const demoPages = (t) => {
   const demo = seedDemo(temp(t));
   const board = buildBoard(demo.wiki, { today: '2026-11-17' });
   const model = buildWiki(demo.wiki, { board });
-  const dir = path.join(demo.forge, 'raw', 'tickets', FULL_TICKET);
   return {
     demo, board,
     pages: {
       board: renderBoardPage(board, { wiki: demo.wiki }),
       wiki: renderWikiPage(model),
-      canvas: renderCanvas(buildCanvas(dir, { now: new Date('2026-11-17T09:00:00Z') }), { nav: buildNav(board, { from: FULL_TICKET }) }),
       styleguide: renderStyleguide(),
     },
   };
@@ -402,7 +347,7 @@ test('pageHtml writes the head in a fixed order: meta tags, title, one icon, the
 });
 
 test('the script of each page sets the theme first, and the rest waits for the DOM', () => {
-  for (const [name, script] of [['board', BOARD_SCRIPT], ['wiki', WIKI_SCRIPT], ['canvas', CANVAS_SCRIPT]]) {
+  for (const [name, script] of [['board', BOARD_SCRIPT], ['wiki', WIKI_SCRIPT]]) {
     const early = script.indexOf("document.documentElement.setAttribute('data-theme', early)");
     const ready = script.indexOf("document.addEventListener('DOMContentLoaded', start)");
     assert.ok(early > 0 && ready > early, `${name}: the early theme part comes before the DOM-ready part`);
@@ -422,7 +367,7 @@ test('each page has the skip link as the first element of its body, and a main p
     assert.match(body, /^<body[^>]*>\n<a class="skip" href="#([\w-]+)">Skip to the content<\/a>\n/, name);
     const target = /<a class="skip" href="#([\w-]+)"/.exec(body)[1];
     assert.ok(html.includes(` id="${target}"`), `${name}: the target #${target} is in the page`);
-    assert.match(html, /<main[^>]* id="(lanes|page|viewport|sg-main)"/, `${name}: the target is the main part`);
+    assert.match(html, /<main[^>]* id="(lanes|page|sg-main)"/, `${name}: the target is the main part`);
   }
   // The link is hidden as .sr is, and it shows when it has the focus.
   assert.match(UI_STYLE, /\.sr, \.skip:not\(:focus\) \{ position: absolute;[^}]*clip-path: inset\(50%\)/);
@@ -450,39 +395,13 @@ test('the parts that change without a user action are live regions, and the ages
   assert.ok(pages.wiki.includes('<p class="sr" id="none-live" role="status"></p>'), 'the filter notice of the wiki');
   assert.ok(!pages.board.includes('role="status" id="showing"') && !pages.wiki.includes('role="status" id="none"'), 'a banner that starts hidden is not the live region');
   assert.match(renderBoardPage(board, { serve: { token: 'a'.repeat(32), live: '/live' }, wiki: demo.wiki }), /<p class="note" id="live-note" aria-live="polite">/);
-  assert.ok(pages.canvas.includes('<span id="comment-count" aria-live="polite">0</span>'), 'the comment count');
-  const served = renderCanvas(buildCanvas(path.join(demo.forge, 'raw', 'tickets', FULL_TICKET), { now: new Date('2026-11-17T09:00:00Z') }), { serve: { token: 'a'.repeat(32), live: '/live' } });
-  assert.ok(served.includes('<p class="thint" id="live-hint" aria-live="polite">'), 'the hint of the Live panel');
+  const served = renderBoardPage(board, { serve: { token: 'a'.repeat(32), live: '/live' }, wiki: demo.wiki });
   for (const html of [pages.board, served]) assert.doesNotMatch(html, /class="[^"]*(age|lv-age)[^"]*"[^>]*aria-live|aria-live[^>]*class="[^"]*(age|lv-age)/, 'no live region on a text that counts');
   assert.doesNotMatch(UI_SCRIPT, /aria-live/, 'the kit script sets no live region on the ages');
 });
 
-test('the code map, the part titles, and the comment list can be used with the keyboard', (t) => {
-  const { pages } = demoPages(t);
-  const nodes = pages.canvas.match(/<div class="node[^"]*" id="[^"]+" tabindex="0" role="button" aria-label="[^"]+"/g) ?? [];
-  assert.ok(nodes.length >= 3, 'each component can get the focus, has the role button, and has its title as label');
-  assert.equal(nodes.length, pages.canvas.match(/<div class="node\b/g).length, 'each component');
-  const zones = pages.canvas.match(/<h2 tabindex="0"><span class="pxt/g) ?? [];
-  assert.equal(zones.length, pages.canvas.match(/ data-zone="/g).length, 'each part title can get the focus');
-  // The focus ring: a tabindex element has the kit ring, and the nodes have no rule that removes it.
+test('an element with a tabindex has the kit focus ring', () => {
   assert.match(UI_STYLE, /\[tabindex\]:focus-visible \{ outline: 2px solid var\(--accent\)/);
-  assert.doesNotMatch(CANVAS_STYLE, /\.node[^{]*\{[^}]*outline:\s*(none|0)/);
-  // The script: Enter and Space act as a click on a component and on a part title. A tray row is a real button.
-  assert.match(CANVAS_SCRIPT, /graph\.addEventListener\('keydown', function \(event\) \{\n\s+var node = event\.target;\n\s+if \(\(event\.key !== 'Enter' && event\.key !== ' '\) \|\| !node\.classList \|\| !node\.classList\.contains\('node'\)\) return;\n\s+event\.preventDefault\(\);\n\s+pickNode\(node\);/);
-  assert.match(CANVAS_SCRIPT, /el\.matches\('\.zone > h2'\)\) \{ event\.preventDefault\(\); goTo\(el\.parentNode, true\); return; \}/);
-  assert.match(CANVAS_SCRIPT, /var jump = make\('button', 'quiet tjump'\);\n\s+jump\.type = 'button';/);
-  assert.doesNotMatch(CANVAS_SCRIPT, /item\.addEventListener\('click'/, 'the row itself has no click handler');
-  assert.ok(CANVAS_SCRIPT.includes("el.setAttribute('aria-pressed', graph.getAttribute('data-focus') === el.id ? 'true' : 'false');"), 'a component says whether its arrows show');
-  assert.match(CANVAS_STYLE, /#tray-list \.tjump \{/);
-});
-
-test('the canvas puts the viewport back to its start, and the Live panel starts closed in a narrow window unless the user opened it', () => {
-  assert.match(CANVAS_SCRIPT, /function resetScroll\(\) \{ viewport\.scrollLeft = 0; viewport\.scrollTop = 0; \}\n\s+viewport\.addEventListener\('scroll', resetScroll\);/);
-  assert.match(CANVAS_SCRIPT, /if \(!el \|\| !board\.contains\(el\)\) return false;\n\s+reveal\(el\);\n\s+goTo\(el, false\);\n\s+resetScroll\(\);/, 'the deep link resets the scroll');
-  assert.ok(CANVAS_SCRIPT.includes(`window.matchMedia('(max-width: ${BREAK.narrow}px)').matches`), 'the narrow width is the one breakpoint');
-  assert.ok(CANVAS_SCRIPT.includes("setLive(kept ? kept === 'open' : !narrow, false);"), 'the choice of the user wins, and a narrow window starts closed');
-  assert.ok(CANVAS_SCRIPT.includes("function toggleLive() { setLive(livePanel.hidden, true); }"), 'only a choice of the user is stored');
-  assert.match(CANVAS_SCRIPT, /board\.addEventListener\('focusin'/, 'the focus on a card that is out of sight moves the board');
 });
 
 test('faviconUri gives a standalone SVG in a data address for each variant, with its own colors', () => {
@@ -508,8 +427,6 @@ test('the pages choose the icon and the title: a ticket that needs the user give
   const icon = (html) => /<link rel="icon" href="([^"]+)">/.exec(html)[1];
   assert.equal(icon(pages.board), faviconUri('needs'));
   assert.match(pages.board, /<title>\(1\) Forge board<\/title>/);
-  assert.equal(icon(pages.canvas), faviconUri('needs'), 'the canvas of a ticket that needs the user');
-  assert.match(pages.canvas, /<title>APP-101 · /, 'the canvas title stays');
   assert.equal(icon(pages.wiki), faviconUri('calm'));
   assert.equal(icon(pages.styleguide), faviconUri('calm'));
   assert.match(pages.wiki, /<title>Forge wiki<\/title>/);
@@ -532,10 +449,9 @@ test('the spark: the script, the one animation inside the reduced-motion query, 
   assert.ok(query[0].includes('@keyframes ig-fill') && query[0].includes('@keyframes ig-rise'), 'the keyframes are inside it too');
   assert.equal(UI_STYLE.replace(query[0], '').match(/animation: ig-|\.spark/g), null, 'no spark rule outside of the query');
   assert.doesNotMatch(query[0], /blur|infinite|gradient/, 'no blur and no loop');
-  // The gate rows of a board page and of a canvas have the key of the ticket, and each ingot has its gate and its status.
+  // The gate rows of a board page have the key of the ticket, and each ingot has its gate and its status.
   const { pages } = demoPages(t);
   assert.match(pages.board, /<span class="gates" data-gates="app-101"><span class="ingots" role="img"[^>]*><span class="ingot ig-approved" data-gate="Scoped\?" data-status="approved"/);
-  assert.match(pages.canvas, /<ol class="gates gates-named" aria-label="Gates" data-gates="app-101"><li class="gi-approved" data-gate="Scoped\?" data-status="approved"/);
 });
 
 test('the spark script gives the class once, to an ingot that is approved now and was not before, and never on a first visit or without storage', () => {
@@ -605,7 +521,7 @@ test('each page has the one notice: a hidden banner with a polite live region, a
   for (const text of [
     'The live server does not answer. Start it with this command:', 'This link is old. Run the command for the new link:',
     'This page is old, or its server stopped. Run "forge.mjs open --new-link" for a new link.', "text: 'Copy command', copy: OPEN_NOW", "text: 'Try again', run: tryAgain",
-    "typeof data.open === 'string'", "data.open || 'forge.mjs open'", "'The board changed.'", "'This ticket changed.'", "text: 'Reload'", "text: 'Later'",
+    "typeof data.open === 'string'", "data.open || 'forge.mjs open'", "'The board changed.'", "text: 'Reload'", "text: 'Later'",
   ]) assert.ok(UI_SCRIPT.includes(text), text);
   // Reload goes through go() with the current address, so a stopped server does not replace the page. The page never loads again by itself.
   assert.ok(UI_SCRIPT.includes('go(location.href, true)') && UI_SCRIPT.includes('location.reload()'));
@@ -643,7 +559,7 @@ test('the notice script on a page: the text goes in as text, the command has its
   assert.equal(el.children.length, 1, 'a notice without a button has no button box');
 });
 
-test('the pages of a live server: the board and the canvas have the stamp, the command, and the two icons, and the scripts hold no drawing and no address', (t) => {
+test('the pages of a live server: the board has the stamp, the command, and the two icons, and the scripts hold no drawing and no address', (t) => {
   const { board, demo } = demoPages(t);
   const serve = { token: 'a'.repeat(32), live: '/live?t=' + 'a'.repeat(32), open: '"/x y.forge/forge" open', c: 'abcdef012345' };
   const dataOf = (html, id) => JSON.parse(new RegExp(`<script type="application/json" id="${id}">([^<]*)</script>`).exec(html)[1]);
@@ -652,18 +568,11 @@ test('the pages of a live server: the board and the canvas have the stamp, the c
   assert.deepEqual(b.icons, { calm: faviconUri('calm'), needs: faviconUri('needs') });
   const file = dataOf(renderBoardPage(board, { wiki: demo.wiki }), 'board-data');
   assert.ok(!('open' in file) && !('c' in file) && !('icons' in file), 'a file page has none of them');
-  const c = dataOf(renderCanvas(buildCanvas(path.join(demo.forge, 'raw', 'tickets', FULL_TICKET), { now: new Date('2026-11-17T09:00:00Z') }), { serve }), 'canvas-data');
-  assert.deepEqual([c.open, c.c, typeof c.hot, Object.keys(c.icons)], ['"/x y.forge/forge" open', 'abcdef012345', 'boolean', ['calm', 'needs']]);
-  const tokenPage = dataOf(renderCanvas(buildCanvas(path.join(demo.forge, 'raw', 'tickets', FULL_TICKET), { now: new Date('2026-11-17T09:00:00Z') }), { serve: { token: 'a'.repeat(32) } }), 'canvas-data');
-  assert.ok(!('open' in tokenPage) && !('c' in tokenPage), 'a page with a token and no open command has none of them');
   // The board script sets the title and swaps the icon from the data block. Nothing in a script draws, and no script holds an address.
   assert.ok(BOARD_SCRIPT.includes("document.title = state.needs ? '(' + state.needs + ') Forge board' : 'Forge board';") && BOARD_SCRIPT.includes('setIcon(state.needs > 0);'));
-  assert.ok(CANVAS_SCRIPT.includes("setIcon(data.hot || worst === 'needs-you');"));
   assert.ok(UI_SCRIPT.includes("link.setAttribute('href', hot ? data.icons.needs : data.icons.calm);"));
-  // The canvas draws the arrows of its code map as SVG with the namespace address: that is old, and it is not a page script part of this stage.
   for (const [name, script] of [['board', BOARD_SCRIPT], ['wiki', WIKI_SCRIPT], ['kit', UI_SCRIPT]]) assert.doesNotMatch(script, /createElementNS|<svg|xmlns|https?:\/\/|data:image/, name);
   assert.equal(BOARD_SCRIPT.match(/\bfetch\(/g).length, 3);
-  assert.equal(CANVAS_SCRIPT.match(/\bfetch\(/g).length, 4);
   assert.ok(WIKI_SCRIPT.match(/\bfetch\(/g).length <= UI_SCRIPT.match(/\bfetch\(/g).length, 'the wiki page has no live polling of its own');
   assert.ok(!WIKI_SCRIPT.slice(WIKI_SCRIPT.indexOf(UI_SCRIPT) + UI_SCRIPT.length).includes('liveStart('), 'the wiki page code does not start the live view');
 });

@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { countWords, diffGate, gateName, renderDiff, saveSnapshot, sectionDiff, sections, summaryBlock, summaryCheck } from '../plugins/forge/scripts/lib/reading.mjs';
+import { countWords, diffGate, gateName, numberedItems, renderDiff, saveSnapshot, sectionDiff, sections, summaryBlock, summaryCheck, tableRow } from '../plugins/forge/scripts/lib/reading.mjs';
 import { lint } from '../plugins/forge/scripts/lib/validation.mjs';
 import { parseTicket } from '../plugins/forge/scripts/lib/ticket.mjs';
 
@@ -35,6 +35,13 @@ function wiki(t) {
 }
 
 const run = (...args) => spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8' });
+
+test('table rows and numbered items keep escaped pipes and the indented body of each item', () => {
+  assert.deepEqual(tableRow('| a | b \\| c |  |'), ['a', 'b | c', '']);
+  assert.deepEqual(numberedItems('1. First\n   - Files: x\n   - Why: y\n2. Second\n\n3) Third\n'), [
+    { n: 1, title: 'First', body: '- Files: x\n- Why: y' }, { n: 2, title: 'Second', body: '' }, { n: 3, title: 'Third', body: '' },
+  ]);
+});
 
 test('sections split on "## " headings after the frontmatter and ignore headings in code fences', () => {
   const text = ['---', 'title: x', '---', 'Intro line', '## ⚡ 1 min', 'Card', '```md', '## not a heading', '```', '## ☕ 5 min', 'More'].join('\r\n');

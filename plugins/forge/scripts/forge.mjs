@@ -15,15 +15,13 @@
 //   bind    [--wiki <dir>]   write <wiki>/forge/repo.json
 //   seed [--force]   copy the profile templates to <wiki>/forge/config
 //   board   [--json] [--dry-run] [--today <date>] [--links vscode|file]   write <forge>/raw/board.md, the tickets grouped by state,
-//           and the pages: raw/board.html and the canvas of each ticket
+//           and the pages: raw/board.html and raw/wiki.html
 //   styleguide [--out <file>] [--json]   write the styleguide page of the UI kit (each token and component, in both themes): <forge>/raw/styleguide.html, or the file of --out
 //   worktree <KEY> --summary "<goal>" [--base <ref>] [--create] [--json]   plan or create the ticket worktree and branch
 //   snapshot <key> <gate> [--json]   save the gate doc as approvals/snapshots/<gate>-<n>.md at a review
 //   diff    <key> <gate> [--json]   the summary (or the ⚡ card) on a first review, else the sections changed since the last snapshot
-//   canvas  <key> [--json] [--links vscode|file]   write <ticket>/canvas.html, the whole ticket on one board (--json prints its model),
-//           and raw/board.html, so the page has a link to the board and to each other ticket
-//   live    [--port <n>] [--links vscode|file]   show the board and the canvases on http://127.0.0.1 with the live state of the agent sessions
-//            (the session hooks send their events to this server). Its two actions for a page are Send to agent (it adds the canvas comments to <ticket>/canvas-comments.md) and Resume (it opens a terminal for a closed session). It stops at a signal,
+//   live    [--port <n>] [--links vscode|file]   show the board and the wiki on http://127.0.0.1 with the live state of the agent sessions
+//            (the session hooks send their events to this server). Its one action for a page is Resume (it opens a terminal for a closed session). It stops at a signal,
 //            or after 8 hours with no event and no request of a page. The links stay the same after a restart: its page token is in a key file.
 //            One server runs for each repository, and a session reports to the server of its repository.
 //   live --status   print the link of the live server of this repository, or exit 1 when none runs
@@ -68,7 +66,7 @@ import { createWorktree, planWorktree } from './lib/worktree.mjs';
 import { CLAUDE_PARTS, HOST_NAMES, contextText, promptSubmit, readEvent, resolveHost, sessionEnd, sessionStart, trustedConfig } from './lib/hook.mjs';
 import { preTool, preToolOutput, readToolEvent } from './lib/guard.mjs';
 import { diffGate, gateName, renderDiff, saveSnapshot } from './lib/reading.mjs';
-import { LINK_MODES, buildCanvas } from './lib/canvas.mjs';
+import { LINK_MODES } from './lib/markdown.mjs';
 import { writeViews } from './lib/views.mjs';
 import { renderStyleguide } from './lib/ui/styleguide.mjs';
 import { homeOf, rawDir } from './lib/layout.mjs';
@@ -465,11 +463,11 @@ export function main(argv = process.argv.slice(2)) {
       let views;
       try {
         board = writeBoard(where.wiki.path, { today: args.today, dryRun: args.dryRun });
-        // The pages of the same board: raw/board.html and the canvas of each ticket.
+        // The pages of the same board: raw/board.html and raw/wiki.html.
         views = writeViews(where.wiki.path, { links: args.links, today: args.today, dryRun: args.dryRun });
       } catch (err) { throw new ForgeError(err.message, 'board'); }
       const page = {
-        file: views.page.file, url: pathToFileURL(views.page.file).href, written: views.page.written, canvases: views.canvases.written.length, failed: views.canvases.failed,
+        file: views.page.file, url: pathToFileURL(views.page.file).href, written: views.page.written,
         // The wiki page: each canonical page of the wiki, and the summary pages of the closed tickets.
         wiki: { file: views.wiki.file, url: pathToFileURL(views.wiki.file).href, written: views.wiki.written, pages: views.wiki.pages, closed: views.wiki.closed },
       };
@@ -477,7 +475,6 @@ export function main(argv = process.argv.slice(2)) {
       else {
         console.log(board.groups.map((group) => `${group.emoji} ${group.label} ${group.tickets.length}`).join(' · '));
         for (const error of board.errors) console.log(`  read error ${error.folder}: ${error.message}`);
-        for (const error of page.failed) console.log(`  no canvas ${error.folder}: ${error.message}`);
         console.log(`${board.written ? 'wrote' : !board.changed ? 'unchanged' : 'would write'}: ${board.file}`);
         console.log(`  open  ${page.url}`);
         console.log(`  wiki  ${page.wiki.url}`);
@@ -533,25 +530,6 @@ export function main(argv = process.argv.slice(2)) {
       if (args.json) console.log(JSON.stringify(result, null, 2));
       else if (cmd === 'diff') console.log(renderDiff(result));
       else console.log(`${result.gate} ${result.written ? 'saved' : 'unchanged'}: ${result.snapshot}`);
-    } else if (cmd === 'canvas') {
-      if (args._.length !== 2 || (args.links !== undefined && !LINK_MODES.includes(args.links)) || args.port !== undefined) {
-        throw new ForgeError(`Usage: forge.mjs canvas <key> [--json] [--links ${LINK_MODES.join('|')}].`, 'bad-args');
-      }
-      const where = resolve(opts);
-      try {
-        const { dir, folder } = findTicket(where.wiki.path, args._[1]);
-        if (args.json) console.log(JSON.stringify(buildCanvas(dir), null, 2));
-        else {
-          // The page links to the board page and to the canvas of each other ticket, so this command writes those that are missing.
-          const views = writeViews(where.wiki.path, { links: args.links, focus: folder, all: false });
-          const result = views.focus;
-          console.log(`${result.key}: wrote ${result.file}`);
-          console.log(`  open  ${pathToFileURL(result.file).href}`);
-          console.log(`  board ${pathToFileURL(views.page.file).href}`);
-          console.log(`  wiki  ${pathToFileURL(views.wiki.file).href}`);
-          if (result.missing.length) console.log(`  not written yet: ${result.missing.join(', ')}`);
-        }
-      } catch (err) { throw new ForgeError(err.message, 'canvas'); }
     } else if (cmd === 'live') {
       const port = args.port === undefined ? undefined : Number(args.port);
       const badPort = args.port !== undefined && (!/^\d{1,5}$/.test(args.port) || (port !== 0 && (port < 1024 || port > 65535)));
@@ -633,7 +611,7 @@ export function main(argv = process.argv.slice(2)) {
       if (args._[1] === 'approve') console.log(JSON.stringify(approve(where, args._.slice(2)), null, 2));
       else console.log(JSON.stringify(trustStatus(where), null, 2));
     } else {
-      console.error('Usage: node forge.mjs <where|config|doctor|lint|detect|init|bind|seed|board|styleguide|worktree|snapshot|diff|canvas|live|open|gate-open|gate-approve|hook|context|trust|run> [--wiki <dir>] [--cwd <dir>] [--json]');
+      console.error('Usage: node forge.mjs <where|config|doctor|lint|detect|init|bind|seed|board|styleguide|worktree|snapshot|diff|live|open|gate-open|gate-approve|hook|context|trust|run> [--wiki <dir>] [--cwd <dir>] [--json]');
       return 2;
     }
     return 0;

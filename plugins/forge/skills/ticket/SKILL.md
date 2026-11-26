@@ -1,6 +1,6 @@
 ---
 name: ticket
-description: Ticket workspace for the work items of one repository, from the tracker of the forge config (for example Jira or GitHub Issues). Every new ticket follows the full-v3 workflow (research, scope, investigation, plan, implementation, evidence, and learning) with four review gates, a small set of plain documents, and a ticket canvas in the browser. Keeps working artifacts in <forge>/raw/tickets/<key>, shared by agent sessions (VS Code Agents window, Copilot CLI, Claude Code), and distills them into canonical wiki pages at close. Use when the user pastes a work item key or URL, or asks to "start ticket APP-123", "work on APP-123", "resume APP-123", "where are we on the ticket", "record this finding", "save the plan to the ticket", "show the canvas", "show the code map", "close the ticket", or "archive the ticket".
+description: Ticket workspace for the work items of one repository, from the tracker of the forge config (for example Jira or GitHub Issues). Every new ticket follows the full-v3 workflow (research, scope, investigation, plan, implementation, evidence, and learning) with four review gates and a small set of plain documents. Keeps working artifacts in <forge>/raw/tickets/<key>, shared by agent sessions (VS Code Agents window, Copilot CLI, Claude Code), and distills them into canonical wiki pages at close. Use when the user pastes a work item key or URL, or asks to "start ticket APP-123", "work on APP-123", "resume APP-123", "where are we on the ticket", "record this finding", "save the plan to the ticket", "close the ticket", or "archive the ticket".
 ---
 
 # 🎫 Ticket workspace
@@ -23,7 +23,7 @@ This file is short, so that it stays whole in the context. The steps of each pha
 | When | Read |
 |---|---|
 | Start: a new work item, research, colleague questions, spikes, interview, scope | [phases/start.md](phases/start.md) |
-| A gate opens, comments arrive, an approval, a manifest, a Sendable? write, or the canvas (Cold read, Procedure, Approval revisions, Sendable? for each write, Approval form, Canvas) | [phases/gates.md](phases/gates.md) |
+| A gate opens, comments arrive, an approval, a manifest, or a Sendable? write (Cold read, Procedure, Approval revisions, Sendable? for each write, Approval form) | [phases/gates.md](phases/gates.md) |
 | A README change (Frontmatter, the Now card, People), the Session title, the Artifacts panel, the Ticket overview | [phases/state.md](phases/state.md) |
 | Worktrees: at Start, before the first commit, at Implement, and before a proof run | [phases/worktrees.md](phases/worktrees.md) |
 | Investigate, the Diagnosis stop, and Plan | [phases/investigate-plan.md](phases/investigate-plan.md) |
@@ -75,7 +75,7 @@ This skill does not repeat other tools. Use them:
 | Worktree sessions, implementers, reviewers, cold read, hand-off | the `agents` skill |
 | Tracker, repository host, and CI actions | the capabilities in `<config>` (see [tools.md](../../context/tools.md)) |
 | Build, run, deploy, and company tools | the repository's own instructions and skills, and the company rules (`<wiki>/rules/`) |
-| Human review of ticket documents | comment threads of the host, or comments that the user sends from the canvas (see Review gates) |
+| Human review of ticket documents | comment threads of the host, or the chat (see Review gates) |
 | Tickets of other sessions and titles | the `board` skill, in any session |
 
 ## 🧭 Workflow
@@ -85,7 +85,7 @@ A small fix has the same phases and gates as a large change. Its documents are s
 
 ```mermaid
 flowchart LR
-  S[Research] --> A[Canvas + interview] --> SC[story.md · Scoped?] --> D[Investigation] --> P[plan.md · Planned?]
+  S[Research] --> A[Interview] --> SC[story.md · Scoped?] --> D[Investigation] --> P[plan.md · Planned?]
   P --> I[Implement] --> R[review.md · Shippable?] --> E[Evidence Testing · proof.md] --> M[merge by user] --> C[close.md · Learned?]
   D -. diagnosis contradicts scope .-> SC
 ```
@@ -101,7 +101,7 @@ flowchart LR
 Two goals for every ticket:
 
 1. Deliver the change with the full evidence-linked process, also for a small fix.
-2. At Close, the user knows the affected areas, how the feature lives in the code, and what it is used for. `map.md` and the canvas carry this.
+2. At Close, the user knows the affected areas, how the feature lives in the code, and what it is used for. `map.md` carries this.
 
 ## 🗂️ Folder layout
 
@@ -117,7 +117,6 @@ The folder name is `<key>`, for example `app-123`. A file starts to exist when i
   journal.md    append-only dated entries: log, decision, problem, check, step
   map.md        code map: components with their layer, flow, data, tests, terms
   close.md      Learned?: what you now know, and the wiki changes
-  canvas.html   generated view of all files above (never edit, never hash)
   evidence/     sanitized tool outputs, the work item snapshot, spike results
   outbox/       drafts of external writes
   approvals/    revision manifests, history.md, and snapshots/ of each review
@@ -158,7 +157,7 @@ Open colleague questions do not block a gate.
 Rules:
 
 - Approval comes only from the user: an `approve` answer in the approval form, or `approve <gate>` in chat in the current conversation. For Sendable?, it is the answer to the host prompt or to `host.ask` (see `host.write`).
-- Comments, resolved threads, canvas comments, and "looks good" notes do not approve a gate.
+- Comments, resolved threads, and "looks good" notes do not approve a gate.
 - Lessons and self-checks do not approve a gate or prove understanding.
 - Never answer the approval form for the user, and never approve in auto mode. No session approves a gate for another session.
 - A required gate blocks its step. A change to an approved document reopens its gate.
@@ -174,7 +173,7 @@ The steps of a gate are in [phases/gates.md](phases/gates.md): the cold read, th
 3. Read the last entries of `journal.md`.
 4. Read the `## Resume` policy section, for example credential checks.
 5. Validate the approvals with `<F> lint --wiki "<wiki>" --json`. Default lint is read-only. Never run `--fix` implicitly.
-6. Run `<F> canvas <KEY>`. Show the Now card first, with the link to the canvas. Then tell the user the last result, the policy checks, the approval findings, the people who need a message or a reply (`to-contact`, `drafted`, `follow-up`, `reply-in`), and the people you wait for. A finding blocks only the affected action.
+6. Show the Now card first. Then tell the user the last result, the policy checks, the approval findings, the people who need a message or a reply (`to-contact`, `drafted`, `follow-up`, `reply-in`), and the people you wait for. A finding blocks only the affected action.
 7. Show the approval form for each gate that is `in-review`.
 8. Before implementation or a proof run, apply the Worktrees checks. A resumed session does not need another worktree when the current one is suitable. Preserve valid approval evidence when you report a baseline mismatch.
 9. Then read the part of the README `phase`: `start` is [phases/start.md](phases/start.md); `investigate` and `plan` are [phases/investigate-plan.md](phases/investigate-plan.md); `implement` is [phases/implement.md](phases/implement.md); `review` is [phases/implement.md](phases/implement.md) before the change request and [phases/evidence.md](phases/evidence.md) after it; `closed` is [phases/closing.md](phases/closing.md).

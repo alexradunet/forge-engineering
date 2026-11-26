@@ -13,53 +13,41 @@ const PAGE_LABEL = { 'needs-me': 'Needs you' };
 export const pageLabel = (state, label) => PAGE_LABEL[state] ?? label;
 
 /** The gate line of a board ticket: the open gate and its status, or '' when no required gate is open. */
-export function gateLine(item) {
+function gateLine(item) {
   if (!item.openGate) return '';
   return `${item.openGate.name} ${GATE_TEXT[item.openGate.status] ?? item.openGate.status}`;
 }
 
 /**
- * The links between the pages of one wiki, for a page at `from` ('board', 'wiki', or the folder of a ticket).
- * A file page uses relative links: raw/board.html, raw/wiki.html, and raw/tickets/<folder>/canvas.html.
+ * The links between the pages of one wiki, for a page at `from` ('board' or 'wiki').
+ * A file page uses relative links: raw/board.html, raw/wiki.html, and raw/tickets/<folder>/<file>.
  * A served page (token) uses the routes of the live server.
- * `broken` names the folders without a canvas: their link goes to the README.
  * `closed` (buildWiki in wiki.mjs) gives the closed tickets: each one has a summary page in the wiki.
+ * `file(folder, name)` is the link to a file of a ticket folder. A ticket of the list opens at its README.
  */
-export function buildNav(board, { from = 'board', token = '', broken = [], closed = [] } = {}) {
+export function buildNav(board, { from = 'board', token = '', closed = [] } = {}) {
   const seg = encodeURIComponent;
   const hash = (relative) => relative.split('/').map(seg).join('/');
-  const top = from === 'board' || from === 'wiki';
-  const up = top ? 'tickets/' : '../';
-  const wiki = from === 'wiki' ? '' : token ? `/wiki?t=${token}` : top ? 'wiki.html' : '../../wiki.html';
+  const wiki = from === 'wiki' ? '' : token ? `/wiki?t=${token}` : 'wiki.html';
   const file = (folder, name) => (token
     ? `/ticket/${seg(folder)}/${name.split('/').map(seg).join('/')}?t=${token}`
-    : `${up}${seg(folder)}/${name.split('/').map(seg).join('/')}`);
-  const page = (folder) => {
-    if (token) return `/ticket/${seg(folder)}/?t=${token}`;
-    return file(folder, broken.includes(folder) ? 'README.md' : 'canvas.html');
-  };
+    : `tickets/${seg(folder)}/${name.split('/').map(seg).join('/')}`);
   const tickets = board.groups.flatMap((group) => group.tickets.map((item) => ({
     key: item.key, folder: item.folder, title: item.short || item.title, state: item.state, emoji: item.emoji, label: pageLabel(item.state, group.label),
-    phase: item.phase, gate: gateLine(item), href: page(item.folder),
+    phase: item.phase, gate: gateLine(item), href: file(item.folder, 'README.md'),
   })));
-  const at = tickets.findIndex((item) => item.folder === from);
   return {
-    board: from === 'board' ? '' : token ? `/board?t=${token}` : top ? 'board.html' : '../../board.html',
+    board: from === 'board' ? '' : token ? `/board?t=${token}` : 'board.html',
     wiki,
-    // One page of the wiki page, by the path of its Markdown file.
-    page: (relative) => `${wiki}#${hash(relative)}`,
     closed: closed.map((item) => ({ key: item.key, title: item.title, updated: item.updated, path: item.path, href: `${wiki}#${hash(item.path)}` })),
-    current: top ? '' : from,
     tickets, file,
-    prev: at > 0 ? tickets[at - 1] : null,
-    next: at >= 0 && at < tickets.length - 1 ? tickets[at + 1] : null,
   };
 }
 
 /** The part of the links that the page script needs. */
 export function navData(nav) {
   if (!nav) return null;
-  return { board: nav.board, wiki: nav.wiki, prev: nav.prev?.href ?? '', next: nav.next?.href ?? '' };
+  return { board: nav.board, wiki: nav.wiki };
 }
 
 const links = client(function () {
@@ -119,15 +107,13 @@ const links = client(function () {
   });
 });
 
-// The last keydown handler of the page script: t, b, w, [, ], and ?.
+// The last keydown handler of the page script: t, b, w, and ?.
 const keys = client(function () {
   document.addEventListener('keydown', function (event) {
     if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || typing(event) || modalOpen()) return;
     if (event.key === 't') openSwitcher();
     else if (event.key === 'b' && nav.board) go(nav.board);
     else if (event.key === 'w' && nav.wiki) go(nav.wiki);
-    else if (event.key === '[' && nav.prev) go(nav.prev);
-    else if (event.key === ']' && nav.next) go(nav.next);
     else if (event.key === '?') openHelp();
     else return;
     event.preventDefault();
@@ -137,12 +123,12 @@ const keys = client(function () {
 export const nav = {
   name: 'nav',
   css: '',
-  html: { buildNav, navData, gateLine, pageLabel },
+  html: { buildNav, navData, pageLabel },
   script: links,
   scriptParts: { keys },
   demo: () => [{
-    title: 'Links of a ticket page: the board, the wiki, and the tickets next to it',
-    html: '<div class="tools" style="margin-left: 0"><a class="quiet" href="#">Board</a><a class="quiet" href="#">Wiki</a><a class="quiet icon" href="#" title="Previous ticket ([)">[</a><a class="quiet icon" href="#" title="Next ticket (])">]</a></div>',
+    title: 'Links of a page: the board and the wiki',
+    html: '<div class="tools" style="margin-left: 0"><a class="quiet" href="#">Board</a><a class="quiet" href="#">Wiki</a></div>',
   }, {
     title: 'The gate words of a ticket',
     html: Object.values(GATE_TEXT).map((text) => `<span class="pill st-needs-me">${text}</span>`).join(' '),

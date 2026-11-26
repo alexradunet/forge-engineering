@@ -35,7 +35,7 @@ export const TOKENS = [
   { group: 'space', name: '--s-6', value: '32px', use: 'A gap between sections.' },
   { group: 'space', name: '--s-7', value: '48px', use: 'The largest gap.' },
   { group: 'shadow', name: '--sh-1', value: '2px 2px 0 var(--line-2)', use: 'A card: a hard shadow of one pixel unit.' },
-  { group: 'shadow', name: '--sh-2', value: '4px 4px 0 var(--shade)', use: 'A menu, a dialog, and the toast.' },
+  { group: 'shadow', name: '--sh-2', value: '4px 4px 0 var(--shade)', use: 'A dialog and the toast.' },
   { group: 'font', name: '--font', value: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif', use: 'The text font.' },
   { group: 'mono', name: '--mono', value: 'ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace', use: 'Keys, code, and paths.' },
   { group: 'unit', name: '--px', value: '2px', use: 'The pixel unit: a border, a stepped corner, and a pixel of a letter.' },

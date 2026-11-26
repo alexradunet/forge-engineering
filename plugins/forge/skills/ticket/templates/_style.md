@@ -27,7 +27,6 @@ A file starts to exist when its phase starts. Do not create an empty file.
 - Write no bold labels and no bold text. Start a line with a plain label and a colon, for example `Cause:`.
 - Write no quote blocks for emphasis, no tip or warning boxes, and no horizontal rules.
 - Use a table only for rows that the reader compares, with 3 columns or more. Use a list for all other content.
-- Do not add a Mermaid diagram to a ticket document. The canvas (`forge.mjs canvas <key>`) draws the code map, the plan, and the history from these files.
 
 ## 🧱 Shape of a gate document
 
@@ -39,8 +38,8 @@ A gate document (`story.md`, `plan.md`, `review.md`, `close.md`) has these parts
 4. Sections: only the sections that have content, in the order of the template.
 
 - Leave out a section that has no content. Do not write "None". The exceptions are the summary and `Need from you:`.
-- Keep the section names of the template. The canvas and `forge.mjs lint` find the content by these names.
-- Keep the line shapes of the template inside a section (for example `Files:` under a step, or `A -> B: text` in the flow). The canvas reads them.
+- Keep the section names of the template. `forge.mjs lint` and the plan checks find the content by these names.
+- Keep the line shapes of the template inside a section (for example `Files:` under a step, or `A -> B: text` in the flow). The plan checks read them.
 - The whole document has at most 1,500 words. Code and link targets do not count. Put longer material in an `evidence/` file, and give the link. Do not drop a fact to make a document shorter.
 - `forge.mjs lint` warns when the summary is missing or over its budget, when the document is over its budget, and when a section is empty.
 
@@ -83,6 +82,6 @@ A decision that an approval depends on also goes into the gate document (`Answer
 | Value | Title |
 |---|---|
 | `approve` | 🟢 GO: approve and start the next step |
-| `comments` | 💬 Comments: I added comments in the editor or on the canvas |
+| `comments` | 💬 Comments: I added comments in the editor or in the chat |
 | `changes` | ✏️ Changes: I type them in the free-text answer |
 | `later` | ⏸️ Hold: not now |

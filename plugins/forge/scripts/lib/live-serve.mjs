@@ -1,8 +1,7 @@
-// The live server: `forge.mjs live`. It shows the board page, the wiki page, and the ticket canvases on this machine only (127.0.0.1),
+// The live server: `forge.mjs live`. It shows the board page and the wiki page on this machine only (127.0.0.1),
 // with the live state of the agent sessions: the session hooks (live-hook.mjs) send their events to POST /event,
 // and a page reads the state from GET /live (the server holds the answer until the state changes).
-// Its actions for a page are two. POST /ticket/<folder>/send is Send to agent: it adds the comment message of the canvas to the file
-// canvas-comments.md in the ticket folder, and the ticket session reads that file. POST /resume opens a terminal of the user with the command
+// Its one action for a page is POST /resume: it opens a terminal of the user with the command
 // that continues a closed session of the session list (sessions.mjs, terminal.mjs). Each other request is a GET, or an event of the reporter.
 // The events stay in memory. It writes its state file in the forge data folder (the port, the tokens, and the folders of its repository,
 // for the reporter of the same user), and lines of the session list. It has no CORS header. A page needs the page token, and an event needs the event token.
@@ -13,27 +12,25 @@
 import http from 'node:http';
 import net from 'node:net';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { appendFileSync, closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildBoard } from './board.mjs';
 import { BOARD_SCRIPT, renderBoardPage } from './board-page.mjs';
-import { buildCanvas, renderCanvas } from './canvas.mjs';
-import { CANVAS_SCRIPT, canvasMessage } from './canvas-page.mjs';
 import { dataDir } from './data-dir.mjs';
 import { harness, resumeArgv, resumeText } from './harness.mjs';
 import { homeOf, rawDir } from './layout.mjs';
 import { launcherCommand } from './launcher.mjs';
-import { COMMENTS_FILE, LIVE_DIR, LIVE_FILE, MAX_EVENT, checkEvent } from './live-event.mjs';
-import { boardStamp, needsCount, ticketStamp } from './live-stamp.mjs';
-import { createLive, detail, prune, reduce, summary } from './live.mjs';
+import { LIVE_DIR, LIVE_FILE, MAX_EVENT, checkEvent } from './live-event.mjs';
+import { boardStamp, needsCount } from './live-stamp.mjs';
+import { createLive, prune, reduce, summary } from './live.mjs';
 import { MERMAID_ROUTE, needsMermaid, readMermaid } from './mermaid.mjs';
 import { pastSessions, readSessions, recordEnd, recordLabel, recordStart, sessionsFile } from './sessions.mjs';
 import { openTerminal } from './terminal.mjs';
 import { ticketRoot } from './tickets.mjs';
 import { ERROR_POLICY, buildNav, errorPage } from './ui.mjs';
 import { WIKI_SCRIPT, renderWikiPage } from './wiki-page.mjs';
-import { buildWiki, wikiLinks } from './wiki.mjs';
+import { buildWiki } from './wiki.mjs';
 
 /** The server stops after this time without an event and without a request of a page. */
 export const IDLE_MS = 8 * 60 * 60 * 1000;
@@ -57,11 +54,7 @@ export const PLUGIN_VERSION = (() => {
 const PORT_BASE = 41000;
 const PORT_SPAN = 2000;
 const PORT_TRIES = 10;
-export { COMMENTS_FILE };
-const MAX_BODY = 256 * 1024;
-const MAX_COMMENTS = 200;
 const MAX_FILE = 8 * 1024 * 1024;
-const FIELDS = ['id', 'file', 'section', 'title', 'text', 'quote', 'label', 'kind'];
 // A link on the page can name a file of the ticket folder. The server gives only these types, and never a page.
 const TYPES = {
   '.md': 'text/plain; charset=utf-8', '.txt': 'text/plain; charset=utf-8', '.log': 'text/plain; charset=utf-8', '.json': 'text/plain; charset=utf-8',
@@ -75,10 +68,6 @@ export const policy = (script, self = false) => `default-src 'none'; script-src 
 function mermaidAnswer() {
   return { body: readMermaid(), headers: { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'private, max-age=86400' } };
 }
-const PAGE_POLICY = policy(CANVAS_SCRIPT);
-const PAGE_POLICY_MERMAID = policy(CANVAS_SCRIPT, true);
-/** The policy of a canvas page: a page with a Mermaid block can also load the Mermaid file of its server. */
-const canvasPolicy = (page) => (needsMermaid(page) ? PAGE_POLICY_MERMAID : PAGE_POLICY);
 const BOARD_POLICY = policy(BOARD_SCRIPT);
 const WIKI_POLICY = policy(WIKI_SCRIPT);
 const WIKI_POLICY_MERMAID = policy(WIKI_SCRIPT, true);
@@ -132,26 +121,6 @@ export function checkRequest(req, token) {
   return 0;
 }
 
-/** The comments and the general comment of a Send request, or null when the shape is wrong. */
-export function readSend(body) {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
-  const { comments = [], general = '' } = body;
-  if (!Array.isArray(comments) || comments.length > MAX_COMMENTS || typeof general !== 'string') return null;
-  const items = [];
-  for (const comment of comments) {
-    if (!comment || typeof comment !== 'object' || Array.isArray(comment)) return null;
-    const item = {};
-    for (const name of FIELDS) {
-      const value = comment[name];
-      if (value === undefined || value === null) continue;
-      if (typeof value !== 'string') return null;
-      item[name] = value;
-    }
-    items.push(item);
-  }
-  return { comments: items, general };
-}
-
 /** A regular file inside the ticket folder with a listed type, or null. */
 function ticketFile(dir, pathname) {
   let relative;
@@ -170,7 +139,7 @@ function ticketFile(dir, pathname) {
 }
 
 /** The text of a request body, or null when it has more than `max` bytes. */
-function readBody(req, max = MAX_BODY) {
+function readBody(req, max) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
@@ -341,7 +310,7 @@ function answers(port) {
 }
 
 /**
- * Serves the board and the canvases of one wiki with the live state of the sessions, until a signal or the idle limit.
+ * Serves the board and the wiki page of one wiki with the live state of the sessions, until a signal or the idle limit.
  * `repo` is the main checkout of the repository: with it, the sessions in the checkout and in its worktrees report to this server.
  * `openTerminalFn` opens the terminal for a Resume (terminal.mjs). A test gives its own function.
  * Gives the exit code: 130 or 143 after a signal, and 3 at the idle limit (no event and no request of a page for `idleMs`).
@@ -361,11 +330,11 @@ export async function serveLive(wiki, { links = 'vscode', port, repo = '', idleM
   const ended = new Promise((resolve) => { finish = resolve; });
 
   // The tickets of the board, for the ticket of each session. A read error gives no ticket, and the sessions still show.
-  // The cache also holds the board model and its stamp. A page request gives its fresh model to the cache, so the stamp of the page and the stamp of the next answer agree.
-  let cache = { at: 0, model: null, tickets: [], stamp: '' };
+  // The cache also holds the board stamp. A page request gives its fresh model to the cache, so the stamp of the page and the stamp of the next answer agree.
+  let cache = { at: 0, tickets: [], stamp: '' };
   const keep = (model) => {
     const found = model ? model.groups.flatMap((group) => group.tickets.map((item) => ({ key: item.key, folder: item.folder, worktree: item.worktree, state: item.state }))) : [];
-    cache = { at: Date.now(), model, tickets: found, stamp: model ? boardStamp(model) : '' };
+    cache = { at: Date.now(), tickets: found, stamp: model ? boardStamp(model) : '' };
     // A new ticket worktree outside of the usual folders is a new root for the reporter.
     if (bound && JSON.stringify(liveRoots(home, repo, found)) !== JSON.stringify(roots)) writeState(found);
     return found;
@@ -375,18 +344,12 @@ export async function serveLive(wiki, { links = 'vscode', port, repo = '', idleM
     try { return keep(buildBoard(wiki)); } catch { return keep(null); }
   };
 
-  // The change stamps: one for the board, and one for each ticket that a page showed. `seen` holds the last stamp of each. A stamp that changed
-  // raises the version, so a held request of a page gets its answer (and the page shows that its data changed).
-  const rowOf = (folder) => cache.model?.groups.flatMap((group) => group.tickets).find((item) => item.folder === folder) ?? null;
-  const stampOf = (scope) => (scope ? ticketStamp(path.join(ticketRoot(wiki), scope), rowOf(scope)) : cache.stamp);
-  const seen = new Map();
-  const scan = (extra = '') => {
-    let moved = false;
-    for (const scope of new Set(['', extra, ...seen.keys()])) {
-      const now = stampOf(scope);
-      if (seen.has(scope) && seen.get(scope) !== now) moved = true;
-      seen.set(scope, now);
-    }
+  // The change stamp of the board. `seen` holds the last stamp. A stamp that changed raises the version, so a held request of a page gets its answer
+  // (and the page shows that its data changed).
+  let seen = null;
+  const scan = () => {
+    const moved = seen !== null && seen !== cache.stamp;
+    seen = cache.stamp;
     return moved;
   };
 
@@ -404,7 +367,7 @@ export async function serveLive(wiki, { links = 'vscode', port, repo = '', idleM
     return true;
   };
 
-  const snapshot = (ticket) => {
+  const snapshot = () => {
     loadRecords();
     const board = tickets();
     const now = Date.now();
@@ -412,10 +375,8 @@ export async function serveLive(wiki, { links = 'vscode', port, repo = '', idleM
     // A session that ended shows one time: as a row of the session list, with its buttons.
     const hidden = new Set(past.map((item) => live.sessions.get(item.id)?.sid).filter(Boolean));
     const sessions = summary(live, board, now).filter((item) => !hidden.has(item.id));
-    // c: the stamp of the data of the page (the board, or one ticket). needs: the tickets and the sessions that wait for the user (the tab of the page shows it).
-    const body = { v: version, now, c: stampOf(ticket), needs: needsCount(board, sessions), sessions, past: ticket ? past.filter((item) => item.ticket === ticket) : past };
-    if (ticket) body.detail = detail(live, sessions.filter((item) => item.ticket === ticket).map((item) => item.id));
-    return JSON.stringify(body);
+    // c: the stamp of the data of the page (the board). needs: the tickets and the sessions that wait for the user (the tab of the page shows it).
+    return JSON.stringify({ v: version, now, c: cache.stamp, needs: needsCount(board, sessions), sessions, past });
   };
 
   // The live events keep the session list complete: a session that started before this plugin version, the title that
@@ -444,7 +405,7 @@ export async function serveLive(wiki, { links = 'vscode', port, repo = '', idleM
   const answer = (waiter) => {
     if (!waiters.delete(waiter)) return;
     clearTimeout(waiter.timer);
-    if (!waiter.res.writableEnded && !waiter.res.destroyed) send(waiter.res, 200, 'application/json; charset=utf-8', snapshot(waiter.ticket));
+    if (!waiter.res.writableEnded && !waiter.res.destroyed) send(waiter.res, 200, 'application/json; charset=utf-8', snapshot());
   };
   // Many events can come at one time. The pages get one answer for them.
   const changed = () => {
@@ -514,10 +475,9 @@ export async function serveLive(wiki, { links = 'vscode', port, repo = '', idleM
     let checked = false;
     try {
       const post = req.method === 'POST';
-      // POST /resume and POST /ticket/<folder>/send come from a page, so they need the page token. Each other POST needs the event token.
+      // POST /resume comes from a page, so it needs the page token. Each other POST needs the event token.
       const toResume = post && /^\/resume(?:\?|$)/.test(req.url ?? '');
-      const toSend = post && /^\/ticket\/[^/?]+\/send(?:\?|$)/.test(req.url ?? '');
-      const status = checkRequest(req, post && !toResume && !toSend ? eventToken : pageToken);
+      const status = checkRequest(req, post && !toResume ? eventToken : pageToken);
       if (status) {
         req.resume();
         if (status === 403) errorAnswer(req, res, 403, OLD_LINK, OLD_PAGE);
@@ -541,28 +501,6 @@ export async function serveLive(wiki, { links = 'vscode', port, repo = '', idleM
         send(res, result.status, 'application/json; charset=utf-8', JSON.stringify(result.body));
         return;
       }
-      if (toSend) {
-        // The folder must be the folder of a ticket on the board. The key of the message is the key of that ticket, never a key from the request.
-        let name = '';
-        try { name = decodeURIComponent(url.pathname.split('/')[2]); } catch { name = ''; }
-        const row = buildBoard(wiki).groups.flatMap((group) => group.tickets).find((item) => item.folder === name);
-        if (!row) { req.resume(); missing(req, res); return; }
-        const text = await readBody(req);
-        if (text === null) { plain(res, 413, 'The comments are too large.\n'); return; }
-        let body = null;
-        try { body = readSend(JSON.parse(text)); } catch { body = null; }
-        const message = body ? canvasMessage(row.key, body.comments, body.general) : '';
-        if (!body || !message.includes('\n')) { plain(res, 400, 'The request has no comment that the server can read.\n'); return; }
-        // The file is never a link: a file that is not a regular file stops the write, and the open does not follow a link where the system can say so.
-        const target = path.join(ticketRoot(wiki), name, COMMENTS_FILE);
-        let blocked = false;
-        try { blocked = !lstatSync(target).isFile(); } catch { /* No file yet. */ }
-        if (blocked) { plain(res, 409, `${COMMENTS_FILE} is not a regular file.\n`); return; }
-        appendFileSync(target, `${message}\n\n`, { mode: 0o600, flag: constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | (constants.O_NOFOLLOW ?? 0) });
-        changed();
-        send(res, 200, 'application/json', '{"ok":true}');
-        return;
-      }
       if (post) {
         // Only the reporter sends events. A browser adds one of these headers to a request of a page, so a page cannot send an event.
         if (url.pathname !== '/event') { req.resume(); missing(req, res); return; }
@@ -583,13 +521,11 @@ export async function serveLive(wiki, { links = 'vscode', port, repo = '', idleM
         return;
       }
       if (url.pathname === '/live') {
-        const board = tickets();
-        const wanted = url.searchParams.get('ticket') ?? '';
-        const ticket = board.some((item) => item.folder === wanted) ? wanted : '';
+        tickets();
         // A change that no event told (a file that the user edited) raises the version here, so this request gets its answer at once.
-        if (scan(ticket)) version += 1;
-        if (url.searchParams.get('v') !== String(version)) { send(res, 200, 'application/json; charset=utf-8', snapshot(ticket)); return; }
-        const waiter = { res, ticket, timer: null };
+        if (scan()) version += 1;
+        if (url.searchParams.get('v') !== String(version)) { send(res, 200, 'application/json; charset=utf-8', snapshot()); return; }
+        const waiter = { res, timer: null };
         waiter.timer = setTimeout(() => answer(waiter), holdMs);
         waiters.add(waiter);
         res.on('close', () => { clearTimeout(waiter.timer); waiters.delete(waiter); });
@@ -624,27 +560,14 @@ export async function serveLive(wiki, { links = 'vscode', port, repo = '', idleM
         send(res, 200, 'text/html; charset=utf-8', page, { 'Content-Security-Policy': needsMermaid(page) ? WIKI_POLICY_MERMAID : WIKI_POLICY });
         return;
       }
-      const match = /^\/ticket\/([^/]+)(\/.*)?$/.exec(url.pathname);
+      // A file of a ticket folder: /ticket/<folder>/<file>. A page link of a ticket card opens it. A ticket has no page of its own.
+      const match = /^\/ticket\/([^/]+)(\/.+)$/.exec(url.pathname);
       if (!match) { missing(req, res); return; }
       // Only the folder of a ticket on the board is a route. Another name, also a path that goes up, is not found.
       let name = '';
       try { name = decodeURIComponent(match[1]); } catch { name = ''; }
       if (!board.groups.some((group) => group.tickets.some((item) => item.folder === name))) { missing(req, res); return; }
       const dir = path.join(ticketRoot(wiki), name);
-      if (match[2] === undefined) {
-        send(res, 302, 'text/plain; charset=utf-8', 'See the new address.\n', { Location: `/ticket/${encodeURIComponent(name)}/?t=${pageToken}` });
-        return;
-      }
-      if (match[2] === '/') {
-        if (scan(name)) changed();
-        const page = renderCanvas(buildCanvas(dir), {
-          links, nav: buildNav(board, { from: name, token: pageToken, closed: model().closed }),
-          serve: { token: pageToken, live: `/live?t=${pageToken}&ticket=${encodeURIComponent(name)}`, resume: '/resume', open: openText, c: stampOf(name) },
-          wiki: wikiLinks(model(), { from: name, token: pageToken, dir }), mermaid: true,
-        });
-        send(res, 200, 'text/html; charset=utf-8', page, { 'Content-Security-Policy': canvasPolicy(page) });
-        return;
-      }
       const file = ticketFile(dir, match[2]);
       if (!file) { missing(req, res); return; }
       send(res, 200, file.type, readFileSync(file.file), { 'Content-Security-Policy': "default-src 'none'; sandbox" });
