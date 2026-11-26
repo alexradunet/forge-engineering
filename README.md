@@ -5,7 +5,7 @@ The same plugin folder also runs in GitHub Copilot CLI and Claude Code (see Host
 It gives every agent session a ticket workflow with review gates, a small set of plain ticket documents,
 a repository wiki, coordinated agent sessions, and a ticket board that any session can show.
 
-forge has a generic core and one profile (see Profile). This build has the GitHub profile:
+forge has a generic core and profiles (see Profile). The default profile is the GitHub profile:
 
 | Area | Tool | CLI |
 |---|---|---|
@@ -33,7 +33,7 @@ flowchart LR
 4. In a chat, say "set up forge".
 5. Answer the setup form: your branch pattern (`users/<your name>/{KEY}-{slug}`) and the path of your clone.
 
-Needs: Node.js 20 or later, Git, `gh`,
+Needs: Node.js 20 or later, Git, the CLI of your profile (`gh` for GitHub, `tea` for Forgejo),
 and VS Code with agent plugins enabled (`chat.plugins.enabled`). forge runs on Windows, macOS, and Linux.
 
 Setup reads the repository first, so most answers are prefilled:
@@ -89,10 +89,14 @@ To update `forge`:
 
 ### 🏷️ Profile
 
-The plugin has a generic core and one profile. This build has the GitHub profile. The profile holds the shared values in `plugins/forge/templates/config/`, the rule pages in `plugins/forge/templates/rules/`,
+The plugin has a generic core, a default profile, and extra profiles. The default profile is the GitHub profile. It holds the shared values in `plugins/forge/templates/config/`, the rule pages in `plugins/forge/templates/rules/`,
 the setup values in `plugins/forge/templates/profile.md`, and the machine values in `plugins/forge/templates/profile.json`.
 `profile.json` also lists the other profile files, the tools, and the company terms. `tests/profile.test.mjs` keeps the terms out of all other files.
 Setup copies the config to the wiki. Change a shared value here, so that each user gets it.
+An extra profile is a folder `plugins/forge/profiles/<name>/` with the same shape. It holds only the files that differ: a missing file comes from the default profile.
+This build has one extra profile: `forgejo` (Forgejo or Gitea, with `tea`).
+A wiki names its profile in `forge/repo.json`. Setup proposes the profile from the host of the remote, and it runs `forge.mjs seed --profile <name>`.
+The read commands of the `forgejo` profile ran on a real server. Its write commands for issues and for pull requests had no real run yet.
 The wiki holds only the copy, your personal values, and the helper scripts. To share the wiki, commit and push it. See [wiki.md](docs/wiki.md).
 
 To make a company profile, change the files in `plugins/forge/templates/`. Add each other company file (a script or an `mcp.json`) to `files`,
@@ -126,7 +130,7 @@ Setup offers the native wiki of the private repository, a separate private `<rep
 | `plugins/forge/com.github.copilot/hooks/` | `hooks.json`: the `sessionStart` hook. It gives each session the paths, the ticket context, the `forge` and `style` rules, and the approved company rules of `<wiki>/rules/`. The `preToolUse` hook is the gate guard (`forge.mjs hook pre-tool`, see Review gates). Forge 9.1 adds the `sessionEnd` hook: with `sessionStart`, it writes the session list of a Copilot CLI session (see [Live view](#-live-view)). |
 | `plugins/forge/hooks/` | `hooks.json`: the same context for Claude Code (spike). `SessionStart` gives it in parts of at most 9,000 characters (2 parts for a session without company rules), `UserPromptSubmit` sets the ticket title, and `PreToolUse` is the gate guard. See `Claude Code host` in [vscode-baseline.md](docs/vscode-baseline.md) Forge 7.6 adds the live reporter (`scripts/live-hook.mjs`) as a background hook on the activity events of a session: see [Live view](#-live-view). Forge 9.1 adds the session list: part 1 of `SessionStart` writes the start of a session, and `forge.mjs hook session-end` at `SessionEnd` writes its end. |
 | `plugins/forge/skills/` | `ticket`, `agents`, `board`, `wiki`, `forge-setup`, `writing` |
-| `plugins/forge/templates/` | The profile: config (`config/`), rule pages (`rules/`), setup values (`profile.md`), and machine values with the list of the other profile files (`profile.json`) |
+| `plugins/forge/templates/` | The default profile: config (`config/`), rule pages (`rules/`), setup values (`profile.md`), and machine values with the list of the other profile files (`profile.json`) |
 | `plugins/forge/scripts/` | `forge.mjs` (init, config, trust, lint, board, local-key, worktree, live, open, gate-open, gate-approve, hook, wiki scripts), `cred.mjs`, `live-hook.mjs` (the reporter of the live view) |
 | `plugins/forge/vendor/mermaid/` | The only third-party program of the plugin: the small Mermaid build that draws the diagrams of the wiki page, with its license and a [notice](plugins/forge/vendor/mermaid/NOTICE.md) (version, hash, update steps) |
 | `docs/` | [config.md](docs/config.md) (config format), [wiki.md](docs/wiki.md) (sharing and scripts), [evaluation.md](docs/evaluation.md) (behavioral runs: `npm run eval` gives the cases of `tests/evals/` to a real agent session), and [vscode-baseline.md](docs/vscode-baseline.md) (the VS Code features that forge uses) |

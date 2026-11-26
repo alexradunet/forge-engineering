@@ -60,7 +60,7 @@ with a core rule, the agent follows the core rule and tells the user.
 
 - Before the first edit, read the root `AGENTS.md` and the `AGENTS.md` of each folder that you change. For code rules, they win over forge.
 - Each commit subject and the pull request title start with the key, for example `GH-123 Add retry backoff to the queue`.
-- The pull request description has `Closes #<n>`, so that GitHub closes the issue at the merge.
+- The pull request description has `Closes #<n>`, so that the repository host closes the issue at the merge.
 - Keep review fixes as separate commits.
 
 ## Evidence Testing

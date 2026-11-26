@@ -14,6 +14,8 @@ The config travels with the wiki repository. Every clone of the wiki uses the sa
 `forge-setup` seeds missing files from [templates/config](../plugins/forge/templates/config),
 and fills the personal values with `forge.mjs config set` and `config row` (see **Edit values**).
 The templates hold the shared values of the profile. Change a shared value in the templates, so that each user gets it.
+The wiki has one profile, and `forge/repo.json` names it (`"profile": "<name>"`). `forge.mjs seed --profile <name>` copies the files of an extra profile (`plugins/forge/profiles/<name>/`) and records it. A later `seed` uses the recorded profile.
+A file that the extra profile does not have comes from the default profile (`templates/`). With no name in `repo.json`, the wiki has the default profile.
 Edit them directly in the wiki. Clone or pull that wiki to share changes (see [wiki.md](wiki.md)).
 
 ```mermaid

@@ -1,6 +1,6 @@
 ---
 name: forge-setup
-description: Set up, check, repair, resume, or refresh forge for the repository of the plugin profile. Detects the CLIs and their login, the MCP servers of the profile, the default branch, your branch pattern, and your main clone; creates or binds the Forge folder of the repository (../<repo>.forge, with its wiki); seeds the profile config (tracker, repository, CI, policy) and the rule pages; sets your personal values; stores the credentials of the profile in the OS credential store; checks each capability with a live read; and offers the optional extras (policy values and the VS Code check). Use when the user says "set up forge", "configure forge", "check forge", "repair forge", "finish forge setup", "resume forge setup", or "refresh the forge config".
+description: Set up, check, repair, resume, or refresh forge for the repository of the profile of its wiki. Detects the CLIs and their login, the MCP servers of the profile, the default branch, your branch pattern, and your main clone; creates or binds the Forge folder of the repository (../<repo>.forge, with its wiki); seeds the profile config (tracker, repository, CI, policy) and the rule pages; sets your personal values; stores the credentials of the profile in the OS credential store; checks each capability with a live read; and offers the optional extras (policy values and the VS Code check). Use when the user says "set up forge", "configure forge", "check forge", "repair forge", "finish forge setup", "resume forge setup", or "refresh the forge config".
 disable-model-invocation: true
 ---
 
@@ -11,12 +11,12 @@ disable-model-invocation: true
 > is two folders above the folder of this file. When the command fails, read
 > [forge.md](../../context/forge.md) (the `forge` rule), and [style.md](../../context/style.md) (the `style` rule) unless `policy.styleRules` is `false`.
 
-One chat sets up forge for the repository of the plugin profile. The plugin holds the profile config templates,
+One chat sets up forge for the repository of the profile of its wiki. The plugin holds the profile config templates,
 but no machine paths. The config lives in the repository wiki (`../<repo>.forge/wiki`).
 
 ## 🏷️ Profile
 
-Read `<plugin>/templates/profile.md` first. It holds the shared values of the profile, and the values
+Read the `profile.md` whose path `detect` gives in `profile.file` first (the default is `<plugin>/templates/profile.md`; Step 1 says which file to read when the user selects another profile). It holds the shared values of the profile, and the values
 that each step below names: the expected remote, the default branch, the prefills, the tools, the credentials, the live-read items, the policy notes, and the first ticket text.
 Each user sets only two personal values: the branch pattern and the path of the main clone.
 When `profile.md` is missing, there is no profile. Then ask the user for each value that a step needs, and use the generic examples.
@@ -42,8 +42,8 @@ resolved path in each command. All commands run on Windows, macOS, and Linux.
 | `<F> detect` | Host, visibility, CLIs and login, default branch, key hints, your branch pattern, wiki state, and suggested values | nothing |
 | `<F> doctor [--fetch]` | Read-only check of the whole setup: placeholders, credentials, the `gh` login, the session start hook, and the plugin version (`--fetch` runs `git fetch` in the plugin clone) | nothing |
 | `<F> init` | Create the Forge folder `../<repo>.forge`: the wiki (`git init`, `index.md`, the binding), `raw/`, `archive/`, and the launcher | the Forge folder |
-| `<F> bind` | Write `<wiki>/forge/repo.json` | the wiki folder |
-| `<F> seed [--force]` | Copy the profile templates to `<wiki>/forge/config`, and the rule pages to `<wiki>/rules` | the wiki folder |
+| `<F> bind [--profile <name>]` | Write `<wiki>/forge/repo.json`, with the profile when you give one. A recorded profile cannot change | the wiki folder |
+| `<F> seed [--force] [--profile <name>]` | Copy the files of the profile to `<wiki>/forge/config`, and the rule pages to `<wiki>/rules`. It records the profile, and a later `seed` uses it | the wiki folder |
 | `<F> config set <file>.<key>=<value> ...` | Set frontmatter values. Validates first; writes nothing on a problem | the wiki folder |
 | `<F> config row <checkouts\|queries> <name> [cells...] [--delete]` | Add, replace, or delete a row of the **Checkouts** or **Queries** table | the wiki folder |
 | `<F> config --json` | Read the approved config | nothing |
@@ -91,6 +91,13 @@ Run `detect` in the main checkout. Do not ask for anything that `detect` already
 
 When the remote is not the remote that `profile.md` expects, tell the user. The profile config is for that repository.
 
+When `profile.bound` is empty and `profile.suggested` has a name, ask which profile this repository uses. Use one `host.ask` question with 2 options:
+
+- the suggested profile (recommended). The reason: the host of the remote has a login of the tool of that profile.
+- the default profile.
+
+Never answer for the user. When `profile.available` is empty, skip the question. When the user selects the suggested profile, read `<plugin>/profiles/<name>/profile.md` now. After `seed --profile <name>` (step 4), `detect` gives that file in `profile.file`.
+
 ### Step 2. Tools
 
 For each CLI that is not installed or not logged in, show the `install` command and the login command.
@@ -109,7 +116,7 @@ A cloned wiki usually has its config already. Then skip to step 5, and set only 
 
 ### Step 4. Seed the config
 
-Show the files that `seed` writes, and run `seed` after approval:
+Show the files that `seed` writes, and run `seed` after approval. For a profile other than the default, run `<F> seed --profile <name>`. It records the profile, and each later `seed` uses it.
 
 - `<wiki>/forge/config/tracker.md`, `repo.md`, `ci.md`, and `policy.md`,
 - `<wiki>/rules/toolkit.md` and `<wiki>/rules/data.md`, only when `<wiki>/rules` is missing.
@@ -130,6 +137,7 @@ Two values differ for each user. Ask for them in one form. Prefill each field fr
 2. Write the main checkout: `<F> config row checkouts "<name>" "<path>" "<remote>"`. With the name of the template row, this replaces that row.
 3. Ask whether the work also uses other clones. Add one row for each. Leave `baseBranch` empty when it is the default branch.
 4. Show the template queries `mine` and `team`. Change a query only when the user asks. `profile.md` gives the usual change.
+5. When the `profile.md` lists values for each repository (a self-hosted server), write them with one `<F> config set` command. Use `suggestion.values.host` and the answers of the user, as that `profile.md` says. For a repository with no pull requests, run `<F> config set "repo.changeName=none"`.
 
 When a command reports a problem, show it, ask for a corrected value, and run it again.
 Keep the values of an existing wiki config unless the user asks to change them.
@@ -193,11 +201,12 @@ Never run a write capability during setup.
 
 ## 🔄 Refresh the profile config
 
-Use this flow when a forge update changed a shared profile value in `templates/config/`. Keep `policy.md` and the rule pages.
+Use this flow when a forge update changed a shared profile value in the profile files (`templates/config/` or `profiles/<name>/config/`). Keep `policy.md` and the rule pages.
 
-1. Run `config --json` and save your personal values: `repo.branchPattern`, the **Checkouts** rows, and the **Queries** rows that you changed. When trust fails, read the files directly.
+1. Run `config --json` and save your personal values: `repo.branchPattern`, the **Checkouts** rows, and the **Queries** rows that you changed. Also save each value that the `profile.md` of the wiki lists for each repository (for example the hosts, `tracker.prefix`, and `repo.changeName`). When trust fails, read the files directly.
 2. Recommend a wiki commit first, so that `git diff` shows the refresh.
-3. Run `seed --force` after approval. It replaces `tracker.md`, `repo.md`, and `ci.md`.
+3. Run `seed --force` after approval. It uses the profile of the wiki, and replaces `tracker.md`, `repo.md`, and `ci.md`.
+   Warning: a wiki whose config was written by hand has no profile in `forge/repo.json`. A refresh gives it the files of the default profile. Bind it first with `<F> bind --profile <name>`.
 4. Re-apply the saved values with `config set` and `config row` (step 5).
 5. To refresh `policy.md` or a rule page, show the diff against `<plugin>/templates/`, and copy the file only after approval.
 6. Run steps 7 (check), 9 (trust), and 10 (live read).

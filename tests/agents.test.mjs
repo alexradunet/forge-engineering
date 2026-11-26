@@ -210,3 +210,11 @@ test('the local ticket texts: Start, closing, and the session context name the l
   assert.match(readFileSync(new URL('../plugins/forge/context/forge.md', import.meta.url), 'utf8'), /ticket with no work item[^\n]*"Local ticket" of Start/);
   assert.match(read('board/SKILL.md'), /local key \(\`L-<n>\`\), skip the tracker read/);
 });
+
+test('the setup skill and AGENTS.md describe the profile of the wiki', () => {
+  const setup = read('forge-setup/SKILL.md');
+  for (const text of ['profile.file', 'profile.suggested', 'profile.bound', 'profile.available', 'seed --profile', 'bind --profile', 'config set "repo.changeName=none"', 'Never answer for the user']) assert.ok(setup.includes(text), text);
+  const agents = readFileSync(new URL('../AGENTS.md', import.meta.url), 'utf8');
+  assert.ok(agents.includes('plugins/forge/profiles/<name>/'));
+  assert.doesNotMatch(agents, /One build has one profile/);
+});

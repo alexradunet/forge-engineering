@@ -22,7 +22,7 @@ flowchart LR
   wiki/                   the wiki (<wiki>): a git repository
     index.md              knowledge index
     forge/
-      repo.json           repository binding
+      repo.json           repository binding, and the optional key `profile`
       config/
         tracker.md
         repo.md

@@ -12,8 +12,8 @@
 //   detect  [--wiki <dir>]   host, CLIs, login, inferred values (JSON, read-only)
 //   init    [--wiki <dir>] create the Forge folder ../<repo>.forge of the repository and bind its wiki: wiki/ (git init, index.md), raw/, archive/,
 //            and the launcher (forge, forge.cmd).
-//   bind    [--wiki <dir>]   write <wiki>/forge/repo.json
-//   seed [--force]   copy the profile templates to <wiki>/forge/config
+//   bind    [--wiki <dir>] [--profile <name>]   write <wiki>/forge/repo.json (with the profile name, when given; a wiki keeps its profile)
+//   seed [--force] [--profile <name>]   copy the profile templates to <wiki>/forge/config (the profile of the wiki; a file that an extra profile lacks comes from the default profile)
 //   board   [--json] [--dry-run] [--today <date>] [--links vscode|file]   write <forge>/raw/board.md, the tickets grouped by state,
 //           and the pages: raw/board.html and raw/wiki.html
 //   styleguide [--out <file>] [--json]   write the styleguide page of the UI kit (each token and component, in both themes): <forge>/raw/styleguide.html, or the file of --out
@@ -54,7 +54,7 @@ import { resolve, ForgeError, normalizeRemote } from './lib/repo.mjs';
 import { loadConfig, KINDS } from './lib/config.mjs';
 import { setValues, upsertRow } from './lib/config-write.mjs';
 import { createStore } from './lib/cred.mjs';
-import { detect, initWiki, bind, seed } from './lib/setup.mjs';
+import { detect, initWiki, bind, seed, TOOLS, loggedIn } from './lib/setup.mjs';
 import { approve, assertTrusted, status as trustStatus } from './lib/trust.mjs';
 import { lint } from './lib/validation.mjs';
 import { findTicket, nextLocalKey } from './lib/tickets.mjs';
@@ -75,8 +75,6 @@ import { loadProfile, pluginRoot } from './lib/profile.mjs';
 
 // A tracker that uses an MCP server (see mcpGateway) has no CLI.
 const CLI_FOR = { github: 'gh' };
-// A command that exits 0 only while the CLI is logged in. Doctor uses the exit status, and never reads the output.
-const LOGIN_CHECK = { gh: ['auth', 'status'] };
 
 export { loadProfile };
 
@@ -181,7 +179,7 @@ export function parseArgs(argv) {
     else if (a === '--stop') out.stop = true;
     else if (a === '--new-link') out.newLink = true;
     else if (a === '--no-browser') out.noBrowser = true;
-    else if (['--summary', '--base', '--today', '--answer', '--method', '--manifest', '--hash', '--links', '--port', '--out'].includes(a)) {
+    else if (['--profile', '--summary', '--base', '--today', '--answer', '--method', '--manifest', '--hash', '--links', '--port', '--out'].includes(a)) {
       if (argv[i + 1] === undefined || argv[i + 1].startsWith('--')) throw new ForgeError(`${a} needs a value.`, 'bad-args');
       out[a.slice(2)] = argv[++i];
     }
@@ -197,6 +195,7 @@ export function onPath(cmd, env = process.env) {
 }
 
 const runQuiet = (cmd, args) => spawnSync(cmd, args, { stdio: 'ignore', timeout: 5000, shell: false }).status === 0;
+const readQuiet = (cmd, args) => { const r = spawnSync(cmd, args, { encoding: 'utf8', timeout: 5000, shell: false }); return { ok: r.status === 0, stdout: (r.stdout ?? '').trim() }; };
 const gitOut = (clone, args, timeout = 5000) => {
   const r = spawnSync('git', ['-C', clone, ...args], { encoding: 'utf8', timeout, shell: false });
   return r.status === 0 ? r.stdout.trim() : null;
@@ -223,7 +222,7 @@ function pluginVersion(plugin, fetch) {
   return found;
 }
 
-export function doctor({ cwd, wiki, env = process.env, credStore, run = runQuiet, plugin = pluginRoot, fetch = false } = {}) {
+export function doctor({ cwd, wiki, env = process.env, credStore, run = runQuiet, read = readQuiet, plugin = pluginRoot, fetch = false } = {}) {
   const results = [];
   const add = (check, status, detail = '') => results.push({ status, check, detail });
 
@@ -258,6 +257,11 @@ export function doctor({ cwd, wiki, env = process.env, credStore, run = runQuiet
     ? 'Forge 10 does not read ../<repo>.wiki. Make ../<repo>.forge, move the wiki into wiki/, and move raw/ and archive/ next to it.'
     : `Not found: ${where.wiki.path}. Run "forge.mjs init", or say "set up forge".`);
   if (where.wiki.exists) add('wiki:binding', where.wiki.bound ? 'ok' : 'warn', where.wiki.bound ? 'forge/repo.json' : 'No forge/repo.json. Run "forge.mjs bind".');
+  let profile = loadProfile();
+  if (where.profile) {
+    try { profile = loadProfile(pluginRoot, where.profile); } catch (err) { add('profile', 'fail', err.message); }
+  }
+  if (where.wiki.exists) add('profile', 'ok', where.profile ? profile.name ?? where.profile : `default (${profile.name ?? 'no name'})`);
   for (const w of where.warnings.filter((x) => !x.includes('has no forge/repo.json'))) add('warning', 'warn', w);
   if (where.forge.layout === 'forge') {
     const seen = readPointer(where.forge.path);
@@ -276,19 +280,21 @@ export function doctor({ cwd, wiki, env = process.env, credStore, run = runQuiet
       if (!existsSync(file)) { add(`config:${kind}.md`, 'warn', 'Missing. forge uses the defaults. Run "forge.mjs seed".'); continue; }
       const provider = config[kind].provider;
       add(`config:${kind}.md`, 'ok', provider ? `provider: ${provider}` : '');
-      const tool = CLI_FOR[provider];
+      // The CLI of a provider. A wiki bound to a profile uses the tools of that profile.
+      const tool = where.profile ? profile.tools.find((t) => TOOLS[t]?.auth) : CLI_FOR[provider];
+      const t = TOOLS[tool];
       if (tool && !onPath(tool, env)) add(`config:${kind}.md`, 'warn', `${tool} is not on PATH. The ${provider} commands need it.`);
-      else if (tool && LOGIN_CHECK[tool] && !logins.has(tool)) {
+      else if (t?.auth && !logins.has(tool)) {
         logins.add(tool);
-        const ok = run(tool, LOGIN_CHECK[tool]);
-        add(`tool:${tool} login`, ok ? 'ok' : 'warn', ok ? '' : `Not logged in, or no network. Run "${tool} auth login".`);
+        const ok = t.authOk ? loggedIn(t, read(tool, t.auth)) : run(tool, t.auth);
+        add(`tool:${tool} login`, ok ? 'ok' : 'warn', ok ? '' : `Not logged in, or no network. Run "${t.login}".`);
       }
     }
-    results.push(...completeness(where.configDir, config, { credStore }));
+    results.push(...completeness(where.configDir, config, { credStore, profile }));
   } catch (err) {
     add('config', 'fail', err.message);
   }
-  results.push(...mcpGateway({ repoPath: where.repo.path, repoRemote: where.repo.remote, env }));
+  results.push(...mcpGateway({ repoPath: where.repo.path, repoRemote: where.repo.remote, env, profile }));
   const st = trustStatus(where, { env });
   const bad = st.files.filter((f) => f.state !== 'ok');
   add('trust', bad.length ? 'fail' : 'ok', bad.length ? `Not approved: ${bad.map((f) => `${f.rel} (${f.state})`).join(', ')}. Run "forge.mjs trust".` : `${st.files.length} files approved`);
@@ -450,10 +456,10 @@ export function main(argv = process.argv.slice(2)) {
     } else if (cmd === 'init') {
       console.log(JSON.stringify(initWiki(resolve(opts), { pluginDir: path.dirname(path.dirname(fileURLToPath(import.meta.url))) }), null, 2));
     } else if (cmd === 'bind') {
-      console.log(JSON.stringify(bind(resolve(opts)), null, 2));
+      console.log(JSON.stringify(bind(resolve(opts), { profile: args.profile }), null, 2));
     } else if (cmd === 'seed') {
       const templates = path.join(pluginRoot, 'templates', 'config');
-      console.log(JSON.stringify(seed(resolve(opts), templates, { force: args.force }), null, 2));
+      console.log(JSON.stringify(seed(resolve(opts), templates, { force: args.force, profile: args.profile }), null, 2));
     } else if (cmd === 'board') {
       if (args._.length !== 1 || (args.links !== undefined && !LINK_MODES.includes(args.links))) throw new ForgeError(`Usage: forge.mjs board [--json] [--dry-run] [--today <YYYY-MM-DD>] [--links ${LINK_MODES.join('|')}].`, 'bad-args');
       const where = resolve(opts);
@@ -605,7 +611,7 @@ export function main(argv = process.argv.slice(2)) {
       if (args._[1] === 'approve') console.log(JSON.stringify(approve(where, args._.slice(2)), null, 2));
       else console.log(JSON.stringify(trustStatus(where), null, 2));
     } else {
-      console.error('Usage: node forge.mjs <where|config|doctor|lint|detect|init|bind|seed|board|styleguide|local-key|worktree|live|open|gate-open|gate-approve|hook|context|trust|run> [--wiki <dir>] [--cwd <dir>] [--json]');
+      console.error('Usage: node forge.mjs <where|config|doctor|lint|detect|init|bind|seed|board|styleguide|local-key|worktree|live|open|gate-open|gate-approve|hook|context|trust|run> [--wiki <dir>] [--cwd <dir>] [--json] [--profile <name>]');
       return 2;
     }
     return 0;

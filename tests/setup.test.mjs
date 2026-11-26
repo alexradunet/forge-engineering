@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpath
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LAUNCHER_CMD, LAUNCHER_SH, readPointer } from '../plugins/forge/scripts/lib/launcher.mjs';
-import { resolve } from '../plugins/forge/scripts/lib/repo.mjs';
+import { readBinding, resolve } from '../plugins/forge/scripts/lib/repo.mjs';
 import { detect, hostKind, initWiki, bind, seed, keyHints, branchPatternHint, suggestValues } from '../plugins/forge/scripts/lib/setup.mjs';
 import { loadConfig, parseFile } from '../plugins/forge/scripts/lib/config.mjs';
 
@@ -262,4 +262,75 @@ test('detect infers the default branch, keys, and the personal branch pattern fr
   assert.equal(d.suggestion.values.repo.baseBranch, 'master');
   assert.equal(d.suggestion.values.repo.branchPattern, 'users/alex/{KEY}-{slug}');
   assert.equal(d.suggestion.values.checkouts[0].remote, 'acme/shop');
+});
+
+// A profile of the wiki: seed copies its files, and a file that it lacks comes from the default profile.
+const pluginDir = path.join(here, '..', 'plugins', 'forge');
+const read = (...parts) => readFileSync(path.join(...parts), 'utf8').replace(/^updated: .*$/m, '');
+
+test('seed with a profile copies its files, records it, and a later seed uses the recorded profile', () => {
+  const wiki = path.join(root, 'fj.wiki');
+  const where = { wiki: { path: wiki }, repo: { path: app, remote: 'https://github.com/owner/app' } };
+  mkdirSync(wiki, { recursive: true });
+  const first = seed(where, templates, { profile: 'forgejo' });
+  assert.equal(first.profile, 'forgejo');
+  assert.equal(readBinding(wiki).profile, 'forgejo');
+  assert.equal(readBinding(wiki).schemaVersion, 1);
+  for (const file of ['tracker.md', 'repo.md', 'ci.md']) {
+    assert.equal(read(first.configDir, file), read(pluginDir, 'profiles', 'forgejo', 'config', file));
+  }
+  assert.equal(read(first.configDir, 'policy.md'), read(templates, 'policy.md'));
+  assert.equal(read(wiki, 'rules', 'toolkit.md'), read(pluginDir, 'profiles', 'forgejo', 'rules', 'toolkit.md'));
+  assert.equal(read(wiki, 'rules', 'data.md'), read(pluginDir, 'templates', 'rules', 'data.md'));
+  writeFileSync(path.join(first.configDir, 'tracker.md'), '---\nprovider: local\n---\n');
+  const second = seed(where, templates);
+  assert.equal(second.profile, 'forgejo');
+  assert.deepEqual(second.kept.sort(), ['ci.md', 'policy.md', 'repo.md', 'tracker.md']);
+  const forced = seed(where, templates, { force: true });
+  assert.deepEqual(forced.written.sort(), ['ci.md', 'repo.md', 'tracker.md']);
+  assert.equal(loadConfig(first.configDir).config.tracker.provider, 'forgejo-issues');
+  const fresh = { ...where, wiki: { path: path.join(root, 'fj-fresh.wiki') } };
+  mkdirSync(fresh.wiki.path, { recursive: true });
+  assert.throws(() => seed(fresh, templates, { profile: 'nope' }), (e) => e.code === 'bad-profile');
+  assert.equal(readBinding(fresh.wiki.path), null, 'A bad profile writes nothing.');
+});
+
+test('bind keeps the profile of the wiki and refuses another one', () => {
+  const wiki = path.join(root, 'fj-bind.wiki');
+  mkdirSync(wiki, { recursive: true });
+  const where = { wiki: { path: wiki }, repo: { path: app, remote: 'https://github.com/owner/app' } };
+  assert.deepEqual(bind(where, { profile: 'forgejo' }).written, ['forge/repo.json']);
+  assert.deepEqual(bind(where, { profile: 'forgejo' }).written, []);
+  assert.deepEqual(bind(where).written, [], 'No option keeps the profile.');
+  assert.equal(readBinding(wiki).profile, 'forgejo');
+  assert.throws(() => bind(where, { profile: 'other' }), (e) => e.code === 'profile-mismatch');
+  const plain = path.join(root, 'plain.wiki');
+  mkdirSync(plain, { recursive: true });
+  bind({ ...where, wiki: { path: plain } });
+  assert.equal('profile' in readBinding(plain), false, 'A wiki with no profile stays with no key.');
+});
+
+test('detect suggests the profile whose rule matches the host of the remote, and uses the tools of the bound profile', () => {
+  const fj = path.join(root, 'fj-app');
+  mkdirSync(fj);
+  execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: fj });
+  execFileSync('git', ['remote', 'add', 'origin', 'https://git.example.org/me/app.git'], { cwd: fj });
+  const logins = (text) => (cmd, args) => (cmd === 'tea' && args[0] === 'logins' ? { ok: true, stdout: text } : { ok: cmd === 'tea', stdout: '' });
+  const where = resolve({ cwd: fj, env, wiki: path.join(root, 'fj-detect.wiki') });
+  const d = detect(where, { probe: logins('[{"name":"x","url":"https://git.example.org"}]') });
+  assert.equal(d.profile.suggested, 'forgejo');
+  assert.equal(d.profile.bound, null);
+  assert.deepEqual(d.profile.available, ['forgejo']);
+  assert.equal(d.profile.file, path.join(pluginDir, 'templates', 'profile.md'));
+  assert.equal(d.suggestion.values.host, 'git.example.org');
+  assert.equal(detect(where, { probe: logins('[{"url":"https://other.example"}]') }).profile.suggested, null);
+  assert.equal(detect(where, { probe: () => ({ ok: false, stdout: '' }) }).profile.suggested, null);
+  assert.equal(detect(resolve({ cwd: app, env }), { probe: logins('[{"url":"https://github.com"}]') }).profile.suggested, null, 'A GitHub remote suggests nothing.');
+  const bound = detect({ ...where, profile: 'forgejo' }, { probe: logins('[]') });
+  assert.deepEqual(Object.keys(bound.tools), ['tea']);
+  assert.equal(bound.tools.tea.auth, false, 'No login in the list.');
+  assert.equal(bound.profile.bound, 'forgejo');
+  assert.equal(bound.profile.suggested, null);
+  assert.equal(bound.profile.file, path.join(pluginDir, 'profiles', 'forgejo', 'profile.md'));
+  assert.equal(detect({ ...where, profile: 'forgejo' }, { probe: logins('[{"name":"x"}]') }).tools.tea.auth, true);
 });

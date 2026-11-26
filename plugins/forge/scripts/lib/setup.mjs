@@ -7,17 +7,24 @@ import path from 'node:path';
 import { POINTER_FILE, writeLauncher, writePointer } from './launcher.mjs';
 import { homeOf, isForgeLayout } from './layout.mjs';
 import { ForgeError, normalizeRemote, readBinding } from './repo.mjs';
-import { loadProfile } from './profile.mjs';
+import { listProfiles, loadProfile, pluginRoot, profileFile } from './profile.mjs';
 
 // The profile templates of <plugin>/templates/config: the tracker, the repository host, and the CI.
 export const CONFIG_FILES = ['tracker.md', 'repo.md', 'ci.md'];
 
-// The CLIs that a profile can name in "tools". auth: null means the tool has no login to check.
-const TOOLS = {
-  gh: { auth: ['auth', 'status'], install: { win32: 'winget install --id GitHub.cli', darwin: 'brew install gh', linux: 'see https://github.com/cli/cli/blob/trunk/docs/install_linux.md' } },
-  az: { auth: ['account', 'show', '--output', 'none'], install: { win32: 'winget install --id Microsoft.AzureCLI', darwin: 'brew install azure-cli', linux: 'see https://learn.microsoft.com/cli/azure/install-azure-cli-linux' } },
-  sqlcmd: { auth: null, install: { win32: 'winget install --id Microsoft.Sqlcmd', darwin: 'brew install sqlcmd', linux: 'see https://learn.microsoft.com/sql/tools/sqlcmd/sqlcmd-utility' } },
+// The CLIs that a profile can name in "tools". auth: null means the tool has no login to check. login: the command that the user runs to log in.
+// A tool with authOk is logged in when authOk(stdout) is true and the auth command exits 0. Without authOk, the exit status is enough.
+export const TOOLS = {
+  gh: { auth: ['auth', 'status'], login: 'gh auth login', install: { win32: 'winget install --id GitHub.cli', darwin: 'brew install gh', linux: 'see https://github.com/cli/cli/blob/trunk/docs/install_linux.md' } },
+  az: { auth: ['account', 'show', '--output', 'none'], login: 'az login', install: { win32: 'winget install --id Microsoft.AzureCLI', darwin: 'brew install azure-cli', linux: 'see https://learn.microsoft.com/cli/azure/install-azure-cli-linux' } },
+  sqlcmd: { auth: null, login: null, install: { win32: 'winget install --id Microsoft.Sqlcmd', darwin: 'brew install sqlcmd', linux: 'see https://learn.microsoft.com/sql/tools/sqlcmd/sqlcmd-utility' } },
+  tea: { auth: ['logins', 'list', '--output', 'json'], authOk: isLogin, login: 'tea login add', install: { win32: 'winget install --id gitea.tea', darwin: 'brew install tea', linux: 'see https://gitea.com/gitea/tea' } },
 };
+
+// The output of "tea logins list --output json": a JSON array with at least one login.
+function isLogin(stdout) {
+  try { const list = JSON.parse(stdout); return Array.isArray(list) && list.length > 0; } catch { return false; }
+}
 
 function run(cmd, args, cwd) {
   // Windows .cmd shims (az) need a shell. Arguments are fixed strings, so
@@ -96,7 +103,7 @@ function slugOf(remote) {
 }
 
 /**
- * The values that differ for each user: the base branch, the branch pattern, and the main checkout.
+ * The values that differ for each user: the base branch, the branch pattern, the main checkout, and the host of a remote that is not GitHub.
  * A null value means "ask the user". The profile templates give the rest.
  */
 export function suggestValues(info) {
@@ -109,19 +116,38 @@ export function suggestValues(info) {
     remote: kind === 'github' ? slugOf(remote) : remote,
     baseBranch: '',
   }] : [];
-  return { repo, checkouts };
+  // The host of a remote that is not GitHub: a profile with a server of its own needs it for the host keys of its config.
+  return kind === 'other' ? { repo, checkouts, host: new URL(remote).hostname } : { repo, checkouts };
+}
+
+/** True when the auth command exited 0 and the tool accepts its output. */
+export function loggedIn(tool, result) {
+  return result.ok && (!tool.authOk || tool.authOk(result.stdout));
+}
+
+// The extra profile whose "detect" rule matches: it runs the tool with the args, and the output holds the host of the remote. Else null.
+function suggestProfile(remote, kind, plugin, probe) {
+  if (!remote || kind === 'github') return null;
+  const host = new URL(remote).hostname;
+  for (const name of listProfiles(plugin)) {
+    const rule = loadProfile(plugin, name).detect;
+    if (!rule?.tool) continue;
+    const r = probe(rule.tool, rule.args ?? []);
+    if (r.ok && (!rule.remoteHost || r.stdout.toLowerCase().includes(host.toLowerCase()))) return name;
+  }
+  return null;
 }
 
 /** Detects the host, the CLIs and their login, the repo visibility, and the wiki state. */
-export function detect(where, { platform = process.platform, probe = run, git = (args, cwd) => run('git', args, cwd), profile = loadProfile() } = {}) {
+export function detect(where, { platform = process.platform, probe = run, git = (args, cwd) => run('git', args, cwd), plugin = pluginRoot, profile = loadProfile(plugin, where.profile ?? null) } = {}) {
   const kind = hostKind(where.repo.remote);
   const tools = {};
   for (const name of profile.tools) {
     const t = TOOLS[name];
-    if (!t) throw new ForgeError(`templates/profile.json: "tools" has "${name}". Use one of: ${Object.keys(TOOLS).join(', ')}.`, 'bad-config');
+    if (!t) throw new ForgeError(`${profile.dir ?? 'templates'}/profile.json: "tools" has "${name}". Use one of: ${Object.keys(TOOLS).join(', ')}.`, 'bad-config');
     const v = probe(name, ['--version']);
     const installed = v.ok;
-    const auth = t.auth === null ? null : installed ? probe(name, t.auth).ok : false;
+    const auth = t.auth === null ? null : installed ? loggedIn(t, probe(name, t.auth)) : false;
     tools[name] = { installed, auth, install: installed ? null : t.install[platform] ?? t.install.linux };
   }
 
@@ -158,7 +184,15 @@ export function detect(where, { platform = process.platform, probe = run, git = 
   // Only local branches: origin holds the branches of all users, and each user has a personal pattern.
   const branchPattern = branchPatternHint(g.local, hints[0]?.prefix);
 
+  const profiles = {
+    bound: where.profile ?? null,
+    available: listProfiles(plugin),
+    suggested: where.profile ? null : suggestProfile(where.repo.remote, kind, plugin, probe),
+    file: profileFile(plugin, where.profile ?? null, 'profile.md'),
+  };
+
   return {
+    profile: profiles,
     repo: { ...where.repo, host: kind, visibility, wikiEnabled, defaultBranch: g.defaultBranch, keyHints: hints, branchPattern },
     tools,
     wiki: { path: wikiDir, exists: where.wiki.exists, git: wikiGit, remote: wikiRemote, bound: where.wiki.bound, config },
@@ -212,8 +246,8 @@ function furnish(home, pluginDir) {
   return created;
 }
 
-/** Writes <wiki>/forge/repo.json. Refuses to rebind a wiki of another remote. */
-export function bind(where) {
+/** Writes <wiki>/forge/repo.json. Refuses to rebind a wiki of another remote or of another profile. No profile option keeps the recorded profile. */
+export function bind(where, { profile } = {}) {
   const dir = where.wiki.path;
   if (!existsSync(dir)) throw new ForgeError(`The wiki ${dir} does not exist. Run init first.`, 'no-wiki');
   const old = readBinding(dir);
@@ -221,7 +255,12 @@ export function bind(where) {
   if (oldRemote && where.repo.remote && oldRemote !== where.repo.remote) {
     throw new ForgeError(`${dir} is bound to ${oldRemote}. forge does not rebind it to ${where.repo.remote}.`, 'wiki-mismatch');
   }
+  if (profile && old?.profile && old.profile !== profile) {
+    throw new ForgeError(`${dir} has the profile ${old.profile}. forge does not change it to ${profile}.`, 'profile-mismatch');
+  }
   const next = { schemaVersion: 1, repo: { path: where.repo.path, remote: where.repo.remote } };
+  const name = profile ?? old?.profile;
+  if (name) next.profile = name;
   if (old && JSON.stringify(old) === JSON.stringify(next)) return { written: [] };
   mkdirSync(path.join(dir, 'forge'), { recursive: true });
   writeFileSync(path.join(dir, 'forge', 'repo.json'), `${JSON.stringify(next, null, 2)}\n`);
@@ -231,8 +270,14 @@ export function bind(where) {
 /**
  * Copies the profile templates to <wiki>/forge/config. Existing files stay unless force.
  * policy.md is copied only when missing. The rule pages go to <wiki>/rules only when that folder is missing.
+ * The profile is the one of the wiki, or the "profile" option, which bind records. A file that the profile does not have comes from the default profile.
  */
-export function seed(where, templatesDir, { force = false } = {}) {
+export function seed(where, templatesDir, { force = false, profile } = {}) {
+  const plugin = path.resolve(templatesDir, '..', '..');
+  if (profile) { loadProfile(plugin, profile); bind(where, { profile }); }
+  const name = profile ?? readBinding(where.wiki.path)?.profile ?? null;
+  if (name) loadProfile(plugin, name);
+  const config = (file) => (name ? profileFile(plugin, name, `config/${file}`) : path.join(templatesDir, file));
   const dir = path.join(where.wiki.path, 'forge', 'config');
   mkdirSync(dir, { recursive: true });
   const written = [];
@@ -241,19 +286,21 @@ export function seed(where, templatesDir, { force = false } = {}) {
   for (const [name, overwrite] of plan) {
     const target = path.join(dir, name);
     if (existsSync(target) && !overwrite) { kept.push(name); continue; }
-    copyFileSync(path.join(templatesDir, name), target);
+    copyFileSync(config(name), target);
     written.push(name);
   }
   const rulesDir = path.join(where.wiki.path, 'rules');
   const rulesWritten = [];
   if (!existsSync(rulesDir)) {
-    const source = path.join(templatesDir, '..', 'rules');
+    const names = new Set(readdirSync(path.join(templatesDir, '..', 'rules')));
+    if (name && existsSync(path.join(plugin, 'profiles', name, 'rules'))) readdirSync(path.join(plugin, 'profiles', name, 'rules')).forEach((n) => names.add(n));
     const today = new Date().toISOString().slice(0, 10);
     mkdirSync(rulesDir, { recursive: true });
-    for (const name of readdirSync(source).filter((n) => n.endsWith('.md')).sort()) {
-      writeFileSync(path.join(rulesDir, name), readFileSync(path.join(source, name), 'utf8').replace(/^updated: .*$/m, `updated: ${today}`));
-      rulesWritten.push(name);
+    for (const rule of [...names].filter((n) => n.endsWith('.md')).sort()) {
+      const source = name ? profileFile(plugin, name, `rules/${rule}`) : path.join(templatesDir, '..', 'rules', rule);
+      writeFileSync(path.join(rulesDir, rule), readFileSync(source, 'utf8').replace(/^updated: .*$/m, `updated: ${today}`));
+      rulesWritten.push(rule);
     }
   }
-  return { configDir: dir, written, kept, rules: { dir: rulesDir, written: rulesWritten } };
+  return { profile: name, configDir: dir, written, kept, rules: { dir: rulesDir, written: rulesWritten } };
 }

@@ -106,3 +106,29 @@ test('fix commands: the wiki, the binding, and the config files name an exact co
   rmSync(path.join(where.configDir, 'ci.md'));
   assert.match(line(doctor({ cwd: app, env }), 'config:ci.md').detail, /Run "forge\.mjs seed"\./);
 });
+
+test('a wiki bound to a profile: the tools of the profile, the profile line, and the login hint', () => {
+  const dir = path.join(root, 'fj');
+  mkdirSync(dir);
+  git(dir, 'init', '-q', '-b', 'main');
+  git(dir, 'remote', 'add', 'origin', 'https://git.example.org/me/fj.git');
+  const w = resolve({ cwd: dir, env });
+  initWiki(w);
+  seed(w, path.join(realPlugin, 'templates', 'config'), { profile: 'forgejo' });
+  const bin = path.join(root, 'bin-tea');
+  mkdirSync(bin, { recursive: true });
+  writeFileSync(path.join(bin, 'tea'), '');
+  writeFileSync(path.join(bin, 'tea.cmd'), '');
+  const env2 = { ...env, PATH: bin + path.delimiter + env.PATH };
+  const none = doctor({ cwd: dir, env: { ...env, PATH: path.join(root, 'empty') }, read: () => ({ ok: false, stdout: '' }) });
+  assert.match(line(none, 'profile').detail, /^forgejo$/);
+  assert.ok(none.some((r) => r.check.startsWith('config:') && /^tea is not on PATH/.test(r.detail)), 'a missing tea is a warning');
+  assert.equal(none.some((r) => r.check.startsWith('tool:gh')), false);
+  const empty = doctor({ cwd: dir, env: env2, read: () => ({ ok: true, stdout: '[]' }) });
+  assert.equal(line(empty, 'tool:tea login').status, 'warn');
+  assert.match(line(empty, 'tool:tea login').detail, /Run "tea login add"\./);
+  const ok = doctor({ cwd: dir, env: env2, read: () => ({ ok: true, stdout: '[{"name":"x"}]' }) });
+  assert.equal(line(ok, 'tool:tea login').status, 'ok');
+  assert.equal(ok.some((r) => r.check.startsWith('tool:gh')), false);
+  assert.match(line(doctor({ cwd: app, env }), 'profile').detail, /^default \(github\)$/);
+});

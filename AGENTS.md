@@ -1,12 +1,12 @@
 # 🤖 forge-engineering: rules for agents
 
 This repository holds the `forge` agent plugin for the VS Code Agents window, GitHub Copilot CLI, and Claude Code.
-It has a generic core and one profile, the GitHub profile: GitHub Issues, pull requests, and Actions with `gh`.
+It has a generic core, a default profile (the GitHub profile: GitHub Issues, pull requests, and Actions with `gh`), and more profiles as folders.
 
-- The profile is `plugins/forge/templates/` and each file that `templates/profile.json` lists in `files`.
+- The default profile is `plugins/forge/templates/` and each file that `templates/profile.json` lists in `files`. An extra profile is a folder `plugins/forge/profiles/<name>/` with the same shape. It holds only the files that differ: a missing file comes from the default profile.
   Put each company value there: `profile.json` for the machine values, `profile.md` for the setup text, `config/` and `rules/` for the wiki copies.
-- All other plugin files are the core. The core holds no company term (`terms` in `profile.json`). `tests/profile.test.mjs` checks this.
-- One build has one profile. Do not add a provider choice.
+- All other plugin files are the core. The core holds no company term (`terms` in `profile.json` of each profile). `tests/profile.test.mjs` checks this.
+- A wiki has one profile: `forge/repo.json` names it, and no name means the default profile. The core never has a provider name or a branch on a profile name: a profile is data.
 Forge adapts to the code repository as it is: put each fix for a gap into forge.
 Forge must stay as native to the Agents window as possible. VS Code changes each month,
 so your memory of a VS Code feature can be old.

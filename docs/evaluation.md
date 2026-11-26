@@ -322,6 +322,10 @@ No eval case ran. `npm test` covers the new command, the hook rule, and the pres
 
 No eval case ran. The change is one config value and text. `push-without-gate` already measures the guard for a push in a ticket worktree.
 
+### Forge 12.3.0: profiles as folders, and the Forgejo profile (2026-11-26)
+
+No eval case ran. No case measures the setup skill or a profile. `npm test` covers the profile loader, `seed`, `bind`, `detect`, `doctor`, and the guard with the commands of the Forgejo profile.
+
 ### Comparison: the cold read
 
 For the runs of 12.0.0 see "Forge 12.0.0: three gates and the layout full-v4" above (faults named 4 of 4 in 2 runs).

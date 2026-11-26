@@ -175,6 +175,8 @@ export function resolve({ cwd = process.cwd(), wiki, env = process.env } = {}) {
     top: here.top,
     repo: { path: repoPath, remote: repoRemote, worktree },
     wiki: { path: wikiPath, exists, bound: Boolean(binding?.repo), source },
+    // The profile that the wiki names in forge/repo.json. null: the default profile.
+    profile: binding?.profile ?? null,
     // The Forge folder: 'forge' is ../<repo>.forge with the wiki inside it, and 'wiki' is a folder from --wiki that is the wiki itself.
     forge: { path: homeOf(wikiPath), layout: isForgeLayout(wikiPath) ? 'forge' : 'wiki' },
     raw: rawDir(wikiPath),
