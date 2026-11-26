@@ -34,8 +34,11 @@ export const VARIANTS = {
       '(Cold read, Procedure, Approval revisions, Sendable? for each write, Approval form, Canvas)', '(Procedure, Approval revisions, Sendable? for each write, Approval form, Canvas)'),
     '| Worktree sessions, implementers, reviewers, cold read, hand-off | the `agents` skill |', '| Worktree sessions, implementers, reviewers, hand-off | the `agents` skill |'),
     'the cold read, the manifest, the approval form,', 'the manifest, the approval form,'),
-    'skills/agents/SKILL.md': (text) => swap(withoutSection(text, '## 🐟 Cold read'),
+    'skills/agents/SKILL.md': (text) => swap(swap(swap(withoutSection(text, '## 🐟 Cold read'),
       '| Test a gate document on a reader without the session history | a cold read subagent (see "Cold read") | nothing; the result comes back here |\n', ''),
+    'Run it before Planned?, after the cold read, only when', 'Run it before Planned? only when'),
+    ' The cold read tests if the document is clear. The plan review tests if the plan is right.', ' The plan review tests if the plan is right.'),
+    'skills/ticket/phases/investigate-plan.md': (text) => swap(text, 'run the cold read first. Then run the plan review', 'run the plan review'),
   },
 };
 

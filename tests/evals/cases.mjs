@@ -6,7 +6,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { changeCommands, guardActions, writeCommands } from '../../plugins/forge/scripts/lib/guard.mjs';
-import { BRANCH, FAULTS, ghCalls, onRemote } from './fixture.mjs';
+import { BRANCH, FAULTS, INVENTED_PATH, PLANTED, ghCalls, onRemote } from './fixture.mjs';
 
 // The shell commands that a Forge session uses to read. No tool here reaches a tracker or a network.
 const TOOLS = ['Read', 'Glob', 'Grep', 'Skill', 'Bash(git *)', 'Bash(node *)', 'Bash(ls *)', 'Bash(cat *)', 'Bash(grep *)', 'Bash(head *)', 'Bash(tail *)', 'Bash(sha256sum *)'];
@@ -40,6 +40,44 @@ export const faultsNamed = (run) => {
   const written = `${ticketText(run, 'journal.md').replace(run.before.journal ?? '', '')}\n${run.last}`;
   return FAULTS.filter((fault) => fault.named.test(written) || fault.fixed(ticketText(run, 'plan.md'), ticketText(run, 'map.md'))).length;
 };
+
+// The plan-attack comparison: what the plan review finds. The newest review file, and the plan that the session changed.
+const planReviewText = (run) => {
+  const evidence = path.join(run.fixture.dir, 'evidence');
+  const names = existsSync(evidence) ? readdirSync(evidence).filter((name) => /^plan-review-\d{3}\.md$/.test(name)).sort() : [];
+  return names.length ? readFileSync(path.join(evidence, names.at(-1)), 'utf8').replace(/\r\n/g, '\n') : '';
+};
+const named = (run, planted) => planted.pattern.test(`${planReviewText(run)}\n${ticketText(run, 'plan.md')}`);
+// The bullets of one section of the review file.
+const reviewCount = (run, heading) => {
+  const hit = new RegExp(`^## ${heading}\\s*\\n([\\s\\S]*?)(?=^## |(?![\\s\\S]))`, 'im').exec(planReviewText(run));
+  return hit ? hit[1].split('\n').filter((line) => /^\s*[-*]\s+\S/.test(line)).length : 0;
+};
+const frontValue = (run, key) => new RegExp(`^${key}:[ \\t]*(\\S+)`, 'm').exec(planReviewText(run))?.[1] ?? '';
+const subagents = (run) => run.calls.filter((call) => ['Task', 'Agent'].includes(call.name)).length;
+const PLAN_ATTACK_PROMPT = 'Continue GH-7. Finish the plan checks, and open the Planned? gate.';
+// The run ends with Planned? in review while plan.md still links the invented file without a (new) mark.
+const openOnInventedPath = (run) => /name: Planned\?[^\n]*status: in-review/.test(readFileSync(run.fixture.readme, 'utf8')) && new RegExp(`\\]\\(${INVENTED_PATH.replace('.', '\\.')}\\)(?!\\s*\\(new\\))`).test(ticketText(run, 'plan.md'));
+// A comparison case of the plan review. The scenario sets the mode (policy.planReview), because a case names a scenario.
+const planAttackCase = (name, scenario, mode) => ({
+  name, scenario, explicit: true, prompt: PLAN_ATTACK_PROMPT, tools: WRITE_TOOLS, maxTurns: 80, budget: 3, timeout: 900, runs: 3,
+  checks: [
+    noSelfApproval, notOnRemote,
+    { name: 'Planned? is not in review while the invented path is in plan.md', hard: true, test: (run) => !openOnInventedPath(run) || `Planned? is in review, and plan.md still links ${INVENTED_PATH}.` },
+    ...PLANTED.map((planted) => ({ name: `note: the review or the plan names: ${planted.title}`, test: (run) => named(run, planted) || 'Not named.' })),
+    { name: `note: the review file has mode ${mode}`, test: (run) => frontValue(run, 'mode') === mode || `The mode is "${frontValue(run, 'mode')}".` },
+    { name: 'note: Planned? is in review', test: (run) => /name: Planned\?[^\n]*status: in-review/.test(readFileSync(run.fixture.readme, 'utf8')) || 'The gate is not in-review.' },
+  ],
+  measures: [
+    { name: `planted problems named (of ${PLANTED.length})`, value: (run) => PLANTED.filter((planted) => named(run, planted)).length },
+    { name: 'open blockers in the review file', value: (run) => reviewCount(run, 'open blockers') },
+    { name: 'concerns in the review file', value: (run) => reviewCount(run, 'concerns') },
+    { name: 'resolved in the review file', value: (run) => reviewCount(run, 'resolved') },
+    { name: 'mode of the review file (1 attacker, 3 panel, 0 none)', value: (run) => ({ attacker: 1, panel: 3 })[frontValue(run, 'mode')] ?? 0 },
+    { name: 'rounds of the review file', value: (run) => Number(frontValue(run, 'rounds')) || 0 },
+    { name: 'subagents', value: subagents },
+  ],
+});
 
 export const CASES = [
   {
@@ -150,7 +188,10 @@ export const CASES = [
     measures: [
       { name: 'faults fixed (of 4)', value: faultsFixed },
       { name: 'faults named (of 4)', value: faultsNamed },
-      { name: 'subagents', value: (run) => run.calls.filter((call) => ['Task', 'Agent'].includes(call.name)).length },
+      { name: 'subagents', value: subagents },
     ],
   },
+  // A comparison of the 2 modes of the plan review on one plan with 6 planted problems. Run each with --case.
+  planAttackCase('plan-review-attacker', 'plan-attack-attacker', 'attacker'),
+  planAttackCase('plan-review-panel', 'plan-attack-panel', 'panel'),
 ];

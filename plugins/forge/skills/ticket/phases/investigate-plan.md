@@ -31,10 +31,22 @@ When the cause or the facts do not fit the approved scope, stop before the plan 
 ## 📝 Plan
 
 1. Verify that Scoped? is fresh.
-2. Make the plan with the user. Complete `plan.md`: the summary, then **Steps** (each with `Files:`, `Why:`, and `Test:`), **Tests**, **Checks** (one deployed check for each changed behavior, with its baseline and control, or the reason why none is possible), **Risks**, **Decisions** (choice, reason, rejected options), and **Assumptions** for open colleague questions. Leave out a section that has no content.
-3. In **Components** of `map.md`, set **Change** to `planned` for each component that a step changes.
-4. Set `phase: plan` in the README. Set `next` to the Planned? review.
-5. Open Planned? (see the gate Procedure). The manifest lists `plan.md`, and each evidence file that the user must see.
-6. After GO, do not edit `plan.md`. A change to the plan reopens Planned? and stops the implementation until the new GO.
+2. **Design options.** Before the Steps, show 2 or 3 solution options in chat. For each option, give one line for the change, its main risk, and its cost. Give your recommendation and its reason. Ask with one `host.ask`. Never choose for the user. Record the choice and each rejected option in **Decisions**. When only one option is possible, write the reason in **Decisions** and do not ask.
+3. Make the plan with the user. Complete `plan.md`: the summary, then **Steps** (each with `Files:`, `Why:`, and `Test:`), **Tests**, **Checks** (one deployed check for each changed behavior, with its baseline and control, or the reason why none is possible), **Risks**, **Decisions** (choice, reason, rejected options), and **Assumptions** for open colleague questions. Leave out a section that has no content. Write `(new)` directly after the link of a file that a step creates.
+4. In **Components** of `map.md`, set **Change** to `planned` for each component that a step changes.
+5. **Baseline run.** Run the Baseline and the Control of each Check now, before the user sees the plan.
+   - Use the limits of a spike (see Spikes in [start.md](start.md)): read-only tools and local runs. Ask before a tool that needs approval. Do not deploy and do not trigger CI without a "yes".
+   - Save each output as `evidence/<yyyy-mm-dd>-baseline-<n>.md`. Link it on the `Baseline:` or `Control:` line.
+   - When a run is not possible now, write `not run: <why>` on that line.
+   - A baseline that does not show the problem means that the cause or the check is wrong. Go back to the Diagnosis.
+   - A control that does not differ means that the environment cannot show the change. Change the check.
+6. Set `phase: plan` in the README. Set `next` to the Planned? review.
+7. **Plan review.** Read `policy.planReview`.
+   - `off`: go to the next step.
+   - `attacker` or `panel`: run the cold read first. Then run the plan review (the `agents` skill, "Plan review").
+   - Resolve each blocker: correct the plan, or write it as a `Decision` line in the summary for the user. List the concerns. Drop the nits.
+   - Do not edit `plan.md` after the last round, because the review file names its hash.
+8. Open Planned? with `<F> gate-open <key> planned` (see the gate Procedure). It adds `plan.md`, the linked evidence files, and the review file to the manifest. Name each other evidence file that the user must see as an extra argument.
+9. After GO, do not edit `plan.md`. A change to the plan reopens Planned? and stops the implementation until the new GO. When `policy.planReview` is not `off`, the changed plan needs a new plan review.
 
 Implementer sessions and later sessions read the approved `plan.md` and `map.md` from the ticket folder.

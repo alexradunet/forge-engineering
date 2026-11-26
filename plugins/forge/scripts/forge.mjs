@@ -32,6 +32,9 @@
 //   open --status | --list | --stop   the server of this repository, each server of this user, or stop the server of this repository
 //   open --new-link [--no-browser] [--port <n>] [--links vscode|file]   write a new page token for this repository, so each older link stops (use it when a link leaked):
 //            a server that runs is stopped and started again, and the new links print as for open
+//   gate-open <key> <gate> [extra files...] [--dry-run] [--json] [--today <yyyy-mm-dd>]
+//            open the review of a gate in one call (not Sendable?): checks the earlier gates and the plan, writes approvals/<gate>-<n>.json,
+//            saves the snapshot, and sets the gate to in-review; prints the set, the diff, and the open points of the plan review
 //   gate-approve <key> <gate> --answer "<exact user answer>" [--method form|chat] [--manifest <path>] [--hash <sha>] [--dry-run] [--json]
 //            record an explicit approval of an in-review gate (not Sendable?); checks the manifest, then writes the README and approvals/history.md
 //   hook session-start [--host <host>]   read the hook event on stdin; print {"additionalContext"} with the Forge context, else {}
@@ -59,9 +62,10 @@ import { approve, assertTrusted, status as trustStatus } from './lib/trust.mjs';
 import { lint } from './lib/validation.mjs';
 import { findTicket } from './lib/tickets.mjs';
 import { approveGate } from './lib/approve.mjs';
+import { openReview } from './lib/gate-open.mjs';
 import { writeBoard } from './lib/board.mjs';
 import { createWorktree, planWorktree } from './lib/worktree.mjs';
-import { CLAUDE_PARTS, HOST_NAMES, contextText, promptSubmit, readEvent, resolveHost, sessionEnd, sessionStart } from './lib/hook.mjs';
+import { CLAUDE_PARTS, HOST_NAMES, contextText, promptSubmit, readEvent, resolveHost, sessionEnd, sessionStart, trustedConfig } from './lib/hook.mjs';
 import { preTool, preToolOutput, readToolEvent } from './lib/guard.mjs';
 import { diffGate, gateName, renderDiff, saveSnapshot } from './lib/reading.mjs';
 import { LINK_MODES, buildCanvas } from './lib/canvas.mjs';
@@ -434,7 +438,9 @@ export function main(argv = process.argv.slice(2)) {
         throw new ForgeError('Usage: forge.mjs lint [--wiki <dir>] [--cwd <dir>] [--json] [--fix].', 'bad-args');
       }
       const where = resolve(opts);
-      const report = lint({ wikiPath: where.wiki.path, repoPath: where.repo.path, fix: args.fix });
+      // Only a trusted config gives the policy and the checkouts. Without it the plan review rule does not run.
+      const config = trustedConfig(where, process.env);
+      const report = lint({ wikiPath: where.wiki.path, repoPath: where.repo.path, fix: args.fix, policy: config?.policy ?? null, checkouts: config?.repo.checkouts ?? [] });
       if (args.json) console.log(JSON.stringify(report, null, 2));
       else {
         for (const item of report.findings) console.log(`${item.severity} ${item.code} ${item.file}${item.line ? `:${item.line}` : ''}: ${item.message} ${item.remedy}`);
@@ -591,6 +597,28 @@ export function main(argv = process.argv.slice(2)) {
         ? stopForge({ wiki: where.wiki.path }).then((result) => { console.log(result.stopped ? `forge: stopped the live server of this repository (process ${result.pid}).` : 'forge: no server runs for this repository.'); })
         : (args.newLink ? renewLink : openForge)({ cli: fileURLToPath(import.meta.url), repo: where.repo.path, wiki: where.wiki.path, links: args.links, port, browser: !args.noBrowser }).then(() => {});
       work.catch((err) => { console.error(`forge: ${err.message}`); process.exitCode = 1; });
+    } else if (cmd === 'gate-open') {
+      if (args._.length < 3) throw new ForgeError('Usage: forge.mjs gate-open <key> <gate> [extra files...] [--dry-run] [--json] [--today <yyyy-mm-dd>].', 'bad-args');
+      const where = resolve(opts);
+      // An untrusted config must not turn the plan review off, so it stops the command as it stops `config`.
+      assertTrusted(where, ['config/']);
+      const loaded = loadConfig(where.configDir);
+      const config = loaded.files.length ? loaded.config : null;
+      let result;
+      try {
+        const { dir } = findTicket(where.wiki.path, args._[1]);
+        result = openReview(dir, { gate: args._[2], extra: args._.slice(3), policy: config?.policy ?? null, repoPath: where.repo.path, checkouts: config?.repo.checkouts ?? [], today: args.today, dryRun: args.dryRun });
+      } catch (err) { throw new ForgeError(err.message, 'gate-open'); }
+      if (args.json) console.log(JSON.stringify(result, null, 2));
+      else {
+        console.log(`${result.key} ${result.gate}: in review${args.dryRun ? ' (dry run, nothing written)' : ''}`);
+        console.log(`Manifest: ${result.manifest} sha256 ${result.hash}`);
+        for (const doc of result.documents) console.log(`- ${doc.path} ${doc.sha256.slice(0, 12)}`);
+        console.log(result.diff);
+        if (result.review) console.log(`Open blockers: ${result.review.openBlockers || 'none'}\nConcerns: ${result.review.concerns || 'none'}`);
+        for (const note of result.notes) console.log(note);
+        console.log(`GO approves this exact set. Approve with: forge.mjs gate-approve ${args._[1]} ${args._[2]} --answer "<the exact answer of the user>" --method form|chat`);
+      }
     } else if (cmd === 'gate-approve') {
       if (args._.length !== 3 || !args.answer) throw new ForgeError('Usage: forge.mjs gate-approve <key> <gate> --answer "<exact user answer>" [--method form|chat] [--manifest <path>] [--hash <sha>] [--dry-run] [--json].', 'bad-args');
       const where = resolve(opts);
@@ -605,7 +633,7 @@ export function main(argv = process.argv.slice(2)) {
       if (args._[1] === 'approve') console.log(JSON.stringify(approve(where, args._.slice(2)), null, 2));
       else console.log(JSON.stringify(trustStatus(where), null, 2));
     } else {
-      console.error('Usage: node forge.mjs <where|config|doctor|lint|detect|init|bind|seed|board|styleguide|worktree|snapshot|diff|canvas|live|open|gate-approve|hook|context|trust|run> [--wiki <dir>] [--cwd <dir>] [--json]');
+      console.error('Usage: node forge.mjs <where|config|doctor|lint|detect|init|bind|seed|board|styleguide|worktree|snapshot|diff|canvas|live|open|gate-open|gate-approve|hook|context|trust|run> [--wiki <dir>] [--cwd <dir>] [--json]');
       return 2;
     }
     return 0;

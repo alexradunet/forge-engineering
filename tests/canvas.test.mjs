@@ -285,3 +285,16 @@ test('each section of a template has one tier, and each tier entry is a section 
     assert.deepEqual([...listed].sort(), ['summary', ...headings].sort(), name);
   }
 });
+
+test('a (new) mark and an evidence link in the plan do not break the plan cards', (t) => {
+  const f = wiki(t);
+  f.put('plan.md', [
+    '---', 'type: plan', 'ticket: APP-9', '---', '# Plan APP-9: Outbox retry', '', 'Cause: x.', '',
+    '## Steps', '', '1. Add the case', '   - Files: [RetryJob.cs](/repo/src/RetryJob.cs:42), [New.cs](/repo/src/New.cs) (new)', '   - Why: reason', '',
+    '## Checks', '', '1. A retry waits', '   - Baseline: 3 s ([evidence](evidence/base.md))', '   - Control: not run: no test environment', '',
+  ].join('\n'));
+  const plan = buildCanvas(f.dir).zones.find((item) => item.id === 'plan');
+  assert.equal(plan.steps.length, 1);
+  assert.equal(plan.steps[0].title, '1. Add the case');
+  assert.ok(plan.steps[0].markdown.includes('(new)'));
+});

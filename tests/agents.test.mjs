@@ -121,3 +121,24 @@ test('the live server and Send to agent are in the ticket skill and in each host
   assert.match(readFileSync(new URL('../plugins/forge/hosts/claude.md', import.meta.url), 'utf8'), /`run_in_background: true`/);
   assert.match(readFileSync(new URL('../plugins/forge/hosts/vscode.md', import.meta.url), 'utf8'), /write `sent` if the session does not continue/);
 });
+
+test('the plan has design options, a baseline run, and a plan review, and the gate steps use gate-open', () => {
+  assert.match(phase('start'), /Give 2 other possible readings/);
+  assert.match(phase('start'), /Ask which reading is right as the first question of the form/);
+  const plan = phase('investigate-plan');
+  for (const part of ['Design options', 'Baseline run', 'Plan review', '(new)', 'gate-open <key> planned']) assert.ok(plan.includes(part), part);
+  assert.match(agents, /## 🧐 Plan review/);
+  assert.ok(agents.indexOf('## 🧐 Plan review') > agents.indexOf('## 🐟 Cold read'));
+  assert.ok(agents.indexOf('## 🧐 Plan review') < agents.indexOf('## 🥊 Adversarial review'));
+  for (const role of ['Design Critic', 'Codebase Auditor', 'Operability Reviewer']) assert.ok(agents.includes(role), role);
+  assert.match(agents, /plan-sha256/);
+  assert.match(agents, /policy\.planReview/);
+  const gates = phase('gates');
+  assert.match(gates, /Run \`<F> gate-open <key> <gate> \[extra files\]\`/);
+  assert.match(gates, /Never write a manifest by hand/);
+  assert.doesNotMatch(gates, /Get the form text: run/);
+  assert.match(gates, /needs no second "yes" when it is in the approved Shippable\? set/);
+  assert.ok(gates.includes('change-update.draft.md'));
+  assert.ok(phase('evidence').includes('change-update.draft.md'));
+  assert.match(phase('implement'), /Keep this order before the push/);
+});

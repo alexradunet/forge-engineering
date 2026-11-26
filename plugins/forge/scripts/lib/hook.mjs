@@ -144,10 +144,10 @@ function placeLine(here, branch, mainPath, recorded, host) {
   return '';
 }
 
-/** The `forge` and `style` rules from <plugin>/context, or '' when they cannot be read. */
-function pluginRules(pluginDir) {
+/** The `forge` and `style` rules from <plugin>/context, or '' when they cannot be read. `style: false` leaves out the style rule. */
+function pluginRules(pluginDir, { style = true } = {}) {
   try {
-    return RULE_FILES.map((name) => readFileSync(path.join(pluginDir, 'context', name), 'utf8').replace(/\r\n/g, '\n').trim()).join('\n\n');
+    return RULE_FILES.filter((name) => style || name !== 'style.md').map((name) => readFileSync(path.join(pluginDir, 'context', name), 'utf8').replace(/\r\n/g, '\n').trim()).join('\n\n');
   } catch { return ''; }
 }
 
@@ -239,7 +239,8 @@ function ticketPart(event, where, forge, env, { host = 'vscode', promptOnly = fa
   const cwd = event.cwd || process.cwd();
   const here = where.top;
   const branch = git(cwd, ['branch', '--show-current']);
-  const tickets = listTickets(where.wiki.path).filter((entry) => entry.ticket);
+  const all = listTickets(where.wiki.path);
+  const tickets = all.filter((entry) => entry.ticket);
   const lines = [];
   const inMain = Boolean(here) && samePath(here, where.repo.path);
   let config;
@@ -263,6 +264,12 @@ function ticketPart(event, where, forge, env, { host = 'vscode', promptOnly = fa
     const place = recorded ? '' : placeLine(here, branch, where.repo.path, ticket.worktree, host);
     if (place) lines.push('', place.replaceAll('<KEY>', ticket.key));
     return { lines, key: ticket.key, title };
+  }
+  // A ticket folder whose README cannot be read: the same match rules on its head. It is not a new ticket.
+  const broken = all.filter((entry) => !entry.ticket).map((entry) => ({ ...entry, ticket: entry.head }));
+  const stuck = (promptOnly ? null : ticketOfFolder(broken, { here, branch, inMain, getConfig })) ?? findByKey(broken, event.prompt);
+  if (stuck) {
+    return { lines: [`Forge: the ticket folder ${stuck.folder} has a README that Forge cannot read: ${stuck.error} README: ${stuck.file}. Do not start this ticket again. Show the user the error, and repair the README only as the user says.`], key: '', title: '' };
   }
   const prefix = getConfig()?.tracker?.prefix ?? null;
   // A later prompt can name a key only in passing, so it needs the tracker prefix.
@@ -314,7 +321,9 @@ export function buildContext(event, { cli, env = process.env, host = 'vscode' } 
     }
   } catch { ticket = ''; title = ''; }
 
-  const rules = pluginRules(pluginDir);
+  // The style rule loads unless the trusted policy says styleRules: false. No wiki or an untrusted config keeps it.
+  const style = !where?.wiki.exists || trustedConfig(where, env)?.policy?.styleRules !== false;
+  const rules = pluginRules(pluginDir, { style });
   let company = '';
   try { if (where?.wiki.exists) company = wikiRules(where, env); } catch { company = ''; }
   if (!ticket && !rules && !company) return { body: '', title: '', where };

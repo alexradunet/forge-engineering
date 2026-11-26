@@ -9,7 +9,7 @@ disable-model-invocation: true
 > When your context has no `End of Forge context.` line, or a `Forge context part <i> of <n>` part is
 > missing or has a different id, run `node "<plugin>/scripts/forge.mjs" context` first and follow its output. `<plugin>`
 > is two folders above the folder of this file. When the command fails, read
-> [forge.md](../../context/forge.md) and [style.md](../../context/style.md): they are the `forge` and `style` rules.
+> [forge.md](../../context/forge.md) (the `forge` rule), and [style.md](../../context/style.md) (the `style` rule) unless `policy.styleRules` is `false`.
 
 One chat sets up forge for the repository of the plugin profile. The plugin holds the profile config templates,
 but no machine paths. The config lives in the repository wiki (`../<repo>.forge/wiki`).

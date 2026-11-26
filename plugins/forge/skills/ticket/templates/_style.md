@@ -47,6 +47,8 @@ A gate document (`story.md`, `plan.md`, `review.md`, `close.md`) has these parts
 ## 🔗 Evidence and links
 
 - Link each fact to its evidence file or to code: `[File.cs](<checkout>/path/File.cs:42)` with the absolute checkout path.
+- Write (new) after the link of a file that a step creates: `[New.cs](<checkout>/path/New.cs) (new)`.
+- A `Baseline:` or `Control:` line links its evidence file, or says `not run: <why>`.
 - Explain each term that the user possibly does not know in plain words, or put it in **Terms** of `map.md`.
 - Tool outputs, the work item snapshot, and spike results go to `evidence/<yyyy-mm-dd>-<topic>.md`, with `date` in the frontmatter.
 - The gate status is only in the `gates` list of the README frontmatter. Do not write a status, a hash, or an approval note in a document.

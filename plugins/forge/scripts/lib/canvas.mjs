@@ -9,7 +9,8 @@ import path from 'node:path';
 import { MERMAID_FILE, MERMAID_INTEGRITY, MERMAID_ROUTE, needsMermaid } from './mermaid.mjs';
 import { STATE_EMOJI, parseTicket } from './ticket.mjs';
 import { STATE_LABEL } from './board.mjs';
-import { listSnapshots, sections, summaryBlock } from './reading.mjs';
+import { listSnapshots, numberedItems, sections, summaryBlock, tableRow } from './reading.mjs';
+export { numberedItems, tableRow };
 import { CANVAS_SCRIPT, CANVAS_STYLE } from './canvas-page.mjs';
 import { GATE_TEXT, TOOLS_HTML, emptyHtml, esc, faviconUri, footHtml, frameHtml, gatesHtml, helpHtml, iconHtml, ingotHtml, navData, pageHtml, pageLabel, pillHtml, pixelText, switcherHtml, tagHtml } from './ui.mjs';
 
@@ -82,32 +83,11 @@ function readDoc(dir, name) {
 
 const section = (doc, name) => doc?.sections.find((item) => item.heading.toLowerCase() === name.toLowerCase()) ?? null;
 
-/** The cells of one Markdown table row. An escaped pipe stays in its cell. */
-export function tableRow(line) {
-  return line.trim().replace(/^\|/, '').replace(/\|$/, '').split(/(?<!\\)\|/).map((cell) => cell.trim().replace(/\\\|/g, '|'));
-}
-
 function tableRows(text) {
   const lines = text.split('\n').filter((line) => /^\s*\|/.test(line));
   if (lines.length < 2 || !/^\s*\|?\s*:?-{2,}/.test(lines[1])) return [];
   const head = tableRow(lines[0]).map((cell) => cell.toLowerCase());
   return lines.slice(2).map((line) => Object.fromEntries(tableRow(line).map((cell, index) => [head[index] ?? `col${index}`, cell])));
-}
-
-/** The top-level numbered items of a section: [{ n, title, body }]. The body is the indented text under the item. */
-export function numberedItems(text) {
-  const items = [];
-  for (const line of text.split('\n')) {
-    const start = /^(\d+)[.)]\s+(.*)$/.exec(line);
-    if (start) items.push({ n: Number(start[1]), title: start[2].trim(), lines: [] });
-    else if (items.length && (/^\s+\S/.test(line) || !line.trim())) items.at(-1).lines.push(line);
-    else if (items.length && line.trim()) items.at(-1).lines.push(line);
-  }
-  return items.map((item) => {
-    const indent = Math.min(...item.lines.filter((line) => line.trim()).map((line) => line.match(/^\s*/)[0].length), 99);
-    const body = item.lines.map((line) => line.slice(Math.min(indent, line.match(/^\s*/)[0].length))).join('\n').trim();
-    return { n: item.n, title: item.title, body };
-  });
 }
 
 const bullets = (text) => text.split('\n').map((line) => /^\s{0,3}[-*+]\s+(.*)$/.exec(line)?.[1]).filter(Boolean);

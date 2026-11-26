@@ -23,7 +23,7 @@ Decision 1: <question>? Recommended: <answer>.
 ## Steps
 
 1. <step title>
-   - Files: [File.cs](<checkout>/path/File.cs)
+   - Files: [File.cs](<checkout>/path/File.cs), [New.cs](<checkout>/path/New.cs) (new)
    - Why: <reason>
    - Test: <the test that covers this step>
 
@@ -38,8 +38,8 @@ Decision 1: <question>? Recommended: <answer>.
 1. <changed behavior>
    - Action: <input or action>
    - Expected: <result>
-   - Baseline: <the result without the fix>
-   - Control: <an observation that must differ when the environment is correct>
+   - Baseline: <the result without the fix> ([evidence](evidence/<file>.md))
+   - Control: <an observation that must differ when the environment is correct> ([evidence](evidence/<file>.md))
 
 ## Risks
 

@@ -6,7 +6,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { parseTicket } from '../plugins/forge/scripts/lib/ticket.mjs';
-import { checkAction, checkGate, classifySource, GATES, lint, sha256, validateTicket } from '../plugins/forge/scripts/lib/validation.mjs';
+import { approvedDrafts, checkAction, checkGate, classifySource, GATES, lint, sha256, validateTicket } from '../plugins/forge/scripts/lib/validation.mjs';
 
 const cli = fileURLToPath(new URL('../plugins/forge/scripts/forge.mjs', import.meta.url));
 const cwd = fileURLToPath(new URL('..', import.meta.url));
@@ -61,6 +61,22 @@ test('full-v3 has four review gates plus Sendable? and blocks phases until their
 
   const skipped = parseTicket(yamlTicket({ gates: allGates().map((gate) => gate.name === 'Planned?' ? { ...gate, status: 'skipped' } : gate) }));
   assert.ok(validateTicket(skipped, f.file).some((item) => item.code === 'workflow-gate' && item.message === 'Planned? is mandatory for full-v3.'));
+});
+
+test('approvedDrafts lists the outbox drafts of a valid approved manifest, and nothing else', (t) => {
+  const f = fixture(t);
+  f.put('review.md', 'Review\n');
+  f.put('outbox\\pr.draft.md', 'Draft\n');
+  f.put('outbox\\notes.md', 'Notes\n');
+  const gate = record(f, 'Shippable?', ['review.md', 'outbox\\pr.draft.md', 'outbox\\notes.md']);
+  const ticket = parseTicket(yamlTicket({ gates: [gate] }));
+  assert.deepEqual(approvedDrafts(ticket, f.file, 'Shippable?'), ['outbox/pr.draft.md'], 'Only a draft file, with forward slashes.');
+  assert.deepEqual(approvedDrafts(ticket, f.file, 'Scoped?'), [], 'A gate that is not recorded has none.');
+  f.put('outbox\\pr.draft.md', 'Changed draft\n');
+  assert.deepEqual(approvedDrafts(ticket, f.file, 'Shippable?'), [], 'A stale approval has none.');
+  const open = parseTicket(yamlTicket({ gates: [{ ...gate, status: 'in-review' }] }));
+  assert.deepEqual(approvedDrafts(open, f.file, 'Shippable?'), [], 'A gate that is not approved has none.');
+  assert.deepEqual(approvedDrafts(null, f.file, 'Shippable?'), [], 'It never throws.');
 });
 
 test('combined approval covers every listed revision with one user record', (t) => {
@@ -302,4 +318,21 @@ test('a closed full-v3 ticket needs proof.md', (t) => {
   assert.match(validateTicket(ticket, f.file)[0].message, /proof\.md/);
   f.put('proof.md', 'Proof\n');
   assert.deepEqual(validateTicket(ticket, f.file), []);
+});
+
+test('lint checks the plan paths: a warning in the plan phase, an error in review, nothing after approval', (t) => {
+  const f = fixture(t);
+  f.put('plan.md', '# Plan\n\n## Steps\n\n1. Edit\n   - Files: [A.cs](/no/such/dir/A.cs)\n');
+  const planFindings = (phase, status) => {
+    const gates = allGates().map((gate) => (gate.name === 'Planned?' ? { ...gate, status, doc: 'plan.md' } : gate));
+    f.put('README.md', yamlTicket({ phase, gates }));
+    return lint({ wikiPath: f.wiki, repoPath: f.dir }).findings.filter((item) => item.code === 'plan-path');
+  };
+  const warn = planFindings('plan', 'todo');
+  assert.deepEqual(warn.map((item) => item.severity), ['warning']);
+  assert.equal(warn[0].line, 6);
+  assert.equal(path.basename(warn[0].file), 'plan.md');
+  assert.deepEqual(planFindings('plan', 'in-review').map((item) => item.severity), ['error']);
+  assert.deepEqual(planFindings('implement', 'approved'), []);
+  assert.deepEqual(planFindings('start', 'todo'), []);
 });

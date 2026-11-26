@@ -221,10 +221,48 @@ test('the guard finds the ticket from the folder of the command, and it ignores 
   assert.equal(run(s.worktree, 'git push'), null, 'No wiki, no ticket.');
 });
 
-test('a ticket README that cannot be read does not stop the command', (t) => {
+test('a ticket README that cannot be read stops the push, and the reason names the error', (t) => {
   const s = setup(t);
   writeFileSync(s.readme, 'no frontmatter\n');
-  assert.equal(run(s.worktree, 'git push'), null);
+  const verdict = run(s.worktree, 'git push');
+  assert.equal(verdict.decision, 'deny');
+  assert.equal(verdict.key, 'APP-7', 'The key falls back to the folder name.');
+  assert.match(verdict.reason, /^Forge gate guard: APP-7 has a README that Forge cannot read, so the gates for a push are unknown\. README: .*README\.md\. Error: Ticket README needs frontmatter\. Show the user the error\./);
+  assert.match(verdict.reason, /forge\.mjs lint/);
+  rmSync(s.readme);
+  assert.match(run(s.worktree, 'git push').reason, /Error: README\.md is missing\./);
+});
+
+test('an unsupported workflow stops a push by policy.gateGuard, and a broken README of another ticket does not', (t) => {
+  const old = setup(t, { workflow: 'full-v2' });
+  const deny = run(old.worktree, 'git push');
+  assert.equal(deny.decision, 'deny');
+  assert.match(deny.reason, /Error: Unsupported ticket workflow: full-v2\. Forge supports only workflow: full-v3\./);
+  const asks = setup(t, { workflow: 'full-v2' });
+  trustConfig(asks, ['policy.gateGuard=ask']);
+  const ask = run(asks.worktree, 'git push');
+  assert.equal(ask.decision, 'ask');
+  assert.match(ask.reason, /Unsupported ticket workflow: full-v2/);
+  const off = setup(t, { workflow: 'full-v2' });
+  trustConfig(off, ['policy.gateGuard=off']);
+  assert.equal(run(off.worktree, 'git push'), null);
+  // A broken README of another folder: the push of the valid, approved ticket still runs.
+  const done = setup(t, { approved: ['Scoped?', 'Planned?', 'Shippable?'] });
+  const other = path.join(done.dir, '..', 'app-9');
+  mkdirSync(other);
+  writeFileSync(path.join(other, 'README.md'), '---\nkey: APP-9\nbranch: "users/a/APP-9-other"\nworkflow: full-v2\n---\n');
+  assert.equal(run(done.worktree, 'git push -u origin users/a/APP-7-doc-import'), null);
+  assert.equal(run(done.worktree, 'git push origin users/a/APP-9-other').decision, 'deny', 'A push that names the broken branch stops.');
+});
+
+test('a write for a ticket with a README that cannot be read gets ask, with no exception', (t) => {
+  const s = setup(t, { workflow: 'full-v2' });
+  trustConfig(s);
+  const verdict = run(s.worktree, 'gh issue comment 7 -R a/b -F /tmp/forge-app-7-body.md');
+  assert.equal(verdict.decision, 'ask');
+  assert.match(verdict.reason, /^Forge gate guard: APP-7: this command is an external write: `gh issue comment`/);
+  assert.match(verdict.reason, /No outbox draft is in review for it/);
+  assert.equal(run(s.worktree, 'gh pr create -t T').decision, 'deny', 'A new change request is stopped, not only asked.');
 });
 
 test('a trusted config adds the change request command, and policy.gateGuard selects deny, ask, or off', (t) => {
@@ -327,6 +365,56 @@ test('a new change request asks after its gates pass, and a deny wins over an as
   const asks = setup(t);
   trustConfig(asks, ['policy.gateGuard=ask']);
   assert.equal(run(asks.worktree, 'gh issue comment 7 -F b.md').decision, 'ask', 'The ask mode changes only the ship verdict.');
+});
+
+/** Puts outbox drafts (name: target) into the Shippable? manifest, and records the new manifest hash in the README. */
+function approveDrafts(s, drafts, { listed = Object.keys(drafts) } = {}) {
+  mkdirSync(path.join(s.dir, 'outbox'), { recursive: true });
+  for (const [name, target] of Object.entries(drafts)) writeFileSync(path.join(s.dir, 'outbox', name), `---\nstatus: draft\ntarget: ${target}\n---\n# Title\n\nText\n`);
+  const documents = ['review.md', ...listed.map((name) => `outbox/${name}`)].map((doc) => ({ path: doc, sha256: sha256(readFileSync(path.join(s.dir, ...doc.split('/')))) }));
+  const bytes = JSON.stringify({ version: 1, gate: 'Shippable?', documents });
+  writeFileSync(path.join(s.dir, 'approvals', 'shippable-001.json'), bytes);
+  writeFileSync(s.readme, readFileSync(s.readme, 'utf8').replace(/(name: Shippable\?.*hash: )[a-f0-9]{64}/, `$1${sha256(bytes)}`));
+}
+
+test('the approval of the Shippable? set that holds the one change draft is the yes for a new change request', (t) => {
+  const create = 'gh pr create -R a/b -t "APP-7 T" -F outbox/pr.draft.md';
+  const ready = () => {
+    const s = setup(t, { approved: ['Scoped?', 'Planned?', 'Shippable?'] });
+    trustConfig(s);
+    return s;
+  };
+  const s = ready();
+  approveDrafts(s, { 'pr.draft.md': 'change' });
+  assert.equal(run(s.worktree, create), null);
+  assert.equal(preTool({ cwd: s.worktree, command: create, mode: 'bypassPermissions' }, { env }), null, 'No verdict, also with no prompt.');
+  assert.equal(run(s.worktree, 'git push -u origin users/a/APP-7-doc-import'), null);
+  for (const command of ['gh issue comment 7 -R a/b -F b.md', 'gh issue close 7', 'gh workflow run ci.yml', 'gh api -X POST repos/a/b/pulls/1/comments/2/replies -F body=@b.md']) {
+    assert.equal(run(s.worktree, command).decision, 'ask', `Another write keeps its ask: ${command}`);
+  }
+  // The draft changes after the approval: the gate is stale.
+  writeFileSync(path.join(s.dir, 'outbox', 'pr.draft.md'), '---\nstatus: draft\ntarget: change\n---\n# Title\n\nOther text\n');
+  assert.equal(run(s.worktree, create).decision, 'deny');
+  // A draft that is not in the manifest is no approval.
+  const none = ready();
+  assert.equal(run(none.worktree, create).decision, 'ask');
+  assert.equal(preTool({ cwd: none.worktree, command: create, mode: 'bypassPermissions' }, { env }).decision, 'deny');
+  const unlisted = ready();
+  approveDrafts(unlisted, { 'pr.draft.md': 'change' }, { listed: [] });
+  assert.equal(run(unlisted.worktree, create).decision, 'ask');
+  // Two change drafts, a draft of another target, and an existing change request all keep the ask.
+  const two = ready();
+  approveDrafts(two, { 'pr.draft.md': 'change', 'pr-2.draft.md': 'change' });
+  assert.equal(run(two.worktree, create).decision, 'ask');
+  const other = ready();
+  approveDrafts(other, { 'item-comment.draft.md': 'tracker-comment' });
+  assert.equal(run(other.worktree, create).decision, 'ask');
+  const open = ready();
+  approveDrafts(open, { 'pr.draft.md': 'change' });
+  writeFileSync(open.readme, readFileSync(open.readme, 'utf8').replace('changes: []', 'changes:\n  - { url: "https://github.com/a/b/pull/9", state: open }'));
+  assert.equal(run(open.worktree, create).decision, 'ask');
+  writeFileSync(open.readme, readFileSync(open.readme, 'utf8').replace('state: open }', 'state: merged }'));
+  assert.equal(run(open.worktree, create), null, 'A merged change request does not count.');
 });
 
 test('in bypassPermissions the host shows no prompt, so each ask becomes a deny', (t) => {

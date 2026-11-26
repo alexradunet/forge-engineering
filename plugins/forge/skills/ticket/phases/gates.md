@@ -22,17 +22,16 @@ Run it one time for each review revision. Run a second cold read only after you 
 Sendable? does not use this procedure. It has its own steps (see Sendable? for each write).
 
 1. Write or update the gate document from its template. Run the cold read. Run `<F> lint` and remove its warnings for this document.
-2. Prepare the manifest (see Approval revisions). Set the gate to `status: in-review` in the README `gates` list, and `state: needs-me`. Record the manifest path. Update the Now card in the same edit.
+2. Run `<F> gate-open <key> <gate> [extra files]`. It builds the document set and writes the manifest in `approvals/` with the SHA-256 of each file. It saves the snapshot, sets the gate to `in-review`, and sets `state: needs-me`. For Planned?, it runs the plan checks first. It prints the form text. You still set `next` and the other lines of the Now card in the same edit. When it refuses, correct what the message names, then run it again. Never write a manifest by hand.
 3. Set the 🟡 title (`host.title`, see Session title) before the form.
 4. Start the live server with `<F> open --no-browser`, as the host table says (see Canvas, and the "Ticket canvas" part of the host file). Open the document next to the session with `host.open`, and give the links to the document and to the canvas. Tell the user: add comments in the editor (`host.comments`), on the canvas, or in the chat.
-5. Get the form text: run `<F> diff <key> <gate>` first, then `<F> snapshot <key> <gate>`. `diff` compares the document with the snapshot of the last review. `snapshot` saves the document as the user sees it now.
-6. Show the approval form (below) with `host.ask`. Do not start the blocked step.
-7. Act on the answer:
-   - GO: record the approval (step 9), then start the next workflow step.
-   - Comments: after **Send to agent**, the prompt hook adds the canvas comments to the next message of the user (for example `sent`). When the context has no such comments and the host has no prompt hook, read `canvas-comments.md` in the ticket folder, and delete it when you handled them. Handle the comments (step 8), then show the form again (from step 5).
-   - Changes: apply the free-text request to the document, then show the form again (from step 5).
+5. Show the approval form (below) with `host.ask`. Do not start the blocked step.
+6. Act on the answer:
+   - GO: record the approval (step 8), then start the next workflow step.
+   - Comments: after **Send to agent**, the prompt hook adds the canvas comments to the next message of the user (for example `sent`). When the context has no such comments and the host has no prompt hook, read `canvas-comments.md` in the ticket folder, and delete it when you handled them. Handle the comments (step 7). Run `gate-open` again (step 2), then show the form again. For Planned? with a plan review, the form then says that the reviewers did not read the change.
+   - Changes: apply the free-text request to the document. Run `gate-open` again (step 2), then show the form again. For Planned? with a plan review, the form then says that the reviewers did not read the change.
    - Hold: stop. Tell the user how to resume (`approve <gate>` in chat, or "review my comments").
-8. Handle the comments. They come from `host.comments`, from the chat, or from the canvas. A message that starts with `Canvas comments for <KEY>:` has one numbered line for each comment, with the file and the section that it is about.
+7. Handle the comments. They come from `host.comments`, from the chat, or from the canvas. A message that starts with `Canvas comments for <KEY>:` has one numbered line for each comment, with the file and the section that it is about.
    - A canvas line can have these parts:
      - `on "<words>"`: the comment is about these words only, not about the full card.
      - `[unclear]`: the user cannot understand the text. Write it again in plain words.
@@ -46,33 +45,21 @@ Sendable? does not use this procedure. It has its own steps (see Sendable? for e
    - When a comment is not clear, ask the user. Do not guess.
    - Resolve each handled correction thread.
    - Summarize what changed in 5 lines or less before you show the form again.
-9. Record the approval. For each gate except Sendable?, run `<F> gate-approve <key> <gate> --answer "<the exact answer of the user>" --method form|chat --hash <the manifest SHA-256 that you showed>`. It checks the answer, the manifest, and each document hash, then writes the README and `approvals/history.md`. It writes nothing when a check fails. Run it only after an explicit answer of the user, never in auto mode. Then update `state`, `next`, `updated`, and the Now card, and set the title with the new state emoji (`host.title`).
+8. Record the approval. For each gate except Sendable?, run `<F> gate-approve <key> <gate> --answer "<the exact answer of the user>" --method form|chat`. The option `--hash <the manifest SHA-256 that you showed>` is optional: the README record has the digest. It checks the answer, the manifest, and each document hash, then writes the README and `approvals/history.md`. It writes nothing when a check fails. Run it only after an explicit answer of the user, never in auto mode. Then update `state`, `next`, `updated`, and the Now card, and set the title with the new state emoji (`host.title`).
 
 ### Approval revisions
 
-An approval covers exact file revisions. Use a new ticket-relative JSON manifest for each review revision, for example `approvals/planned-002.json`. Never overwrite an old manifest.
-
-```json
-{
-  "version": 1,
-  "gate": "Planned?",
-  "documents": [
-    { "path": "plan.md", "sha256": "<64 lowercase hex characters>" },
-    { "path": "evidence/2026-11-17-query-count.md", "sha256": "<64 lowercase hex characters>" }
-  ]
-}
-```
-
-- List the primary document, and each evidence file that the user must see in this exact revision. A folder or a link alone does not identify a revision.
-- Hash raw bytes with SHA-256. Do not use `git hash-object`, normalized text, or a short digest.
-- Keep paths inside the ticket folder. Never list `README.md`, a manifest, `approvals/history.md`, `journal.md`, or `canvas.html`.
+- An approval covers exact file revisions.
+- `gate-open` writes a new manifest for each review revision, for example `approvals/planned-002.json`. It never overwrites an old one.
+- It lists the gate document and the evidence that the checks found. Name each other evidence file that the user must see as an extra argument.
+- It refuses `README.md`, a manifest, `approvals/history.md`, `journal.md`, and `canvas.html`.
 - One explicit user approval covers the whole displayed set. Do not ask for per-file approvals.
 - A change to a covered file makes the gate stale. `plan.md` has no second copy: after approval, do not edit it. To change the plan, edit `plan.md`, set Planned? to `in-review`, and stop the implementation until the new GO. `approvals/snapshots/` keeps the revision of each review.
 - Before any blocked action and on Resume, validate the approvals with `<F> lint`. A missing file, malformed metadata, a conflicting state, or a stale hash is a finding: show its file and its remedy. Block only the affected action. Read-only work stays possible.
 
 ### Sendable? for each write
 
-Each external write has its own draft and its own "yes". The "yes" is the answer of the user to the prompt of the host, not a record in the ticket.
+Each external write has its own draft and its own "yes". The "yes" is the answer of the user to the prompt of the host, not a record in the ticket. One exception follows the steps.
 
 1. Write the draft `outbox/<target>.draft.md` from [templates/outbox.draft.md](../templates/outbox.draft.md). Do this in each phase, also for a write that the user asks for directly. Run a full pass of the `writing` skill (outbound mode) on the text between the `send` markers.
 2. In the README, set Sendable? to `status: in-review`, and set its `doc` to the draft. Set `state: needs-me`. `<F> lint` accepts no other name for the `doc` of Sendable?.
@@ -83,6 +70,15 @@ Each external write has its own draft and its own "yes". The "yes" is the answer
 5. When the guard or the host denies the command (for example a mode with no prompt), do not run it in another form. Give the user the exact command, and ask the user to tell you when it ran.
 6. After the write, add a `log` entry to `journal.md`: the command, the target, the draft, and the returned id or link. Set Sendable? to `status: todo`, and set `state` for the next step. Do not change the draft after the write.
 7. A second write needs its own "yes", also for the same text. A retry after a failure is a second write.
+
+Exception: the draft of a new change request (`target: change` in its frontmatter) needs no second "yes" when it is in the approved Shippable? set.
+
+- Write that draft before you open Shippable?. `gate-open` adds it when it is the only change draft.
+- GO then approves the push and the creation of the change request with exactly that text.
+- Record the change request in the README `changes` list directly after the creation.
+- Never edit the approved draft. An edit makes Shippable? stale and stops each later push.
+- A later update of the description uses a new draft `outbox/change-update.draft.md` and its own "yes".
+- The host can still ask by its own permission rules.
 
 - A write has no manifest and no approval record. `<F> gate-approve` refuses Sendable?.
 - Send only the text between the `send` markers. Pass long text through a file in the system temp folder (see [tools.md](../../../context/tools.md)).
@@ -101,10 +97,11 @@ Show it with `host.ask` at each gate. Use one field, `decision`, with these opti
 The message body is short. Put in it, in this order:
 
 1. The gate question, and the links to the primary document and to the canvas.
-2. The output of `<F> diff <key> <gate>` (Procedure step 5):
-   - First review: the summary of the document. Nothing more from the document.
-   - Later review: only the changed sections and lines. Do not repeat the summary. When nothing changed, say so in one line.
-3. One line with the manifest link and its SHA-256 (a 12-character display prefix is fine; the stored hash is full length). When the set has more than one file, add one line for each file. State that GO approves this exact set.
+2. The output of `<F> gate-open` (Procedure step 2):
+   - The diff. First review: the summary of the document, and nothing more from the document. Later review: only the changed sections and lines. Do not repeat the summary. When nothing changed, say so in one line.
+   - The manifest line, with its link and SHA-256 (a 12-character display prefix is fine; the stored hash is full length), and one line for each file.
+   - For Planned?: the open blockers and the concerns of the plan review, and the carry sentence when it shows.
+3. State that GO approves this exact set.
 
 - Set no default. The user must pick an option.
 - If unhandled comments exist on the document, say so in the message.
@@ -135,7 +132,7 @@ The canvas is one HTML page that shows the whole ticket on one board: the gate r
   - `proof.md`: Accepted gaps. A failed check is also open.
   - `close.md`: What you now know.
 - The canvas also opens an open hypothesis of the Diagnosis and a `problem` entry of the journal. The other sections are "good to know" or working notes: the user opens them only on demand, so do not rely on them for a decision.
-- On the canvas, the user can comment on a card or on selected words, mark text with **Remove**, give a label (`unclear`, `wrong`, `too much`), and write one comment on the whole ticket. The comments come as one message. That message starts with `Canvas comments for <KEY>:`. Handle it as review comments (gate Procedure, step 8).
+- On the canvas, the user can comment on a card or on selected words, mark text with **Remove**, give a label (`unclear`, `wrong`, `too much`), and write one comment on the whole ticket. The comments come as one message. That message starts with `Canvas comments for <KEY>:`. Handle it as review comments (gate Procedure, step 7).
 - The code map on the canvas comes from `map.md`: one lane for each **Layer** of the **Components** table, one arrow for each **Flow** line, and a mark for each **Change** value. Keep `map.md` to the slice of the code that this ticket needs: 6 to 20 components.
 
 ### Review other files

@@ -1,35 +1,19 @@
 import { createHash } from 'node:crypto';
 import { appendFileSync, lstatSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { nowCard, parseFrontmatter, parseTicket, validDate } from './ticket.mjs';
+import { ACTION_GATES, GATES, GATE_DOCS, PREREQUISITES, nowCard, parseFrontmatter, parseTicket, validDate } from './ticket.mjs';
 import { homeOf, rawDir } from './layout.mjs';
+import { plannedChecks } from './gate-checks.mjs';
 import { DOC_BUDGET, SUMMARY_BUDGET, V3_DOCS, summaryCheck } from './reading.mjs';
 
-// The gates of a full-v3 ticket. Each gate has one document, and the plan has no approved copy.
-export const GATES = ['Scoped?', 'Planned?', 'Shippable?', 'Sendable?', 'Learned?'];
-const GATE_DOCS = { 'Scoped?': ['story.md'], 'Planned?': ['plan.md'], 'Shippable?': ['review.md'], 'Learned?': ['close.md'] };
-const PREREQUISITES = {
-  start: [], investigate: ['Scoped?'], plan: ['Scoped?'],
-  implement: ['Scoped?', 'Planned?'], review: ['Scoped?', 'Planned?'],
-  closed: ['Scoped?', 'Planned?', 'Shippable?', 'Learned?'],
-};
-// GH-2: the "yes" for a write is the prompt of the host that the gate guard asks for. A write needs
-// no Sendable? approval record, only its outbox draft.
-const ACTION_GATES = {
-  investigate: ['Scoped?'],
-  plan: ['Scoped?'],
-  implement: ['Scoped?', 'Planned?'],
-  ship: ['Scoped?', 'Planned?', 'Shippable?'],
-  write: [],
-  close: ['Scoped?', 'Planned?', 'Shippable?', 'Learned?'],
-};
+export { GATES };
 const SHA = /^[a-f0-9]{64}$/;
 const MAX_BYTES = 1024 * 1024;
 export const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const finding = (file, code, message, remedy, severity = 'error', line = null) =>
   ({ file, line, code, severity, message, remedy });
 
-function regular(file) {
+export function regular(file) {
   const info = lstatSync(file);
   if (!info.isFile() || info.isSymbolicLink()) throw new Error('Expected a regular file, not a link.');
   if (info.size > MAX_BYTES) throw new Error('File exceeds 1 MiB.');
@@ -37,7 +21,7 @@ function regular(file) {
 }
 
 // Reject traversal and links before reading a document or applying a repair.
-function within(root, relative) {
+export function within(root, relative) {
   if (typeof relative !== 'string' || !relative || relative.includes('\0')
     || path.isAbsolute(relative) || /^[a-z]:/i.test(relative)) throw new Error('Use a ticket-relative path.');
   const parts = relative.split(/[\\/]/);
@@ -50,6 +34,9 @@ function within(root, relative) {
   return file;
 }
 
+// The files that an approval manifest must not list (the key is lower case with forward slashes).
+export const barredFromManifest = (key) => key === 'readme.md' || key.endsWith('.json') || key === 'repair-log.jsonl';
+
 function relativeName(value) {
   return value.replaceAll('\\', '/').toLowerCase();
 }
@@ -58,6 +45,7 @@ function approval(gate, file) {
   const root = path.dirname(file);
   const findings = [];
   const references = new Set();
+  const documents = [];
   const fail = (code, message, remedy) => findings.push(finding(file, code, `${gate.name}: ${message}`, remedy));
   const expected = GATE_DOCS[gate.name] ?? [];
   const checkDocument = (relative, hash) => {
@@ -89,10 +77,10 @@ function approval(gate, file) {
         if (!doc || typeof doc.path !== 'string' || !SHA.test(doc.sha256 ?? '')) throw new Error('Each document needs a path and SHA-256.');
         const key = relativeName(doc.path);
         if (seen.has(key)) throw new Error(`Duplicate manifest document: ${doc.path}`);
-        if (key === 'readme.md' || key === relativeName(gate.manifest)
-          || key.endsWith('.json') || key === 'repair-log.jsonl') throw new Error('Approval records must remain outside the hashed document set.');
+        if (barredFromManifest(key) || key === relativeName(gate.manifest)) throw new Error('Approval records must remain outside the hashed document set.');
         seen.add(key);
         references.add(key);
+        documents.push(doc.path.replaceAll('\\', '/'));
         if (gate.status === 'approved') checkDocument(doc.path, doc.sha256);
       }
       for (const required of [...expected, ...(gate.doc ? [gate.doc] : [])]) {
@@ -105,7 +93,7 @@ function approval(gate, file) {
   } else if (gate.status === 'approved') {
     fail('approval-evidence', 'The complete approved revision set is not recorded.', 'Show the exact documents and hashes, then request one explicit approval for that set.');
   }
-  return { findings, references };
+  return { findings, references, documents };
 }
 
 function inspectTicket(ticket, file) {
@@ -156,15 +144,34 @@ export function validateTicket(ticket, file) {
   return inspectTicket(ticket, file).findings;
 }
 
-export function checkGate(ticket, file, name) {
+/** The check of one gate, with the manifest documents (ticket-relative, forward slashes) that its approval hashed. */
+function gateCheck(ticket, file, name) {
   const matches = ticket.gates.filter((item) => item.name === name);
   const gate = matches[0];
-  if (!gate) return { allowed: false, findings: [finding(file, 'gate-missing', `${name} is not recorded.`, 'Review the original workflow and obtain the required approval.')] };
-  if (matches.length !== 1) return { allowed: false, findings: [finding(file, 'duplicate-gate', `${name} has conflicting records.`, 'Reconcile the records explicitly before the affected action.')] };
-  if (gate.need !== 'required') return { allowed: false, findings: [finding(file, 'workflow-gate', `${name} must be required for ${ticket.workflow}.`, 'Restore the recorded contract without inferring approval.')] };
-  if (gate.status !== 'approved') return { allowed: false, findings: [finding(file, 'gate-unapproved', `${name} is not approved.`, 'Request explicit approval before the affected action.')] };
-  const { findings } = approval(gate, file);
-  return { allowed: findings.length === 0, findings };
+  if (!gate) return { allowed: false, documents: [], findings: [finding(file, 'gate-missing', `${name} is not recorded.`, 'Review the original workflow and obtain the required approval.')] };
+  if (matches.length !== 1) return { allowed: false, documents: [], findings: [finding(file, 'duplicate-gate', `${name} has conflicting records.`, 'Reconcile the records explicitly before the affected action.')] };
+  if (gate.need !== 'required') return { allowed: false, documents: [], findings: [finding(file, 'workflow-gate', `${name} must be required for ${ticket.workflow}.`, 'Restore the recorded contract without inferring approval.')] };
+  if (gate.status !== 'approved') return { allowed: false, documents: [], findings: [finding(file, 'gate-unapproved', `${name} is not approved.`, 'Request explicit approval before the affected action.')] };
+  const { findings, documents } = approval(gate, file);
+  return { allowed: findings.length === 0, findings, documents };
+}
+
+export function checkGate(ticket, file, name) {
+  const { allowed, findings } = gateCheck(ticket, file, name);
+  return { allowed, findings };
+}
+
+/** The outbox drafts (ticket-relative paths) in the manifest of a gate, only when the approval is valid and current. Else []. */
+export function approvedDrafts(ticket, file, gateName) {
+  try {
+    const { allowed, documents } = gateCheck(ticket, file, gateName);
+    return allowed ? documents.filter((relative) => /^outbox\/[^/]+\.draft\.md$/i.test(relative)) : [];
+  } catch { return []; }
+}
+
+/** True when the file is an outbox draft with `target: change`. The read is link-safe: a draft that cannot be read does not count. */
+export function isChangeDraft(dir, relative) {
+  try { return parseFrontmatter(regular(within(dir, relative)).toString('utf8'), []).target === 'change'; } catch { return false; }
 }
 
 export function checkAction(ticket, file, action, write) {
@@ -268,7 +275,7 @@ function readerWarnings(dir, file, readme, ticket, add, inspect) {
   plainWarnings(dir, add, inspect);
 }
 
-export function lint({ wikiPath, repoPath, fix = false }) {
+export function lint({ wikiPath, repoPath, fix = false, policy = null, checkouts = [] }) {
   const report = { version: 1, wikiPath: path.resolve(wikiPath), findings: [], repairs: [], summary: { errors: 0, warnings: 0, repaired: 0 } };
   const add = (file, code, message, remedy, severity = 'error', line = null) =>
     report.findings.push(finding(file, code, message, remedy, severity, line));
@@ -298,6 +305,12 @@ export function lint({ wikiPath, repoPath, fix = false }) {
         const result = inspectTicket(ticket, file);
         report.findings.push(...result.findings);
         readerWarnings(dir, file, readme, ticket, add, inspect);
+        // The plan checks run before Planned? is approved: an error while the gate is in review, else a warning.
+        const planned = ticket.gates.find((gate) => gate.name === 'Planned?');
+        if (planned?.status !== 'approved' && (planned?.status === 'in-review' || ['investigate', 'plan'].includes(ticket.phase))) {
+          const severity = planned?.status === 'in-review' ? 'error' : 'warning';
+          for (const item of plannedChecks(dir, ticket, { policy, repoPath, checkouts }).findings) add(item.file, item.code, item.message, item.remedy, severity, item.line);
+        }
         const drafts = markdownFiles(dir, (file, error) => add(file, 'invalid-input', error.message, 'Inspect this draft path explicitly; no linked file is repaired.'));
         for (const draft of drafts.filter((name) => name.endsWith('.draft.md'))) {
           inspect(draft, () => {

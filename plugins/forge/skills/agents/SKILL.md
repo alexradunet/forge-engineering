@@ -8,7 +8,7 @@ description: Coordinate work across agent sessions (VS Code Agents window, Copil
 > When your context has no `End of Forge context.` line, or a `Forge context part <i> of <n>` part is
 > missing or has a different id, run `node "<plugin>/scripts/forge.mjs" context` first and follow its output. `<plugin>`
 > is two folders above the folder of this file. When the command fails, read
-> [forge.md](../../context/forge.md) and [style.md](../../context/style.md): they are the `forge` and `style` rules.
+> [forge.md](../../context/forge.md) (the `forge` rule), and [style.md](../../context/style.md) (the `style` rule) unless `policy.styleRules` is `false`.
 
 The host is the orchestrator. A task can continue in its current isolated session.
 In the VS Code Agents window, you see all sessions in the sessions list and in the session grid.
@@ -32,6 +32,7 @@ flowchart LR
 | Implement without a suitable current worktree, or delegate an independent task | a new session (`host.spawn`) after the checks below | a new session |
 | Quick review, research, or a check | a subagent (`task` tool) | nothing; the result comes back here |
 | Test a gate document on a reader without the session history | a cold read subagent (see "Cold read") | nothing; the result comes back here |
+| Test if the plan of `plan.md` is right | a plan review subagent (see "Plan review") | nothing; the result comes back here |
 | Give more work or a correction to a running session | `host.message` | a message in that session |
 | Status of my sessions | `host.sessions` | nothing; the result comes back here |
 
@@ -122,6 +123,63 @@ Required before each review gate of a `full-v3` ticket (Scoped?, Planned?, Shipp
 6. Run one cold read for each review revision. Run it again only after you rewrote the summary or a full section. This check has no loop and no second reviewer: a small fix gets one short read.
 
 The cold read tests the document. It does not approve a gate, and it does not replace the adversarial review of the code.
+
+## 🧐 Plan review
+
+Run it before Planned?, after the cold read, only when `policy.planReview` is `attacker` or `panel`. The cold read tests if the document is clear. The plan review tests if the plan is right. It does not approve a gate.
+
+1. The reviewer is a subagent with no session history. It is read-only, and it has access to the code.
+2. Use the model in `policy.adversarialReviewModel`. When it is empty and the host lets you select a model, use a model family different from your own.
+3. Give it only this: the paths of `story.md`, `plan.md`, and `map.md`, the path of the ticket worktree (or the checkout), and the baseline commit SHA. Do not give your conclusions or the session history.
+4. `attacker`: start one subagent with this prompt text:
+
+   > Read `story.md`, `plan.md`, and `map.md` at the given paths. The code is in the given worktree, at the given commit. Try to break the plan. Look for:
+   > - a place that the plan does not list: a caller, a consumer, a job, a toggle, or a config
+   > - a fact about the code that is wrong
+   > - a step that fails on a retry, on a partial failure, or under load
+   > - a missing rollback or data migration
+   > - a behavior of **Preserve** that the plan breaks
+   > - a simpler option that **Decisions** does not reject
+   > - an assumption that only a run can prove, with the cheapest run for it
+   >
+   > Give each finding a severity (`blocker`, `concern`, or `nit`), the file and the line as evidence, and the correction. Read-only: no edits, no commits, no style comments.
+
+5. `panel`: start 3 subagents at the same time. They get the same inputs and the same report shape as `attacker`. Each has one role:
+   - **Design Critic**: does the plan solve the Problem of `story.md`? Which options did it not examine? What fails under load, on a retry, or on a partial failure?
+   - **Codebase Auditor**: does each path, symbol, and signature of the plan exist at the baseline SHA? Which callers does the plan not list?
+   - **Operability Reviewer**: idempotency, rollback, data migration, observability, and the **Preserve** list.
+6. Verify each finding before you act on it. Reject it with evidence, or correct the plan.
+   - A `blocker` must be resolved, or it becomes a `Decision` line for the user.
+   - A `concern` is listed.
+   - A `nit` is dropped.
+7. Run 2 rounds at most. In round 2, only a reviewer that gave a blocker reads the corrected plan. There is no round 3. A blocker that is still open goes to **Open blockers** of the review file and to a `Decision` line.
+8. Write the review file `evidence/plan-review-NNN.md`. NNN has 3 digits and is the next free number. Use this shape:
+
+   ```markdown
+   ---
+   type: evidence
+   ticket: <KEY>
+   date: <yyyy-mm-dd>
+   plan-sha256: <SHA-256 of the raw bytes of plan.md after your last edit>
+   mode: attacker | panel
+   rounds: 1 | 2
+   ---
+   # Plan review <KEY> NNN
+
+   ## Open blockers
+   - <reviewer>: <finding>. Evidence: <file:line>. Done: <what you did>.
+
+   ## Concerns
+
+   ## Resolved
+
+   ## Rejected
+   ```
+
+   - Write each finding in one bullet, with its reviewer, its evidence, and what you did.
+   - To get the hash, run `<F> gate-open <key> planned --dry-run`. It prints the hash when no review covers the plan. You can also use the hash tool of the shell.
+   - `gate-open` shows **Open blockers** and **Concerns** in the form text. Write them for the user: plain words, one line each.
+9. Add one `check` entry to `journal.md`: the mode, the rounds, the counts by severity, and what changed in the plan.
 
 ## 🥊 Adversarial review
 

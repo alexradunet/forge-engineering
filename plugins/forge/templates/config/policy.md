@@ -3,6 +3,8 @@ noMergeWeekdays: []
 evidenceOnDeployedEnv: false
 qaHandover: false
 adversarialReviewModel:
+planReview: attacker
+styleRules: false
 maxImplementers: 6
 gateGuard: deny
 ---
@@ -21,6 +23,8 @@ gateGuard: deny
 | `qaHandover` | Run the QA handover step after the merge | `false` |
 | `adversarialReviewModel` | Model of the adversarial reviewer. Empty means a model different from the author's | empty |
 | `maxImplementers` | Maximum implementer sessions at the same time | `6` |
+| `planReview` | Review of the plan before Planned?: `off`, `attacker` (one reviewer subagent), or `panel` (3 reviewer subagents). A missing key means `off`. This template sets `attacker`. | `off` |
+| `styleRules` | Add the response style rules of the plugin (Simplified Technical English, no AI tells, the ADHD response shape) to each session. A missing key means `true`. This template sets `false`. | `true` |
 | `gateGuard` | The gate guard (a preToolUse hook) for a push or a new change request of a ticket without a valid Shippable? approval: `deny`, `ask` (the host asks you), or `off` | `deny` |
 
 ## 🪝 Hook sections

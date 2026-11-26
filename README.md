@@ -127,7 +127,7 @@ Setup offers the native wiki of the private repository, a separate private `<rep
 | `plugins/forge/hooks/` | `hooks.json`: the same context for Claude Code (spike). `SessionStart` gives it in parts of at most 9,000 characters (2 parts for a session without company rules), `UserPromptSubmit` sets the ticket title, and `PreToolUse` is the gate guard. See `Claude Code host` in [vscode-baseline.md](docs/vscode-baseline.md) Forge 7.6 adds the live reporter (`scripts/live-hook.mjs`) as a background hook on the activity events of a session: see [Live view](#-live-view). Forge 9.1 adds the session list: part 1 of `SessionStart` writes the start of a session, and `forge.mjs hook session-end` at `SessionEnd` writes its end. |
 | `plugins/forge/skills/` | `ticket`, `agents`, `board`, `wiki`, `forge-setup`, `writing` |
 | `plugins/forge/templates/` | The profile: config (`config/`), rule pages (`rules/`), setup values (`profile.md`), and machine values with the list of the other profile files (`profile.json`) |
-| `plugins/forge/scripts/` | `forge.mjs` (init, config, trust, lint, board, worktree, snapshot, diff, canvas, live, open, gate-approve, hook, wiki scripts), `cred.mjs`, `live-hook.mjs` (the reporter of the live view) |
+| `plugins/forge/scripts/` | `forge.mjs` (init, config, trust, lint, board, worktree, snapshot, diff, canvas, live, open, gate-open, gate-approve, hook, wiki scripts), `cred.mjs`, `live-hook.mjs` (the reporter of the live view) |
 | `plugins/forge/vendor/mermaid/` | The only third-party program of the plugin: the small Mermaid build that draws the diagrams of the wiki page and the ticket canvas, with its license and a [notice](plugins/forge/vendor/mermaid/NOTICE.md) (version, hash, update steps) |
 | `docs/` | [config.md](docs/config.md) (config format), [wiki.md](docs/wiki.md) (sharing and scripts), [evaluation.md](docs/evaluation.md) (behavioral runs: `npm run eval` gives the cases of `tests/evals/` to a real agent session), and [vscode-baseline.md](docs/vscode-baseline.md) (the VS Code features that forge uses) |
 | `AGENTS.md` | [Rules for agents that develop forge](AGENTS.md): docs-first checks, tests, and file format |
@@ -176,8 +176,8 @@ No mode allows em dashes or en dashes in prose. License texts are in [NOTICE.md]
    investigation (🛑 diagnosis stop) → plan → **Planned?** → implement → **Shippable?** → Evidence Testing.
    A small fix has the same phases and gates. Its documents are shorter.
 4. Read the gate document, or read the ticket canvas, and add your comments. One explicit user approval covers the
-   displayed file and revision set, recorded in a SHA-256 manifest. `forge.mjs gate-approve <key> <gate> --answer "<your exact answer>" --method form|chat --hash <reviewed digest>`
-   accepts only `approve` in the form or `approve <gate>` in chat, and refuses a missing or changed digest. It checks the manifest and the documents, then records the approval in the README and in `approvals/history.md`. When a write fails, it restores both files.
+   displayed file and revision set, recorded in a SHA-256 manifest. `forge.mjs gate-open <key> <gate>` builds that set, writes the manifest and the snapshot, sets the gate to `in-review`, and prints the form text. `forge.mjs gate-approve <key> <gate> --answer "<your exact answer>" --method form|chat`
+   accepts only `approve` in the form or `approve <gate>` in chat, and refuses a changed document or manifest. It checks the manifest and the documents, then records the approval in the README and in `approvals/history.md`. When a write fails, it restores both files.
    Unavailable sources and test gaps are recorded, not treated as safety evidence.
 5. At Implement, the `agents` skill reuses a suitable current worktree. It starts another session only when needed.
 6. Approve **Sendable?** for each external write. QA handover runs only when configured.
@@ -205,6 +205,10 @@ It gives a paraphrase and the terms that it cannot resolve, and the session corr
 The gate guard is a `preToolUse` hook. Before a `git push` or a new change request in a ticket worktree, it checks the approvals of Scoped?, Planned?, and Shippable?.
 When one is missing or stale, it stops the command and names each finding. `policy.gateGuard` selects `deny` (default), `ask` (the host asks you), or `off`.
 The guard reads the words of a shell command, so it is a net and not a wall: the written rules stay in force.
+When the README of the ticket cannot be read, the guard stops a push. A new change request needs no second question when its draft is in the approved Shippable? set.
+
+Plan checks: `forge.mjs lint` checks the paths of a plan (`plan-path`), its Baseline and Control lines (`plan-baseline`), and the plan review (`plan-review`). `gate-open` runs them before Planned?.
+`policy.planReview` (`off`, `attacker`, or `panel`) sets the review of the plan by subagents before Planned?. `policy.styleRules` adds the response style rules to each session. A missing key means `true`.
 
 ### 🕰️ Older tickets
 

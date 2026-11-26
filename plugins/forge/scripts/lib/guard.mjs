@@ -3,14 +3,17 @@
 // as `forge.mjs lint`, so a missing or stale Shippable? approval stops the command, not only a written rule.
 // Before an external write of a ticket (a command of a write capability in the trusted config), it answers `ask`,
 // so the prompt of the host is the "yes" for this one write (GH-2). In a mode with no prompt, it denies instead.
+// One exception: a new change request, when its draft is the one `target: change` file of the approved Shippable? set.
+// The approval of that exact set is the yes, so the guard gives no verdict, also in a mode with no prompt.
 // It reads the words of the command, so it is a net and not a wall: a script that pushes is not seen.
-// It never stops other work: no ticket, no wiki, a read error, or a parse error all let the command run.
+// A ticket whose README cannot be read stops a push and a new change request too: the gates are unknown (policy.gateGuard sets deny or ask).
+// It never stops other work: a folder with no ticket, no wiki, or a config that cannot be read lets the command run.
 import { spawnSync } from 'node:child_process';
 import { readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { resolve, samePath } from './repo.mjs';
 import { listTickets } from './tickets.mjs';
-import { checkAction } from './validation.mjs';
+import { approvedDrafts, checkAction, isChangeDraft } from './validation.mjs';
 import { ticketOfFolder, trustedConfig } from './hook.mjs';
 
 export const GUARD_MODES = ['deny', 'ask', 'off'];
@@ -332,6 +335,7 @@ const LABEL = { push: 'a push', change: 'a new change request' };
 
 /** The draft of the next write of a ticket: the README Sendable? `doc`, when it is an existing `outbox/*.draft.md` file. */
 function draftOf(match) {
+  if (match.broken) return null;
   const doc = match.ticket.gates.find((gate) => gate.name === 'Sendable?')?.doc;
   if (typeof doc !== 'string' || !/^outbox[\\/].+\.draft\.md$/.test(doc)) return null;
   const file = path.join(path.dirname(match.file), ...doc.split(/[\\/]/));
@@ -340,6 +344,13 @@ function draftOf(match) {
     if (match.ticket.workflow === 'full-v3') return checkAction(match.ticket, match.file, 'write', { draft: doc }).allowed ? file : null;
     return statSync(file).isFile() ? file : null;
   } catch { return null; }
+}
+
+/** True when the Shippable? approval covers exactly one `target: change` draft, and the ticket has no draft or open change request yet. */
+function changeApproved(match) {
+  const dir = path.dirname(match.file);
+  const drafts = approvedDrafts(match.ticket, match.file, 'Shippable?').filter((relative) => isChangeDraft(dir, relative));
+  return drafts.length === 1 && !(match.ticket.changes ?? []).some((entry) => ['draft', 'open'].includes(entry.state));
 }
 
 /** The ask verdict for a write: the reason names the ticket, the command, and the draft. */
@@ -369,8 +380,10 @@ function noPrompt(verdict, mode) {
  * The verdict for one tool call: null to let it run, or { decision, key, reason }.
  * - A push or a new change request needs the ship gates. Without them: `deny` or `ask`, from `policy.gateGuard`
  *   (default `deny`; `off` stops the guard).
- * - A write (one of WRITE_CAPABILITIES, and a new change request with valid gates) gets `ask`: the prompt of the host
- *   is the "yes" for this one write. In a mode with no prompt (NO_PROMPT_MODES), each `ask` becomes `deny`.
+ * - A write (one of WRITE_CAPABILITIES) gets `ask`: the prompt of the host is the "yes" for this one write.
+ *   A new change request with valid gates gets `ask` too, unless its draft is the one `target: change` file of the approved
+ *   Shippable? set and no draft or open change request exists: then it gets no verdict.
+ *   In a mode with no prompt (NO_PROMPT_MODES), each `ask` becomes `deny`.
  * - A `deny` wins over an `ask`. Only a trusted config can change the mode or add commands.
  */
 export function preTool(event, { env = process.env } = {}) {
@@ -385,7 +398,9 @@ export function preTool(event, { env = process.env } = {}) {
   const ticketsAt = (where, config, action, cwd) => {
     if (!where?.wiki.exists || samePath(where.top, where.wiki.path)) return [];
     try {
-      const tickets = listTickets(where.wiki.path).filter((entry) => entry.ticket);
+      // A ticket with a README that cannot be read stays in the list as a stand-in (broken), after the parsed tickets.
+      const all = listTickets(where.wiki.path);
+      const tickets = [...all.filter((entry) => entry.ticket), ...all.filter((entry) => !entry.ticket).map((entry) => ({ ...entry, broken: true, ticket: { ...entry.head, gates: [], changes: [] } }))];
       const branch = git(cwd, ['branch', '--show-current']);
       const here = ticketOfFolder(tickets, { here: where.top, branch, inMain: samePath(where.top, where.repo.path), getConfig: () => config });
       const named = action.kind === 'push' ? tickets.filter((entry) => entry.ticket.branch && (action.all || action.refs.includes(entry.ticket.branch))) : [];
@@ -407,6 +422,15 @@ export function preTool(event, { env = process.env } = {}) {
     const mode = GUARD_MODES.includes(config?.policy?.gateGuard) ? config.policy.gateGuard : 'deny';
     if (mode === 'off') continue;
     for (const match of found) {
+      if (match.broken) {
+        if (action.kind === 'write') { verdicts.push(writeVerdict(match, action)); continue; }
+        const key = match.ticket.key;
+        const question = `${key} has a README that Forge cannot read, so the gates for ${LABEL[action.kind]} are unknown. README: ${match.file}. Error: ${match.error}`;
+        verdicts.push(mode === 'ask'
+          ? { decision: 'ask', key, question, reason: `Forge gate guard: ${question} Allow this command only if you accept the step without the gate check.` }
+          : { decision: 'deny', key, reason: `Forge gate guard: ${question} Show the user the error. Repair the README only as the user says, and check it with \`forge.mjs lint\`. Do not run the command in another form.` });
+        continue;
+      }
       if (action.kind !== 'write') {
         let verdict;
         try { verdict = checkAction(match.ticket, match.file, 'ship'); } catch { continue; }
@@ -421,7 +445,7 @@ export function preTool(event, { env = process.env } = {}) {
             : { decision: 'deny', key, reason: `Forge gate guard: ${question} Open the gate as the ticket skill says (Review gates), and wait for the answer of the user. Do not run the command in another form. Tell the user which approval is missing, and offer to open the gate.` });
           continue;
         }
-        if (action.kind === 'push') continue;
+        if (action.kind === 'push' || (action.kind === 'change' && changeApproved(match))) continue;
       }
       verdicts.push(writeVerdict(match, action));
     }

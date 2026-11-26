@@ -58,9 +58,10 @@ A spike is a short read-only check that answers one fact before a scope question
 Start after the research, when the user has the canvas link. Ground each question in the story or its evidence.
 
 1. Before you ask, run a spike for each question that depends on a checkable fact.
-2. Ask up to 5 questions in one `host.ask` form, grouped by topic. For each question, give why it matters, the options, and the recommended answer as the field default with its reason in the field description. Never answer for the user or accept recommendations in auto mode.
-3. Run a second round only for answers that raise new questions.
-4. Record each answer in **Answers** of `story.md`, with the question, the answer, and why it matters. Add one `decision` entry to `journal.md` for an answer that changes the scope.
+2. State your reading of the work item in 1 or 2 lines. Give 2 other possible readings, for example a smaller scope, another cause, or another user group. Do this also when the item looks clear: a wrong reading passes each review that only repeats it. Ask which reading is right as the first question of the form (step 3).
+3. Ask up to 5 questions in one `host.ask` form, grouped by topic. For each question, give why it matters, the options, and the recommended answer as the field default with its reason in the field description. Never answer for the user or accept recommendations in auto mode.
+4. Run a second round only for answers that raise new questions.
+5. Record each answer in **Answers** of `story.md`, with the question, the answer, and why it matters. Add one `decision` entry to `journal.md` for an answer that changes the scope.
 
 ### 🎯 Scope
 

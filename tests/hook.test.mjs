@@ -153,6 +153,25 @@ test('every session gets the paths, the forge and style rules, and the ticket pa
   assert.doesNotMatch(text, /# Company rules/, 'A wiki without rule pages adds no company rules.');
 });
 
+test('the style rule loads unless the trusted policy says styleRules: false', (t) => {
+  const s = setup(t);
+  const where = resolve({ cwd: s.app, env });
+  const hasStyle = () => run({ cwd: s.app, prompt: 'hello' }).additionalContext.includes('\n# forge style\n');
+  assert.ok(hasStyle(), 'A wiki with no key keeps the style rule.');
+  const { configDir } = seed(where, templates);
+  const trust = () => approve(where, trustStatus(where, { env }).files.filter((f) => f.rel.startsWith('config/')).map((f) => `${f.rel}=${f.sha.slice(0, 12)}`), { env });
+  setValues(configDir, ['policy.styleRules=true']);
+  trust();
+  assert.ok(hasStyle(), 'styleRules: true keeps it.');
+  setValues(configDir, ['policy.styleRules=false']);
+  assert.ok(hasStyle(), 'A config that the user did not approve is not read.');
+  trust();
+  const text = run({ cwd: s.app, prompt: 'hello' }).additionalContext;
+  assert.ok(!text.includes('\n# forge style\n'), 'A trusted false leaves the style rule out.');
+  assert.ok(text.includes('\n# forge plugin\n'), 'The forge rule stays.');
+  assert.ok(run({ cwd: os.tmpdir(), prompt: 'hello' }).additionalContext.includes('\n# forge style\n'), 'Outside a repository the style rule stays.');
+});
+
 test('ruleBody removes the frontmatter and comments and leaves out a page with only headings', () => {
   assert.equal(ruleBody('---\r\ntitle: Data\r\n---\r\n\r\n# Data\r\n\r\n- No dumps.\r\n'), '# Data\n\n- No dumps.');
   assert.equal(ruleBody('---\ntitle: Toolkit\n---\n\n# Toolkit\n\n<!-- Write a table. -->\n'), '');
@@ -402,6 +421,20 @@ test('a closed ticket is not a new ticket: the prompt hook gives {}, and the ses
   }
   assert.equal(promptSubmit({ cwd: s.app, prompt: 'start APP-10', title: '' }, { cli, env }).hookSpecificOutput.sessionTitle, 'APP-10 - ▶️ - Start ticket');
   assert.match(sessionStart({ cwd: s.app, source: 'startup', prompt: 'start APP-10' }, { cli, env, host: 'claude', part: 1 }).hookSpecificOutput.additionalContext, /Forge: the first prompt names APP-10/);
+});
+
+test('a ticket folder with a README that cannot be read gives one "cannot read" line and no Start', (t) => {
+  const s = withPrefix(t);
+  writeFileSync(s.readme, '---\nkey: APP-7\nworkflow: full-v2\n---\n');
+  const line = (text) => text.match(/# Forge ticket context\n\n([^\n]*)/)[1];
+  const folder = sessionStart({ cwd: s.app, source: 'startup', prompt: 'work on APP-7' }, { cli, env, host: 'claude', part: 1 }).hookSpecificOutput;
+  assert.equal(folder.sessionTitle, undefined);
+  assert.match(line(folder.additionalContext), /^Forge: the ticket folder app-7 has a README that Forge cannot read: Missing or invalid title\. README: .*README\.md\. Do not start this ticket again\. Show the user the error, and repair the README only as the user says\.$/);
+  assert.doesNotMatch(folder.additionalContext, /follow Start|no ticket folder/);
+  const prompt = promptSubmit({ cwd: s.app, prompt: 'start APP-7', title: '' }, { cli, env }).hookSpecificOutput;
+  assert.equal(prompt.sessionTitle, undefined);
+  assert.match(prompt.additionalContext, /has a README that Forge cannot read/);
+  assert.doesNotMatch(prompt.additionalContext, /follow Start/);
 });
 
 test('a later prompt names a ticket only in its first characters', (t) => {

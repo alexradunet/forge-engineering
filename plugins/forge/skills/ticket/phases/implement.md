@@ -14,9 +14,15 @@ After a compaction of the session, read this file again before you use its steps
 - For a quick code review before Shippable?, use a reviewer subagent (the `agents` skill).
 - Before Shippable?, and so before any push or change request (draft too), run the adversarial review subagent (the `agents` skill, "Adversarial review"). Handle its findings. Record them in **Findings** of `review.md`.
 - Find the end-to-end and regression tests that cover the changed code (search the test projects for the changed classes, jobs, and features). Add them to **Tests** of `map.md`.
-- Write `review.md` from [templates/review.md](../templates/review.md): the summary, **Changes** (area, files, why, user impact), **Before and after** when the behavior changes, **Tests run**, **Findings**, and **Not checked**. If no regression test covers the change, write that in **Not checked**. Then open Shippable?.
+- Write `review.md` from [templates/review.md](../templates/review.md): the summary, **Changes** (area, files, why, user impact), **Before and after** when the behavior changes, **Tests run**, **Findings**, and **Not checked**. If no regression test covers the change, write that in **Not checked**.
 - Draft every external text (tracker comment, change request title and description, shared document) in `outbox/<target>.draft.md` from [templates/outbox.draft.md](../templates/outbox.draft.md). Run a full pass of the `writing` skill (outbound mode) on the text between the `send` markers. Send only that text. Run Sendable? before the write.
-- Open the change request with `repo.open-change` after Shippable? and Sendable?. Add it to the README `changes` list.
+- Keep this order before the push:
+  1. Run the adversarial review and handle its findings.
+  2. Write `review.md`.
+  3. Write the change request draft `outbox/change.draft.md` from [templates/outbox.draft.md](../templates/outbox.draft.md), with `target: change`. Run a full pass of the `writing` skill on the text between the `send` markers.
+  4. Open Shippable? with `<F> gate-open <key> shippable`. It adds the draft to the set.
+  5. After GO, push.
+  6. Create the change request with `repo.open-change` and the text between the `send` markers. The approved Shippable? set is the "yes" for this write (see Sendable? in [gates.md](gates.md)). Add the change request to the README `changes` list.
 - When end-to-end or regression tests exist, run the relevant ones (and the whole suite when the risk is wide) on a deployed branch before you mark the change request ready. The `## Implement` policy section can make this stricter. Ask the user before each deploy or CI trigger (`ci.trigger`). Show the job and its parameters first.
 - Record test results, change request links, and CI results (`ci.status`) as `log` entries in `journal.md`. Record build and test problems as `problem` entries.
 - Set the phase to `implement` and then to `review` in `README.md`.

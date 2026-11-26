@@ -95,6 +95,8 @@ node "<plugin>/scripts/forge.mjs" config row checkouts "old" --delete
 | | `qaHandover` | Run the QA handover step after the merge | `false` |
 | | `adversarialReviewModel` | Model of the adversarial reviewer; empty means a model different from the author's | empty |
 | | `maxImplementers` | Maximum implementer sessions at the same time | `6` |
+| | `planReview` | Review of the plan before Planned?: `off`, `attacker` (one reviewer subagent), or `panel` (3 reviewer subagents) | `off` |
+| | `styleRules` | Add the response style rules of the plugin (Simplified Technical English, no AI tells, the ADHD response shape) to each session. A missing key means `true`. The template for a new wiki sets `false` | `true` |
 | | `gateGuard` | The gate guard for a push or a new change request of a ticket without a valid Shippable? approval: `deny`, `ask` (the host asks you), or `off` | `deny` |
 
 ## 📜 Capabilities

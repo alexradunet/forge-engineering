@@ -8,7 +8,26 @@ export function ticketRoot(wikiPath) {
   return path.join(rawDir(wikiPath), 'tickets');
 }
 
-/** Every ticket folder, sorted by name. Each entry has a parsed ticket or a read error. */
+/**
+ * The 4 values of a README that the guard needs, read with a plain line match when the parse fails: { key, branch, worktree, workflow }.
+ * The key falls back to the folder name in capitals. It never throws.
+ */
+function readHead(file, folder) {
+  let text = '';
+  try {
+    if (!lstatSync(file).isSymbolicLink()) text = readFileSync(file, 'utf8');
+  } catch { /* The values fall back. */ }
+  text = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
+  const block = /^---\n([\s\S]*?)\n---(?:\n|$)/.exec(text);
+  const source = block ? block[1] : text;
+  const value = (name) => {
+    const hit = new RegExp(`^${name}:[ \\t]*(.*)$`, 'm').exec(source);
+    return hit ? hit[1].trim().replace(/^(["'])(.*)\1$/, '$2').trim() : '';
+  };
+  return { key: value('key') || folder.toUpperCase(), branch: value('branch'), worktree: value('worktree'), workflow: value('workflow') };
+}
+
+/** Every ticket folder, sorted by name. Each entry has a parsed ticket, or a read error and a head (readHead). */
 export function listTickets(wikiPath) {
   const root = ticketRoot(wikiPath);
   let entries;
@@ -22,7 +41,7 @@ export function listTickets(wikiPath) {
       if (lstatSync(file).isSymbolicLink()) throw new Error('README.md must not be a link.');
       out.push({ dir, file, folder: entry.name, ticket: parseTicket(readFileSync(file, 'utf8')) });
     } catch (error) {
-      out.push({ dir, file, folder: entry.name, error: error.code === 'ENOENT' ? 'README.md is missing.' : error.message });
+      out.push({ dir, file, folder: entry.name, error: error.code === 'ENOENT' ? 'README.md is missing.' : error.message, head: readHead(file, entry.name) });
     }
   }
   return out;

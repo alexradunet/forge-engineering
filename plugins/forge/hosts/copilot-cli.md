@@ -18,7 +18,7 @@ A Forge skill names a host verb, for example `host.title`. Do the step of the ve
 | `host.artifact` | Give a Markdown link with the absolute path of the file. |
 | `host.open` | Give a Markdown link with the absolute path of each file. Do not run an editor command: VS Code can be missing. |
 | `host.comments` | There are no document comments. Ask the user to paste the comments into the chat. |
-| `host.write` | Ask with `ask_user` first, and run the write command only after an explicit "yes": no check has shown yet that the Forge hook runs here. The hook can then ask again. In a prompt mode run or in autopilot, give the user the exact command. |
+| `host.write` | Ask with `ask_user` first, and run the write command only after an explicit "yes": no check has shown yet that the Forge hook runs here. The hook can then ask again. In a prompt mode run or in autopilot, give the user the exact command. Exception: the creation of a change request whose draft is in the approved Shippable? set needs no second "yes" (see Sendable?). |
 
 ## Ticket canvas
 

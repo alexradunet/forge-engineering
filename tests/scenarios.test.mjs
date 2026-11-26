@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { evaluate } from './scenarios/evaluator.mjs';
 import { sha256 } from '../plugins/forge/scripts/lib/validation.mjs';
+import { GATE_DOCS } from '../plugins/forge/scripts/lib/ticket.mjs';
 
 const scenarios = JSON.parse(readFileSync(new URL('./fixtures/scenarios.json', import.meta.url), 'utf8'));
 const action = (name) => ({ kind: 'action', name });
 const source = (name) => ({ kind: 'source', name, status: 'available' });
-const APPROVAL_SETS = { 'Scoped?': ['story.md'], 'Planned?': ['plan.md'], 'Shippable?': ['review.md'], 'Learned?': ['close.md'] };
+const APPROVAL_SETS = GATE_DOCS;
 function fixture(scenario) {
   const artifacts = Object.fromEntries((scenario.expectedArtifacts ?? []).map((artifact) => [artifact.path, (artifact.includes ?? ['Synthetic evidence']).join('\n') + '\n']));
   const trace = [];

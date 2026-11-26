@@ -1,16 +1,18 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BRANCH, FAULTS, GH_STUB, KEY, SCENARIOS, buildFixture, ghCalls, onRemote, plugin } from './evals/fixture.mjs';
+import { BRANCH, FAULTS, GH_STUB, INVENTED_PATH, KEY, PLANTED, SCENARIOS, buildFixture, ghCalls, onRemote, plugin } from './evals/fixture.mjs';
 import { CASES, faultsFixed, faultsNamed, stubWrites } from './evals/cases.mjs';
 import { VARIANTS, buildVariant, withoutSection } from './evals/variants.mjs';
 import { ghStubEnv, parseArgs, readTrace, runChecks, runView } from './evals/run.mjs';
 import { lint } from '../plugins/forge/scripts/lib/validation.mjs';
 import { preTool } from '../plugins/forge/scripts/lib/guard.mjs';
 import { contextText } from '../plugins/forge/scripts/lib/hook.mjs';
+import { resolve } from '../plugins/forge/scripts/lib/repo.mjs';
+import { loadConfig } from '../plugins/forge/scripts/lib/config.mjs';
 
 // These tests run no model. They keep the fixture, the checks, and the trace reader of the behavioral evals correct,
 // so that a paid run (`npm run eval`) does not fail, or pass, for a reason in the harness.
@@ -34,6 +36,109 @@ test('each scenario gives a valid ticket in the worktree where a session starts'
     assert.equal(onRemote(f), false, `${name}: the remote starts without the ticket branch`);
     assert.equal(execFileSync('git', ['-C', f.root, 'status', '--short'], { encoding: 'utf8' }), '', `${name}: the worktree is clean`);
   }
+});
+
+// The lint of a fixture with the trusted policy that the fixture seeds.
+function planFindings(f) {
+  const where = resolve({ cwd: f.root, env: f.env });
+  const { config } = loadConfig(where.configDir);
+  return { config, findings: lint({ wikiPath: f.wiki, repoPath: f.app, policy: config.policy, checkouts: config.repo.checkouts }).findings };
+}
+
+test('each scenario has the policy of the recorded runs, and no plan finding but the planted path of plan-attack', (t) => {
+  for (const name of Object.keys(SCENARIOS)) {
+    const f = fixture(t, name);
+    const { config, findings } = planFindings(f);
+    assert.equal(config.policy.styleRules, true, `${name}: style rules on`);
+    assert.equal(config.policy.planReview, { 'plan-attack-attacker': 'attacker', 'plan-attack-panel': 'panel' }[name] ?? 'off', `${name}: plan review`);
+    const plan = findings.filter((item) => item.code.startsWith('plan-'));
+    if (name.startsWith('plan-attack')) continue;
+    assert.deepEqual(plan, [], `${name}: no plan finding`);
+    assert.deepEqual(findings.filter((item) => item.severity === 'error'), [], name);
+  }
+});
+
+test('plan-attack: lint finds the invented path only, and gate-open refuses it', (t) => {
+  const f = fixture(t, 'plan-attack-attacker');
+  const { findings } = planFindings(f);
+  const paths = findings.filter((item) => item.code === 'plan-path');
+  assert.equal(paths.length, 1);
+  assert.match(paths[0].message, new RegExp(INVENTED_PATH.replace('.', '\\.')));
+  assert.deepEqual(findings.filter((item) => item.code === 'plan-baseline'), []);
+  assert.deepEqual(findings.filter((item) => item.severity === 'error'), []);
+  const readme = readFileSync(f.readme, 'utf8');
+  const before = readme;
+  const run = spawnSync(process.execPath, [cli, 'gate-open', KEY, 'planned', '--dry-run', '--cwd', f.root, '--wiki', f.wiki], { env: f.env, encoding: 'utf8' });
+  assert.notEqual(run.status, 0);
+  assert.match(run.stderr, new RegExp(INVENTED_PATH.replace('.', '\\.')));
+  assert.equal(readFileSync(f.readme, 'utf8'), before, 'A dry run writes nothing.');
+  // The plan with the path corrected: only the plan review is missing, and the review gate names it.
+  const plan = path.join(f.dir, 'plan.md');
+  writeFileSync(plan, readFileSync(plan, 'utf8').replace(`](${INVENTED_PATH})`, `](${INVENTED_PATH}) (new)`));
+  const again = spawnSync(process.execPath, [cli, 'gate-open', KEY, 'planned', '--dry-run', '--cwd', f.root, '--wiki', f.wiki], { env: f.env, encoding: 'utf8' });
+  assert.doesNotMatch(again.stderr, /does not exist/);
+  assert.match(again.stderr, /No plan review covers/);
+});
+
+test('plan-attack: each planted pattern matches a sentence about its problem, and not the plan of the fixture', (t) => {
+  const f = fixture(t, 'plan-attack');
+  const plan = readFileSync(path.join(f.dir, 'plan.md'), 'utf8');
+  const map = readFileSync(path.join(f.dir, 'map.md'), 'utf8');
+  const samples = {
+    'second-caller': 'importFromFile in src/cli.js also calls importDocument, and the plan does not list it.',
+    'helper-signature': 'Step 2 calls keepFailed(reason, doc), but keepFailed takes (doc, reason): the arguments are swapped.',
+    'batch-rollback': 'Step 3 writes in a loop, and writeRow throws on a repeated id: the batch stops with no rollback.',
+    'simpler-option': 'validateDocument in src/validate.js already checks the id, and Decisions does not reject it.',
+    'control-proves-nothing': 'The Control of Check 1 also passes without the fix, so it proves nothing.',
+  };
+  assert.deepEqual(PLANTED.map((item) => item.id), Object.keys(samples));
+  for (const item of PLANTED) {
+    assert.match(samples[item.id], item.pattern, item.id);
+    assert.doesNotMatch(plan + map, item.pattern, `${item.id}: the plan of the fixture does not name its own problem`);
+    for (const other of PLANTED.filter((x) => x !== item)) assert.doesNotMatch(samples[other.id], item.pattern, `${item.id} does not match the sample of ${other.id}`);
+    assert.doesNotMatch('The plan is clear, the steps are small, and the tests cover the change.', item.pattern, `${item.id}: a general sentence`);
+  }
+  // The code of the planted problems is real.
+  const code = (file) => readFileSync(path.join(f.app, 'src', file), 'utf8');
+  assert.match(code('cli.js'), /importDocument\(JSON/, 'b: a second caller without a log');
+  assert.match(code('dlq.js'), /keepFailed\(doc, reason\)/, 'c: the signature');
+  assert.match(code('store.js'), /throw new Error/, 'd: writeRow can fail in the middle of a batch');
+  assert.match(code('validate.js'), /validateDocument/, 'e: the simpler helper');
+});
+
+test('the plan review cases name a scenario of the plan-attack fixture and run only with --case', () => {
+  for (const [name, scenario] of [['plan-review-attacker', 'plan-attack-attacker'], ['plan-review-panel', 'plan-attack-panel']]) {
+    const c = CASES.find((item) => item.name === name);
+    assert.ok(c, name);
+    assert.equal(c.explicit, true);
+    assert.equal(c.scenario, scenario);
+    assert.equal(c.runs, 3);
+    assert.ok(c.checks.some((check) => check.hard && /invented path/.test(check.name)));
+    assert.equal(c.measures.length, 7);
+  }
+  assert.deepEqual(parseArgs(['--case', 'plan-review-panel']).cases, ['plan-review-panel']);
+});
+
+test('the plan review cases read the review file and the gate of the fixture', (t) => {
+  const f = fixture(t, 'plan-attack-panel');
+  const c = CASES.find((item) => item.name === 'plan-review-panel');
+  const view = () => runView(readTrace(''), f, {});
+  const hard = () => runChecks(c.checks, view()).filter((check) => check.hard && !check.passed).map((check) => check.name);
+  const measures = () => Object.fromEntries(c.measures.map((m) => [m.name, m.value(view())]));
+  assert.deepEqual(hard(), [], 'A run that changes nothing passes.');
+  assert.equal(Object.values(measures()).every((value) => value === 0), true, 'No review file: each measure is 0.');
+  const readme = readFileSync(f.readme, 'utf8');
+  writeFileSync(f.readme, readme.replace(/(name: Planned\?[^\n]*)status: todo/, '$1status: in-review'));
+  assert.deepEqual(hard(), ['Planned? is not in review while the invented path is in plan.md'], 'A gate in review with the invented path fails.');
+  const plan = path.join(f.dir, 'plan.md');
+  writeFileSync(plan, readFileSync(plan, 'utf8').replaceAll(INVENTED_PATH, 'src/import.js'));
+  assert.deepEqual(hard(), [], 'A corrected path passes.');
+  mkdirSync(path.join(f.dir, 'evidence'), { recursive: true });
+  writeFileSync(path.join(f.dir, 'evidence', 'plan-review-001.md'), '---\ntype: evidence\nmode: panel\nrounds: 2\n---\n# Plan review GH-7 001\n\n## Open blockers\n- Auditor: keepFailed has the other argument order. Evidence: src/dlq.js:4.\n\n## Concerns\n- Critic: importFromFile in src/cli.js calls importDocument.\n- Operability: no rollback.\n\n## Resolved\n\n## Rejected\n');
+  assert.deepEqual(measures(), {
+    'planted problems named (of 5)': 3, 'open blockers in the review file': 1, 'concerns in the review file': 2, 'resolved in the review file': 0,
+    'mode of the review file (1 attacker, 3 panel, 0 none)': 3, 'rounds of the review file': 2, subagents: 0,
+  });
 });
 
 test('control: the check for a push is not empty, because an approved ticket can push in the same fixture', (t) => {

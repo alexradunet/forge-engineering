@@ -8,7 +8,7 @@ description: Engineering wiki of the current repository (../<repo>.forge/wiki), 
 > When your context has no `End of Forge context.` line, or a `Forge context part <i> of <n>` part is
 > missing or has a different id, run `node "<plugin>/scripts/forge.mjs" context` first and follow its output. `<plugin>`
 > is two folders above the folder of this file. When the command fails, read
-> [forge.md](../../context/forge.md) and [style.md](../../context/style.md): they are the `forge` and `style` rules.
+> [forge.md](../../context/forge.md) (the `forge` rule), and [style.md](../../context/style.md) (the `style` rule) unless `policy.styleRules` is `false`.
 
 The wiki is a folder of Markdown pages in the Forge folder of the repository: `../<repo>.forge/wiki`. Get its path with
 `forge.mjs where` (see the `forge` rule). This skill calls that folder `<wiki>`, and the Forge folder `<forge>`. All

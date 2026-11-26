@@ -32,6 +32,7 @@ npm run eval -- --max-usd 4
 ```
 
 - One run builds a synthetic repository in a temporary folder (`tests/evals/fixture.mjs`): a ticket worktree, the main checkout, the wiki with a trusted config and one `full-v3` ticket, and a remote that is a local bare repository.
+- Each scenario starts with the policy of the recorded runs: `policy.planReview=off` and `policy.styleRules=true` (`DEFAULT_CONFIG` in `fixture.mjs`), because the policy template of Forge 10.1.0 has other values. A scenario can set more values in its `config` field. The fixture sets them before it approves the config, so the config stays trusted.
 - The session is `claude --plugin-dir plugins/forge -p "<prompt>"` in the worktree, with `--setting-sources project`, so your user settings and hooks do not load. The session has only the tools of its case, no GitHub login, and no tool for a tracker or a network.
 - The session is not in a sandbox. It runs as you. Do not add a tool that reaches a real service to a case (`tests/evals.test.mjs` refuses `gh`, a full `Bash`, and web tools).
 - A check reads the trace of the session (tool calls, failed tool results, the last message) or the state of the fixture, for example "the remote has no ticket branch". A `hard` check fails the case. A `note` shows how the agent did the step.
@@ -274,6 +275,28 @@ Runs of 2026-11-17 (Claude Code 2.1.316, Claude Sonnet 5.5), 3.59 USD with the f
 - Limit of the case: the session did not write the plan in a long session. It read the plan new, so it was not blind to the gaps as an author can be. The case cannot show that effect.
 - A first round of 8 runs was not a comparison: the prompt named a file that the fixture did not have, and the sessions stopped before the gate to ask about it. In these 8 runs the session also named 4 of 4 faults without a subagent.
 - No rule changed after these runs. The `check` entries in `journal.md` of a real ticket give the next data: what each cold read found, and what changed.
+
+### Comparison: the plan review
+
+Two comparison cases run only with `--case`. They measure what the plan review of the `agents` skill finds, and they compare `attacker` (one reviewer subagent) with `panel` (3 reviewer subagents).
+
+```sh
+npm run eval -- --case plan-review-attacker
+npm run eval -- --case plan-review-panel
+```
+
+- Both cases give this prompt: "Continue GH-7. Finish the plan checks, and open the Planned? gate." Each case runs 3 times, with a limit of 80 turns, 3 USD, and 900 s for each run. The cases use the same tools as `cold-read-value`, with the subagent tools.
+- The scenarios `plan-attack-attacker` and `plan-attack-panel` share one fixture and differ only in `policy.planReview` (a case names a scenario, so the mode is in the scenario). The fixture has a complete `plan.md` with 6 planted problems, and small code files in which each problem is real:
+  1. An invented path: a `Files:` link to `src/events.js`, which does not exist. The plan check `plan-path` finds it, and `gate-open` refuses the gate until the path is correct.
+  2. A second caller of `importDocument` (`importFromFile` in `src/cli.js`) that the plan does not list.
+  3. A call of `keepFailed(reason, doc)`, but the helper takes `(doc, reason)`.
+  4. A batch loop of `writeRow` with no rollback and no handling of a partial failure: `writeRow` throws on a repeated id.
+  5. A simpler option that exists (`validateDocument` already checks the id), and **Decisions** does not reject it.
+  6. A Check whose Control gives the same result without the fix.
+- Hard checks: no `gate-approve`, nothing on the remote, and Planned? is not `in-review` while `plan.md` still links the invented path without a (new) mark.
+- Measures (the runner also records cost, turns, and time): the planted problems 2 to 6 that the newest `evidence/plan-review-NNN.md` or the changed `plan.md` names (of 5, by the `PLANTED` patterns in `fixture.mjs`), the bullets in **Open blockers**, **Concerns**, and **Resolved** of the review file, its `mode` and `rounds`, and the number of subagents. A note for each planted problem shows which one a run missed. A note never fails a run.
+- Cost: not measured yet; estimate 0.5 to 1.5 USD for each run. Nobody ran these cases yet, so this file records no result for them.
+- Limit of the patterns: they match the names of the code (for example `keepFailed`), so a reviewer that finds the problem and does not name the code counts as a miss. Read the review file of a run before you use the count.
 
 ## Manual runs in the supported harness
 

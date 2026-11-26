@@ -2,6 +2,24 @@ export const STATES = ['needs-me', 'go', 'active', 'waiting', 'blocked', 'done']
 export const STATE_EMOJI = { 'needs-me': '🟡', go: '🟢', active: '▶️', waiting: '⏳', blocked: '🔴', done: '✅' };
 export const WORKFLOWS = ['full-v3'];
 export const PHASES = ['start', 'investigate', 'plan', 'implement', 'review', 'closed'];
+// The gates of a full-v3 ticket. Each gate has one document, and the plan has no approved copy.
+export const GATES = ['Scoped?', 'Planned?', 'Shippable?', 'Sendable?', 'Learned?'];
+export const GATE_DOCS = { 'Scoped?': ['story.md'], 'Planned?': ['plan.md'], 'Shippable?': ['review.md'], 'Learned?': ['close.md'] };
+export const PREREQUISITES = {
+  start: [], investigate: ['Scoped?'], plan: ['Scoped?'],
+  implement: ['Scoped?', 'Planned?'], review: ['Scoped?', 'Planned?'],
+  closed: ['Scoped?', 'Planned?', 'Shippable?', 'Learned?'],
+};
+// GH-2: the "yes" for a write is the prompt of the host that the gate guard asks for. A write needs
+// no Sendable? approval record, only its outbox draft.
+export const ACTION_GATES = {
+  investigate: ['Scoped?'],
+  plan: ['Scoped?'],
+  implement: ['Scoped?', 'Planned?'],
+  ship: ['Scoped?', 'Planned?', 'Shippable?'],
+  write: [],
+  close: ['Scoped?', 'Planned?', 'Shippable?', 'Learned?'],
+};
 const GATE_STATUSES = ['todo', 'in-review', 'approved', 'skipped', 'blocked'];
 export const PEOPLE_STATUSES = ['to-contact', 'drafted', 'waiting', 'follow-up', 'reply-in', 'done'];
 const PERSON_TEXT_FIELDS = ['role', 'ask', 'via', 'note'];

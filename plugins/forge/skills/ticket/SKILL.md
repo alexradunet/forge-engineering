@@ -8,7 +8,7 @@ description: Ticket workspace for the work items of one repository, from the tra
 > When your context has no `End of Forge context.` line, or a `Forge context part <i> of <n>` part is
 > missing or has a different id, run `node "<plugin>/scripts/forge.mjs" context` first and follow its output. `<plugin>`
 > is two folders above the folder of this file. When the command fails, read
-> [forge.md](../../context/forge.md) and [style.md](../../context/style.md): they are the `forge` and `style` rules.
+> [forge.md](../../context/forge.md) (the `forge` rule), and [style.md](../../context/style.md) (the `style` rule) unless `policy.styleRules` is `false`.
 
 One folder per ticket holds all working artifacts. Every session reads
 and writes it. When the ticket is done, you distill the folder into canonical
@@ -94,6 +94,7 @@ flowchart LR
 - Each gate has one primary document. Nothing before Scoped? needs a gate.
 - The investigation is mandatory before the plan steps. Its diagnosis is the first section of `plan.md`.
 - Diagnosis stop: when the investigation shows that the approved scope is wrong or too small (see Investigate), stop before the plan and ask.
+- The plan has design options, a baseline run, and a plan review before Planned? (see Investigate).
 - Evidence Testing is a required step, not a gate. It blocks the merge proposal.
 - QA handover runs only when `policy.qaHandover` is `true`. It uses Sendable?, not a new gate.
 
@@ -139,7 +140,7 @@ Copy each document from its template in `templates/`. A template shows every pos
 - When the user must edit a file by hand (for example a connection string or a secret), open every such file yourself with `host.open`, and list the exact edits in chat. Never write the secret yourself.
 - The company rules (`<wiki>/rules/`, in the session context) add rules to this list.
 
-These core rules always win over a policy section or a rule page: no merge, ask before every external write, explicit gate approval, no secrets, and the adversarial review before every change request.
+These core rules always win over a policy section or a rule page: no merge, ask before every external write (GO on Shippable? covers the change request draft), explicit gate approval, no secrets, and the adversarial review before every change request.
 
 ## 🚦 Review gates
 
@@ -147,7 +148,7 @@ These core rules always win over a policy section or a rule page: no merge, ask 
 |---|---|---|
 | Scoped? | `story.md` | investigation work on the agreed scope |
 | Planned? | `plan.md` | implementation |
-| Sendable? | the exact `outbox/` draft | each external write: the "yes" is the answer to the host prompt, not a form |
+| Sendable? | the exact `outbox/` draft | each external write: the host prompt is the "yes". Exception: a change request draft in the approved Shippable? set |
 | Shippable? | `review.md` | push or change request creation |
 | Learned? | `close.md` | canonical wiki writes and the archive move |
 
@@ -162,9 +163,9 @@ Rules:
 - Never answer the approval form for the user, and never approve in auto mode. No session approves a gate for another session.
 - A required gate blocks its step. A change to an approved document reopens its gate.
 - Native plan approval of the host does not replace a ticket gate.
-- The Forge gate guard (a preToolUse hook) checks Scoped?, Planned?, and Shippable? before a push or a new change request in the ticket worktree. Before each external write, it makes the host ask the user: that answer is the Sendable? "yes". It is a net, not the rule: each gate applies also where the hook does not run.
+- The Forge gate guard (a preToolUse hook) checks Scoped?, Planned?, and Shippable? before a push or a new change request in the ticket worktree. Before each external write, it makes the host ask the user: that answer is the Sendable? "yes". It also stops a push when it cannot read the README. It asks nothing for a change request in the approved Shippable? set. It is a net, not the rule: each gate applies also where the hook does not run.
 
-The steps of a gate are in [phases/gates.md](phases/gates.md): the cold read, the manifest, the approval form, the comments, and `<F> gate-approve`.
+The steps of a gate are in [phases/gates.md](phases/gates.md): the cold read, the manifest, the approval form, the comments, `<F> gate-open`, and `<F> gate-approve`.
 
 ## 🔁 Resume
 

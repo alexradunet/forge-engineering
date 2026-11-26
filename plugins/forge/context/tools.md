@@ -40,7 +40,7 @@ A write capability changes something outside the workspace: `tracker.comment`, `
 
 1. Draft the text as `outbox/<target>.draft.md` in the ticket folder, from the template `<plugin>/skills/ticket/templates/outbox.draft.md`. Send only the text between its `send` markers. Run a full pass of the `writing` skill (outbound mode) on it. A write with no text (for example a close) needs no draft.
 2. Run the Sendable? steps of the `ticket` skill: show the text, the draft link, the target, and the exact command in chat.
-3. Get an explicit "yes" for this one write, as the `host.write` row of the host says. With the gate guard, the prompt of the host is the "yes". Without it, ask with `host.ask` first.
+3. Get an explicit "yes" for this one write, as the `host.write` row of the host says. With the gate guard, the prompt of the host is the "yes". Without it, ask with `host.ask` first. A new change request needs none when its draft is in the approved Shippable? set.
 4. Pass long text through a file in the system temp folder: `forge-<key>-body.md`. Delete the file after the write.
 5. After the write, add a `log` entry to the ticket journal with the command, the target, and the returned id or link.
 

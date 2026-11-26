@@ -1,9 +1,10 @@
 // The summary of gate documents, review snapshots, and the section-level diff between two revisions.
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { GATE_DOCS } from './ticket.mjs';
 
 // full-v3: one document for each gate. It has a summary under the title, then only the sections with content.
-export const V3_PRIMARY = { 'Scoped?': 'story.md', 'Planned?': 'plan.md', 'Shippable?': 'review.md', 'Learned?': 'close.md' };
+export const V3_PRIMARY = Object.fromEntries(Object.entries(GATE_DOCS).map(([gate, docs]) => [gate, docs.at(-1)]));
 export const V3_DOCS = Object.values(V3_PRIMARY);
 export const SUMMARY_BUDGET = 150;
 export const DOC_BUDGET = 1500;
@@ -183,4 +184,25 @@ export function renderDiff(result) {
   }
   if (budget < 0) lines.push(`  [more changes: open ${result.doc}]`);
   return lines.join('\n');
+}
+
+/** The cells of one Markdown table row. An escaped pipe stays in its cell. */
+export function tableRow(line) {
+  return line.trim().replace(/^\|/, '').replace(/\|$/, '').split(/(?<!\\)\|/).map((cell) => cell.trim().replace(/\\\|/g, '|'));
+}
+
+/** The top-level numbered items of a section: [{ n, title, body }]. The body is the indented text under the item. */
+export function numberedItems(text) {
+  const items = [];
+  for (const line of text.split('\n')) {
+    const start = /^(\d+)[.)]\s+(.*)$/.exec(line);
+    if (start) items.push({ n: Number(start[1]), title: start[2].trim(), lines: [] });
+    else if (items.length && (/^\s+\S/.test(line) || !line.trim())) items.at(-1).lines.push(line);
+    else if (items.length && line.trim()) items.at(-1).lines.push(line);
+  }
+  return items.map((item) => {
+    const indent = Math.min(...item.lines.filter((line) => line.trim()).map((line) => line.match(/^\s*/)[0].length), 99);
+    const body = item.lines.map((line) => line.slice(Math.min(indent, line.match(/^\s*/)[0].length))).join('\n').trim();
+    return { n: item.n, title: item.title, body };
+  });
 }

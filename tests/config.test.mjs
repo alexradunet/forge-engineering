@@ -94,3 +94,27 @@ test('body-only configuration retains defaults without rewriting the file', () =
     assert.equal(readFileSync(file, 'utf8'), text);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('policy.styleRules defaults to true and accepts true or false only', () => {
+  const dir = mkdtempSync(path.join(here, '.forge-cfg-'));
+  try {
+    assert.equal(loadConfig(dir).config.policy.styleRules, true);
+    writeFileSync(path.join(dir, 'policy.md'), '---\nstyleRules: false\n---\n');
+    assert.equal(loadConfig(dir).config.policy.styleRules, false);
+    writeFileSync(path.join(dir, 'policy.md'), '---\nstyleRules: maybe\n---\n');
+    assert.throws(() => loadConfig(dir), /styleRules must be true or false/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('policy.planReview defaults to off and accepts off, attacker, and panel only', () => {
+  const dir = mkdtempSync(path.join(here, '.forge-cfg-'));
+  try {
+    assert.equal(loadConfig(dir).config.policy.planReview, 'off');
+    for (const value of ['off', 'attacker', 'panel']) {
+      writeFileSync(path.join(dir, 'policy.md'), `---\nplanReview: ${value}\n---\n`);
+      assert.equal(loadConfig(dir).config.policy.planReview, value);
+    }
+    writeFileSync(path.join(dir, 'policy.md'), '---\nplanReview: maybe\n---\n');
+    assert.throws(() => loadConfig(dir), /planReview must be off, attacker, or panel/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});

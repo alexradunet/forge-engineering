@@ -18,7 +18,7 @@ A Forge skill names a host verb, for example `host.title`. Do the step of the ve
 | `host.artifact` | Call `add_artifact_or_reference` with a `file:///` URI for a file. |
 | `host.open` | Run `code -r "<absolute path>"` with the shell tool in `async` mode: the command can block for 30 seconds or more. Open at most 3 documents at once, and give a link for each other file. |
 | `host.comments` | Read the comment threads of a document with `listComments`. Answer a question with `replyToComment`. Resolve a handled thread with `resolveComments`. Comments that the user sends with the comment submit button (`/act-on-feedback`) arrive the same way. |
-| `host.write` | Ask with `ask_user` first, and run the write command only after an explicit "yes": no check has shown yet that the plugin hook runs in a Copilot harness session. When `ask_user` says that the user is not available, give the user the exact command. |
+| `host.write` | Ask with `ask_user` first, and run the write command only after an explicit "yes": no check has shown yet that the plugin hook runs in a Copilot harness session. When `ask_user` says that the user is not available, give the user the exact command. Exception: the creation of a change request whose draft is in the approved Shippable? set needs no second "yes" (see Sendable?). |
 
 ## Ticket canvas
 
