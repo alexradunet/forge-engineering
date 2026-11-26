@@ -352,6 +352,10 @@ Forge 13.0.0 removes the VS Code Agents window host, the editor links, the verb 
   - `baseline-run-value`: 9 turns, 63 s, 0.30 USD. The baseline ran, the check changed, the session named the fault, no line says `not run:`, 1 subagent, Planned? in review at the end.
 - No hard check failed. No run used a Copilot CLI session: the eval runner starts only Claude Code, so the Copilot CLI context of 13.0.0 has only the tests of `npm test`.
 
+### Forge 13.0.1: no file link on a page of the live server (2026-11-26)
+
+No eval case ran. The change is in the page code only, and no rule, skill, or hook text changed. `npm test` covers the links of a served page and of a file page.
+
 ### Comparison: the cold read
 
 For the runs of 12.0.0 see "Forge 12.0.0: three gates and the layout full-v4" above (faults named 4 of 4 in 2 runs).

@@ -31,7 +31,7 @@ function wiki(t) {
   put('log.md', '---\ntitle: Wiki log\ntype: log\n---\n# Wiki log\n\n## 2026-11-10 create: build\n\n- tooling/build.md\n');
   put('tooling/build.md', page('Build <fast> & "safe"', [
     'The build uses `npm test`. See [the retry page](../app/retry.md#limits) and [a script](<../forge/scripts/x.md>).',
-    '', '## Steps', '', '### Details', '', '1. Read [the log](../raw/tickets/app-9/journal.md).', '2. Open https://example.com/docs now.',
+    '', '## Steps', '', '### Details', '', '1. Read [the log](../raw/tickets/app-9/journal.md).', '2. Open https://example.com/docs now.', '3. Check [the job](/code/app/src/Job.cs:7) now.',
     '', '```sh', 'cat [not a link](app/retry.md)', '```',
   ].join('\n'), { extra: ['sources:', '  - https://example.com/build', '  - app/retry.md', '  - scripts/build.mjs:12'] }));
   put('app/retry.md', page('Retry', 'Retries stop after 3 s. </script><script>alert(1)</script>', { status: 'needs-check' }));
@@ -143,6 +143,12 @@ test('the wiki page is one self-contained file: the list of the pages, each page
   const served = renderWikiPage(model, { serve: { token: TOKEN }, nav: buildNav(board, { from: 'wiki', token: TOKEN, closed: model.closed }) });
   assert.match(served, new RegExp(`"token":"${TOKEN}","nav":\\{"board":"/board\\?t=${TOKEN}","wiki":""`));
   assert.match(served, new RegExp(`<a href="/ticket/app-9/README\\.md\\?t=${TOKEN}" data-nav><span class="key">APP-9</span>`));
+  // A file page links to a local file. A served page has no file link: a browser blocks it on an http page, and the file is on another machine.
+  assert.match(build, /<li>Check <a href="file:\/\/\/code\/app\/src\/Job\.cs">the job<\/a> now\.<\/li>/);
+  assert.ok(html.includes('>Open the file</a>'));
+  assert.doesNotMatch(served, /href="file:|Open the file/);
+  assert.match(served, /<li>Check the job now\.<\/li>/, 'a link to an absolute path stays as its words');
+  assert.match(served, /<a href="https:\/\/example\.com\/docs" target="_blank" rel="noopener noreferrer">/);
   assert.throws(() => renderWikiPage(model, { serve: { token: 'short' } }), /32 hexadecimal/);
   // An empty wiki still gives a page.
   const empty = mkdtempSync(path.join(os.tmpdir(), 'forge-wiki-'));

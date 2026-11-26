@@ -7,9 +7,19 @@ test('link targets of a local file are file links, keep ticket links relative, a
   assert.equal(linkTarget('/repo/src/RetryJob.cs:42'), 'file:///repo/src/RetryJob.cs');
   assert.equal(linkTarget('C:\\repo\\My File.cs:7:3'), 'file:///C:/repo/My%20File.cs');
   assert.equal(linkTarget('<C:/repo/a b.cs>'), 'file:///C:/repo/a%20b.cs');
+  assert.equal(linkTarget('/repo/src/a.cs', { local: false }), '', 'no file link for a served page');
+  assert.equal(linkTarget('C:\\repo\\a.cs', { local: false }), '');
+  assert.equal(linkTarget('https://example.com/a', { local: false }), 'https://example.com/a');
+  assert.equal(linkTarget('evidence/a.md', { local: false }), 'evidence/a.md');
   assert.equal(linkTarget('evidence/2026-11-11-config.md'), 'evidence/2026-11-11-config.md');
   assert.equal(linkTarget('https://example.com/a?b=1'), 'https://example.com/a?b=1');
   for (const target of ['javascript:alert(1)', 'data:text/html,x', 'vbscript:x', '#top', '//example.com/x']) assert.equal(linkTarget(target), '', target);
+});
+
+test('markdown gives an absolute path a file link, or its words when the page is served', () => {
+  assert.equal(markdown('[code](/repo/a.cs)'), '<p><a href="file:///repo/a.cs">code</a></p>');
+  assert.equal(markdown('[code](/repo/a.cs)', { served: true }), '<p>code</p>');
+  assert.equal(markdown('[web](https://e.com/a)', { served: true }), '<p><a href="https://e.com/a" target="_blank" rel="noopener noreferrer">web</a></p>');
 });
 
 test('markdown becomes escaped HTML: no source text can add a tag, a handler, or a script link', () => {

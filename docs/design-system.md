@@ -328,6 +328,8 @@ The wiki page:
 +----------------------+---------------------------------------------------+
 ```
 
+The link **Open the file** is on a file page only. A page of the live server has no `file://` link: a browser blocks it on an `http` page, and the file is on the machine of the server. There, a link to an absolute path in the text of a page stays as its words.
+
 ## 🚦 States
 
 One state has one emoji, one word, and one color on each page (class `st-<state>`, variable `--st`).

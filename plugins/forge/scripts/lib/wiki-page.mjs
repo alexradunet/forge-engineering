@@ -46,9 +46,9 @@ function pageHtml(page, index, model, ctx) {
     link: (target) => { const found = pageOf(model, path.join(root, page.folder), target); return found ? `#${pageHash(found)}` : ''; },
   };
   // A relative link to another file has no target on this page: its words stay as text.
-  const body = markdown(page.body, { wiki, plain: true });
+  const body = markdown(page.body, { wiki, plain: true, served: ctx.served });
   const status = page.status ? pillHtml(STATUS_TEXT[page.status] ?? page.status, STATUS_STATE[page.status] ?? '') : '';
-  const file = linkTarget(path.join(root, ...page.path.split('/')));
+  const file = linkTarget(path.join(root, ...page.path.split('/')), { local: !ctx.served });
   const meta = [
     status,
     page.updated ? `<span>updated ${esc(page.updated)}</span>` : '',
@@ -93,7 +93,7 @@ const HELP = [
 export function renderWikiPage(model, { nav = null, serve = null } = {}) {
   const token = serve?.token ?? '';
   if (token && !/^[0-9a-f]{32}$/.test(token)) throw new Error('The page token must have 32 hexadecimal characters.');
-  const ctx = { nav: nav ?? buildNav({ groups: [] }, { from: 'wiki', token, closed: model.closed }) };
+  const ctx = { served: Boolean(token), nav: nav ?? buildNav({ groups: [] }, { from: 'wiki', token, closed: model.closed }) };
   const pages = model.pages.map((page, index) => pageHtml(page, index, model, ctx)).join('\n');
   const errors = model.errors.length
     ? `<section id="errors"><h3 class="eyebrow">Read errors</h3>${model.errors.map((error) => bannerHtml(`<code>${esc(error.path)}</code> ${esc(error.message)}`, { kind: 'bad' })).join('')}</section>` : '';

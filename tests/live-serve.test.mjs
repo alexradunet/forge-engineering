@@ -42,7 +42,7 @@ function wiki(t) {
   ticket('APP-2', 'done');
   put('raw/tickets/app-9/story.md', '---\ntype: story\n---\n# Story APP-9\n\nProblem: retries stop after 3 s.\n');
   put('raw/tickets/app-9/page.html', '<p>not a ticket file</p>\n');
-  put('tooling/build.md', '---\ntitle: Build\nupdated: 2026-11-10\nstatus: verified\n---\n# Build\n\nThe build uses npm.\n');
+  put('tooling/build.md', '---\ntitle: Build\nupdated: 2026-11-10\nstatus: verified\n---\n# Build\n\nThe build uses npm. See [the code](/code/app/Job.cs).\n');
   put('tickets/app-1.md', '---\ntitle: "APP-1: First fix"\nupdated: 2026-11-01\nstatus: verified\n---\n# APP-1: First fix\n\nSee [build](../tooling/build.md).\n');
   put('raw/tickets/app-9/plan.md', '---\ntype: plan\n---\n# Plan APP-9\n\nCause: see [the build page](../../../tooling/build.md).\n');
   return { root, wiki: path.join(root, 'wiki'), env: { ...process.env, FORGE_DATA_DIR: path.join(root, 'data') }, put, ticket };
@@ -205,6 +205,7 @@ test('the pages of the live server: the board and the wiki page, each with its o
   assert.equal(wikiPage.headers['content-security-policy'], `default-src 'none'; script-src 'sha256-${hash(WIKI_SCRIPT)}'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; base-uri 'none'; form-action 'none'`);
   assert.equal(/<script>([\s\S]*)<\/script>/.exec(wikiPage.text)[1], WIKI_SCRIPT);
   assert.match(wikiPage.text, /The build uses npm\./);
+  assert.doesNotMatch(wikiPage.text + board.text, /href="file:|Open the file/, 'a served page has no file link');
   assert.ok(wikiPage.text.includes(`<a href="/ticket/app-9/README.md?t=${s.page}" data-nav><span class="key">APP-9</span>`), 'a page names the open ticket that uses it');
   assert.ok(wikiPage.text.includes(`href="/board?t=${s.page}"`) && !wikiPage.text.includes('"live"'));
   assert.ok(board.text.includes(`<a class="quiet" href="/wiki?t=${s.page}" data-nav`));
