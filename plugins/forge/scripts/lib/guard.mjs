@@ -16,7 +16,8 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { resolve, samePath } from './repo.mjs';
 import { listTickets } from './tickets.mjs';
-import { approvedDrafts, checkAction, isChangeDraft } from './validation.mjs';
+import { approvedDrafts, checkAction, isChangeDraft, regular, within } from './validation.mjs';
+import { baseBranchOf, codeBinding } from './code-bind.mjs';
 import { ticketOfFolder, trustedConfig } from './hook.mjs';
 
 export const GUARD_MODES = ['deny', 'ask', 'off'];
@@ -415,6 +416,27 @@ function approveVerdict(action) {
   return { decision: 'ask', key, question, reason: `Forge gate guard: ${question} Allow it only if you gave this answer yourself.` };
 }
 
+/**
+ * The message of the code binding check at a push, or '' when the code is the code of the Shippable? approval.
+ * The approved manifest holds `code` ({ head, base, patchId, branch }). The branch of the README must be that branch, and the patch-id of the
+ * diff from the merge base must be the same. A clean rebase keeps the patch-id. A git error gives its own message: it is not a mismatch.
+ */
+function codeMismatch(match, where, config) {
+  const ticket = match.ticket;
+  const gate = ticket.gates.find((item) => item.name === 'Shippable?');
+  let code = null;
+  try { code = JSON.parse(regular(within(path.dirname(match.file), gate.manifest)).toString('utf8'))?.code; } catch { /* No readable code is the same as no code. */ }
+  if (!code || typeof code !== 'object' || !code.patchId || !code.branch) {
+    return 'The Shippable? approval has no code binding: it was approved before Forge 13.1.0 or without a code binding. Open Shippable? again.';
+  }
+  if (code.branch !== ticket.branch) return `The README branch (${ticket.branch}) is not the branch of the Shippable? approval (${code.branch}). Open Shippable? again.`;
+  let now;
+  try { now = codeBinding({ worktree: ticket.worktree || where.repo.path, branch: ticket.branch, baseBranch: baseBranchOf(config, where.repo.path) }); }
+  catch (error) { return `Forge cannot read the code of ${ticket.branch} to compare it with the Shippable? approval: ${error.message} Run \`git fetch\`, then try again.`; }
+  if (now.patchId !== code.patchId) return `The code changed after the Shippable? approval (patch-id ${now.patchId.slice(0, 12)}, approved ${String(code.patchId).slice(0, 12)}). Review the new code and open Shippable? again.`;
+  return '';
+}
+
 /** A host that does not show a prompt in this mode runs an `ask` with no "yes", so the guard denies instead. */
 function noPrompt(verdict, mode) {
   if (verdict?.decision !== 'ask' || !NO_PROMPT_MODES.has(mode)) return verdict;
@@ -497,6 +519,17 @@ export function preTool(event, { env = process.env } = {}) {
             ? { decision: 'ask', key, question, reason: `Forge gate guard: ${question} Allow this command only if you accept the step without the gate.` }
             : { decision: 'deny', key, reason: `Forge gate guard: ${question} Open the gate as the ticket skill says (Review gates), and wait for the answer of the user. Do not run the command in another form. Tell the user which approval is missing, and offer to open the gate.` });
           continue;
+        }
+        if (action.kind === 'push' && match.ticket.branch) {
+          const problem = codeMismatch(match, where, config);
+          if (problem) {
+            const key = match.ticket.key;
+            const question = `${key}: ${problem}`;
+            verdicts.push(mode === 'ask'
+              ? { decision: 'ask', key, question, reason: `Forge gate guard: ${question} Allow this push only if you accept the step without the code check.` }
+              : { decision: 'deny', key, reason: `Forge gate guard: ${question} Do not run the command in another form. Tell the user what is wrong.` });
+            continue;
+          }
         }
         if (action.kind === 'push' || (action.kind === 'change' && changeApproved(match))) continue;
       }

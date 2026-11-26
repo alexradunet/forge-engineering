@@ -60,6 +60,7 @@ import { lint } from './lib/validation.mjs';
 import { findTicket, nextLocalKey } from './lib/tickets.mjs';
 import { approveGate } from './lib/approve.mjs';
 import { openReview } from './lib/gate-open.mjs';
+import { baseBranchOf } from './lib/code-bind.mjs';
 import { writeBoard } from './lib/board.mjs';
 import { createWorktree, planWorktree } from './lib/worktree.mjs';
 import { CLAUDE_PARTS, HOST_NAMES, contextText, promptSubmit, readEvent, resolveHost, sessionEnd, sessionStart, trustedConfig } from './lib/hook.mjs';
@@ -442,7 +443,7 @@ export function main(argv = process.argv.slice(2)) {
       const where = resolve(opts);
       // Only a trusted config gives the policy and the checkouts. Without it the plan review rule does not run.
       const config = trustedConfig(where, process.env);
-      const report = lint({ wikiPath: where.wiki.path, repoPath: where.repo.path, fix: args.fix, policy: config?.policy ?? null, checkouts: config?.repo.checkouts ?? [] });
+      const report = lint({ wikiPath: where.wiki.path, repoPath: where.repo.path, fix: args.fix, policy: config?.policy ?? null, checkouts: config?.repo.checkouts ?? [], baseBranch: baseBranchOf(config, where.repo.path) });
       if (args.json) console.log(JSON.stringify(report, null, 2));
       else {
         for (const item of report.findings) console.log(`${item.severity} ${item.code} ${item.file}${item.line ? `:${item.line}` : ''}: ${item.message} ${item.remedy}`);
@@ -584,13 +585,14 @@ export function main(argv = process.argv.slice(2)) {
       let result;
       try {
         const { dir } = findTicket(where.wiki.path, args._[1]);
-        result = openReview(dir, { gate: args._[2], extra: args._.slice(3), policy: config?.policy ?? null, repoPath: where.repo.path, checkouts: config?.repo.checkouts ?? [], today: args.today, dryRun: args.dryRun });
+        result = openReview(dir, { gate: args._[2], extra: args._.slice(3), policy: config?.policy ?? null, repoPath: where.repo.path, checkouts: config?.repo.checkouts ?? [], baseBranch: baseBranchOf(config, where.repo.path), today: args.today, dryRun: args.dryRun });
       } catch (err) { throw new ForgeError(err.message, 'gate-open'); }
       if (args.json) console.log(JSON.stringify(result, null, 2));
       else {
         console.log(`${result.key} ${result.gate}: in review${args.dryRun ? ' (dry run, nothing written)' : ''}`);
         console.log(`Manifest: ${result.manifest} sha256 ${result.hash}`);
         for (const doc of result.documents) console.log(`- ${doc.path} ${doc.sha256.slice(0, 12)}`);
+        if (result.code) console.log(`Code: branch ${result.code.branch} head ${result.code.head} base ${result.code.base} patch-id ${result.code.patchId}`);
         console.log(result.diff);
         if (result.review) console.log(`Open blockers: ${result.review.openBlockers || 'none'}\nConcerns: ${result.review.concerns || 'none'}`);
         for (const note of result.notes) console.log(note);

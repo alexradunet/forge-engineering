@@ -12,6 +12,7 @@ import { resolve } from '../plugins/forge/scripts/lib/repo.mjs';
 import { seed } from '../plugins/forge/scripts/lib/setup.mjs';
 import { setValues } from '../plugins/forge/scripts/lib/config-write.mjs';
 import { hookArgs } from '../plugins/forge/scripts/forge.mjs';
+import { codeBinding } from '../plugins/forge/scripts/lib/code-bind.mjs';
 
 // The gate guard is the preToolUse hook: a push or a new change request in a ticket worktree
 // needs the gates of checkAction('ship'). All other commands, folders, and failures let the tool run.
@@ -28,7 +29,8 @@ function git(cwd, ...args) {
 }
 
 /** A repository with a ticket worktree, and a wiki with one full-v4 ticket. `approved` lists the approved gates. */
-function setup(t, { approved = [], workflow = 'full-v4' } = {}) {
+// With Shippable? approved, the branch has one commit and the manifest binds its code (`code: 'none'` leaves the binding out), and the config is trusted with the base branch main.
+function setup(t, { approved = [], workflow = 'full-v4', code = 'bound' } = {}) {
   const root = mkdtempSync(path.join(os.tmpdir(), 'forge-guard-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const app = path.join(root, 'app');
@@ -39,6 +41,13 @@ function setup(t, { approved = [], workflow = 'full-v4' } = {}) {
   git(app, 'commit', '-q', '-m', 'init');
   const worktree = path.join(`${app}.worktrees`, 'app-7-doc-import');
   git(app, 'worktree', 'add', '-q', '-b', 'users/a/APP-7-doc-import', worktree);
+  let binding = null;
+  if (approved.includes('Shippable?')) {
+    writeFileSync(path.join(worktree, 'b.txt'), 'change\n');
+    git(worktree, 'add', 'b.txt');
+    git(worktree, 'commit', '-q', '-m', 'change');
+    if (code === 'bound') binding = codeBinding({ worktree, branch: 'users/a/APP-7-doc-import', baseBranch: 'main' });
+  }
   const dir = path.join(root, 'app.forge', 'raw', 'tickets', 'app-7');
   mkdirSync(path.join(dir, 'approvals'), { recursive: true });
   mkdirSync(path.join(root, 'app.forge', 'wiki'), { recursive: true });
@@ -48,7 +57,7 @@ function setup(t, { approved = [], workflow = 'full-v4' } = {}) {
     for (const item of docs) writeFileSync(path.join(dir, item), `# ${item}\n\nText of ${name}\n`);
     if (!approved.includes(name)) { gates.push(`  - { name: ${name}, doc: ${doc}, need: required, status: todo }`); continue; }
     const manifest = `approvals/${name.replace('?', '').toLowerCase()}-001.json`;
-    const bytes = JSON.stringify({ version: 1, gate: name, documents: docs.map((item) => ({ path: item, sha256: sha256(readFileSync(path.join(dir, item))) })) });
+    const bytes = JSON.stringify({ version: 1, gate: name, documents: docs.map((item) => ({ path: item, sha256: sha256(readFileSync(path.join(dir, item))) })), ...(name === 'Shippable?' && binding ? { code: binding } : {}) });
     writeFileSync(path.join(dir, manifest), bytes);
     gates.push(`  - { name: ${name}, doc: ${doc}, need: required, status: approved, date: 2026-11-17, manifest: ${manifest}, hash: ${sha256(bytes)} }`);
   }
@@ -60,7 +69,9 @@ function setup(t, { approved = [], workflow = 'full-v4' } = {}) {
     `worktree: "${worktree.replaceAll('\\', '/')}"`, 'changes: []', 'people: []', 'gates:', ...gates, 'updated: 2026-11-17', '---',
     '# APP-7', '', '## Now', '', '- State: ▶️ active', '',
   ].join('\n'));
-  return { root, app, worktree, dir, readme, wiki: path.join(root, 'app.forge', 'wiki') };
+  const made = { root, app, worktree, dir, readme, wiki: path.join(root, 'app.forge', 'wiki'), binding };
+  if (approved.includes('Shippable?')) trustConfig(made, ['repo.baseBranch=main']);
+  return made;
 }
 
 const run = (cwd, command) => preTool({ cwd, command }, { env });
@@ -389,7 +400,7 @@ function approveDrafts(s, drafts, { listed = Object.keys(drafts) } = {}) {
   mkdirSync(path.join(s.dir, 'outbox'), { recursive: true });
   for (const [name, target] of Object.entries(drafts)) writeFileSync(path.join(s.dir, 'outbox', name), `---\nstatus: draft\ntarget: ${target}\n---\n# Title\n\nText\n`);
   const documents = ['review.md', ...listed.map((name) => `outbox/${name}`)].map((doc) => ({ path: doc, sha256: sha256(readFileSync(path.join(s.dir, ...doc.split('/')))) }));
-  const bytes = JSON.stringify({ version: 1, gate: 'Shippable?', documents });
+  const bytes = JSON.stringify({ version: 1, gate: 'Shippable?', documents, ...(s.binding ? { code: s.binding } : {}) });
   writeFileSync(path.join(s.dir, 'approvals', 'shippable-001.json'), bytes);
   writeFileSync(s.readme, readFileSync(s.readme, 'utf8').replace(/(name: Shippable\?.*hash: )[a-f0-9]{64}/, `$1${sha256(bytes)}`));
 }
@@ -566,4 +577,60 @@ test('preTool denies an approval command in bypassPermissions and gives no verdi
     'grep gate-approve plugins/forge/scripts/forge.mjs',
   ]) assert.equal(run(s.worktree, command), null, command);
   assert.equal(run(s.worktree, `node ${cli} gate-approve app-7 planned --answer "approve --dry-run"`)?.decision, 'ask');
+});
+
+test('a push is bound to the code of the Shippable? approval: a new commit is denied, a clean rebase and an unchanged branch pass', (t) => {
+  const push = 'git push -u origin users/a/APP-7-doc-import';
+  const s = setup(t, { approved: ['Planned?', 'Shippable?'] });
+  assert.equal(run(s.worktree, push), null, 'The approved code pushes.');
+  // A clean rebase: main moves on, the branch is rebased, and the patch-id stays.
+  writeFileSync(path.join(s.app, 'c.txt'), 'other\n');
+  git(s.app, 'add', 'c.txt');
+  git(s.app, 'commit', '-q', '-m', 'other');
+  git(s.worktree, 'rebase', '-q', 'main');
+  assert.notEqual(git(s.worktree, 'rev-parse', 'HEAD'), s.binding.head);
+  assert.equal(run(s.worktree, push), null, 'A clean rebase keeps the patch-id.');
+  assert.equal(run(s.app, push), null, 'Also from the main checkout.');
+  // A new commit after the approval.
+  writeFileSync(path.join(s.worktree, 'b.txt'), 'changed after GO\n');
+  git(s.worktree, 'commit', '-q', '-am', 'late fix');
+  const late = run(s.worktree, push);
+  assert.equal(late.decision, 'deny');
+  assert.match(late.reason, /The code changed after the Shippable\? approval/);
+  assert.equal(run(s.app, push).decision, 'deny', 'Also from the main checkout.');
+});
+
+test('a push is denied with no code binding, with a read error (own message), and with another branch in the manifest', (t) => {
+  const push = 'git push -u origin users/a/APP-7-doc-import';
+  const old = setup(t, { approved: ['Planned?', 'Shippable?'], code: 'none' });
+  const noCode = run(old.worktree, push);
+  assert.equal(noCode.decision, 'deny');
+  assert.match(noCode.reason, /approved before Forge 13\.1\.0 or without a code binding.*Open Shippable\? again/);
+  // A base branch that does not exist: the binding cannot be read, which is not a mismatch.
+  const gone = setup(t, { approved: ['Planned?', 'Shippable?'] });
+  trustConfig(gone, ['repo.baseBranch=nope']);
+  const error = run(gone.worktree, push);
+  assert.equal(error.decision, 'deny');
+  assert.match(error.reason, /Forge cannot read the code of users\/a\/APP-7-doc-import.*git fetch/);
+  assert.doesNotMatch(error.reason, /code changed after/);
+  // The missing worktree is the same kind of error.
+  const away = setup(t, { approved: ['Planned?', 'Shippable?'] });
+  rmSync(away.worktree, { recursive: true, force: true });
+  assert.match(run(away.app, push).reason, /Forge cannot read the code/);
+  // The manifest names another branch than the README.
+  const other = setup(t, { approved: ['Planned?', 'Shippable?'] });
+  const manifest = path.join(other.dir, 'approvals', 'shippable-001.json');
+  const bytes = JSON.stringify({ ...JSON.parse(readFileSync(manifest, 'utf8')), code: { ...other.binding, branch: 'users/a/other' } });
+  writeFileSync(manifest, bytes);
+  writeFileSync(other.readme, readFileSync(other.readme, 'utf8').replace(/(name: Shippable\?.*hash: )[a-f0-9]{64}/, `$1${sha256(bytes)}`));
+  const branch = run(other.worktree, push);
+  assert.equal(branch.decision, 'deny');
+  assert.match(branch.reason, /is not the branch of the Shippable\? approval/);
+  // policy.gateGuard ask keeps its meaning, and off skips the check.
+  const asks = setup(t, { approved: ['Planned?', 'Shippable?'], code: 'none' });
+  trustConfig(asks, ['policy.gateGuard=ask']);
+  assert.equal(run(asks.worktree, push).decision, 'ask');
+  const off = setup(t, { approved: ['Planned?', 'Shippable?'], code: 'none' });
+  trustConfig(off, ['policy.gateGuard=off']);
+  assert.equal(run(off.worktree, push), null);
 });

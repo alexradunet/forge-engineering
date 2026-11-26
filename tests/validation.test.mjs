@@ -370,7 +370,8 @@ test('lint checks the proof: a warning in phase review, an error while Shippable
   assert.deepEqual(proofFindings('review', 'in-review', { evidenceOnDeployedEnv: true }), []);
   f.put('proof.md', '# Proof\n\n## Checks\n\n1. 🔴 failed: a\n');
   assert.deepEqual(proofFindings('review', 'in-review').map((item) => [item.code, item.severity, item.line]), [['proof-failed', 'error', 5]]);
-  f.put('proof.md', '# Proof\n\n## Checks\n\n1. 🟢 verified: a\n');
+  f.put('evidence/a.md', 'x\n');
+  f.put('proof.md', '# Proof\n\n## Checks\n\n1. 🟢 verified: a\n   - [e](evidence/a.md)\n');
   assert.deepEqual(proofFindings('review', 'in-review'), []);
 });
 

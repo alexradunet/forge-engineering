@@ -144,6 +144,14 @@ export function validateTicket(ticket, file) {
   return inspectTicket(ticket, file).findings;
 }
 
+/** The `code` object of the manifest of a gate record, or null. It never throws. */
+function manifestCode(dir, gate) {
+  try {
+    const code = JSON.parse(regular(within(dir, gate.manifest)).toString('utf8'))?.code;
+    return code && typeof code === 'object' ? code : null;
+  } catch { return null; }
+}
+
 /** The check of one gate, with the manifest documents (ticket-relative, forward slashes) that its approval hashed. */
 function gateCheck(ticket, file, name) {
   const matches = ticket.gates.filter((item) => item.name === name);
@@ -275,7 +283,7 @@ function readerWarnings(dir, file, readme, ticket, add, inspect) {
   plainWarnings(dir, add, inspect);
 }
 
-export function lint({ wikiPath, repoPath, fix = false, policy = null, checkouts = [] }) {
+export function lint({ wikiPath, repoPath, fix = false, policy = null, checkouts = [], baseBranch = '' }) {
   const report = { version: 1, wikiPath: path.resolve(wikiPath), findings: [], repairs: [], summary: { errors: 0, warnings: 0, repaired: 0 } };
   const add = (file, code, message, remedy, severity = 'error', line = null) =>
     report.findings.push(finding(file, code, message, remedy, severity, line));
@@ -315,7 +323,11 @@ export function lint({ wikiPath, repoPath, fix = false, policy = null, checkouts
         const shippable = ticket.gates.find((gate) => gate.name === 'Shippable?');
         if (shippable?.status === 'in-review' || (shippable?.status !== 'approved' && ticket.phase === 'review')) {
           const severity = shippable?.status === 'in-review' ? 'error' : 'warning';
-          for (const item of shippableChecks(dir, ticket, { policy }).findings) add(item.file, item.code, item.message, item.remedy, severity, item.line);
+          for (const item of shippableChecks(dir, ticket, { policy, repoPath, baseBranch }).findings) add(item.file, item.code, item.message, item.remedy, severity, item.line);
+        }
+        // An approved Shippable? with a code binding and a README with no branch: the guard has no branch to bind at a push.
+        if (shippable?.status === 'approved' && !ticket.branch && manifestCode(dir, shippable)) {
+          add(file, 'code-branch-cleared', 'Shippable? is approved with a code binding, but the README branch is empty: a push is not bound to the approved code.', 'Restore the branch line of the README, or open Shippable? again.', 'warning');
         }
         const drafts = markdownFiles(dir, (file, error) => add(file, 'invalid-input', error.message, 'Inspect this draft path explicitly; no linked file is repaired.'));
         for (const draft of drafts.filter((name) => name.endsWith('.draft.md'))) {
