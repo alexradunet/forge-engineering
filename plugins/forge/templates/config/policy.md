@@ -5,6 +5,7 @@ qaHandover: false
 adversarialReviewModel:
 planReview: attacker
 styleRules: false
+scopeComment: false
 maxImplementers: 6
 gateGuard: deny
 ---
@@ -19,13 +20,14 @@ gateGuard: deny
 | Key | Meaning | Default |
 |---|---|---|
 | `noMergeWeekdays` | Days on which the agent never proposes a merge, for example a release day | `[]` |
-| `evidenceOnDeployedEnv` | Evidence Testing must use a deployed environment when one is possible | `false` |
+| `evidenceOnDeployedEnv` | The proof of the changed behavior needs a deployed environment. `true`: Evidence Testing runs after the push. `false`: it runs before Shippable?, and `proof.md` is in the Shippable? manifest. | `false` |
 | `qaHandover` | Run the QA handover step after the merge | `false` |
 | `adversarialReviewModel` | Model of the adversarial reviewer. Empty means a model different from the author's | empty |
 | `maxImplementers` | Maximum implementer sessions at the same time | `6` |
 | `planReview` | Review of the plan before Planned?: `off`, `attacker` (one reviewer subagent), or `panel` (3 reviewer subagents). A missing key means `off`. This template sets `attacker`. | `off` |
 | `styleRules` | Add the response style rules of the plugin (Simplified Technical English, no AI tells, the ADHD response shape) to each session. A missing key means `true`. This template sets `false`. | `true` |
-| `gateGuard` | The gate guard (a preToolUse hook) for a push or a new change request of a ticket without a valid Shippable? approval: `deny`, `ask` (the host asks you), or `off` | `deny` |
+| `scopeComment` | After the scope check, draft a tracker comment for the reporter with the scope and the open questions (it needs your yes as each write) | `false` |
+| `gateGuard` | The gate guard (a preToolUse hook) for a push or a new change request of a ticket without the valid approvals of Planned? and Shippable?: `deny`, `ask` (the host asks you), or `off` | `deny` |
 
 ## 🪝 Hook sections
 

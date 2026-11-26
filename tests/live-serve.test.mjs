@@ -35,7 +35,7 @@ function wiki(t) {
     writeFileSync(file, text);
   };
   const ticket = (key, state, extra = []) => put(`raw/tickets/${key.toLowerCase()}/README.md`, [
-    '---', 'type: ticket', `key: ${key}`, `title: Title of ${key}`, `short: Short ${key}`, 'workflow: full-v3', 'phase: plan', `state: ${state}`,
+    '---', 'type: ticket', `key: ${key}`, `title: Title of ${key}`, `short: Short ${key}`, 'workflow: full-v4', 'phase: plan', `state: ${state}`,
     `next: Next step for ${key}`, 'changes: []', 'people: []', 'gates:', '  - { name: Planned?, doc: plan.md, need: required, status: in-review }', ...extra, 'updated: 2026-11-16', '---', `# ${key}`, '',
   ].join('\n'));
   ticket('APP-9', 'active', ['worktree: /code/app.worktrees/APP-9']);

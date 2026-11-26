@@ -38,7 +38,7 @@ flowchart LR
 
 ## 🛠️ Implementer session
 
-1. Check the gate first. For a ticket, validate fresh plan-gate revision evidence before starting implementation. For `workflow: full-v3`, that is Planned?: verify the manifest, its raw-byte SHA-256, and every covered document (`plan.md` and the listed evidence). Unverifiable approval blocks implementation, not read-only resume.
+1. Check the gate first. For a ticket, validate fresh plan-gate revision evidence before starting implementation. For `workflow: full-v4`, that is Planned?: verify the manifest, its raw-byte SHA-256, and every covered document (`story.md`, `plan.md`, and the listed evidence). Unverifiable approval blocks implementation, not read-only resume.
 2. Select the execution worktree with the checks below. Continue here when it is suitable. Do not start another implementer merely because the ticket reached Implement. `<F>` means `node "<plugin>/scripts/forge.mjs"`, where `<plugin>` is the folder two levels above this skill. `<F> worktree <KEY> --summary "<short>"` gives the ticket branch, the folder, and the suggested action (see "Worktrees" in the `ticket` skill).
 3. Only when another session is needed, start it with `host.spawn`:
    - title: `<KEY> - ▶️ - <short>` (for example `APP-123 - ▶️ - Implement outbox retry on timeout`). The session keeps it current. See "Session title" in the `ticket` skill.
@@ -46,8 +46,8 @@ flowchart LR
    - `worktree`: `false` for an existing verified worktree; `true` only when a new worktree is needed (VS Code). The spawn tool has no base-branch parameter. Never assume that a new worktree selects the ticket branch or a required commit. For a pinned baseline, use the manual step below.
    - relationship: a nested session for work on the current ticket. An independent session only for an unrelated task.
 4. Write a self-contained `prompt`:
-   - the goal, and the paths to the approved `plan.md` and to `map.md` (the code map of the area)
-   - the ticket's workflow marker (`full-v3`), README, and approval manifest/record paths; revalidate the exact approved revisions before editing, and stop if stale or unverifiable
+   - the goal, and the paths to the approved `story.md` and `plan.md`, and to `map.md` (the code map of the area)
+   - the ticket's workflow marker (`full-v4`), README, and approval manifest/record paths; revalidate the exact approved revisions before editing, and stop if stale or unverifiable
    - the branch name from `repo.branchPattern`, as `<F> worktree` prints it (see "Worktrees" in the `ticket` skill). In a **New Worktree** session on an `agents/...` branch, rename the branch with `git branch -m <branch>` before the first commit.
    - the selected worktree, repository identity, branch, resolved baseline SHA, and whether the task requires an exact HEAD or resumes existing implementation. Verify these before edits, builds, or fixtures. Continue in that worktree; do not delegate again merely to obtain isolation.
    - the scope, and what is out of scope
@@ -109,14 +109,14 @@ For a full code review before Shippable?, the user can also use the **Run Code R
 
 ## 🐟 Cold read
 
-Required before each review gate of a `full-v3` ticket (Scoped?, Planned?, Shippable?, Learned?). The session that wrote a gate document knows more than the document says. The user reads the document later, without that knowledge. A subagent without the session history reads it the same way and shows what is missing.
+Required before each review gate of a `full-v4` ticket (Planned?, Shippable?, Learned?). The session that wrote a gate document knows more than the document says. The user reads the document later, without that knowledge. A subagent without the session history reads it the same way and shows what is missing.
 
 1. Start a subagent with `task` (a `general-purpose` or read-only research agent). When the host lets you select a model, a model family different from your own finds more.
 2. Give it only this, and nothing from the session:
-   - the absolute path of the gate document, and for `plan.md` also the path of `map.md`
+   - the absolute path of the gate document (for Planned?, the paths of `story.md` and `plan.md`), and for Planned? also the path of `map.md`
    - "Read this document and the files that it links. Do not read other ticket files. Read-only: no edits, no commits."
    - "Answer in 4 parts. (1) Say in at most 5 lines what the document asks the user to approve. (2) List each term, name, or reference that you cannot resolve from the document and its links. (3) List each claim that has no link to evidence or code. (4) List each place where two statements do not agree."
-   - for `plan.md`: "(5) Can you implement this plan from `plan.md` and `map.md` alone? List each fact that you must guess."
+   - for Planned?: "(5) Can you implement this plan from `story.md`, `plan.md`, and `map.md` alone? List each fact that you must guess."
 3. Do not give it the goal, the history, or your own summary. A reader that has your context cannot find what the document lacks.
 4. Compare part 1 with what you mean. When they differ, the summary is not clear: correct the document. Add each missing term to the document or to **Terms** of `map.md`. Add each missing link. Add each fact that an implementer must guess to the plan.
 5. Record one `check` entry in `journal.md`: the findings in short form, and what you changed.
@@ -197,7 +197,7 @@ Required before every change request, including a draft. It is a second, hostile
 5. Run it in the background. Do not poll. Continue with independent work, or wait for the notification.
 6. Verify each finding yourself. Reject a finding with evidence, or fix it and add a test where it applies.
 7. Record the result in **Findings** of `review.md` (model, findings, what you fixed or rejected) and as a `check` entry in `journal.md`.
-8. If the review changes the code, run the affected tests again. If it changes the approved scope, reopen Scoped?; if it changes the approved plan, reopen Planned?.
+8. If the review changes the code, run the affected tests again. If it changes the approved story or the approved plan, open Planned? again.
 
 Never create a change request until step 7 is done.
 

@@ -18,8 +18,6 @@
 //           and the pages: raw/board.html and raw/wiki.html
 //   styleguide [--out <file>] [--json]   write the styleguide page of the UI kit (each token and component, in both themes): <forge>/raw/styleguide.html, or the file of --out
 //   worktree <KEY> --summary "<goal>" [--base <ref>] [--create] [--json]   plan or create the ticket worktree and branch
-//   snapshot <key> <gate> [--json]   save the gate doc as approvals/snapshots/<gate>-<n>.md at a review
-//   diff    <key> <gate> [--json]   the summary (or the ⚡ card) on a first review, else the sections changed since the last snapshot
 //   live    [--port <n>] [--links vscode|file]   show the board and the wiki on http://127.0.0.1 with the live state of the agent sessions
 //            (the session hooks send their events to this server). Its one action for a page is Resume (it opens a terminal for a closed session). It stops at a signal,
 //            or after 8 hours with no event and no request of a page. The links stay the same after a restart: its page token is in a key file.
@@ -65,7 +63,7 @@ import { writeBoard } from './lib/board.mjs';
 import { createWorktree, planWorktree } from './lib/worktree.mjs';
 import { CLAUDE_PARTS, HOST_NAMES, contextText, promptSubmit, readEvent, resolveHost, sessionEnd, sessionStart, trustedConfig } from './lib/hook.mjs';
 import { preTool, preToolOutput, readToolEvent } from './lib/guard.mjs';
-import { diffGate, gateName, renderDiff, saveSnapshot } from './lib/reading.mjs';
+import { gateName } from './lib/reading.mjs';
 import { LINK_MODES } from './lib/markdown.mjs';
 import { writeViews } from './lib/views.mjs';
 import { renderStyleguide } from './lib/ui/styleguide.mjs';
@@ -518,18 +516,6 @@ export function main(argv = process.argv.slice(2)) {
         for (const item of result.related) console.log(`  other  ${item.path} [${item.branch || 'detached'}]`);
         for (const command of result.status ? [] : result.commands) console.log(`  run    ${command}`);
       }
-    } else if (cmd === 'snapshot' || cmd === 'diff') {
-      if (args._.length !== 3) throw new ForgeError(`Usage: forge.mjs ${cmd} <key> <gate> [--json].`, 'bad-args');
-      const where = resolve(opts);
-      let result;
-      try {
-        const { dir, ticket } = findTicket(where.wiki.path, args._[1]);
-        const gate = gateName(args._[2]);
-        result = cmd === 'snapshot' ? saveSnapshot(dir, ticket, gate) : diffGate(dir, ticket, gate);
-      } catch (err) { throw new ForgeError(err.message, cmd); }
-      if (args.json) console.log(JSON.stringify(result, null, 2));
-      else if (cmd === 'diff') console.log(renderDiff(result));
-      else console.log(`${result.gate} ${result.written ? 'saved' : 'unchanged'}: ${result.snapshot}`);
     } else if (cmd === 'live') {
       const port = args.port === undefined ? undefined : Number(args.port);
       const badPort = args.port !== undefined && (!/^\d{1,5}$/.test(args.port) || (port !== 0 && (port < 1024 || port > 65535)));
@@ -611,7 +597,7 @@ export function main(argv = process.argv.slice(2)) {
       if (args._[1] === 'approve') console.log(JSON.stringify(approve(where, args._.slice(2)), null, 2));
       else console.log(JSON.stringify(trustStatus(where), null, 2));
     } else {
-      console.error('Usage: node forge.mjs <where|config|doctor|lint|detect|init|bind|seed|board|styleguide|worktree|snapshot|diff|live|open|gate-open|gate-approve|hook|context|trust|run> [--wiki <dir>] [--cwd <dir>] [--json]');
+      console.error('Usage: node forge.mjs <where|config|doctor|lint|detect|init|bind|seed|board|styleguide|worktree|live|open|gate-open|gate-approve|hook|context|trust|run> [--wiki <dir>] [--cwd <dir>] [--json]');
       return 2;
     }
     return 0;

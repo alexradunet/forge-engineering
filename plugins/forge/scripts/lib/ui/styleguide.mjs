@@ -116,14 +116,14 @@ function preview() {
     count: 1,
     html: card('needs-me', {
       key: 'APP-101', age: '3 days', title: 'Fix outbox retry', next: 'Approve the review (Shippable?)', tags: ['review'], links: ['README', 'Worktree'],
-      gates: [{ name: 'Scoped?', status: 'approved' }, { name: 'Planned?', status: 'approved' }, { name: 'Shippable?', status: 'in-review' }, { name: 'Sendable?', status: 'todo' }],
+      gates: [{ name: 'Planned?', status: 'approved' }, { name: 'Shippable?', status: 'in-review' }, { name: 'Sendable?', status: 'todo' }],
     }),
   });
   const go = lane('GO', {
     count: 1,
     html: card('go', {
       key: 'APP-103', age: '2 days', title: 'Invoice time zone', next: 'Start the plan', tags: ['plan'], links: ['README'],
-      gates: [{ name: 'Scoped?', status: 'approved' }, { name: 'Planned?', status: 'todo' }],
+      gates: [{ name: 'Planned?', status: 'todo' }],
     }),
   });
   const none = lane('NEEDS YOU', { count: 0, html: emptyHtml('No ticket needs you.', { icon: 'anvil-cold' }) });

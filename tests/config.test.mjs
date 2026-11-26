@@ -106,6 +106,17 @@ test('policy.styleRules defaults to true and accepts true or false only', () => 
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('policy.scopeComment defaults to false and accepts true or false only', () => {
+  const dir = mkdtempSync(path.join(here, '.forge-cfg-'));
+  try {
+    assert.equal(loadConfig(dir).config.policy.scopeComment, false);
+    writeFileSync(path.join(dir, 'policy.md'), '---\nscopeComment: true\n---\n');
+    assert.equal(loadConfig(dir).config.policy.scopeComment, true);
+    writeFileSync(path.join(dir, 'policy.md'), '---\nscopeComment: maybe\n---\n');
+    assert.throws(() => loadConfig(dir), /scopeComment must be true or false/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('policy.planReview defaults to off and accepts off, attacker, and panel only', () => {
   const dir = mkdtempSync(path.join(here, '.forge-cfg-'));
   try {

@@ -1,11 +1,11 @@
 // The summary of gate documents, review snapshots, and the section-level diff between two revisions.
-import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { GATE_DOCS } from './ticket.mjs';
 
-// full-v3: one document for each gate. It has a summary under the title, then only the sections with content.
-export const V3_PRIMARY = Object.fromEntries(Object.entries(GATE_DOCS).map(([gate, docs]) => [gate, docs.at(-1)]));
-export const V3_DOCS = Object.values(V3_PRIMARY);
+// A gate document has a summary under the title, then only the sections with content.
+// The last document of a gate is its primary document: its snapshots keep the plain gate name.
+export const ALL_GATE_DOCS = [...new Set(Object.values(GATE_DOCS).flat())];
 export const SUMMARY_BUDGET = 150;
 export const DOC_BUDGET = 1500;
 const NO_CONTENT = /^(?:none|n\/a|tbd|todo|-)?\.?$/i;
@@ -44,14 +44,14 @@ export function countWords(text) {
   return (prose.match(/[\p{L}\p{N}]+(?:['’.-][\p{L}\p{N}]+)*/gu) ?? []).length;
 }
 
-/** The summary of a full-v3 gate document: the text between the title and the first "## " heading. */
+/** The summary of a gate document: the text between the title and the first "## " heading. */
 export function summaryBlock(text) {
   const top = sections(text)[0];
   if (!top || top.heading) return '';
   return top.text.split('\n').filter((line) => !/^#\s/.test(line)).join('\n').trim();
 }
 
-/** The word counts of a full-v3 gate document, and its sections that have no content. */
+/** The word counts of a gate document, and its sections that have no content. */
 export function summaryCheck(text) {
   const all = sections(text);
   const summary = summaryBlock(text);
@@ -63,7 +63,7 @@ export function summaryCheck(text) {
 
 export function gateName(value) {
   const wanted = String(value ?? '').trim().replace(/\?$/, '').toLowerCase();
-  const names = Object.keys(V3_PRIMARY);
+  const names = Object.keys(GATE_DOCS);
   const match = names.find((name) => name.slice(0, -1).toLowerCase() === wanted);
   if (!match) throw new Error(`Unknown gate: ${value}. Use one of: ${names.join(', ')}.`);
   return match;
@@ -71,42 +71,53 @@ export function gateName(value) {
 
 const slug = (gate) => gate.replace(/\?$/, '').toLowerCase();
 
-export function snapshotDir(ticketDir) {
+function snapshotDir(ticketDir) {
   return path.join(ticketDir, 'approvals', 'snapshots');
 }
 
-export function listSnapshots(ticketDir, gate) {
+function listSnapshots(ticketDir, stem) {
   const dir = snapshotDir(ticketDir);
   if (!existsSync(dir)) return [];
-  const pattern = new RegExp(`^${slug(gate)}-(\\d+)\\.md$`);
+  const pattern = new RegExp(`^${stem}-(\\d+)\\.md$`);
   return readdirSync(dir).map((name) => ({ name, n: Number(pattern.exec(name)?.[1]) }))
     .filter((item) => Number.isInteger(item.n) && item.n > 0)
     .sort((a, b) => a.n - b.n)
     .map((item) => ({ ...item, file: path.join(dir, item.name), rel: `approvals/snapshots/${item.name}` }));
 }
 
-/** The primary document of a gate: the README record's doc, else the default of the workflow. */
-export function gateDocument(ticketDir, ticket, gate) {
-  const doc = ticket.gates.find((item) => item.name === gate)?.doc || V3_PRIMARY[gate];
-  if (!doc || doc.endsWith('/')) throw new Error(`${gate} has no single document to snapshot.`);
-  const file = path.join(ticketDir, ...doc.split('/'));
-  if (!existsSync(file)) throw new Error(`${doc} does not exist yet.`);
-  if (lstatSync(file).isSymbolicLink()) throw new Error(`${doc} must not be a link.`);
-  return { doc, file };
+/** The documents of a gate, in the order of GATE_DOCS, with the snapshot name stem of each (the primary document keeps the gate name). The README record's doc, when set, replaces the primary document. */
+function gateDocuments(ticketDir, ticket, gate) {
+  const docs = [...GATE_DOCS[gate]];
+  const set = ticket.gates.find((item) => item.name === gate)?.doc;
+  if (set) docs[docs.length - 1] = set;
+  return docs.map((doc, index) => {
+    if (doc.endsWith('/')) throw new Error(`${gate} has no single document to snapshot.`);
+    const file = path.join(ticketDir, ...doc.split('/'));
+    if (!existsSync(file)) throw new Error(`${doc} does not exist yet.`);
+    if (lstatSync(file).isSymbolicLink()) throw new Error(`${doc} must not be a link.`);
+    return { doc, file, stem: index === docs.length - 1 ? slug(gate) : `${slug(gate)}-${doc.replace(/\.md$/i, '').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}` };
+  });
 }
 
-/** Saves the document as the next review snapshot. An unchanged document reuses the latest snapshot. */
+/** Saves each document of the gate as its next review snapshot. An unchanged document reuses its latest snapshot. On a failure it removes the snapshots that it wrote. */
 export function saveSnapshot(ticketDir, ticket, gate) {
-  const { doc, file } = gateDocument(ticketDir, ticket, gate);
-  const text = readFileSync(file, 'utf8');
-  const all = listSnapshots(ticketDir, gate);
-  const latest = all.at(-1);
-  if (latest && readFileSync(latest.file, 'utf8') === text) return { gate, doc, snapshot: latest.rel, n: latest.n, written: false };
-  const n = (latest?.n ?? 0) + 1;
-  const target = path.join(snapshotDir(ticketDir), `${slug(gate)}-${n}.md`);
-  mkdirSync(path.dirname(target), { recursive: true });
-  writeFileSync(target, text, { flag: 'wx' });
-  return { gate, doc, snapshot: `approvals/snapshots/${path.basename(target)}`, n, written: true };
+  const snapshots = [];
+  try {
+    for (const { doc, file, stem } of gateDocuments(ticketDir, ticket, gate)) {
+      const text = readFileSync(file, 'utf8');
+      const latest = listSnapshots(ticketDir, stem).at(-1);
+      if (latest && readFileSync(latest.file, 'utf8') === text) { snapshots.push({ doc, snapshot: latest.rel, n: latest.n, written: false }); continue; }
+      const n = (latest?.n ?? 0) + 1;
+      const target = path.join(snapshotDir(ticketDir), `${stem}-${n}.md`);
+      mkdirSync(path.dirname(target), { recursive: true });
+      writeFileSync(target, text, { flag: 'wx' });
+      snapshots.push({ doc, snapshot: `approvals/snapshots/${path.basename(target)}`, n, written: true });
+    }
+  } catch (error) {
+    for (const item of snapshots.filter((entry) => entry.written)) rmSync(path.join(ticketDir, ...item.snapshot.split('/')), { force: true });
+    throw error;
+  }
+  return { gate, snapshots };
 }
 
 function lineDiff(before, after) {
@@ -153,24 +164,23 @@ export function sectionDiff(before, after) {
   return out;
 }
 
-/** The diff of a gate document against its latest review snapshot, with the current summary. */
+/** The diff of each document of a gate against its own latest review snapshot, with the current summary. */
 export function diffGate(ticketDir, ticket, gate) {
-  const { doc, file } = gateDocument(ticketDir, ticket, gate);
-  const text = readFileSync(file, 'utf8');
-  const layout = 'summary';
-  const card = summaryBlock(text);
-  const latest = listSnapshots(ticketDir, gate).at(-1);
-  if (!latest) return { gate, doc, layout, card, snapshot: null, changed: null, sections: [] };
-  const list = sectionDiff(readFileSync(latest.file, 'utf8'), text);
-  return { gate, doc, layout, card, snapshot: latest.rel, n: latest.n, changed: list.some((item) => item.status !== 'same'), sections: list };
+  const documents = gateDocuments(ticketDir, ticket, gate).map(({ doc, file, stem }) => {
+    const text = readFileSync(file, 'utf8');
+    const card = summaryBlock(text);
+    const latest = listSnapshots(ticketDir, stem).at(-1);
+    if (!latest) return { doc, card, snapshot: null, changed: null, sections: [] };
+    const list = sectionDiff(readFileSync(latest.file, 'utf8'), text);
+    return { doc, card, snapshot: latest.rel, n: latest.n, changed: list.some((item) => item.status !== 'same'), sections: list };
+  });
+  return { gate, documents };
 }
 
-/** The approval form text: the summary on a first review, else only the changes since the last review. */
-export function renderDiff(result) {
+function renderDocument(result) {
   if (!result.snapshot) {
     return [`Summary of ${result.doc} (first review):`, result.card || `(no summary: write at most ${SUMMARY_BUDGET} words under the title before you ask for approval)`].join('\n');
   }
-  if (!result.changed) return `${result.doc} has not changed since your last review (${result.snapshot}).`;
   const lines = [`Changed since your last review (${result.doc} vs ${result.snapshot}):`];
   let budget = MAX_DIFF_LINES;
   for (const item of result.sections.filter((entry) => entry.status !== 'same')) {
@@ -184,6 +194,14 @@ export function renderDiff(result) {
   }
   if (budget < 0) lines.push(`  [more changes: open ${result.doc}]`);
   return lines.join('\n');
+}
+
+/** The approval form text, one block for each document that needs one: its summary on a first review, else only its changes since the last review. */
+export function renderDiff(result) {
+  const blocks = result.documents.filter((item) => !item.snapshot || item.changed).map(renderDocument);
+  if (blocks.length) return blocks.join('\n\n');
+  const names = result.documents.map((item) => item.doc);
+  return `${names.join(' and ')} ${names.length > 1 ? 'have' : 'has'} not changed since your last review (${result.documents.map((item) => item.snapshot).join(', ')}).`;
 }
 
 /** The cells of one Markdown table row. An escaped pipe stays in its cell. */

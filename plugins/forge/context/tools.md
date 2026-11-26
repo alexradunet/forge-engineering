@@ -49,7 +49,7 @@ The "Never, with any tool" list of the session context applies to each write: no
 ## 🛡️ Gate guard
 
 The Forge preToolUse hook reads each shell command before it runs. For a `git push` or the change request command of `repo.open-change`
-in a ticket worktree, it checks the gates of the ticket: Scoped?, Planned?, and Shippable? (an older ticket: the gates of its own workflow).
+in a ticket worktree, it checks the gates of the ticket: Planned? and Shippable? (an older ticket: the gates of its own workflow).
 
 For a command of a write capability in a ticket worktree, it answers `ask`: the host asks the user, and that answer is the "yes" for this one write.
 

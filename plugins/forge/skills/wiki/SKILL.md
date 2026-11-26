@@ -162,7 +162,7 @@ the ticket's `repair-log.jsonl`; a second pass is
 unchanged. Never infer workflow/state, grant approval, edit approved content,
 auto-migrate headerless index/log metadata, delete pages, or publish.
 
-Forge supports only `workflow: full-v3`. A ticket with another marker or no marker
+Forge supports only `workflow: full-v4`. A ticket with another marker or no marker
 is an `invalid-input` finding. Validate revision evidence. Missing/stale evidence blocks the
 affected action, not read-only resume. See the ticket skill's Approval revisions
 and [CLI contract](../../../../docs/wiki.md#local-validation-and-source-limits).

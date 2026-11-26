@@ -76,7 +76,7 @@ export const gates = {
     title: 'The 5 statuses, one ingot each',
     html: Object.keys(GATE_TEXT).map((value) => `<p style="margin: 6px 0">${gatesHtml([{ name: 'Gate?', status: value }], { words: false })} <span style="color: var(--muted)">${GATE_TEXT[value]}</span></p>`).join(''),
   }, {
-    title: 'The gates of a ticket: 2 approved, 1 in review, 1 not open',
-    html: gatesHtml([{ name: 'Scoped?', status: 'approved' }, { name: 'Planned?', status: 'approved' }, { name: 'Shippable?', status: 'in-review' }, { name: 'Sendable?', status: 'todo' }]),
+    title: 'The gates of a ticket: 1 approved, 1 in review, 1 not open',
+    html: gatesHtml([{ name: 'Planned?', status: 'approved' }, { name: 'Shippable?', status: 'in-review' }, { name: 'Sendable?', status: 'todo' }]),
   }],
 };

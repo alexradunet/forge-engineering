@@ -91,13 +91,14 @@ node "<plugin>/scripts/forge.mjs" config row checkouts "old" --delete
 | `ci.md` | `provider` | Name of the CI | `jenkins` |
 | | `host` | CI server URL (Jenkins) | none |
 | `policy.md` | `noMergeWeekdays` | Days on which the agent never proposes a merge | `[]` |
-| | `evidenceOnDeployedEnv` | Evidence Testing must use a deployed environment when one is possible | `false` |
+| | `evidenceOnDeployedEnv` | The proof of the changed behavior needs a deployed environment. `true`: Evidence Testing runs after the push. `false`: it runs before Shippable?, and `proof.md` is in the Shippable? manifest. | `false` |
 | | `qaHandover` | Run the QA handover step after the merge | `false` |
 | | `adversarialReviewModel` | Model of the adversarial reviewer; empty means a model different from the author's | empty |
 | | `maxImplementers` | Maximum implementer sessions at the same time | `6` |
 | | `planReview` | Review of the plan before Planned?: `off`, `attacker` (one reviewer subagent), or `panel` (3 reviewer subagents) | `off` |
 | | `styleRules` | Add the response style rules of the plugin (Simplified Technical English, no AI tells, the ADHD response shape) to each session. A missing key means `true`. The template for a new wiki sets `false` | `true` |
-| | `gateGuard` | The gate guard for a push or a new change request of a ticket without a valid Shippable? approval: `deny`, `ask` (the host asks you), or `off` | `deny` |
+| | `scopeComment` | After the scope check, draft a tracker comment for the reporter with the scope and the open questions (it needs your yes as each write) | `false` |
+| | `gateGuard` | The gate guard for a push or a new change request of a ticket without the valid approvals of Planned? and Shippable?: `deny`, `ask` (the host asks you), or `off` | `deny` |
 
 ## 📜 Capabilities
 
@@ -146,12 +147,12 @@ Write the step rules and traps there. Rules for each session (tools, credentials
 It can never weaken a core rule: no merge, ask before every external write, explicit gate approval,
 no secrets, and the adversarial review before every change request.
 
-Every new ticket uses `workflow: full-v3` in its ticket README, not a policy sizing
+Every new ticket uses `workflow: full-v4` in its ticket README, not a policy sizing
 setting. All research, scope interview, investigation, and review phases
-apply even to small fixes. A small fix has shorter documents, not fewer phases. The investigation comes before the plan steps, and
-Planned? approves both together in `plan.md`. `qaHandover: false` omits only QA handover, not
+apply even to small fixes. A small fix has shorter documents, not fewer phases. The scope check is a question in chat. The investigation comes before the plan steps, and
+Planned? approves `story.md` and `plan.md` together. `qaHandover: false` omits only QA handover, not
 Evidence Testing or a required gate. Sendable? applies to each external write in every
-phase. Forge 8 supports no other ticket layout: lint reports a ticket without `workflow: full-v3` as a read error. See the [ticket skill](../plugins/forge/skills/ticket/SKILL.md).
+phase. Forge reads no other ticket layout: lint reports a ticket without `workflow: full-v4` as a read error. See the [ticket skill](../plugins/forge/skills/ticket/SKILL.md).
 
 ## ➕ Change a tool
 

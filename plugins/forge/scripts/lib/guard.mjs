@@ -9,7 +9,7 @@
 // A ticket whose README cannot be read stops a push and a new change request too: the gates are unknown (policy.gateGuard sets deny or ask).
 // It never stops other work: a folder with no ticket, no wiki, or a config that cannot be read lets the command run.
 import { spawnSync } from 'node:child_process';
-import { readFileSync, statSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { resolve, samePath } from './repo.mjs';
 import { listTickets } from './tickets.mjs';
@@ -340,9 +340,7 @@ function draftOf(match) {
   if (typeof doc !== 'string' || !/^outbox[\\/].+\.draft\.md$/.test(doc)) return null;
   const file = path.join(path.dirname(match.file), ...doc.split(/[\\/]/));
   try {
-    // An older ticket keeps its own per-write records, so only full-v3 asks checkAction.
-    if (match.ticket.workflow === 'full-v3') return checkAction(match.ticket, match.file, 'write', { draft: doc }).allowed ? file : null;
-    return statSync(file).isFile() ? file : null;
+    return checkAction(match.ticket, match.file, 'write', { draft: doc }).allowed ? file : null;
   } catch { return null; }
 }
 

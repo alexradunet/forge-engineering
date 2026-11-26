@@ -23,9 +23,9 @@ function wiki(t) {
     writeFileSync(file, text);
   };
   const readme = ({ state = 'needs-me', phase = 'start', next = 'Approve the scope', card = true } = {}) => put('README.md', [
-    '---', 'type: ticket', 'key: APP-5', 'title: Doc import error telemetry', 'workflow: full-v3', `phase: ${phase}`, `state: ${state}`,
+    '---', 'type: ticket', 'key: APP-5', 'title: Doc import error telemetry', 'workflow: full-v4', `phase: ${phase}`, `state: ${state}`,
     `next: ${next}`, 'waiting_on: ""', 'changes: []', 'people: []', 'gates:',
-    '  - { name: Scoped?, doc: story.md, need: required, status: in-review }', 'updated: 2026-10-01', '---',
+    '  - { name: Shippable?, doc: review.md, need: required, status: in-review }', 'updated: 2026-10-01', '---',
     '# APP-5: Doc import error telemetry', '',
     ...(card ? ['## Now', '', '- State: 🟡 needs-me', '- Phase: start', '- Next: Approve the scope', '- Waiting on: you', ''] : []),
     '## Notes', '',
@@ -55,12 +55,14 @@ test('sections split on "## " headings after the frontmatter and ignore headings
 test('word counts skip code fences and link targets, and keep words with hyphens or apostrophes whole', () => {
   assert.equal(countWords("The user's re-run [works](https://example.com/a/b/c) well."), 5);
   assert.equal(countWords(['Two words', '```mermaid', 'flowchart LR', '  A --> B', '```'].join('\n')), 2);
-  assert.equal(countWords('| Gate | Status |\n|---|---|\n| Scoped? | approved |'), 4);
+  assert.equal(countWords('| Gate | Status |\n|---|---|\n| Planned? | approved |'), 4);
 });
 
 test('gate names accept a short form and refuse unknown gates', () => {
-  assert.equal(gateName('scoped'), 'Scoped?');
-  assert.equal(gateName('Planned?'), 'Planned?');
+  assert.equal(gateName('planned'), 'Planned?');
+  assert.equal(gateName('Shippable?'), 'Shippable?');
+  assert.equal(gateName(' LEARNED '), 'Learned?');
+  assert.throws(() => gateName('scoped'), /Unknown gate: scoped\. Use one of: Planned\?, Shippable\?, Learned\?\./);
   assert.throws(() => gateName('Shipped'), /Unknown gate: Shipped/);
 });
 
@@ -79,59 +81,72 @@ test('the section diff lists changed, added, and removed sections with line chan
 test('snapshots number each review, skip an unchanged doc, and the diff compares with the latest', (t) => {
   const w = wiki(t);
   w.readme();
-  assert.throws(() => saveSnapshot(w.dir, w.ticket(), 'Scoped?'), /story\.md does not exist yet/);
-  w.put('story.md', ['---', 'title: Story', '---', '# Story APP-5', 'Add telemetry to the import.', '## Scope', 'Details.', ''].join('\n'));
-  const first = diffGate(w.dir, w.ticket(), 'Scoped?');
-  assert.equal(first.snapshot, null);
-  assert.equal(renderDiff(first), 'Summary of story.md (first review):\nAdd telemetry to the import.');
-  assert.deepEqual(saveSnapshot(w.dir, w.ticket(), 'Scoped?'), { gate: 'Scoped?', doc: 'story.md', snapshot: 'approvals/snapshots/scoped-1.md', n: 1, written: true });
-  assert.equal(saveSnapshot(w.dir, w.ticket(), 'Scoped?').written, false, 'An unchanged doc keeps the latest snapshot.');
-  assert.match(renderDiff(diffGate(w.dir, w.ticket(), 'Scoped?')), /has not changed since your last review \(approvals\/snapshots\/scoped-1\.md\)/);
-  w.put('story.md', ['---', 'title: Story', '---', '# Story APP-5', 'Add telemetry and an alert to the import.', '## Scope', 'Details.', ''].join('\n'));
-  const text = renderDiff(diffGate(w.dir, w.ticket(), 'Scoped?'));
-  assert.match(text, /^Changed since your last review \(story\.md vs approvals\/snapshots\/scoped-1\.md\):/);
+  assert.throws(() => saveSnapshot(w.dir, w.ticket(), 'Shippable?'), /review\.md does not exist yet/);
+  w.put('review.md', ['---', 'title: Review', '---', '# Review APP-5', 'Add telemetry to the import.', '## Scope', 'Details.', ''].join('\n'));
+  const first = diffGate(w.dir, w.ticket(), 'Shippable?');
+  assert.equal(first.documents[0].snapshot, null);
+  assert.equal(renderDiff(first), 'Summary of review.md (first review):\nAdd telemetry to the import.');
+  assert.deepEqual(saveSnapshot(w.dir, w.ticket(), 'Shippable?'), { gate: 'Shippable?', snapshots: [{ doc: 'review.md', snapshot: 'approvals/snapshots/shippable-1.md', n: 1, written: true }] });
+  assert.equal(saveSnapshot(w.dir, w.ticket(), 'Shippable?').snapshots[0].written, false, 'An unchanged doc keeps the latest snapshot.');
+  assert.match(renderDiff(diffGate(w.dir, w.ticket(), 'Shippable?')), /^review\.md has not changed since your last review \(approvals\/snapshots\/shippable-1\.md\)\.$/);
+  w.put('review.md', ['---', 'title: Review', '---', '# Review APP-5', 'Add telemetry and an alert to the import.', '## Scope', 'Details.', ''].join('\n'));
+  const text = renderDiff(diffGate(w.dir, w.ticket(), 'Shippable?'));
+  assert.match(text, /^Changed since your last review \(review\.md vs approvals\/snapshots\/shippable-1\.md\):/);
   assert.match(text, /- \(top\): changed \(\+1 \/ -1 lines\)/);
   assert.match(text, /\+ Add telemetry and an alert to the import\./);
   assert.ok(!text.includes('Scope'), 'Unchanged sections are not shown.');
-  assert.equal(saveSnapshot(w.dir, w.ticket(), 'Scoped?').snapshot, 'approvals/snapshots/scoped-2.md');
+  assert.equal(saveSnapshot(w.dir, w.ticket(), 'Shippable?').snapshots[0].snapshot, 'approvals/snapshots/shippable-2.md');
 });
 
-test('the snapshot and diff commands print text or JSON and refuse bad arguments', (t) => {
+test('Planned? has 2 documents: a snapshot and a diff for each, the primary document keeps the plain snapshot name', (t) => {
   const w = wiki(t);
   w.readme();
-  w.put('story.md', ['# Story APP-5', '', 'Card text.', ''].join('\n'));
-  const base = ['--cwd', cwd, '--wiki', w.root];
-  const diff = run('diff', 'app-5', 'scoped', ...base);
-  assert.equal(diff.status, 0, diff.stderr);
-  assert.equal(diff.stdout.trim(), 'Summary of story.md (first review):\nCard text.');
-  const saved = run('snapshot', 'APP-5', 'Scoped?', '--json', ...base);
-  assert.equal(saved.status, 0, saved.stderr);
-  assert.equal(JSON.parse(saved.stdout).snapshot, 'approvals/snapshots/scoped-1.md');
-  assert.ok(existsSync(path.join(w.dir, 'approvals', 'snapshots', 'scoped-1.md')));
-  const again = run('snapshot', 'APP-5', 'Scoped?', ...base);
-  assert.equal(again.stdout.trim(), 'Scoped? unchanged: approvals/snapshots/scoped-1.md');
-  const json = JSON.parse(run('diff', 'APP-5', 'Scoped?', '--json', ...base).stdout);
-  assert.equal(json.changed, false);
-  assert.equal(json.card, 'Card text.');
-  const bad = run('diff', 'APP-5', ...base);
-  assert.equal(bad.status, 1);
-  assert.match(bad.stderr, /Usage: forge\.mjs diff <key> <gate>/);
-  const unknown = run('snapshot', 'APP-5', 'Shipped', ...base);
-  assert.notEqual(unknown.status, 0);
-  assert.match(unknown.stderr, /Unknown gate: Shipped/);
+  w.put('README.md', readFileSync(path.join(w.dir, 'README.md'), 'utf8').replace('name: Shippable?, doc: review.md', 'name: Planned?, doc: plan.md'));
+  w.put('story.md', ['# Story APP-5', '', 'Story summary.', '', '## Scope', '', 'Old scope', ''].join('\n'));
+  assert.throws(() => saveSnapshot(w.dir, w.ticket(), 'Planned?'), /plan\.md does not exist yet/);
+  w.put('plan.md', ['# Plan APP-5', '', 'Plan summary.', '', '## Steps', '', 'Old step', ''].join('\n'));
+  assert.equal(renderDiff(diffGate(w.dir, w.ticket(), 'Planned?')), 'Summary of story.md (first review):\nStory summary.\n\nSummary of plan.md (first review):\nPlan summary.');
+  const saved = saveSnapshot(w.dir, w.ticket(), 'Planned?');
+  assert.deepEqual(saved.snapshots.map((item) => [item.doc, item.snapshot, item.written]), [
+    ['story.md', 'approvals/snapshots/planned-story-1.md', true], ['plan.md', 'approvals/snapshots/planned-1.md', true],
+  ]);
+  assert.equal(renderDiff(diffGate(w.dir, w.ticket(), 'Planned?')), 'story.md and plan.md have not changed since your last review (approvals/snapshots/planned-story-1.md, approvals/snapshots/planned-1.md).');
+  w.put('story.md', readFileSync(path.join(w.dir, 'story.md'), 'utf8').replace('Old scope', 'New scope'));
+  const story = renderDiff(diffGate(w.dir, w.ticket(), 'Planned?'));
+  assert.equal(story, 'Changed since your last review (story.md vs approvals/snapshots/planned-story-1.md):\n- Scope: changed (+1 / -1 lines)\n  - Old scope\n  + New scope');
+  assert.deepEqual(saveSnapshot(w.dir, w.ticket(), 'Planned?').snapshots.map((item) => [item.snapshot, item.written]), [['approvals/snapshots/planned-story-2.md', true], ['approvals/snapshots/planned-1.md', false]], 'Only the changed document gets a new snapshot.');
+  w.put('plan.md', readFileSync(path.join(w.dir, 'plan.md'), 'utf8').replace('Old step', 'New step'));
+  const planOnly = renderDiff(diffGate(w.dir, w.ticket(), 'Planned?'));
+  assert.equal(planOnly, 'Changed since your last review (plan.md vs approvals/snapshots/planned-1.md):\n- Steps: changed (+1 / -1 lines)\n  - Old step\n  + New step');
+  w.put('story.md', readFileSync(path.join(w.dir, 'story.md'), 'utf8').replace('New scope', 'Newer scope'));
+  assert.match(renderDiff(diffGate(w.dir, w.ticket(), 'Planned?')), /^Changed since your last review \(story\.md vs approvals\/snapshots\/planned-story-2\.md\):[\s\S]*\n\nChanged since your last review \(plan\.md vs approvals\/snapshots\/planned-1\.md\):/);
 });
 
-test('full-v3 lint checks the summary, the document budget, empty sections, and the plain Now card', (t) => {
+test('the commands snapshot and diff are gone: gate-open shows the diff, and gate-open --dry-run shows it with no write', (t) => {
+  const w = wiki(t);
+  w.readme();
+  w.put('review.md', ['# Review APP-5', '', 'Card text.', ''].join('\n'));
+  const base = ['--cwd', cwd, '--wiki', w.root];
+  for (const command of ['snapshot', 'diff']) {
+    const result = run(command, 'APP-5', 'planned', ...base);
+    assert.equal(result.status, 2, command);
+    assert.match(result.stderr, /^Usage: node forge\.mjs <where\|/);
+    assert.doesNotMatch(result.stderr.split('\n')[0], /\b(snapshot|diff)\b/);
+  }
+  assert.ok(!existsSync(path.join(w.dir, 'approvals')), 'Nothing was written.');
+});
+
+test('lint checks the summary, the document budget, empty sections, and the plain Now card', (t) => {
   const w = wiki(t);
   const readme = (card) => w.put('README.md', [
-    '---', 'type: ticket', 'key: APP-5', 'title: Doc import error telemetry', 'workflow: full-v3', 'phase: start', 'state: needs-me',
+    '---', 'type: ticket', 'key: APP-5', 'title: Doc import error telemetry', 'workflow: full-v4', 'phase: start', 'state: needs-me',
     'next: Approve the scope', 'waiting_on: ""', 'changes: []', 'people: []', 'gates:',
-    '  - { name: Scoped?, doc: story.md, need: required, status: in-review }', 'updated: 2026-10-01', '---',
+    '  - { name: Planned?, doc: plan.md, need: required, status: in-review }', 'updated: 2026-10-01', '---',
     '# APP-5: Doc import error telemetry', '', ...card, '## Files', '',
   ].join('\n'));
   const warnings = () => lint({ wikiPath: w.root }).findings.filter((item) => item.severity === 'warning').map((item) => item.code);
   readme(['## Now', '', '- State: 🟡 needs-me', '- Phase: start', '- Next: Approve the scope', '- Waiting on: you', '']);
-  w.put('story.md', ['---', 'type: story', '---', '# Story APP-5: Telemetry', '', `Problem: ${words(40)}`, '', 'Need from you: GO on Scoped?.', '', '## Scope', '', words(300), ''].join('\n'));
+  w.put('story.md', ['---', 'type: story', '---', '# Story APP-5: Telemetry', '', `Problem: ${words(40)}`, '', 'Need from you: GO on Planned?.', '', '## Scope', '', words(300), ''].join('\n'));
   assert.deepEqual(warnings(), []);
   assert.equal(summaryBlock(readFileSync(path.join(w.dir, 'story.md'), 'utf8')).split('\n')[0], `Problem: ${words(40)}`);
 
@@ -150,19 +165,18 @@ test('full-v3 lint checks the summary, the document budget, empty sections, and 
   assert.equal(missing.message, 'README has no "## Now" card.');
 });
 
-test('the full-v3 approval form text is the summary on a first review, then only the changes', (t) => {
+test('the approval form text of a gate with one document is the summary on a first review, then only the changes', (t) => {
   const w = wiki(t);
   w.readme();
-  w.put('story.md', ['---', 'type: story', '---', '# Story APP-5: Telemetry', '', 'Problem: no telemetry.', '', 'Need from you: GO on Scoped?.', '', '## Scope', '', 'Old line', ''].join('\n'));
-  const first = diffGate(w.dir, w.ticket(), 'Scoped?');
-  assert.equal(first.layout, 'summary');
-  assert.equal(renderDiff(first), 'Summary of story.md (first review):\nProblem: no telemetry.\n\nNeed from you: GO on Scoped?.');
-  assert.equal(saveSnapshot(w.dir, w.ticket(), 'Scoped?').snapshot, 'approvals/snapshots/scoped-1.md');
-  assert.equal(renderDiff(diffGate(w.dir, w.ticket(), 'Scoped?')), 'story.md has not changed since your last review (approvals/snapshots/scoped-1.md).');
-  w.put('story.md', readFileSync(path.join(w.dir, 'story.md'), 'utf8').replace('Old line', 'New line'));
-  const text = renderDiff(diffGate(w.dir, w.ticket(), 'Scoped?'));
-  assert.match(text, /^Changed since your last review \(story\.md vs approvals\/snapshots\/scoped-1\.md\):\n- Scope: changed \(\+1 \/ -1 lines\)\n {2}- Old line\n {2}\+ New line$/);
-  w.put('story.md', '# Story APP-5: Telemetry\n\n## Scope\n\nText\n');
+  w.put('review.md', ['---', 'type: review', '---', '# Review APP-5: Telemetry', '', 'Result: telemetry works.', '', 'Need from you: GO on Shippable?.', '', '## Scope', '', 'Old line', ''].join('\n'));
+  const first = diffGate(w.dir, w.ticket(), 'Shippable?');
+  assert.equal(renderDiff(first), 'Summary of review.md (first review):\nResult: telemetry works.\n\nNeed from you: GO on Shippable?.');
+  assert.equal(saveSnapshot(w.dir, w.ticket(), 'Shippable?').snapshots[0].snapshot, 'approvals/snapshots/shippable-1.md');
+  assert.equal(renderDiff(diffGate(w.dir, w.ticket(), 'Shippable?')), 'review.md has not changed since your last review (approvals/snapshots/shippable-1.md).');
+  w.put('review.md', readFileSync(path.join(w.dir, 'review.md'), 'utf8').replace('Old line', 'New line'));
+  const text = renderDiff(diffGate(w.dir, w.ticket(), 'Shippable?'));
+  assert.match(text, /^Changed since your last review \(review\.md vs approvals\/snapshots\/shippable-1\.md\):\n- Scope: changed \(\+1 \/ -1 lines\)\n {2}- Old line\n {2}\+ New line$/);
+  w.put('review.md', '# Review APP-5: Telemetry\n\n## Scope\n\nText\n');
   rmSync(path.join(w.dir, 'approvals'), { recursive: true });
-  assert.match(renderDiff(diffGate(w.dir, w.ticket(), 'Scoped?')), /no summary: write at most 150 words under the title/);
+  assert.match(renderDiff(diffGate(w.dir, w.ticket(), 'Shippable?')), /no summary: write at most 150 words under the title/);
 });

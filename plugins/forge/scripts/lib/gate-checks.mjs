@@ -1,4 +1,4 @@
-// The checks of the plan before the Planned? gate: paths, baseline evidence, and the plan review.
+// The checks before a gate: the plan before Planned? (paths, baseline evidence, plan review) and the proof before Shippable?.
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
@@ -158,4 +158,35 @@ export function plannedChecks(dir, ticket, { policy = null, repoPath = '', check
     }
   }
   return done();
+}
+
+/**
+ * The checks of a ticket folder before the Shippable? gate: the proof of the changed behavior comes first.
+ * With policy.evidenceOnDeployedEnv true the proof needs the pushed code, so nothing is checked.
+ * Else proof.md must be a regular file and no check in it may be open or failed. It never throws.
+ * Returns { findings, proof }: the findings (the caller sets the severity) and 'proof.md' when the rule applies and the file is good.
+ */
+export function shippableChecks(dir, ticket, { policy = null } = {}) {
+  const none = { findings: [], proof: null };
+  try {
+    if (policy?.evidenceOnDeployedEnv === true) return none;
+    const file = path.join(dir, 'proof.md');
+    const bytes = readRegular(file);
+    if (!bytes) {
+      return { findings: [{ file, line: null, code: 'proof-missing', message: 'Shippable? needs proof.md: the proof of the changed behavior comes before this gate.', remedy: 'Do the Evidence Testing step now, and write proof.md. Set policy.evidenceOnDeployedEnv to true only when the proof needs a deployed environment.' }], proof: null };
+    }
+    const text = bytes.toString('utf8').replace(/^\uFEFF/, '');
+    const lines = text.replace(/\r\n/g, '\n').split('\n');
+    const checks = section(text, 'Checks');
+    const findings = [];
+    for (const item of checks ? numberedItems(checks.text) : []) {
+      const state = /^[^\p{L}]*(verified|failed|not proven)\b/iu.exec(item.title)?.[1].toLowerCase();
+      if (state === 'verified' || state === 'not proven') continue;
+      const line = lineOf(lines, checks.line - 1, (row) => /^\d+[.)]\s/.test(row) && row.includes(item.title));
+      findings.push(state === 'failed'
+        ? { file, line, code: 'proof-failed', message: `Check ${item.n} of proof.md failed.`, remedy: 'Go back to Implement. Shippable? opens when no check failed.' }
+        : { file, line, code: 'proof-open', message: `Check ${item.n} of proof.md is still open.`, remedy: 'Run the check, then mark it verified, failed, or not proven with the reason.' });
+    }
+    return { findings, proof: findings.length ? null : 'proof.md' };
+  } catch { return none; }
 }

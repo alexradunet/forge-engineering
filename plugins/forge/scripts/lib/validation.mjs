@@ -3,8 +3,8 @@ import { appendFileSync, lstatSync, readFileSync, readdirSync, writeFileSync } f
 import path from 'node:path';
 import { ACTION_GATES, GATES, GATE_DOCS, PREREQUISITES, nowCard, parseFrontmatter, parseTicket, validDate } from './ticket.mjs';
 import { homeOf, rawDir } from './layout.mjs';
-import { plannedChecks } from './gate-checks.mjs';
-import { DOC_BUDGET, SUMMARY_BUDGET, V3_DOCS, summaryCheck } from './reading.mjs';
+import { plannedChecks, shippableChecks } from './gate-checks.mjs';
+import { DOC_BUDGET, SUMMARY_BUDGET, ALL_GATE_DOCS, summaryCheck } from './reading.mjs';
 
 export { GATES };
 const SHA = /^[a-f0-9]{64}$/;
@@ -86,7 +86,7 @@ function approval(gate, file) {
       for (const required of [...expected, ...(gate.doc ? [gate.doc] : [])]) {
         if (!seen.has(relativeName(required))) throw new Error(`Manifest omits ${required}.`);
       }
-      if (manifest.approvedCopies != null) throw new Error('full-v3 has one plan.md and no approved copy.');
+      if (manifest.approvedCopies != null) throw new Error('The plan has no approved copy.');
     } catch (error) {
       fail('approval-manifest', error.message, 'Supply a complete manifest outside its document set; ask for explicit approval.');
     }
@@ -235,9 +235,9 @@ function markdownFiles(root, onError) {
 const sameText = (a, b) => String(a ?? '').replace(/[`*_]/g, '').replace(/\s+/g, ' ').trim().toLowerCase()
   === String(b ?? '').replace(/[`*_]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
 
-// Warnings only, for full-v3: the summary and the whole document stay in their word budgets, and no section is empty.
+// Warnings only: the summary and the whole document stay in their word budgets, and no section is empty.
 function plainWarnings(dir, add, inspect) {
-  for (const name of V3_DOCS) {
+  for (const name of ALL_GATE_DOCS) {
     const doc = path.join(dir, name);
     inspect(doc, () => {
       let text;
@@ -253,7 +253,7 @@ function plainWarnings(dir, add, inspect) {
         add(doc, 'document-over-budget', `The document has ${check.total} words; the budget is ${DOC_BUDGET}.`, 'Move detail to an evidence file and link it. Do not drop facts.', 'warning');
       }
       for (const item of check.empty) {
-        add(doc, 'empty-section', `Section "${item.heading}" has no content.`, 'Remove the section. A full-v3 document has only the sections with content.', 'warning', item.line);
+        add(doc, 'empty-section', `Section "${item.heading}" has no content.`, 'Remove the section. A gate document has only the sections with content.', 'warning', item.line);
       }
     });
   }
@@ -310,6 +310,12 @@ export function lint({ wikiPath, repoPath, fix = false, policy = null, checkouts
         if (planned?.status !== 'approved' && (planned?.status === 'in-review' || ['investigate', 'plan'].includes(ticket.phase))) {
           const severity = planned?.status === 'in-review' ? 'error' : 'warning';
           for (const item of plannedChecks(dir, ticket, { policy, repoPath, checkouts }).findings) add(item.file, item.code, item.message, item.remedy, severity, item.line);
+        }
+        // The proof checks run for Shippable? in review (error), and in phase review before the approval (warning).
+        const shippable = ticket.gates.find((gate) => gate.name === 'Shippable?');
+        if (shippable?.status === 'in-review' || (shippable?.status !== 'approved' && ticket.phase === 'review')) {
+          const severity = shippable?.status === 'in-review' ? 'error' : 'warning';
+          for (const item of shippableChecks(dir, ticket, { policy }).findings) add(item.file, item.code, item.message, item.remedy, severity, item.line);
         }
         const drafts = markdownFiles(dir, (file, error) => add(file, 'invalid-input', error.message, 'Inspect this draft path explicitly; no linked file is repaired.'));
         for (const draft of drafts.filter((name) => name.endsWith('.draft.md'))) {

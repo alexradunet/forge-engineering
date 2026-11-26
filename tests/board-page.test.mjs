@@ -27,7 +27,7 @@ function wiki(t) {
     mkdirSync(path.dirname(file), { recursive: true });
     writeFileSync(file, text);
   };
-  const ticket = (key, { state = 'active', phase = 'plan', updated = '2026-11-16', title = `Title of ${key}`, short = '', workflow = 'full-v3', gates = [], people = [], extra = [] } = {}) => put(`raw/tickets/${key.toLowerCase()}/README.md`, [
+  const ticket = (key, { state = 'active', phase = 'plan', updated = '2026-11-16', title = `Title of ${key}`, short = '', workflow = 'full-v4', gates = [], people = [], extra = [] } = {}) => put(`raw/tickets/${key.toLowerCase()}/README.md`, [
     '---', 'type: ticket', `key: ${key}`, `title: ${JSON.stringify(title)}`, ...(short ? [`short: ${short}`] : []),
     `workflow: ${workflow}`, `phase: ${phase}`, `state: ${state}`, `next: Next step for ${key}`, 'waiting_on: ""',
     'changes: []', ...(people.length ? ['people:', ...people] : ['people: []']), 'gates:', ...gates, ...extra, `updated: ${updated}`, '---', `# ${key}`, '',
@@ -35,13 +35,13 @@ function wiki(t) {
   return { root, put, ticket };
 }
 
-// Four tickets: one waits for the user at Planned?, one is blocked and old, one is active, and one is done.
+// Four tickets: one waits for the user at Shippable?, one is blocked and old, one is active, and one is done.
 function fill(w) {
   w.ticket('APP-9', { state: 'needs-me', short: 'Fix outbox retry', gates: [
-    '  - { name: Scoped?, doc: story.md, need: required, status: approved, date: 2026-11-10 }',
-    '  - { name: Planned?, doc: plan.md, need: required, status: in-review }',
+    '  - { name: Planned?, doc: plan.md, need: required, status: approved, date: 2026-11-10 }',
+    '  - { name: Shippable?, doc: review.md, need: required, status: in-review }',
   ], extra: ['worktree: /code/app.worktrees/APP-9'] });
-  w.put('raw/tickets/app-9/plan.md', '---\ntype: plan\n---\n# Plan APP-9\n\nCause: the wrong key.\n\n## Steps\n\n1. Read the new key\n');
+  w.put('raw/tickets/app-9/review.md', '---\ntype: review\n---\n# Review APP-9\n\nResult: the key is read.\n\n## Checks\n\n1. The new key works\n');
   w.ticket('APP-10', { state: 'blocked', updated: '2026-11-03', title: 'A </script><script>alert(1)</script> "title" & more', people: [
     '  - { name: Ana, role: reviewer, status: waiting, since: 2026-11-05, ask: "Log access" }',
   ] });
@@ -90,7 +90,7 @@ test('the links between the pages are relative in a file page and use the server
   assert.deepEqual(fromBoard.tickets.map((item) => [item.key, item.href]), [
     ['APP-9', 'tickets/app-9/README.md'], ['APP-10', 'tickets/app-10/README.md'], ['APP-11', 'tickets/app-11/README.md'], ['APP-2', 'tickets/app-2/README.md'],
   ]);
-  assert.equal(fromBoard.tickets[0].gate, 'Planned? needs you'); // Forge 9.2: the one word for a gate in review is "needs you"
+  assert.equal(fromBoard.tickets[0].gate, 'Shippable? needs you'); // Forge 9.2: the one word for a gate in review is "needs you"
   assert.equal(fromBoard.file('app-9', 'evidence/a b.md'), 'tickets/app-9/evidence/a%20b.md');
   assert.deepEqual(Object.keys(fromBoard).sort(), ['board', 'closed', 'file', 'tickets', 'wiki'], 'the links have no previous and next ticket, and no page of a ticket');
 
@@ -127,9 +127,9 @@ test('the board page is one self-contained file: the tickets that wait first, on
   assert.match(html, /<button type="button" class="chip st-go" data-state="go" title="Show only Go \(3\)" aria-pressed="false" disabled><span aria-hidden="true">🟢<\/span> Go <b>0<\/b><\/button>/);
   assert.match(html, /<button type="button" class="chip st-needs-me" data-state="needs-me" title="Show only Needs you \(1\)" aria-pressed="false"><span aria-hidden="true">🟡<\/span> Needs you <b>1<\/b><\/button>/);
   // A ticket with a gate in review opens at the document of that gate: an editor link has no data-nav.
-  assert.ok(html.includes(`<a class="open" href="${editor(w.root, 'app-9', 'plan.md')}" title="Title of APP-9">Fix outbox retry</a>`));
+  assert.ok(html.includes(`<a class="open" href="${editor(w.root, 'app-9', 'review.md')}" title="Title of APP-9">Fix outbox retry</a>`));
   // Forge 9.2: the gate row is the kit ingots (gatesHtml) with the words of the open gate. It has the key of the ticket and of each gate for the spark script.
-  assert.match(html, /<p class="tline"><span class="gates" data-gates="app-9"><span class="ingots" role="img" aria-label="Gates: Scoped\? approved, Planned\? needs you"><span class="ingot ig-approved" data-gate="Scoped\?" data-status="approved" title="Scoped\? approved"><\/span><span class="ig-line"><\/span><span class="ingot ig-in-review" data-gate="Planned\?" data-status="in-review" title="Planned\? needs you"><\/span><\/span><span class="gate-words">Planned\? needs you<\/span><\/span><\/p>/);
+  assert.match(html, /<p class="tline"><span class="gates" data-gates="app-9"><span class="ingots" role="img" aria-label="Gates: Planned\? approved, Shippable\? needs you"><span class="ingot ig-approved" data-gate="Planned\?" data-status="approved" title="Planned\? approved"><\/span><span class="ig-line"><\/span><span class="ingot ig-in-review" data-gate="Shippable\?" data-status="in-review" title="Shippable\? needs you"><\/span><\/span><span class="gate-words">Shippable\? needs you<\/span><\/span><\/p>/);
   // The card is the kit frame with the edge of its state.
   assert.match(html, /<article class="frame edge st-needs-me tcard" id="ticket-app-9"/);
   assert.match(html, /<article class="frame edge st-blocked tcard stale" id="ticket-app-10"/, 'an open ticket without an update for 7 days has a mark');
@@ -156,14 +156,14 @@ test('the board page is one self-contained file: the tickets that wait first, on
   assert.throws(() => renderBoardPage(board, { links: 'web' }), /Unknown link mode/);
   // The switcher has each ticket in board order, and the page has the keys.
   assert.ok(at('<dialog id="switcher"') < at('<dialog id="help"'));
-  assert.match(html, /<li class="group">🟡 Needs you<\/li><li><a href="tickets\/app-9\/README\.md" data-nav data-text="app-9 fix outbox retry needs you plan planned\? needs you">/);
+  assert.match(html, /<li class="group">🟡 Needs you<\/li><li><a href="tickets\/app-9\/README\.md" data-nav data-text="app-9 fix outbox retry needs you plan shippable\? needs you">/);
   // Forge 9.2: the pages say "needs you" for the state needs-me, and "Needs me" stays in raw/board.md.
   assert.equal(renderBoardPage(buildBoard(w.root, { today: TODAY }), { wiki: w.root }), html, 'the same input gives the same bytes');
 
   const served = renderBoardPage(board, { wiki: w.root, serve: { token: TOKEN } });
   assert.match(served, new RegExp(`"token":"${TOKEN}"`));
   assert.doesNotMatch(served, /\/ticket\/[^"]*\/\?t=|canvas\.html/, 'a ticket has no page of its own on the server');
-  assert.match(renderBoardPage(board, { links: 'file', wiki: w.root, serve: { token: TOKEN } }), new RegExp(`<a class="open" href="/ticket/app-9/plan\\.md\\?t=${TOKEN}" data-nav title=`));
+  assert.match(renderBoardPage(board, { links: 'file', wiki: w.root, serve: { token: TOKEN } }), new RegExp(`<a class="open" href="/ticket/app-9/review\\.md\\?t=${TOKEN}" data-nav title=`));
   assert.doesNotMatch(html, /"token"/);
   assert.throws(() => renderBoardPage(board, { serve: { token: 'x' } }), /page token/);
 });
@@ -183,21 +183,21 @@ test('a ticket card links to the document of its gate in review, else to its REA
   const w = wiki(t);
   fill(w);
   // A gate in review without a doc name gets the document of its gate. A doc name that leaves the ticket folder gets the README.
-  w.ticket('APP-12', { state: 'needs-me', gates: ['  - { name: Scoped?, doc: story.md, need: required, status: approved, date: 2026-11-10 }', '  - { name: Planned?, doc: plan.md, need: required, status: approved, date: 2026-11-11 }', '  - { name: Shippable?, need: required, status: in-review }'] });
-  w.ticket('APP-13', { state: 'needs-me', gates: ['  - { name: Scoped?, doc: ../../../outside.md, need: required, status: in-review }'] });
+  w.ticket('APP-12', { state: 'needs-me', gates: ['  - { name: Planned?, doc: plan.md, need: required, status: approved, date: 2026-11-11 }', '  - { name: Shippable?, need: required, status: in-review }'] });
+  w.ticket('APP-13', { state: 'needs-me', gates: ['  - { name: Planned?, doc: ../../../outside.md, need: required, status: in-review }'] });
   const board = buildBoard(w.root, { today: TODAY });
   const card = (html, folder) => new RegExp(`<article [^>]*id="ticket-${folder}"[\\s\\S]*?<h3><a class="open" href="([^"]+)"( data-nav)? title=`).exec(html);
   const editorMode = renderBoardPage(board, { wiki: w.root });
-  for (const [folder, name] of [['app-9', 'plan.md'], ['app-10', 'README.md'], ['app-11', 'README.md'], ['app-12', 'review.md'], ['app-13', 'README.md']]) {
+  for (const [folder, name] of [['app-9', 'review.md'], ['app-10', 'README.md'], ['app-11', 'README.md'], ['app-12', 'review.md'], ['app-13', 'README.md']]) {
     assert.deepEqual([card(editorMode, folder)[1], card(editorMode, folder)[2] ?? ''], [editor(w.root, folder, name), ''], `${folder}: editor link, no data-nav`);
   }
   const fileMode = renderBoardPage(board, { links: 'file', wiki: w.root });
-  for (const [folder, name] of [['app-9', 'plan.md'], ['app-10', 'README.md'], ['app-11', 'README.md'], ['app-12', 'review.md'], ['app-13', 'README.md']]) {
+  for (const [folder, name] of [['app-9', 'review.md'], ['app-10', 'README.md'], ['app-11', 'README.md'], ['app-12', 'review.md'], ['app-13', 'README.md']]) {
     assert.deepEqual([card(fileMode, folder)[1], card(fileMode, folder)[2]], [`tickets/${folder}/${name}`, ' data-nav'], `${folder}: relative link`);
   }
   // The done row and the strip use the same rule.
   assert.ok(fileMode.includes('<a class="open" href="tickets/app-2/README.md" data-nav title="Title of APP-2">'));
-  assert.ok(fileMode.includes('<a class="primary" href="tickets/app-9/plan.md" data-nav aria-label="Open APP-9">Open</a>'));
+  assert.ok(fileMode.includes('<a class="primary" href="tickets/app-9/review.md" data-nav aria-label="Open APP-9">Open</a>'));
   assert.doesNotMatch(fileMode + editorMode, /canvas\.html|#zone-/);
 });
 
@@ -240,7 +240,7 @@ test('forge.mjs board writes the board page and the wiki page, and forge.mjs can
   assert.equal(report.page.written, true);
   assert.deepEqual(Object.keys(report.page).sort(), ['file', 'url', 'wiki', 'written'], 'the report has no canvas count');
   assert.ok(existsSync(path.join(w.root, 'raw', 'wiki.html')));
-  assert.deepEqual(report.groups[0].tickets[0].gates, [{ name: 'Scoped?', status: 'approved', doc: 'story.md' }, { name: 'Planned?', status: 'in-review', doc: 'plan.md' }]);
+  assert.deepEqual(report.groups[0].tickets[0].gates, [{ name: 'Planned?', status: 'approved', doc: 'plan.md' }, { name: 'Shippable?', status: 'in-review', doc: 'review.md' }]);
   const human = run('board', '--today', TODAY, '--links', 'file');
   assert.match(human.stdout, /board\.md\n {2}open {2}file:\/\/\S+board\.html\n {2}wiki {2}file:\/\/\S+wiki\.html\n$/);
   const page = readFileSync(path.join(w.root, 'raw', 'board.html'), 'utf8');
@@ -256,8 +256,8 @@ test('the next strike strip: one banner above the lanes, with the key, the text,
   fill(w);
   const html = renderBoardPage(buildBoard(w.root, { today: TODAY }), { wiki: w.root, links: 'file' });
   // A gate in review: a warn banner, and the link goes to the document of that gate (as the link of the card does).
-  assert.ok(html.includes('<div class="banner bn-warn" role="status" id="strike"><p><span class="key">APP-9</span> Planned? needs you. Read plan.md.</p>'
-    + '<span class="bn-acts"><a class="primary" href="tickets/app-9/plan.md" data-nav aria-label="Open APP-9">Open</a></span></div>'));
+  assert.ok(html.includes('<div class="banner bn-warn" role="status" id="strike"><p><span class="key">APP-9</span> Shippable? needs you. Read review.md.</p>'
+    + '<span class="bn-acts"><a class="primary" href="tickets/app-9/review.md" data-nav aria-label="Open APP-9">Open</a></span></div>'));
   assert.equal(html.match(/id="strike"/g).length, 1);
   assert.equal(html.match(/class="primary"/g).length, 1, 'one primary link');
   // The strip is above the lanes, and it is not a ticket: the filter and the chips (they read data-text and data-state) do not hide it.

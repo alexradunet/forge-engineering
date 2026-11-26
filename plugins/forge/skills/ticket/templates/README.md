@@ -4,7 +4,7 @@ key: <KEY>
 title: <work item summary>
 short: <3 to 6 words for the session title>
 item: <work item URL>
-workflow: full-v3
+workflow: full-v4
 phase: start        # start | investigate | plan | implement | review | closed
 state: active       # needs-me 🟡 | go 🟢 | active ▶️ | waiting ⏳ | blocked 🔴 | done ✅
 next: <one sentence>
@@ -15,7 +15,6 @@ changes: []         # - { url: <change request URL>, label: "#<n>", state: draft
 people: []          # - { name: <name or handle>, role: reviewer, status: to-contact, since: <yyyy-mm-dd>, ask: "<what>", via: tracker, draft: outbox/<name>.md }
                     #   status: to-contact | drafted | waiting | follow-up | reply-in | done
 gates:              # approved needs date, manifest, and the full SHA-256 of the raw manifest bytes
-  - { name: Scoped?, doc: story.md, need: required, status: todo }
   - { name: Planned?, doc: plan.md, need: required, status: todo }
   - { name: Sendable?, doc: outbox/, need: required, status: todo }
   - { name: Shippable?, doc: review.md, need: required, status: todo }

@@ -1,7 +1,7 @@
 ---
 type: story
 ticket: <KEY>
-gate: Scoped?
+gate: Planned?
 updated: <yyyy-mm-dd>
 ---
 # Story <KEY>: <short title>
@@ -9,8 +9,6 @@ updated: <yyyy-mm-dd>
 Problem: <what is wrong, for whom, and how large it is, with a number when one exists>
 
 Scope: <what we change, and the main thing that we do not change>
-
-Need from you: GO on Scoped?, and <n> decisions. Then I investigate.
 
 Decision 1: <question>? Recommended: <answer>.
 

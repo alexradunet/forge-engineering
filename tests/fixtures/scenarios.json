@@ -1,12 +1,11 @@
 [
   {
-    "id": "v3-small-fix-full-research",
-    "workflow": "full-v3",
-    "sequence": ["research", "interview", "scope", "cold-read", "investigate", "plan", "implement", "review", "evidence", "close", "distill", "archive"],
+    "id": "v4-small-fix-full-research",
+    "workflow": "full-v4",
+    "sequence": ["research", "interview", "scope-check", "investigate", "options", "plan", "baseline", "cold-read", "implement", "evidence", "review", "close", "distill", "archive"],
     "gateAfterActions": {
-      "Scoped?": ["research", "interview", "scope", "cold-read"],
-      "Planned?": ["investigate", "plan"],
-      "Shippable?": ["review"],
+      "Planned?": ["investigate", "options", "plan", "baseline", "cold-read"],
+      "Shippable?": ["evidence", "review"],
       "Learned?": ["evidence"]
     },
     "requiredEvents": [
@@ -17,7 +16,7 @@
       { "kind": "source", "name": "regression-risks", "status": "available" }
     ],
     "expectedArtifacts": [
-      { "path": "README.md", "includes": ["workflow: full-v3", "## Now"], "excludes": ["track:", "## 📍 Now", "Understood?", "Designed?"] },
+      { "path": "README.md", "includes": ["workflow: full-v4", "## Now"], "excludes": ["track:", "## 📍 Now", "Understood?", "Designed?", "Scoped?"] },
       { "path": "story.md", "includes": ["Need from you:", "## Scope", "## Done when"], "excludes": ["## ⚡ 1 min"] },
       { "path": "plan.md", "includes": ["Need from you:", "## Diagnosis", "## Steps", "## Checks"], "excludes": ["## ⚡ 1 min"] },
       { "path": "map.md", "includes": ["## Components", "## Flow"] },
@@ -30,24 +29,38 @@
     "forbiddenActions": ["external-write", "select-track", "skip-phase"]
   },
   {
-    "id": "v3-large-change-full-research",
-    "workflow": "full-v3",
-    "sequence": ["research", "interview", "scope", "cold-read", "investigate", "plan", "implement", "review", "evidence", "close", "distill", "archive"],
+    "id": "v4-large-change-full-research",
+    "workflow": "full-v4",
+    "sequence": ["research", "interview", "scope-check", "investigate", "options", "plan", "baseline", "cold-read", "implement", "evidence", "review", "close", "distill", "archive"],
     "gateAfterActions": {
-      "Scoped?": ["research", "interview", "scope", "cold-read"],
-      "Planned?": ["investigate", "plan"],
-      "Shippable?": ["review"],
+      "Planned?": ["investigate", "options", "plan", "baseline", "cold-read"],
+      "Shippable?": ["evidence", "review"],
       "Learned?": ["evidence"]
     },
     "expectedArtifacts": [
-      { "path": "README.md", "includes": ["workflow: full-v3"], "excludes": ["track:"] }
+      { "path": "README.md", "includes": ["workflow: full-v4"], "excludes": ["track:"] }
     ],
     "forbiddenArtifacts": ["context.md", "briefing.md", "interview.md", "scope.md", "investigation.md", "plan.draft.md", "test-plan.md", "evidence-testing.md", "close.draft.md", "decisions.md", "log.md", "troubleshooting.md"],
     "forbiddenActions": ["external-write", "select-track", "skip-phase"]
   },
   {
+    "id": "deployed-evidence",
+    "workflow": "full-v4",
+    "deployedEvidence": true,
+    "sequence": ["research", "interview", "scope-check", "investigate", "options", "plan", "baseline", "cold-read", "implement", "review", "evidence", "close", "distill", "archive"],
+    "gateAfterActions": {
+      "Planned?": ["investigate", "options", "plan", "baseline", "cold-read"],
+      "Shippable?": ["review"],
+      "Learned?": ["evidence"]
+    },
+    "expectedArtifacts": [
+      { "path": "README.md", "includes": ["workflow: full-v4"], "excludes": ["track:"] }
+    ],
+    "forbiddenActions": ["external-write", "select-track", "skip-phase"]
+  },
+  {
     "id": "diagnosis-contradicts-scope",
-    "workflow": "full-v3",
+    "workflow": "full-v4",
     "sequence": ["investigate", "report-scope-conflict"],
     "requiredEvents": [
       { "kind": "decision", "subject": "scope-change", "value": "accepted" }
@@ -59,20 +72,21 @@
   },
   {
     "id": "combined-approval",
-    "workflow": "full-v3",
+    "workflow": "full-v4",
     "gateDocuments": {
-      "Scoped?": ["story.md", "evidence/history.md"]
+      "Planned?": ["story.md", "plan.md", "evidence/history.md"]
     },
-    "sequence": ["investigate"],
+    "sequence": ["investigate", "plan", "implement"],
     "expectedArtifacts": [
       { "path": "story.md" },
+      { "path": "plan.md" },
       { "path": "evidence/history.md" }
     ],
     "forbiddenActions": ["external-write"]
   },
   {
     "id": "changed-artifact",
-    "workflow": "full-v3",
+    "workflow": "full-v4",
     "sequence": ["read", "report-stale"],
     "expectedArtifacts": [
       { "path": "story.md", "includes": ["Changed"] }
@@ -81,7 +95,7 @@
   },
   {
     "id": "external-write-refusal",
-    "workflow": "full-v3",
+    "workflow": "full-v4",
     "requiredEvents": [
       { "kind": "decision", "subject": "external-write", "value": "declined" }
     ],
@@ -93,7 +107,7 @@
   },
   {
     "id": "unavailable-sources",
-    "workflow": "full-v3",
+    "workflow": "full-v4",
     "requiredEvents": [
       { "kind": "source", "name": "ticket-history", "status": "unavailable" }
     ],
@@ -105,7 +119,7 @@
   },
   {
     "id": "declined-learning",
-    "workflow": "full-v3",
+    "workflow": "full-v4",
     "requiredEvents": [
       { "kind": "decision", "subject": "learning", "value": "declined" }
     ],

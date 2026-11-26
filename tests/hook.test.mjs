@@ -31,7 +31,7 @@ function git(cwd, ...args) {
   return result.stdout.trim();
 }
 
-function setup(t, { workflow = 'full-v3', worktree = '', branch = '' } = {}) {
+function setup(t, { workflow = 'full-v4', worktree = '', branch = '' } = {}) {
   const root = mkdtempSync(path.join(os.tmpdir(), 'forge-hook-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const app = path.join(root, 'app');
@@ -429,6 +429,14 @@ test('a ticket folder with a README that cannot be read gives one "cannot read" 
   assert.doesNotMatch(prompt.additionalContext, /follow Start/);
 });
 
+test('a full-v3 ticket gives the "cannot read" line with the Forge 10.1 hint and no Start', (t) => {
+  const s = withPrefix(t);
+  writeFileSync(s.readme, readFileSync(s.readme, 'utf8').replace('workflow: full-v4', 'workflow: full-v3'));
+  const out = sessionStart({ cwd: s.app, source: 'startup', prompt: 'work on APP-7' }, { cli, env, host: 'claude', part: 1 }).hookSpecificOutput;
+  assert.match(out.additionalContext, /has a README that Forge cannot read: Unsupported ticket workflow: full-v3\. Forge 12 reads only workflow: full-v4\. Finish this ticket with Forge 10\.1\. README: /);
+  assert.doesNotMatch(out.additionalContext, /follow Start|no ticket folder/);
+});
+
 test('a later prompt names a ticket only in its first characters', (t) => {
   const s = withPrefix(t);
   const call = (prompt) => promptSubmit({ cwd: s.app, prompt, title: '' }, { cli, env });
@@ -467,17 +475,17 @@ test('forge.mjs context prints the context for a host without the hook, and the 
   }
 });
 
-test('a full-v3 ticket gets the plain Now card and Resume', (t) => {
-  const s = setup(t, { workflow: 'full-v3' });
+test('a full-v4 ticket gets the plain Now card and Resume', (t) => {
+  const s = setup(t, { workflow: 'full-v4' });
   writeFileSync(s.readme, readFileSync(s.readme, 'utf8')
     .replace('## 📍 Now', '## Now').replace(/- \*\*(\w+):\*\*/g, '- $1:'));
   const folder = path.join(`${s.app}.worktrees`, 'app-7-doc-import');
   git(s.app, 'worktree', 'add', '-q', '-b', 'APP-7-doc-import', folder);
-  const v3 = ticketOf(run({ cwd: folder, prompt: '' }).additionalContext);
-  assert.match(v3, /workflow full-v3\./);
-  assert.match(v3, /2\. Load the ticket skill and follow Resume\./);
-  assert.match(v3, /Now card from the README:\n- State: 🟡 needs-me\n- Phase: plan\n- Next: Approve Planned\?/);
-  assert.doesNotMatch(v3, /legacy/);
+  const v4 = ticketOf(run({ cwd: folder, prompt: '' }).additionalContext);
+  assert.match(v4, /workflow full-v4\./);
+  assert.match(v4, /2\. Load the ticket skill and follow Resume\./);
+  assert.match(v4, /Now card from the README:\n- State: 🟡 needs-me\n- Phase: plan\n- Next: Approve Planned\?/);
+  assert.doesNotMatch(v4, /legacy/);
   assert.deepEqual(nowCard('# A\n\n## Now\n\n- State: ▶️ active\n- Waiting on: nobody\n\n## Files\n').fields, { state: '▶️ active', 'waiting on': 'nobody' });
 });
 

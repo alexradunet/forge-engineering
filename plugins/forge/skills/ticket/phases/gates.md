@@ -8,10 +8,10 @@ After a compaction of the session, read this file again before you use its steps
 
 The user reads a gate document without your session history. So test it with a reader that has none.
 
-Before you open Scoped?, Planned?, Shippable?, or Learned?, run one cold read of the primary document (the `agents` skill, "Cold read"):
+Before you open Planned?, Shippable?, or Learned?, run one cold read of the gate documents (the `agents` skill, "Cold read"):
 
-1. The reader gets only the path of the document. It gives a paraphrase, each term or reference that it cannot resolve, and each claim without an evidence link.
-2. For `plan.md`, it also says if it can implement the plan from `plan.md` and `map.md` alone, and it lists each missing fact.
+1. The reader gets only the path of the document. For Planned?, it gets the paths of `story.md` and `plan.md`. It gives a paraphrase, each term or reference that it cannot resolve, and each claim without an evidence link.
+2. For Planned?, it also reads `map.md`. It says if it can implement the plan from `story.md`, `plan.md`, and `map.md` alone, and it lists each missing fact.
 3. Compare the paraphrase with what you mean. A wrong paraphrase shows an unclear summary. Correct the document, not the reader.
 4. Add one `check` entry to `journal.md`: the findings, and what you changed.
 
@@ -43,10 +43,10 @@ Sendable? does not use this procedure. It has its own steps (see Sendable? for e
 
 - An approval covers exact file revisions.
 - `gate-open` writes a new manifest for each review revision, for example `approvals/planned-002.json`. It never overwrites an old one.
-- It lists the gate document and the evidence that the checks found. Name each other evidence file that the user must see as an extra argument.
+- It lists the gate documents and the evidence that the checks found. For Shippable?, it also lists `proof.md` when `policy.evidenceOnDeployedEnv` is `false`. Name each other evidence file that the user must see as an extra argument.
 - It refuses `README.md`, a manifest, `approvals/history.md`, and `journal.md`.
 - One explicit user approval covers the whole displayed set. Do not ask for per-file approvals.
-- A change to a covered file makes the gate stale. `plan.md` has no second copy: after approval, do not edit it. To change the plan, edit `plan.md`, set Planned? to `in-review`, and stop the implementation until the new GO. `approvals/snapshots/` keeps the revision of each review.
+- A change to a covered file makes the gate stale. `story.md` and `plan.md` have no second copy: after approval, do not edit them. To change one, edit it, set Planned? to `in-review`, and stop the implementation until the new GO. `approvals/snapshots/` keeps the revision of each review.
 - Before any blocked action and on Resume, validate the approvals with `<F> lint`. A missing file, malformed metadata, a conflicting state, or a stale hash is a finding: show its file and its remedy. Block only the affected action. Read-only work stays possible.
 
 ### Sendable? for each write
@@ -77,7 +77,7 @@ Exception: the draft of a new change request (`target: change` in its frontmatte
 
 ### ✅ Approval form
 
-Show it with `host.ask` at each gate. Use one field, `decision`, with these options. Put the gate question first in the message, for example "Planned? Is the plan for APP-123 correct?".
+Show it with `host.ask` at each gate. Use one field, `decision`, with these options. Put the gate question first in the message, for example "Planned? Are the scope and the plan for APP-123 correct?".
 
 | Value | Title |
 |---|---|
@@ -88,9 +88,9 @@ Show it with `host.ask` at each gate. Use one field, `decision`, with these opti
 
 The message body is short. Put in it, in this order:
 
-1. The gate question, and the link to the primary document.
+1. The gate question, and the link to the primary document. For Planned?, the links to `story.md` and `plan.md`.
 2. The output of `<F> gate-open` (Procedure step 2):
-   - The diff. First review: the summary of the document, and nothing more from the document. Later review: only the changed sections and lines. Do not repeat the summary. When nothing changed, say so in one line.
+   - The diff. First review: the summary of the document (for Planned?, of both documents), and nothing more from the document. Later review: only the changed sections and lines. Do not repeat the summary. When nothing changed, say so in one line.
    - The manifest line, with its link and SHA-256 (a 12-character display prefix is fine; the stored hash is full length), and one line for each file.
    - For Planned?: the open blockers and the concerns of the plan review, and the carry sentence when it shows.
 3. State that GO approves this exact set.

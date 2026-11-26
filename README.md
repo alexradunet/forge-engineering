@@ -127,7 +127,7 @@ Setup offers the native wiki of the private repository, a separate private `<rep
 | `plugins/forge/hooks/` | `hooks.json`: the same context for Claude Code (spike). `SessionStart` gives it in parts of at most 9,000 characters (2 parts for a session without company rules), `UserPromptSubmit` sets the ticket title, and `PreToolUse` is the gate guard. See `Claude Code host` in [vscode-baseline.md](docs/vscode-baseline.md) Forge 7.6 adds the live reporter (`scripts/live-hook.mjs`) as a background hook on the activity events of a session: see [Live view](#-live-view). Forge 9.1 adds the session list: part 1 of `SessionStart` writes the start of a session, and `forge.mjs hook session-end` at `SessionEnd` writes its end. |
 | `plugins/forge/skills/` | `ticket`, `agents`, `board`, `wiki`, `forge-setup`, `writing` |
 | `plugins/forge/templates/` | The profile: config (`config/`), rule pages (`rules/`), setup values (`profile.md`), and machine values with the list of the other profile files (`profile.json`) |
-| `plugins/forge/scripts/` | `forge.mjs` (init, config, trust, lint, board, worktree, snapshot, diff, live, open, gate-open, gate-approve, hook, wiki scripts), `cred.mjs`, `live-hook.mjs` (the reporter of the live view) |
+| `plugins/forge/scripts/` | `forge.mjs` (init, config, trust, lint, board, worktree, live, open, gate-open, gate-approve, hook, wiki scripts), `cred.mjs`, `live-hook.mjs` (the reporter of the live view) |
 | `plugins/forge/vendor/mermaid/` | The only third-party program of the plugin: the small Mermaid build that draws the diagrams of the wiki page, with its license and a [notice](plugins/forge/vendor/mermaid/NOTICE.md) (version, hash, update steps) |
 | `docs/` | [config.md](docs/config.md) (config format), [wiki.md](docs/wiki.md) (sharing and scripts), [evaluation.md](docs/evaluation.md) (behavioral runs: `npm run eval` gives the cases of `tests/evals/` to a real agent session), and [vscode-baseline.md](docs/vscode-baseline.md) (the VS Code features that forge uses) |
 | `AGENTS.md` | [Rules for agents that develop forge](AGENTS.md): docs-first checks, tests, and file format |
@@ -171,9 +171,10 @@ No mode allows em dashes or en dashes in prose. License texts are in [NOTICE.md]
    - **New Worktree** session: the agent renames the `agents/...` branch with `git branch -m` before the first commit. VS Code keeps its folder name.
    - **Folder** session on the main checkout: after one "yes", the agent creates the worktree and moves the session there with `set_workspace`.
    - When a worktree of the ticket exists, the agent continues there.
-3. Every new ticket uses `workflow: full-v3`, with no sizing question:
-   research → scope interview → **Scoped?** →
-   investigation (🛑 diagnosis stop) → plan → **Planned?** → implement → **Shippable?** → Evidence Testing.
+3. Every new ticket uses `workflow: full-v4`, with no sizing question:
+   research → scope interview → scope check in chat →
+   investigation (🛑 diagnosis stop) → plan → **Planned?** → implement → Evidence Testing → **Shippable?**.
+   When `policy.evidenceOnDeployedEnv` is `true`, Evidence Testing runs after the push.
    A small fix has the same phases and gates. Its documents are shorter.
 4. Read the gate document, and add your comments (in VS Code, comment threads of the editor; in Claude Code and Copilot CLI, the chat). One explicit user approval covers the
    displayed file and revision set, recorded in a SHA-256 manifest. `forge.mjs gate-open <key> <gate>` builds that set, writes the manifest and the snapshot, sets the gate to `in-review`, and prints the form text. `forge.mjs gate-approve <key> <gate> --answer "<your exact answer>" --method form|chat`
@@ -185,15 +186,14 @@ No mode allows em dashes or en dashes in prose. License texts are in [NOTICE.md]
 
 ```mermaid
 flowchart LR
-  R[Research, interview] --> S{{Scoped?}} --> I[Investigation] --> P{{Planned?}}
-  P --> C[Implement] --> SH{{Shippable?}} --> E[Evidence Testing] --> L{{Learned?}}
+  R[Research, interview] --> S[Scope check in chat] --> I[Investigation] --> P{{Planned?}}
+  P --> C[Implement] --> E[Evidence Testing] --> SH{{Shippable?}} --> L{{Learned?}}
   I -. the scope is wrong .-> S
 ```
 
 | Gate | You approve | It holds |
 |---|---|---|
-| **Scoped?** | `story.md` | The problem, the scope, the acceptance checks, your interview answers, the history, and the open questions |
-| **Planned?** | `plan.md` | The diagnosis, the steps with their files, the tests, the deployed checks, the risks, and the decisions |
+| **Planned?** | `story.md` and `plan.md` | The problem, the scope, the acceptance checks, your interview answers, the history, and the open questions; the diagnosis, the steps with their files, the tests, the deployed checks, the risks, and the decisions |
 | **Shippable?** | `review.md` | What changed, the tests that ran, and the findings of the adversarial review |
 | **Sendable?** | each `outbox/` draft, before it is sent | The exact text, command, and target of one external write |
 | **Learned?** | `close.md` | What you now know, and the wiki changes |
@@ -202,7 +202,7 @@ A manifest can also list `evidence/` files that you must see in an exact revisio
 Before a gate opens, a subagent without the session history reads the gate document (the cold read).
 It gives a paraphrase and the terms that it cannot resolve, and the session corrects the document before you see it.
 
-The gate guard is a `preToolUse` hook. Before a `git push` or a new change request in a ticket worktree, it checks the approvals of Scoped?, Planned?, and Shippable?.
+The gate guard is a `preToolUse` hook. Before a `git push` or a new change request in a ticket worktree, it checks the approvals of Planned? and Shippable?.
 When one is missing or stale, it stops the command and names each finding. `policy.gateGuard` selects `deny` (default), `ask` (the host asks you), or `off`.
 The guard reads the words of a shell command, so it is a net and not a wall: the written rules stay in force.
 When the README of the ticket cannot be read, the guard stops a push. A new change request needs no second question when its draft is in the approved Shippable? set.
@@ -212,9 +212,9 @@ Plan checks: `forge.mjs lint` checks the paths of a plan (`plan-path`), its Base
 
 ### 🕰️ Older tickets
 
-Forge 8 supports only `workflow: full-v3`. It removed the rules, the templates, and the `migrate` command of the older layouts
-(`full-v2`, `full-v1`, S/M/L, and tickets with no marker). `forge.mjs lint` reports a ticket with another layout as a read error.
-Finish or archive such a ticket with Forge 7.6 before you update.
+Forge 12 reads only `workflow: full-v4`. It has no convert code. `forge.mjs lint` reports a ticket with another layout as a read error.
+The session-start hook shows the error, and the gate guard denies a push for that ticket.
+Finish a `full-v3` ticket with Forge 10.1 before you update. Finish or archive an older ticket with Forge 7.6.
 Resume reports missing or stale approval evidence and blocks only the affected action, not unrelated read-only work.
 See the [ticket workflow contract](plugins/forge/skills/ticket/SKILL.md#-workflow).
 
@@ -233,10 +233,10 @@ A ticket has about 7 Markdown files, and each fact has one home. A file starts t
 | File | Content |
 |---|---|
 | `README.md` | The state: frontmatter and the Now card |
-| `story.md` | Scoped?: problem, scope, acceptance checks, answers, history, open questions |
-| `plan.md` | Planned?: diagnosis, steps, tests, checks, risks, decisions |
+| `story.md` | Planned?: problem, scope, acceptance checks, answers, history, open questions |
+| `plan.md` | Planned? (with `story.md`): diagnosis, steps, tests, checks, risks, decisions |
 | `review.md` | Shippable?: changes, tests run, review findings |
-| `proof.md` | Evidence Testing: one check for each changed behavior, with its result |
+| `proof.md` | Evidence Testing: one check for each changed behavior, with its result (in the Shippable? set by default) |
 | `journal.md` | The dated log: work, decisions, problems, and finished steps |
 | `map.md` | The code map: components with their layer, flow, data, tests, terms |
 | `close.md` | Learned?: what you now know, and the wiki changes |
@@ -246,9 +246,9 @@ A ticket has about 7 Markdown files, and each fact has one home. A file starts t
 - A gate document starts with a summary of at most 150 words: the key fact, the change, what the agent needs from you,
   and at most 3 decisions with a recommended answer. The whole document has at most 1,500 words. Longer material goes to `evidence/`.
 - The approval form shows only the summary. At a later review, it shows only the changes since your last review
-  (`forge.mjs diff <key> <gate>`). `forge.mjs snapshot <key> <gate>` saves the version that you saw.
+  (`forge.mjs gate-open` prints them and saves the version that you saw; `--dry-run` writes nothing).
 - `forge.mjs lint` warns when a summary is missing or too long, a document is over its budget, or a section is empty.
-- `proof.md` is not in `review.md`, because Evidence Testing writes its results after Shippable?, and a changed file makes an approval stale.
+- `proof.md` is not in `review.md`. By default, Evidence Testing finishes before Shippable? opens, `gate-open` needs `proof.md` with no `open` and no `failed` check, and a changed `proof.md` makes Shippable? stale. With `policy.evidenceOnDeployedEnv: true`, Evidence Testing runs after the push, and `proof.md` stays outside the manifests.
 
 ### 📍 Where a ticket is
 
@@ -321,7 +321,7 @@ for `gates`, `changes`, and `people`. Text blocks support strip (`-`) and keep (
 Lists can use inline arrays, inline objects, or indented fields.
 YAML anchors, tags, and explicit block indentation indicators are not supported;
 lint reports them as read errors. Existing tickets need no rewrite for supported YAML forms.
-A ticket without `workflow: full-v3`, or with a `track` value, produces a read error.
+A ticket without `workflow: full-v4`, or with a `track` value, produces a read error.
 CLI validation and the board use the shared parser in
 [`scripts/lib/ticket.mjs`](plugins/forge/scripts/lib/ticket.mjs).
 

@@ -1,7 +1,7 @@
 # Ticket start: research, interview, and scope
 
 This file is a part of the `ticket` skill: [SKILL.md](../SKILL.md) has the words (`<F>`, `<KEY>`, `<key>`), the data rules, the gate rules, and the list of the other parts.
-It has the steps from a new work item to the Scoped? gate.
+It has the steps from a new work item to the scope check.
 After a compaction of the session, read this file again before you use its steps.
 
 ## 🚀 Start
@@ -11,13 +11,13 @@ After a compaction of the session, read this file again before you use its steps
 3. Read the `## Start` policy section.
 4. Create the folder. If it exists, run Resume instead.
 5. Save the work item snapshot as `evidence/<yyyy-mm-dd>-work-item.md`: summary, type, status, priority, reporter, assignee, description, comments, the item URL, and the snapshot date.
-6. Write `README.md` from [templates/README.md](../templates/README.md): `workflow: full-v3`, `phase: start`, `state: active`, `short`, `next`, `item`, and all gates. Fill the Now card from the frontmatter.
+6. Write `README.md` from [templates/README.md](../templates/README.md): `workflow: full-v4`, `phase: start`, `state: active`, `short`, `next`, `item`, and all gates. Fill the Now card from the frontmatter.
 7. Place the session (see Worktrees). Preserve an existing session worktree. Run `<F> worktree <KEY> --summary "<short>"` and follow its `action`. Record `branch` and `worktree` (the absolute path) in the README.
 8. Seed `map.md` from [templates/map.md](../templates/map.md): the purpose, the terms, and a first guess of the components. Mark each guess `(unverified)`.
 9. Start `journal.md` from [templates/journal.md](../templates/journal.md) with one `log` entry.
 10. Add the ticket to the "Tickets → Active" list in `<wiki>/index.md`. Mark its raw folder as local-only. Append a `create` entry to `<wiki>/log.md`.
-11. Do the research (next section). Then do the interview and write the scope. Open Scoped?.
-12. After Scoped?, investigate, then write the plan steps, and open Planned? before implementation. Do not skip a phase for a small fix, and do not run a blocked phase in auto mode.
+11. Do the research (next section). Then do the interview, write the scope, and do the scope check.
+12. After the scope check, investigate, then write the plan steps, and open Planned? before implementation. Do not skip a phase for a small fix, and do not run a blocked phase in auto mode.
 
 ### 🧭 Research
 
@@ -38,9 +38,10 @@ Do this automatically. It is read-only, so it needs no approval. Research depth 
 #### 💬 Colleague questions do not block
 
 - Keep each colleague question as a line in **Open questions** of `story.md`: question, person, status (`draft`, `asked`, `answered`, `no reply`), and the impact if the answer differs.
-- The user can approve Scoped? with open colleague questions.
+- The scope check can pass with open colleague questions.
 - When an open question blocks the plan, the plan states an assumption and a fallback for it (**Assumptions**).
-- When an answer arrives, record it as a `log` entry in `journal.md`, and update the line status. Name the documents that the answer changes. Update only those documents, and reopen only their gates.
+- When an answer arrives before Planned? is approved, record it as a `log` entry in `journal.md`, and update the line status. Name the documents that the answer changes. Update only those documents.
+- When an answer arrives after Planned? is approved, record it as a `log` entry in `journal.md` and in the README `people` list. Edit `story.md` only for a scope change: it is in the Planned? manifest, and an edit makes the gate stale.
 - Keep the README `people` entry of the same person in step with the line status (see People).
 
 ### 🧪 Spikes
@@ -63,10 +64,27 @@ Start after the research. Ground each question in the story or its evidence.
 4. Run a second round only for answers that raise new questions.
 5. Record each answer in **Answers** of `story.md`, with the question, the answer, and why it matters. Add one `decision` entry to `journal.md` for an answer that changes the scope.
 
-### 🎯 Scope
+### 🎯 Scope check
 
-`story.md` is the primary document of Scoped?.
+The scope check is a question in chat. It is not a gate.
 
 1. Complete `story.md`: the summary, **Scope** (In and Out), and **Done when**, each acceptance check with its proof. Put the scope choice that changes the plan most first in the summary.
-2. Open Scoped? (see the gate Procedure). The manifest lists `story.md`, and each evidence file that the user must see.
-3. After GO, set `phase: investigate` and start Investigate.
+2. Show the scope in chat in at most 8 lines: the problem in one line, In, Out, Done when, and each open question that can change the scope.
+3. Ask with one `host.ask`. Never answer for the user. Options:
+
+| Value | Title |
+|---|---|
+| `correct` | 🟢 The scope is correct: investigate |
+| `change` | ✏️ Change: I typed it in the free-text answer |
+| `reporter` | 📨 Ask the reporter first |
+| `later` | ⏸️ Hold: not now |
+
+4. `correct`: add a `decision` entry with the title `scope` to `journal.md` (the 8 lines and the answer). Set `phase: investigate`. Start Investigate.
+5. `change`: update `story.md`, then show the scope again.
+6. `reporter`: write the scope and the open questions as a message for the reporter.
+   - When `policy.scopeComment` is `true`, write it as `outbox/scope-question.draft.md` (`target: tracker-comment`), and run the Sendable? steps.
+   - Else add it to `outbox/colleague-questions.md`. The user sends it.
+   - Then ask the user to select: wait for the answer, or continue with an assumption in **Open questions**.
+7. `later`: stop. Tell the user how to resume.
+8. When `policy.scopeComment` is `true`, also draft the scope comment for the reporter after `correct`, and run Sendable?. It does not block the investigation.
+9. The scope check has no manifest, no cold read, and no `gate-open`. The user approves `story.md` together with `plan.md` at Planned?.

@@ -46,7 +46,7 @@ so your memory of a VS Code feature can be old.
 - The plugin uses the Agent Plugins 1.0 layout:
   - `plugins/forge/skills/`: portable skills.
   - `plugins/forge/com.github.copilot/`: rules, hooks, and custom agents for VS Code.
-- `plugins/forge/skills/ticket/SKILL.md` and `templates/` are the `full-v3` layout. It is the only ticket layout (Forge 8 removed the older layouts).
+- `plugins/forge/skills/ticket/SKILL.md` and `templates/` are the `full-v4` layout. It is the only ticket layout: Forge reads no other marker, and it has no convert code.
 - The plan checks (`scripts/lib/gate-checks.mjs`) read the sections **Steps** and **Checks** of `plan.md`, **Components** of `map.md`, and the line labels `Files:`, `Baseline:`, and `Control:`. Change a template and the checks together (`tests/gate-checks.test.mjs`). The pages load nothing from a network.
 - The design system is the UI kit `scripts/lib/ui/`: one file for each component, the tokens as data in `tokens.mjs`, and the order lists in `index.mjs`. `scripts/lib/ui.mjs` only re-exports it. [docs/design-system.md](docs/design-system.md) is its document.
   Change a token or a component and the document together (`tests/ui-kit.test.mjs`, `tests/board-page.test.mjs`).

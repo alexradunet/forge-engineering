@@ -12,7 +12,7 @@ The ticket README starts with YAML frontmatter (`type: ticket`), see [templates/
 |---|---|
 | `key`, `title` | `APP-123`, the work item summary (required) |
 | `short` | 3 to 6 words for the session title and the board, for example `Doc import error telemetry` |
-| `workflow` | `full-v3` |
+| `workflow` | `full-v4` |
 | `phase` | `start`, `investigate`, `plan`, `implement`, `review`, `closed` (required) |
 | `state` | `needs-me` 🟡, `go` 🟢, `active` ▶️, `waiting` ⏳, `blocked` 🔴, `done` ✅ (required; same as the session title emoji) |
 | `next`, `waiting_on` | one line each |

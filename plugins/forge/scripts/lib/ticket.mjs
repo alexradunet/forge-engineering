@@ -1,24 +1,23 @@
 export const STATES = ['needs-me', 'go', 'active', 'waiting', 'blocked', 'done'];
 export const STATE_EMOJI = { 'needs-me': '🟡', go: '🟢', active: '▶️', waiting: '⏳', blocked: '🔴', done: '✅' };
-export const WORKFLOWS = ['full-v3'];
+export const WORKFLOWS = ['full-v4'];
 export const PHASES = ['start', 'investigate', 'plan', 'implement', 'review', 'closed'];
-// The gates of a full-v3 ticket. Each gate has one document, and the plan has no approved copy.
-export const GATES = ['Scoped?', 'Planned?', 'Shippable?', 'Sendable?', 'Learned?'];
-export const GATE_DOCS = { 'Scoped?': ['story.md'], 'Planned?': ['plan.md'], 'Shippable?': ['review.md'], 'Learned?': ['close.md'] };
+// The gates of a full-v4 ticket. Planned? holds the scope (story.md) and the plan (plan.md) in one manifest.
+// The last document of a gate is its primary document. The plan has no approved copy.
+export const GATES = ['Planned?', 'Shippable?', 'Sendable?', 'Learned?'];
+export const GATE_DOCS = { 'Planned?': ['story.md', 'plan.md'], 'Shippable?': ['review.md'], 'Learned?': ['close.md'] };
 export const PREREQUISITES = {
-  start: [], investigate: ['Scoped?'], plan: ['Scoped?'],
-  implement: ['Scoped?', 'Planned?'], review: ['Scoped?', 'Planned?'],
-  closed: ['Scoped?', 'Planned?', 'Shippable?', 'Learned?'],
+  start: [], investigate: [], plan: [],
+  implement: ['Planned?'], review: ['Planned?'],
+  closed: ['Planned?', 'Shippable?', 'Learned?'],
 };
 // GH-2: the "yes" for a write is the prompt of the host that the gate guard asks for. A write needs
 // no Sendable? approval record, only its outbox draft.
 export const ACTION_GATES = {
-  investigate: ['Scoped?'],
-  plan: ['Scoped?'],
-  implement: ['Scoped?', 'Planned?'],
-  ship: ['Scoped?', 'Planned?', 'Shippable?'],
+  implement: ['Planned?'],
+  ship: ['Planned?', 'Shippable?'],
   write: [],
-  close: ['Scoped?', 'Planned?', 'Shippable?', 'Learned?'],
+  close: ['Planned?', 'Shippable?', 'Learned?'],
 };
 const GATE_STATUSES = ['todo', 'in-review', 'approved', 'skipped', 'blocked'];
 export const PEOPLE_STATUSES = ['to-contact', 'drafted', 'waiting', 'follow-up', 'reply-in', 'done'];
@@ -183,7 +182,7 @@ export function parseTicket(text) {
   if (!STATES.includes(data.state)) throw new Error(`Unknown ticket state: ${data.state}`);
   if (!PHASES.includes(data.phase)) throw new Error(`Unknown ticket phase: ${data.phase}`);
   if (!WORKFLOWS.includes(data.workflow)) {
-    throw new Error(`Unsupported ticket workflow: ${data.workflow ?? 'no workflow marker'}. Forge supports only workflow: full-v3.`);
+    throw new Error(`Unsupported ticket workflow: ${data.workflow ?? 'no workflow marker'}. Forge 12 reads only workflow: full-v4.${data.workflow === 'full-v3' ? ' Finish this ticket with Forge 10.1.' : ''}`);
   }
   if (data.track != null) throw new Error(`${data.workflow} tickets must not select a track.`);
   if (data.type !== 'ticket') throw new Error(`${data.workflow} metadata needs type: ticket.`);
@@ -245,7 +244,7 @@ function parsePerson(person) {
 
 /**
  * The Now card of a README: its 1-based heading line, text, and fields (lower-case labels).
- * full-v3 writes "## Now" with "- Label: value" lines. Older tickets write "## 📍 Now" with "- **Label:** value".
+ * A ticket writes "## Now" with "- Label: value" lines. An older README can write "## 📍 Now" with "- **Label:** value".
  */
 export function nowCard(text) {
   const lines = String(text).replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').split('\n');

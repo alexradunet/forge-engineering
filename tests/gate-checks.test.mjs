@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { plannedChecks } from '../plugins/forge/scripts/lib/gate-checks.mjs';
+import { plannedChecks, shippableChecks } from '../plugins/forge/scripts/lib/gate-checks.mjs';
 
 function setup(t) {
   const root = mkdtempSync(path.join(os.tmpdir(), 'forge-gate-checks-'));
@@ -147,4 +147,61 @@ test('a missing plan.md gives nothing, and a plan.md link is not read', (t) => {
   const real = f.put('real.md', plan('1. A\n   - Files: [x](/no/such/file.cs)\n'), f.root);
   try { symlinkSync(real, path.join(f.dir, 'plan.md')); } catch { return; }
   assert.deepEqual(plannedChecks(f.dir, {}, {}).findings, []);
+});
+
+const proof = (checks) => `---\ntype: proof\n---\n# Proof\n\nResult: x.\n\n## Checks\n\n${checks}\n## Regression\n\n- none\n`;
+const OFF = { evidenceOnDeployedEnv: false };
+
+test('shippableChecks: the key true checks nothing, even with no proof.md', (t) => {
+  const f = setup(t);
+  assert.deepEqual(shippableChecks(f.dir, {}, { policy: { evidenceOnDeployedEnv: true } }), { findings: [], proof: null });
+});
+
+test('shippableChecks: a missing proof.md is one finding, with the key false or with no policy', (t) => {
+  const f = setup(t);
+  for (const options of [{ policy: OFF }, { policy: null }, {}]) {
+    const result = shippableChecks(f.dir, {}, options);
+    assert.equal(result.proof, null);
+    assert.deepEqual(result.findings.map((item) => ({ ...item, file: path.basename(item.file) })), [{
+      file: 'proof.md', line: null, code: 'proof-missing',
+      message: 'Shippable? needs proof.md: the proof of the changed behavior comes before this gate.',
+      remedy: 'Do the Evidence Testing step now, and write proof.md. Set policy.evidenceOnDeployedEnv to true only when the proof needs a deployed environment.',
+    }]);
+  }
+});
+
+test('shippableChecks: a link in place of proof.md counts as missing', (t) => {
+  const f = setup(t);
+  const real = f.put('real.md', proof('1. 🟢 verified: a\n'), f.root);
+  mkdirSync(f.dir, { recursive: true });
+  try { symlinkSync(real, path.join(f.dir, 'proof.md')); } catch { t.skip('Links cannot be made here.'); return; }
+  assert.deepEqual(codes(shippableChecks(f.dir, {}, { policy: OFF })), ['proof-missing']);
+});
+
+test('shippableChecks: verified and not proven pass, with or without the emoji and in any case', (t) => {
+  const f = setup(t);
+  f.put('proof.md', proof('1. 🟢 verified: a\n2. verified: b\n3. ⚪ not proven: c\n4. Not Proven: d\n5. VERIFIED - e\n'));
+  assert.deepEqual(shippableChecks(f.dir, {}, { policy: OFF }), { findings: [], proof: 'proof.md' });
+});
+
+test('shippableChecks: an open check, a check with no state word, and a failed check are findings with a line', (t) => {
+  const f = setup(t);
+  f.put('proof.md', proof('1. 🟢 verified: a\n2. open: b\n3. the behavior c\n4. 🔴 failed: d\n5. ⚪ Not proven: e\n'));
+  const result = shippableChecks(f.dir, {}, { policy: OFF });
+  assert.equal(result.proof, null);
+  assert.deepEqual(result.findings.map((item) => [item.code, item.message, item.line]), [
+    ['proof-open', 'Check 2 of proof.md is still open.', 11],
+    ['proof-open', 'Check 3 of proof.md is still open.', 12],
+    ['proof-failed', 'Check 4 of proof.md failed.', 13],
+  ]);
+  assert.equal(result.findings[0].remedy, 'Run the check, then mark it verified, failed, or not proven with the reason.');
+  assert.equal(result.findings[2].remedy, 'Go back to Implement. Shippable? opens when no check failed.');
+});
+
+test('shippableChecks: a proof.md with no numbered check passes', (t) => {
+  const f = setup(t);
+  f.put('proof.md', '# Proof\n\nResult: no behavior changed.\n');
+  assert.deepEqual(shippableChecks(f.dir, {}, { policy: OFF }), { findings: [], proof: 'proof.md' });
+  f.put('proof.md', proof(''));
+  assert.deepEqual(shippableChecks(f.dir, {}, { policy: OFF }), { findings: [], proof: 'proof.md' });
 });

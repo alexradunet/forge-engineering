@@ -39,6 +39,26 @@ test('each scenario gives a valid ticket in the worktree where a session starts'
   }
 });
 
+test('each scenario journal has the scope decision, built from the story', (t) => {
+  for (const name of Object.keys(SCENARIOS)) {
+    const f = fixture(t, name);
+    const journal = readFileSync(path.join(f.dir, 'journal.md'), 'utf8');
+    const entry = /^## 2026-11-17 decision: scope\n\n(.+?)\n(?=\n##|$)/ms.exec(journal);
+    assert.ok(entry, `${name}: a decision entry with the title scope`);
+    assert.doesNotMatch(entry[1], /undefined/, name);
+    assert.match(entry[1], /^Problem: .+\nIn: .+\nOut: .+\nDone when: .+\nAnswer of the user: correct\.$/, name);
+  }
+});
+
+test('the fixture ticket is full-v4: the Planned? manifest lists story.md and plan.md, and no Scoped? record exists', (t) => {
+  const f = fixture(t, 'implement');
+  const readme = readFileSync(f.readme, 'utf8');
+  assert.match(readme, /^workflow: full-v4$/m);
+  assert.doesNotMatch(readme, /Scoped\?/);
+  const manifest = JSON.parse(readFileSync(path.join(f.dir, 'approvals', 'planned-001.json'), 'utf8'));
+  assert.deepEqual(manifest.documents.map((doc) => doc.path), ['story.md', 'plan.md']);
+});
+
 // The lint of a fixture with the trusted policy that the fixture seeds.
 function planFindings(f) {
   const where = resolve({ cwd: f.root, env: f.env });
@@ -55,6 +75,7 @@ test('each scenario has the policy of the recorded runs, and no plan finding but
     const plan = findings.filter((item) => item.code.startsWith('plan-'));
     if (name.startsWith('plan-attack') || name === 'baseline-run') continue;
     assert.deepEqual(plan, [], `${name}: no plan finding`);
+    assert.deepEqual(findings.filter((item) => item.code.startsWith('proof-')), [], `${name}: no proof finding`);
     assert.deepEqual(findings.filter((item) => item.severity === 'error'), [], name);
   }
 });

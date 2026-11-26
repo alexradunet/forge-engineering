@@ -1,4 +1,4 @@
-// Demo data for the pages: a Forge folder with invented tickets, one complete full-v3 ticket, and a small wiki.
+// Demo data for the pages: a Forge folder with invented tickets, one complete full-v4 ticket, and a small wiki.
 // seedDemo(root) writes <root>/demo.forge/{wiki,raw} and an empty <root>/demo (the repository). The names are invented.
 // tests/ui-kit.test.mjs checks it, and tests/shots/run.mjs takes the screenshots of the pages from it.
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -10,7 +10,7 @@ export const FULL_TICKET = 'app-101';
 function ticketReadme(key, { state, phase = 'plan', title, short = '', next = '', waitingOn = '', updated = '2026-11-16', gates = [], people = [], extra = [] }) {
   return [
     '---', 'type: ticket', `key: ${key}`, `title: ${JSON.stringify(title)}`, ...(short ? [`short: ${short}`] : []),
-    'workflow: full-v3', `phase: ${phase}`, `state: ${state}`, `next: ${next || `Next step of ${key}`}`, `waiting_on: ${JSON.stringify(waitingOn)}`,
+    'workflow: full-v4', `phase: ${phase}`, `state: ${state}`, `next: ${next || `Next step of ${key}`}`, `waiting_on: ${JSON.stringify(waitingOn)}`,
     'changes: []', ...(people.length ? ['people:', ...people] : ['people: []']), 'gates:', ...gates, ...extra, `updated: ${updated}`, '---',
     `# ${key}: ${title}`, '', '## Now', '', `- State: ${state}`, `- Phase: ${phase}`, `- Next: ${next || `Next step of ${key}`}`, '',
   ].join('\n');
@@ -19,10 +19,10 @@ function ticketReadme(key, { state, phase = 'plan', title, short = '', next = ''
 const gate = (name, doc, status, date = '') => `  - { name: ${name}, doc: ${doc}, need: required, status: ${status}${date ? `, date: ${date}` : ''} }`;
 
 const STORY = [
-  '---', 'type: story', 'ticket: APP-101', 'gate: Scoped?', 'updated: 2026-11-10', '---', '# Story APP-101: Fix the retry of the email outbox', '',
+  '---', 'type: story', 'ticket: APP-101', 'gate: Planned?', 'updated: 2026-11-10', '---', '# Story APP-101: Fix the retry of the email outbox', '',
   'Problem: the retry job stops after 3 seconds, so 1 of 20 mails of a busy account is lost.', '',
   'Scope: the retry job reads its time limit from the new setting. The sender does not change.', '',
-  'Need from you: GO on Scoped?. Then I investigate.', '',
+  'Need from you: GO on Planned?. Then I investigate.', '',
   '## Problem', '', 'A busy account sends 400 mails in one minute. The job gives up on a slow mail after 3 s, and the mail stays in the outbox until the next night.', '', 'The setting today:', '', '```json', '{ "Retry": { "Timeout": 3, "Attempts": 5 } }', '```', '',
   '## Scope', '', 'In:', '', '- The retry job and its setting', '- A test for a slow mail', '', 'Out:', '', '- The sender: it has its own limit', '',
   '## Done when', '', '1. A slow mail is sent again after 30 s. Proof: a test with a fake clock', '',
@@ -70,8 +70,8 @@ const REVIEW = [
 ].join('\n');
 
 const PROOF = [
-  '---', 'type: proof', 'ticket: APP-101', 'updated: 2026-11-16', '---', '# Proof APP-101: Fix the retry of the email outbox', '', 'Result: 2 of 4 checks verified.', '',
-  '## Checks', '', '1. 🟢 verified: a retry waits 30 s', '   - Observed: 30 s', '2. 🟢 verified: a fast mail is sent at once', '3. 🔴 failed: the old key is ignored', '   - Observed: the old key still gives 3 s',
+  '---', 'type: proof', 'ticket: APP-101', 'updated: 2026-11-16', '---', '# Proof APP-101: Fix the retry of the email outbox', '', 'Result: 3 of 4 checks verified.', '',
+  '## Checks', '', '1. 🟢 verified: a retry waits 30 s', '   - Observed: 30 s', '2. 🟢 verified: a fast mail is sent at once', '3. 🟢 verified: the old key is ignored', '   - Observed: the old key no longer sets the delay',
   '4. ⚪ not proven: the telemetry shows the retry', '',
 ].join('\n');
 
@@ -90,7 +90,7 @@ const page = (title, body, { updated = '2026-11-10', status = 'verified' } = {})
  * Writes the demo and returns { forge, wiki, repo }.
  * - 6 tickets, one in each board state (APP-101 needs me, APP-102 blocked, APP-103 go, APP-104 active, APP-105 waiting, APP-106 done),
  *   a people wait and a sync note on APP-104, and one ticket folder (app-107) that gives a read error.
- * - APP-101 has the 6 documents of the full-v3 layout: a Mermaid block, a gate in review, steps, checks, hypotheses, and a code map with edges.
+ * - APP-101 has the 6 documents of the full-v4 layout: a Mermaid block, a gate in review, steps, checks, hypotheses, and a code map with edges.
  * - The wiki has 5 pages that link to each other, and one closed ticket (tickets/app-90.md).
  */
 export function seedDemo(root) {
@@ -107,7 +107,7 @@ export function seedDemo(root) {
 
   raw('tickets/app-101/README.md', ticketReadme('APP-101', {
     state: 'needs-me', phase: 'review', title: 'Fix the retry of the email outbox', short: 'Fix outbox retry', next: 'Approve the review (Shippable?)', waitingOn: 'you: Shippable?',
-    gates: [gate('Scoped?', 'story.md', 'approved', '2026-11-10'), gate('Planned?', 'plan.md', 'approved', '2026-11-12'), gate('Shippable?', 'review.md', 'in-review')],
+    gates: [gate('Planned?', 'plan.md', 'approved', '2026-11-12'), gate('Shippable?', 'review.md', 'in-review')],
     extra: ['branch: "alex/APP-101-outbox-retry"', 'worktree: "/code/demo.worktrees/APP-101"'],
   }));
   for (const [name, text] of Object.entries({ 'story.md': STORY, 'map.md': MAP, 'plan.md': PLAN, 'review.md': REVIEW, 'proof.md': PROOF, 'journal.md': JOURNAL })) raw(`tickets/app-101/${name}`, text);
@@ -119,11 +119,11 @@ export function seedDemo(root) {
   }));
   raw('tickets/app-103/README.md', ticketReadme('APP-103', {
     state: 'go', phase: 'plan', title: 'Show the time zone in the invoice header', short: 'Invoice time zone', next: 'Start the plan', updated: '2026-11-17',
-    gates: [gate('Scoped?', 'story.md', 'approved', '2026-11-17'), gate('Planned?', 'plan.md', 'todo')],
+    gates: [gate('Planned?', 'plan.md', 'todo')],
   }));
   raw('tickets/app-104/README.md', ticketReadme('APP-104', {
     state: 'active', phase: 'implement', title: 'Port the settings grid to the new table', short: 'Port the settings grid', next: 'Step 2 of 4: the sort order',
-    gates: [gate('Scoped?', 'story.md', 'approved', '2026-11-09'), gate('Planned?', 'plan.md', 'approved', '2026-11-11'), gate('Shippable?', 'review.md', 'todo')],
+    gates: [gate('Planned?', 'plan.md', 'approved', '2026-11-11'), gate('Shippable?', 'review.md', 'todo')],
     people: ['  - { name: Mara, role: reviewer, status: waiting, since: 2026-11-02, ask: "Is the old grid still used by the admin pages?" }'],
     extra: ['worktree: "/code/demo.worktrees/APP-104"'],
   }));

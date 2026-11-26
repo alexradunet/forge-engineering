@@ -94,7 +94,7 @@ node "<plugin>/scripts/forge.mjs" lint [--wiki "<path>"] [--json] [--fix]
 ```
 
 Default lint is read-only. It checks ticket shape, workflow/gate agreement, approval
-revisions, and canonical wiki metadata. Forge supports only `workflow: full-v3`. A ticket
+revisions, and canonical wiki metadata. Forge supports only `workflow: full-v4`. A ticket
 with another marker, no marker, or a `track` value is a read error.
 Missing or conflicting metadata is a finding, never permission to infer a state or
 change the ticket. Lint also warns when a gate document has no

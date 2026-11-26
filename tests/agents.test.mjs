@@ -53,7 +53,7 @@ test('ticket start, resume, implementation, and plan template agree on worktree 
   assert.match(resume, /does not need another worktree when the current one is suitable/);
   assert.match(implement, /Continue in a suitable current worktree/);
   assert.match(ticket, /exact-commit proof requires HEAD equality, not just ancestry/);
-  // full-v3 documents hold no process text.
+  // full-v4 documents hold no process text.
   assert.doesNotMatch(plan, /worktree/);
   assert.match(readme, /reuses a suitable current worktree/);
   assert.match(readme, /Exact-commit proofs require HEAD equality/);
@@ -62,9 +62,16 @@ test('ticket start, resume, implementation, and plan template agree on worktree 
   }
 });
 
-test('the ticket skill is full-v3 only, and it has no rules of the removed layouts', () => {
-  assert.match(ticket, /Every new ticket uses `full-v3`/);
-  assert.match(ticket, /Forge supports only `workflow: full-v3`/);
+test('the ticket skill is full-v4 only, with three review gates, and it has no rules of the removed layouts', () => {
+  assert.match(ticket, /Every new ticket uses `full-v4`/);
+  assert.match(ticket, /Forge reads only `workflow: full-v4`/);
+  assert.match(ticketCore, /Three review gates in order: Planned\?, Shippable\?, Learned\?/);
+  assert.match(ticketCore.split('\n', 4).join('\n'), /full-v4 workflow .* with three review gates/);
+  assert.match(ticketCore, /When the marker is `full-v3`, stop\. Tell the user to finish this ticket with Forge 10\.1\./);
+  for (const [file, text] of [['SKILL.md', ticketCore], ...PHASES.map((name) => [name, phase(name)]), ['agents', agents]]) {
+    const rest = text.replace(/^- When the marker is `full-v3`.*$/m, '');
+    assert.doesNotMatch(rest, /Scoped\?|full-v3/, file);
+  }
   assert.ok(!existsSync(new URL('../plugins/forge/skills/ticket/legacy', import.meta.url)), 'Forge 8 removed legacy/.');
   assert.doesNotMatch(ticket, /Understood\?|Agreed\?|Diagnosed\?|Designed\?|Briefed\?|plan\.draft\.md|approvedCopies|track: [SML]/);
   const parts = [[ticketCore, 'ticket/'], ...PHASES.map((name) => [phase(name), 'ticket/phases/'])];
@@ -75,7 +82,7 @@ test('the ticket skill is full-v3 only, and it has no rules of the removed layou
   }
 });
 
-test('full-v3 templates are plain: no emoji in headings, no bold labels, and the gate documents ask for one answer', () => {
+test('full-v4 templates are plain: no emoji in headings, no bold labels, and the gate documents ask for one answer', () => {
   const dir = new URL('../plugins/forge/skills/ticket/templates/', import.meta.url);
   const names = readdirSync(dir).filter((name) => name.endsWith('.md') && name !== '_style.md');
   assert.deepEqual(names.sort(), ['README.md', 'close.md', 'journal.md', 'map.md', 'outbox.draft.md', 'plan.md', 'proof.md', 'qa-handover.md', 'review.md', 'story.md']);
@@ -88,19 +95,41 @@ test('full-v3 templates are plain: no emoji in headings, no bold labels, and the
     assert.doesNotMatch(body, /```mermaid/, `${name}: no Mermaid diagram in a template`);
     assert.ok(ticket.includes(`templates/${name})`), `a part of the skill links templates/${name}`);
   }
-  for (const [name, gate] of [['story.md', 'Scoped?'], ['plan.md', 'Planned?'], ['review.md', 'Shippable?'], ['close.md', 'Learned?']]) {
+  // story.md is a document of Planned?: it has no Need line, because the plan asks for the GO.
+  for (const [name, gate] of [['story.md', 'Planned?'], ['plan.md', 'Planned?'], ['review.md', 'Shippable?'], ['close.md', 'Learned?']]) {
     const text = read(`ticket/templates/${name}`);
     assert.match(text, new RegExp(`^gate: ${gate.replace('?', '\\?')}$`, 'm'));
-    assert.match(text, new RegExp(`^Need from you: GO on ${gate.replace('?', '\\?')}`, 'm'), name);
+    if (name === 'story.md') {
+      assert.doesNotMatch(text, /^Need from you:/m, name);
+      assert.match(text, /^Problem: /m, name);
+      assert.match(text, /^Scope: /m, name);
+    } else assert.match(text, new RegExp(`^Need from you: GO on ${gate.replace('?', '\\?')}`, 'm'), name);
   }
+});
+
+test('the scope check is a question in chat, and Planned? covers story.md and plan.md', () => {
+  const start = phase('start');
+  assert.match(start, /^### 🎯 Scope check$/m);
+  for (const value of ['correct', 'change', 'reporter', 'later']) assert.ok(start.includes(`| \`${value}\` |`), value);
+  assert.match(start, /policy\.scopeComment/);
+  assert.match(start, /no manifest, no cold read, and no \`gate-open\`/);
+  assert.match(phase('investigate-plan'), /Start only after the \`scope\` decision is in \`journal\.md\`/);
+  assert.match(phase('investigate-plan'), /Verify that the \`scope\` decision is in \`journal\.md\`/);
+  const gates = phase('gates');
+  assert.match(gates, /Are the scope and the plan for APP-123 correct\?/);
+  assert.match(gates, /For Planned\?, it gets the paths of \`story\.md\` and \`plan\.md\`/);
+  const evidence = phase('evidence');
+  assert.match(evidence, /- \`false\` \(default\): do Evidence Testing after the implementation and the adversarial review, and before Shippable\?/);
+  assert.match(evidence, /- \`true\`: start it after Shippable\? and the change request/);
+  assert.match(phase('implement'), /When \`policy\.evidenceOnDeployedEnv\` is \`false\`: do Evidence Testing and write \`proof\.md\`/);
 });
 
 test('each review gate has a cold read by a reader without the session history', () => {
   assert.match(agents, /## 🐟 Cold read/);
   assert.match(agents, /Give it only this, and nothing from the session/);
-  assert.match(agents, /Can you implement this plan from `plan\.md` and `map\.md` alone\?/);
+  assert.match(agents, /Can you implement this plan from `story\.md`, `plan\.md`, and `map\.md` alone\?/);
   assert.match(agents, /does not approve a gate, and it does not replace the adversarial review/);
-  assert.match(ticket, /Before you open Scoped\?, Planned\?, Shippable\?, or Learned\?, run one cold read/);
+  assert.match(ticket, /Before you open Planned\?, Shippable\?, or Learned\?, run one cold read/);
   assert.doesNotMatch(phase('gates'), /### .*Canvas/);
   assert.doesNotMatch(phase('gates'), /canvas-comments\.md/);
   assert.match(phase('gates'), /I added comments in the editor or in the chat/);

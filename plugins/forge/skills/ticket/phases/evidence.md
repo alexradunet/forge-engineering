@@ -6,16 +6,21 @@ After a compaction of the session, read this file again before you use its steps
 
 ## 🔬 Evidence Testing
 
-Evidence Testing is a separate step between review and merge. It proves that the changed behavior works, with concrete evidence. Regression runs alone are not enough, because they only show that old behavior still works.
+Evidence Testing is a separate step before the merge. It proves that the changed behavior works, with concrete evidence. Regression runs alone are not enough, because they only show that old behavior still works.
 
 Read the `## Evidence Testing` policy section before you start. It names the deploy procedure, the observation tools, and the known traps of the company environments.
+
+Timing follows `policy.evidenceOnDeployedEnv`:
+
+- `false` (default): do Evidence Testing after the implementation and the adversarial review, and before Shippable?. `gate-open` needs `proof.md` with no `open` and no `failed` check, and it puts `proof.md` into the Shippable? manifest. After the approval, do not edit `proof.md`: an edit makes Shippable? stale and stops each later push. Put later evidence into a new file in `evidence/` and a `log` entry in `journal.md`. The change request draft can hold its "Evidence" section from the start, so it needs no description update.
+- `true`: start it after Shippable? and the change request, because a deployed check needs the pushed code. `proof.md` is outside the manifests, and its updates open no gate again. The "Evidence" section goes to the change request with `outbox/change-update.draft.md` and its own "yes" (rule 13).
 
 Rules:
 
 1. Run it on every ticket that changes behavior, before any merge proposal. Never propose or accept a merge without it.
-2. Start it after Shippable? and the change request. When a deployed branch is needed, the code must be pushed first.
-3. Set the README `next` key to "Evidence Testing" while it is open. Keep the phase `review`.
-4. Write `proof.md` from [templates/proof.md](../templates/proof.md). Copy each check from **Checks** of the approved `plan.md`, with the status `open`. Update the file as you go. `proof.md` is outside the approval manifests, so its updates reopen no gate.
+2. Start it at the time that the timing rule gives. A deployed branch needs the pushed code. With `false`, run the checks without a push, for example locally.
+3. Set the README `phase` to `review` and `next` to "Evidence Testing" while it is open. This is true for both timings.
+4. Write `proof.md` from [templates/proof.md](../templates/proof.md). Copy each check from **Checks** of the approved `plan.md`, with the status `open`. Update the file as you go. With `true`, `proof.md` is outside the manifests, so its updates open no gate. With `false`, finish `proof.md` before `gate-open <key> shippable`.
 5. Test the changed functionality itself. When `policy.evidenceOnDeployedEnv` is `true`, do it in a deployed environment whenever a deployment is possible. Use a local run only when no deployment is possible, and write the reason in `Environment:`. Unit tests, mutation checks, and regression runs alone are not evidence. Each check has the action, the expected result, the observed result, and the evidence: query output, log or telemetry line, screenshot, API response, or job link.
    - Check the baseline first. Ask: does this check also pass without the fix? If yes, the environment cannot show the change. Example: a test environment that never samples telemetry passes "events are not sampled" with or without the fix. Change the environment, or pick another observation.
    - Check that the observed items are not exempt by other means. Example: some event types can set their own sampling rate, so they look correct with or without the fix. Search the code for the emitter before you trust an observation.
@@ -31,12 +36,15 @@ Rules:
    - Say what it cannot prove (for example telemetry that the test cannot read). Then name the other check that closes the gap.
    - A manual check that needs database or admin access that the agent lacks is a strong reason to propose a test. CI environments often have that access.
    - Options: "Add an automated test", "Manual evidence only", "Not now". Record the answer in **Automated test** of `proof.md`.
-   - A new test is a code change. It needs a new commit, a new review, and Shippable? again before the push.
+   - A new test is a code change. It needs a new commit and a new review. When Shippable? is approved, it needs Shippable? again before the push.
 9. Add the regression evidence to **Regression**: unit tests, regression and suite runs (job, run number, result, link), and old failures with their first failing run.
-10. Mark a check `🟢 verified`, `🔴 failed`, or `⚪ not proven: <why>`. Do not leave `open` as a final state. A check that is not possible needs the explicit acceptance of the user in **Accepted gaps**.
+10. Mark a check `🟢 verified`, `🔴 failed`, or `⚪ not proven: <why>`. Do not leave `open` as a final state: with `false`, `gate-open` refuses an `open` or a `failed` check. A check that is not possible needs the explicit acceptance of the user in **Accepted gaps**.
 11. Ask the user before each deploy, CI trigger, or database write. Show the job or the exact steps first. Never write to a database without approval. Do not escalate access (for example secret store or firewall changes) on your own.
 12. A failed check goes to `journal.md` as a `problem` entry, and back to Implement.
-13. The step is done when every check is `🟢 verified` (or an accepted `⚪`). Add a `step <n> verified` entry to `journal.md` for each step that a check proves. Then write the new description in `outbox/change-update.draft.md` (the approved change request draft stays as it is), run Sendable?, update the description with `repo.update-change`, and tell the user that the change request can be merged. Never suggest a merge on a day in `policy.noMergeWeekdays`.
+13. The step is done when every check is `🟢 verified` (or an accepted `⚪`). Add a `step <n> verified` entry to `journal.md` for each step that a check proves. Then:
+   - `false`: go on with `review.md` and Shippable? (see [implement.md](implement.md)). After the push and the creation of the change request, tell the user that it can be merged.
+   - `true`: write the new description in `outbox/change-update.draft.md` (the approved change request draft stays as it is), run Sendable?, update the description with `repo.update-change`, and tell the user that the change request can be merged.
+   - Never suggest a merge on a day in `policy.noMergeWeekdays`.
 14. When the change request has all approvals (`repo.change-status`) and Evidence Testing is done, report it and stop. The user merges in the web UI of the repository host. Record the merge as a `log` entry when the user reports it.
 15. After the merge, run the QA handover (next section) when `policy.qaHandover` is `true`. Else go to Close when the user says that the ticket is done.
 

@@ -38,7 +38,7 @@ export const VARIANTS = {
       '| Test a gate document on a reader without the session history | a cold read subagent (see "Cold read") | nothing; the result comes back here |\n', ''),
     'Run it before Planned?, after the cold read, only when', 'Run it before Planned? only when'),
     ' The cold read tests if the document is clear. The plan review tests if the plan is right.', ' The plan review tests if the plan is right.'),
-    'skills/ticket/phases/investigate-plan.md': (text) => swap(text, 'run the cold read first. Then run the plan review', 'run the plan review'),
+    'skills/ticket/phases/investigate-plan.md': (text) => swap(text, 'run the cold read first (it reads `story.md` and `plan.md`). Then run the plan review', 'run the plan review'),
   },
 };
 

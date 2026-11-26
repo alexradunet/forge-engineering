@@ -18,12 +18,13 @@ After a compaction of the session, read this file again before you use its steps
 - Draft every external text (tracker comment, change request title and description, shared document) in `outbox/<target>.draft.md` from [templates/outbox.draft.md](../templates/outbox.draft.md). Run a full pass of the `writing` skill (outbound mode) on the text between the `send` markers. Send only that text. Run Sendable? before the write.
 - Keep this order before the push:
   1. Run the adversarial review and handle its findings.
-  2. Write `review.md`.
-  3. Write the change request draft `outbox/change.draft.md` from [templates/outbox.draft.md](../templates/outbox.draft.md), with `target: change`. Run a full pass of the `writing` skill on the text between the `send` markers.
-  4. Open Shippable? with `<F> gate-open <key> shippable`. It adds the draft to the set.
-  5. After GO, push.
-  6. Create the change request with `repo.open-change` and the text between the `send` markers. The approved Shippable? set is the "yes" for this write (see Sendable? in [gates.md](gates.md)). Add the change request to the README `changes` list.
+  2. When `policy.evidenceOnDeployedEnv` is `false`: do Evidence Testing and write `proof.md` ([evidence.md](evidence.md)).
+  3. Write `review.md`.
+  4. Write the change request draft `outbox/change.draft.md` from [templates/outbox.draft.md](../templates/outbox.draft.md), with `target: change`. Run a full pass of the `writing` skill on the text between the `send` markers.
+  5. Open Shippable? with `<F> gate-open <key> shippable`. It adds the draft to the set. When `policy.evidenceOnDeployedEnv` is `false`, it also needs `proof.md` and adds it.
+  6. After GO, push.
+  7. Create the change request with `repo.open-change` and the text between the `send` markers. The approved Shippable? set is the "yes" for this write (see Sendable? in [gates.md](gates.md)). Add the change request to the README `changes` list.
 - When end-to-end or regression tests exist, run the relevant ones (and the whole suite when the risk is wide) on a deployed branch before you mark the change request ready. The `## Implement` policy section can make this stricter. Ask the user before each deploy or CI trigger (`ci.trigger`). Show the job and its parameters first.
 - Record test results, change request links, and CI results (`ci.status`) as `log` entries in `journal.md`. Record build and test problems as `problem` entries.
-- Set the phase to `implement` and then to `review` in `README.md`.
-- After Shippable? and the change request, run the Evidence Testing step ([evidence.md](evidence.md)). Do not report a change request as ready to merge before that step is done.
+- Set the phase to `implement` and then to `review` in `README.md`. Set `review` when the implementation is done.
+- When `policy.evidenceOnDeployedEnv` is `true`, run the Evidence Testing step ([evidence.md](evidence.md)) after the change request. Do not report a change request as ready to merge before that step is done.

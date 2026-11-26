@@ -19,7 +19,7 @@ const cli = fileURLToPath(new URL('../plugins/forge/scripts/forge.mjs', import.m
 const templates = path.join(path.dirname(path.dirname(cli)), 'templates', 'config');
 const repoTemplate = readFileSync(path.join(templates, 'repo.md'), 'utf8');
 const env = { ...process.env, FORGE_WIKI_ROOT: '', FORGE_DATA_DIR: mkdtempSync(path.join(os.tmpdir(), 'forge-guard-data-')) };
-const GATES = [['Scoped?', 'story.md'], ['Planned?', 'plan.md'], ['Shippable?', 'review.md']];
+const GATES = [['Planned?', ['story.md', 'plan.md']], ['Shippable?', ['review.md']]];
 
 function git(cwd, ...args) {
   const result = spawnSync('git', ['-C', cwd, '-c', 'user.name=Forge Test', '-c', 'user.email=forge@example.test', ...args], { encoding: 'utf8' });
@@ -27,8 +27,8 @@ function git(cwd, ...args) {
   return result.stdout.trim();
 }
 
-/** A repository with a ticket worktree, and a wiki with one full-v3 ticket. `approved` lists the approved gates. */
-function setup(t, { approved = [], workflow = 'full-v3' } = {}) {
+/** A repository with a ticket worktree, and a wiki with one full-v4 ticket. `approved` lists the approved gates. */
+function setup(t, { approved = [], workflow = 'full-v4' } = {}) {
   const root = mkdtempSync(path.join(os.tmpdir(), 'forge-guard-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const app = path.join(root, 'app');
@@ -43,11 +43,12 @@ function setup(t, { approved = [], workflow = 'full-v3' } = {}) {
   mkdirSync(path.join(dir, 'approvals'), { recursive: true });
   mkdirSync(path.join(root, 'app.forge', 'wiki'), { recursive: true });
   const gates = [];
-  for (const [name, doc] of GATES) {
-    writeFileSync(path.join(dir, doc), `# ${doc}\n\nText of ${name}\n`);
+  for (const [name, docs] of GATES) {
+    const doc = docs.at(-1);
+    for (const item of docs) writeFileSync(path.join(dir, item), `# ${item}\n\nText of ${name}\n`);
     if (!approved.includes(name)) { gates.push(`  - { name: ${name}, doc: ${doc}, need: required, status: todo }`); continue; }
     const manifest = `approvals/${name.replace('?', '').toLowerCase()}-001.json`;
-    const bytes = JSON.stringify({ version: 1, gate: name, documents: [{ path: doc, sha256: sha256(readFileSync(path.join(dir, doc))) }] });
+    const bytes = JSON.stringify({ version: 1, gate: name, documents: docs.map((item) => ({ path: item, sha256: sha256(readFileSync(path.join(dir, item))) })) });
     writeFileSync(path.join(dir, manifest), bytes);
     gates.push(`  - { name: ${name}, doc: ${doc}, need: required, status: approved, date: 2026-11-17, manifest: ${manifest}, hash: ${sha256(bytes)} }`);
   }
@@ -167,7 +168,7 @@ test('a push that names a ticket branch is checked from each folder of the repos
   assert.equal(run(s.app, 'git push --all origin').decision, 'deny', '--all pushes the ticket branch.');
   assert.equal(run(s.app, 'git push origin main'), null, 'A push of another branch from the main checkout is not a ticket step.');
   assert.equal(run(s.app, 'git push'), null);
-  const done = setup(t, { approved: ['Scoped?', 'Planned?', 'Shippable?'] });
+  const done = setup(t, { approved: ['Planned?', 'Shippable?'] });
   assert.equal(run(done.app, `git push -u origin ${branch}`), null, 'An approved ticket can push from each folder.');
   assert.equal(run(done.app, 'git push --all origin'), null);
 });
@@ -182,19 +183,19 @@ test('readToolEvent reads the command of each host format and ignores a tool cal
   }
 });
 
-test('a push in a ticket worktree is denied until Scoped?, Planned?, and Shippable? have a valid approval', (t) => {
+test('a push in a ticket worktree is denied until Planned? and Shippable? have a valid approval', (t) => {
   const none = setup(t);
   const verdict = run(none.worktree, 'git push -u origin users/a/APP-7-doc-import');
   assert.equal(verdict.decision, 'deny');
   assert.equal(verdict.key, 'APP-7');
-  assert.match(verdict.reason, /^Forge gate guard: APP-7 has no valid approval for a push\. Scoped\? is not approved\. Planned\? is not approved\. Shippable\? is not approved\./);
+  assert.match(verdict.reason, /^Forge gate guard: APP-7 has no valid approval for a push\. Planned\? is not approved\. Shippable\? is not approved\./);
   assert.match(verdict.reason, /wait for the answer of the user\. Do not run the command in another form\./);
 
-  const partly = setup(t, { approved: ['Scoped?', 'Planned?'] });
+  const partly = setup(t, { approved: ['Planned?'] });
   assert.match(run(partly.worktree, 'git push').reason, /a push\. Shippable\? is not approved\. Open the gate/);
 
-  const all = setup(t, { approved: ['Scoped?', 'Planned?', 'Shippable?'] });
-  assert.equal(run(all.worktree, 'git push'), null, 'All three approvals let the push run.');
+  const all = setup(t, { approved: ['Planned?', 'Shippable?'] });
+  assert.equal(run(all.worktree, 'git push'), null, 'Both approvals let the push run.');
   writeFileSync(path.join(all.dir, 'review.md'), '# review.md\n\nChanged after the approval.\n');
   const stale = run(all.worktree, 'git push');
   assert.equal(stale.decision, 'deny');
@@ -237,7 +238,11 @@ test('an unsupported workflow stops a push by policy.gateGuard, and a broken REA
   const old = setup(t, { workflow: 'full-v2' });
   const deny = run(old.worktree, 'git push');
   assert.equal(deny.decision, 'deny');
-  assert.match(deny.reason, /Error: Unsupported ticket workflow: full-v2\. Forge supports only workflow: full-v3\./);
+  assert.match(deny.reason, /Error: Unsupported ticket workflow: full-v2\. Forge 12 reads only workflow: full-v4\./);
+  const v3 = setup(t, { workflow: 'full-v3' });
+  const v3deny = run(v3.worktree, 'git push');
+  assert.equal(v3deny.decision, 'deny');
+  assert.match(v3deny.reason, /Unsupported ticket workflow: full-v3\. Forge 12 reads only workflow: full-v4\. Finish this ticket with Forge 10\.1\./);
   const asks = setup(t, { workflow: 'full-v2' });
   trustConfig(asks, ['policy.gateGuard=ask']);
   const ask = run(asks.worktree, 'git push');
@@ -247,7 +252,7 @@ test('an unsupported workflow stops a push by policy.gateGuard, and a broken REA
   trustConfig(off, ['policy.gateGuard=off']);
   assert.equal(run(off.worktree, 'git push'), null);
   // A broken README of another folder: the push of the valid, approved ticket still runs.
-  const done = setup(t, { approved: ['Scoped?', 'Planned?', 'Shippable?'] });
+  const done = setup(t, { approved: ['Planned?', 'Shippable?'] });
   const other = path.join(done.dir, '..', 'app-9');
   mkdirSync(other);
   writeFileSync(path.join(other, 'README.md'), '---\nkey: APP-9\nbranch: "users/a/APP-9-other"\nworkflow: full-v2\n---\n');
@@ -353,13 +358,13 @@ test('a new change request asks after its gates pass, and a deny wins over an as
   trustConfig(none);
   assert.equal(run(none.worktree, 'gh pr create -t T').decision, 'deny', 'The ship gates come first.');
   assert.equal(run(none.worktree, 'gh issue comment 7 -F b.md && git push').decision, 'deny', 'A write and a push without gates: the deny wins.');
-  const done = setup(t, { approved: ['Scoped?', 'Planned?', 'Shippable?'] });
+  const done = setup(t, { approved: ['Planned?', 'Shippable?'] });
   trustConfig(done);
   const change = run(done.worktree, 'gh pr create -R a/b -t "APP-7 T" -F b.md');
   assert.equal(change.decision, 'ask');
   assert.match(change.reason, /this command is an external write: a new change request \(repo\.open-change\)\./);
   assert.equal(run(done.worktree, 'git push -u origin users/a/APP-7-doc-import'), null, 'A push gets no ask: it sends commits, not text.');
-  const off = setup(t, { approved: ['Scoped?', 'Planned?', 'Shippable?'] });
+  const off = setup(t, { approved: ['Planned?', 'Shippable?'] });
   trustConfig(off, ['policy.gateGuard=off']);
   assert.equal(run(off.worktree, 'gh issue comment 7 -F b.md'), null, 'off stops the write check too.');
   const asks = setup(t);
@@ -380,7 +385,7 @@ function approveDrafts(s, drafts, { listed = Object.keys(drafts) } = {}) {
 test('the approval of the Shippable? set that holds the one change draft is the yes for a new change request', (t) => {
   const create = 'gh pr create -R a/b -t "APP-7 T" -F outbox/pr.draft.md';
   const ready = () => {
-    const s = setup(t, { approved: ['Scoped?', 'Planned?', 'Shippable?'] });
+    const s = setup(t, { approved: ['Planned?', 'Shippable?'] });
     trustConfig(s);
     return s;
   };

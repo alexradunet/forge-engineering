@@ -9,10 +9,10 @@ Each fact has one home. Another document gives a link to it, not a copy.
 | Document | Holds | Gate |
 |---|---|---|
 | `README.md` | The state of the ticket: frontmatter and the Now card | None |
-| `story.md` | The problem, the scope, your answers, the history, and the open questions | Scoped? |
+| `story.md` | The problem, the scope, your answers, the history, and the open questions | Planned? |
 | `plan.md` | The diagnosis, the steps, the tests, the checks, and the risks | Planned? |
 | `review.md` | What changed, the tests that ran, and the review findings | Shippable? |
-| `proof.md` | The result of each Evidence Testing check | None (required before a merge) |
+| `proof.md` | The result of each Evidence Testing check | None (in the Shippable? set when `policy.evidenceOnDeployedEnv` is `false`) |
 | `journal.md` | The dated log: work, decisions, and problems | None |
 | `map.md` | The code map: components, flow, data, tests, and terms | None |
 | `close.md` | What you now know, and the wiki changes | Learned? |

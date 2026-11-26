@@ -20,7 +20,7 @@ function wiki(t) {
   };
   const ticket = (key, { state = 'active', phase = 'plan', updated = '2026-10-01', short = '', gates = [], extra = [], people = [] } = {}) => put(`raw/tickets/${key}/README.md`, [
     '---', 'type: ticket', `key: ${key}`, `title: Title of ${key} | with a pipe`, ...(short ? [`short: ${short}`] : []),
-    'workflow: full-v3', `phase: ${phase}`, `state: ${state}`, `next: Next step for ${key}`, 'waiting_on: ""',
+    'workflow: full-v4', `phase: ${phase}`, `state: ${state}`, `next: Next step for ${key}`, 'waiting_on: ""',
     'changes: []', ...(people.length ? ['people:', ...people] : ['people: []']), 'gates:', ...gates, ...extra, `updated: ${updated}`, '---', `# ${key}`, '',
   ].join('\n'));
   return { root, put, ticket };
@@ -28,7 +28,7 @@ function wiki(t) {
 
 test('the board groups tickets by state in a fixed order and sorts keys by number', (t) => {
   const w = wiki(t);
-  w.ticket('APP-10', { state: 'needs-me', short: 'Ten', gates: ['  - { name: Scoped?, doc: scope.md, need: required, status: in-review }'] });
+  w.ticket('APP-10', { state: 'needs-me', short: 'Ten', gates: ['  - { name: Planned?, doc: plan.md, need: required, status: in-review }'] });
   w.ticket('APP-9', { state: 'needs-me', short: 'Nine' });
   w.ticket('APP-1', { state: 'done', phase: 'closed' });
   w.ticket('APP-2', { state: 'blocked', updated: '2026-10-04' });
@@ -36,7 +36,7 @@ test('the board groups tickets by state in a fixed order and sorts keys by numbe
   assert.deepEqual(board.groups.map((group) => group.state), ['needs-me', 'blocked', 'go', 'active', 'waiting', 'done']);
   assert.deepEqual(board.groups[0].tickets.map((item) => item.key), ['APP-9', 'APP-10']);
   assert.equal(board.groups[0].tickets[1].sessionTitle, 'APP-10 - 🟡 - Ten');
-  assert.deepEqual(board.groups[0].tickets[1].openGate, { name: 'Scoped?', status: 'in-review' });
+  assert.deepEqual(board.groups[0].tickets[1].openGate, { name: 'Planned?', status: 'in-review' });
   assert.equal(board.groups[1].tickets[0].days, 1);
   assert.equal(board.total, 4);
   const text = renderBoard(board);
@@ -71,9 +71,9 @@ test('people waits list open tickets with a waiting person after more than 3 wor
 
 test('the open gate prefers in-review, then blocked, then todo, and ignores recommended gates', () => {
   const gates = (...list) => ({ gates: list.map(([name, status, need = 'required']) => ({ name, status, need })) });
-  assert.deepEqual(openGate(gates(['Scoped?', 'approved'], ['Planned?', 'todo'], ['Shippable?', 'in-review'])), { name: 'Shippable?', status: 'in-review' });
+  assert.deepEqual(openGate(gates(['Planned?', 'approved'], ['Learned?', 'todo'], ['Shippable?', 'in-review'])), { name: 'Shippable?', status: 'in-review' });
   assert.deepEqual(openGate(gates(['Planned?', 'todo'], ['Sendable?', 'blocked'])), { name: 'Sendable?', status: 'blocked' });
-  assert.equal(openGate(gates(['Extra?', 'in-review', 'recommended'], ['Scoped?', 'skipped'])), null);
+  assert.equal(openGate(gates(['Extra?', 'in-review', 'recommended'], ['Planned?', 'skipped'])), null);
 });
 
 test('sync notes add PR, CI, and tracker status (an old note names it jira); bad notes and bad READMEs are read errors', (t) => {
@@ -159,15 +159,15 @@ test('nextStrike gives the one next step: a gate in review, then a ticket that n
   assert.equal(nextStrike(strikeBoard()), null);
   assert.equal(nextStrike(strikeBoard(strikeTicket('APP-7', 'active'), strikeTicket('APP-8', 'waiting'), strikeTicket('APP-9', 'done'))), null);
   // A gate in review that has no document still names the gate. A missing age counts as the newest.
-  assert.equal(nextStrike(strikeBoard(strikeTicket('APP-1', 'needs-me', { ...inReview('Scoped?', '') }))).text, 'Scoped? needs you.');
+  assert.equal(nextStrike(strikeBoard(strikeTicket('APP-1', 'needs-me', { ...inReview('Planned?', '') }))).text, 'Planned? needs you.');
   assert.equal(nextStrike(strikeBoard(strikeTicket('APP-1', 'go', { days: null }), strikeTicket('APP-2', 'go', { days: 0 }))).key, 'APP-2');
 });
 
 test('the strike is not part of the board model: board --json and raw/board.md have no strike', (t) => {
   const w = wiki(t);
-  w.ticket('APP-1', { state: 'needs-me', gates: ['  - { name: Scoped?, doc: story.md, need: required, status: in-review }'] });
+  w.ticket('APP-1', { state: 'needs-me', gates: ['  - { name: Planned?, doc: plan.md, need: required, status: in-review }'] });
   const board = buildBoard(w.root, { today: '2026-10-05' });
-  assert.ok(!('strike' in board) && !JSON.stringify(board).includes('Read story.md'));
-  assert.ok(!renderBoard(board).includes('Read story.md'));
-  assert.equal(nextStrike(board).text, 'Scoped? needs you. Read story.md.');
+  assert.ok(!('strike' in board) && !JSON.stringify(board).includes('Read plan.md'));
+  assert.ok(!renderBoard(board).includes('Read plan.md'));
+  assert.equal(nextStrike(board).text, 'Planned? needs you. Read plan.md.');
 });

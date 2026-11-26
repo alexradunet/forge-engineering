@@ -44,9 +44,9 @@ function wiki(t) {
   put('.git/notes.md', '# Git\n');
   put('tooling/notes.txt', 'not a page\n');
   put('raw/tickets/app-9/README.md', [
-    '---', 'type: ticket', 'key: APP-9', 'title: Fix the outbox retry', 'short: Fix outbox retry', 'workflow: full-v3', 'phase: plan', 'state: active',
-    'next: Write the plan', 'changes: []', 'people: []', 'gates:', '  - { name: Scoped?, doc: story.md, need: required, status: approved, date: 2026-11-10 }',
-    '  - { name: Planned?, doc: plan.md, need: required, status: todo }', 'updated: 2026-11-16', '---', '# APP-9', '',
+    '---', 'type: ticket', 'key: APP-9', 'title: Fix the outbox retry', 'short: Fix outbox retry', 'workflow: full-v4', 'phase: plan', 'state: active',
+    'next: Write the plan', 'changes: []', 'people: []', 'gates:', '  - { name: Planned?, doc: plan.md, need: required, status: approved, date: 2026-11-10 }',
+    '  - { name: Shippable?, doc: review.md, need: required, status: todo }', 'updated: 2026-11-16', '---', '# APP-9', '',
   ].join('\n'));
   put('raw/tickets/app-9/story.md', [
     '---', 'type: story', '---', '# Story APP-9', '', 'Problem: retries stop. The limits are in [the retry page](../../../app/retry.md).',

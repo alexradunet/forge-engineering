@@ -1,6 +1,6 @@
 ---
 name: ticket
-description: Ticket workspace for the work items of one repository, from the tracker of the forge config (for example Jira or GitHub Issues). Every new ticket follows the full-v3 workflow (research, scope, investigation, plan, implementation, evidence, and learning) with four review gates and a small set of plain documents. Keeps working artifacts in <forge>/raw/tickets/<key>, shared by agent sessions (VS Code Agents window, Copilot CLI, Claude Code), and distills them into canonical wiki pages at close. Use when the user pastes a work item key or URL, or asks to "start ticket APP-123", "work on APP-123", "resume APP-123", "where are we on the ticket", "record this finding", "save the plan to the ticket", "close the ticket", or "archive the ticket".
+description: Ticket workspace for the work items of one repository, from the tracker of the forge config (for example Jira or GitHub Issues). Every new ticket follows the full-v4 workflow (research, scope check, investigation, plan, implementation, evidence, and learning) with three review gates and a small set of plain documents. Keeps working artifacts in <forge>/raw/tickets/<key>, shared by agent sessions (VS Code Agents window, Copilot CLI, Claude Code), and distills them into canonical wiki pages at close. Use when the user pastes a work item key or URL, or asks to "start ticket APP-123", "work on APP-123", "resume APP-123", "where are we on the ticket", "record this finding", "save the plan to the ticket", "close the ticket", or "archive the ticket".
 ---
 
 # 🎫 Ticket workspace
@@ -22,7 +22,7 @@ This file is short, so that it stays whole in the context. The steps of each pha
 
 | When | Read |
 |---|---|
-| Start: a new work item, research, colleague questions, spikes, interview, scope | [phases/start.md](phases/start.md) |
+| Start: a new work item, research, colleague questions, spikes, interview, scope check | [phases/start.md](phases/start.md) |
 | A gate opens, comments arrive, an approval, a manifest, or a Sendable? write (Cold read, Procedure, Approval revisions, Sendable? for each write, Approval form) | [phases/gates.md](phases/gates.md) |
 | A README change (Frontmatter, the Now card, People), the Session title, the Artifacts panel, the Ticket overview | [phases/state.md](phases/state.md) |
 | Worktrees: at Start, before the first commit, at Implement, and before a proof run | [phases/worktrees.md](phases/worktrees.md) |
@@ -37,11 +37,12 @@ This file is short, so that it stays whole in the context. The steps of each pha
 
 ## 🕰️ Older tickets
 
-Forge supports only `workflow: full-v3`. Read the `workflow` marker of the ticket README before any other step.
+Forge reads only `workflow: full-v4`. Read the `workflow` marker of the ticket README before any other step.
 
-- When the marker is not `full-v3`, or the README has no marker, stop. Tell the user that Forge 8 does not support this ticket layout.
+- When the marker is `full-v3`, stop. Tell the user to finish this ticket with Forge 10.1.
+- When the marker is another value, or the README has no marker, stop. Tell the user that Forge does not read this ticket layout.
 - Never add or change a `workflow` marker, and never copy the templates over the files of such a ticket.
-- Every new ticket uses `full-v3`.
+- Every new ticket uses `full-v4`.
 
 ## ⚙️ Config, words, and policy
 
@@ -80,22 +81,24 @@ This skill does not repeat other tools. Use them:
 
 ## 🧭 Workflow
 
-Every new ticket has `workflow: full-v3`. There is no sizing question and no phase skip.
+Every new ticket has `workflow: full-v4`. There is no sizing question and no phase skip.
 A small fix has the same phases and gates as a large change. Its documents are shorter, because a document holds only the sections that have content.
 
 ```mermaid
 flowchart LR
-  S[Research] --> A[Interview] --> SC[story.md · Scoped?] --> D[Investigation] --> P[plan.md · Planned?]
-  P --> I[Implement] --> R[review.md · Shippable?] --> E[Evidence Testing · proof.md] --> M[merge by user] --> C[close.md · Learned?]
+  S[Research] --> A[Interview] --> SC[Scope check in chat] --> D[Investigation] --> P[story.md + plan.md · Planned?]
+  P --> I[Implement] --> AR[Adversarial review] --> E[Evidence Testing · proof.md] --> R[review.md · Shippable?]
+  R --> M[Push, change request, merge by user] --> C[close.md · Learned?]
   D -. diagnosis contradicts scope .-> SC
 ```
 
-- Four review gates in order: Scoped?, Planned?, Shippable?, Learned?. Sendable? applies to each external write, also an early one.
-- Each gate has one primary document. Nothing before Scoped? needs a gate.
+- Three review gates in order: Planned?, Shippable?, Learned?. Sendable? applies to each external write, also an early one.
+- Planned? has 2 documents, `story.md` and `plan.md`. One approval covers both. Shippable? and Learned? have one document each.
+- Nothing before Planned? needs a gate. The scope check is a question in chat (see Scope check in [phases/start.md](phases/start.md)).
 - The investigation is mandatory before the plan steps. Its diagnosis is the first section of `plan.md`.
-- Diagnosis stop: when the investigation shows that the approved scope is wrong or too small (see Investigate), stop before the plan and ask.
+- Diagnosis stop: when the investigation shows that the scope is wrong or too small (see Investigate), stop before the plan and ask.
 - The plan has design options, a baseline run, and a plan review before Planned? (see Investigate).
-- Evidence Testing is a required step, not a gate. It blocks the merge proposal.
+- Evidence Testing is a required step, not a gate. It comes before Shippable?. When `policy.evidenceOnDeployedEnv` is `true`, it comes after the push. It blocks the merge proposal.
 - QA handover runs only when `policy.qaHandover` is `true`. It uses Sendable?, not a new gate.
 
 Two goals for every ticket:
@@ -110,10 +113,11 @@ The folder name is `<key>`, for example `app-123`. A file starts to exist when i
 ```text
 <forge>/raw/tickets/<key>/
   README.md     frontmatter (state, phase, gates, people, change requests) and the Now card
-  story.md      Scoped?: problem, scope, done-when, answers, history, open questions
-  plan.md       Planned?: diagnosis, steps, tests, checks, risks, decisions
+  story.md      Planned?: problem, scope, done-when, answers, history, open questions
+  plan.md       Planned? (with story.md): diagnosis, steps, tests, checks, risks, decisions
   review.md     Shippable?: changes, tests run, review findings
   proof.md      Evidence Testing: one check for each changed behavior, with its result
+                (before Shippable?; after the push when policy.evidenceOnDeployedEnv is true)
   journal.md    append-only dated entries: log, decision, problem, check, step
   map.md        code map: components with their layer, flow, data, tests, terms
   close.md      Learned?: what you now know, and the wiki changes
@@ -145,8 +149,7 @@ These core rules always win over a policy section or a rule page: no merge, ask 
 
 | Gate | Primary doc | Opens before |
 |---|---|---|
-| Scoped? | `story.md` | investigation work on the agreed scope |
-| Planned? | `plan.md` | implementation |
+| Planned? | `story.md` and `plan.md` | implementation |
 | Sendable? | the exact `outbox/` draft | each external write: the host prompt is the "yes". Exception: a change request draft in the approved Shippable? set |
 | Shippable? | `review.md` | push or change request creation |
 | Learned? | `close.md` | canonical wiki writes and the archive move |
@@ -162,18 +165,18 @@ Rules:
 - Never answer the approval form for the user, and never approve in auto mode. No session approves a gate for another session.
 - A required gate blocks its step. A change to an approved document reopens its gate.
 - Native plan approval of the host does not replace a ticket gate.
-- The Forge gate guard (a preToolUse hook) checks Scoped?, Planned?, and Shippable? before a push or a new change request in the ticket worktree. Before each external write, it makes the host ask the user: that answer is the Sendable? "yes". It also stops a push when it cannot read the README. It asks nothing for a change request in the approved Shippable? set. It is a net, not the rule: each gate applies also where the hook does not run.
+- The Forge gate guard (a preToolUse hook) checks Planned? and Shippable? before a push or a new change request in the ticket worktree. Before each external write, it makes the host ask the user: that answer is the Sendable? "yes". It also stops a push when it cannot read the README. It asks nothing for a change request in the approved Shippable? set. It is a net, not the rule: each gate applies also where the hook does not run.
 
 The steps of a gate are in [phases/gates.md](phases/gates.md): the cold read, the manifest, the approval form, the comments, `<F> gate-open`, and `<F> gate-approve`.
 
 ## 🔁 Resume
 
 1. Set the title (`host.title`) first, before any other tool call or question (see Session title). Use the README `state` and `short`.
-2. Read `README.md`. When its `workflow` is not `full-v3`, stop here (see Older tickets). Missing frontmatter or contradictory metadata needs an explicit finding and user-directed repair, not template replacement or inferred state.
+2. Read `README.md`. When its `workflow` is not `full-v4`, stop here (see Older tickets). Missing frontmatter or contradictory metadata needs an explicit finding and user-directed repair, not template replacement or inferred state.
 3. Read the last entries of `journal.md`.
 4. Read the `## Resume` policy section, for example credential checks.
 5. Validate the approvals with `<F> lint --wiki "<wiki>" --json`. Default lint is read-only. Never run `--fix` implicitly.
 6. Show the Now card first. Then tell the user the last result, the policy checks, the approval findings, the people who need a message or a reply (`to-contact`, `drafted`, `follow-up`, `reply-in`), and the people you wait for. A finding blocks only the affected action.
 7. Show the approval form for each gate that is `in-review`.
 8. Before implementation or a proof run, apply the Worktrees checks. A resumed session does not need another worktree when the current one is suitable. Preserve valid approval evidence when you report a baseline mismatch.
-9. Then read the part of the README `phase`: `start` is [phases/start.md](phases/start.md); `investigate` and `plan` are [phases/investigate-plan.md](phases/investigate-plan.md); `implement` is [phases/implement.md](phases/implement.md); `review` is [phases/implement.md](phases/implement.md) before the change request and [phases/evidence.md](phases/evidence.md) after it; `closed` is [phases/closing.md](phases/closing.md).
+9. Then read the part of the README `phase`: `start` is [phases/start.md](phases/start.md); `investigate` and `plan` are [phases/investigate-plan.md](phases/investigate-plan.md); `implement` is [phases/implement.md](phases/implement.md); `review` is [phases/implement.md](phases/implement.md) for the review and the change request, and [phases/evidence.md](phases/evidence.md) while Evidence Testing is open; `closed` is [phases/closing.md](phases/closing.md).

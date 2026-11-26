@@ -205,9 +205,9 @@ test('gatesHtml gives each status its class and its words, and the row a text al
     assert.ok(html.includes(`title="Gate? ${text}"`), status);
     assert.ok(html.includes(`aria-label="Gates: Gate? ${text}"`), status);
   }
-  const row = gatesHtml([{ name: 'Scoped?', status: 'approved' }, { name: 'Planned?', status: 'in-review' }]);
-  assert.ok(row.includes('<span class="gate-words">Planned? needs you</span>'));
-  assert.ok(!gatesHtml([{ name: 'Planned?', status: 'in-review' }], { words: false }).includes('gate-words'));
+  const row = gatesHtml([{ name: 'Planned?', status: 'approved' }, { name: 'Shippable?', status: 'in-review' }]);
+  assert.ok(row.includes('<span class="gate-words">Shippable? needs you</span>'));
+  assert.ok(!gatesHtml([{ name: 'Shippable?', status: 'in-review' }], { words: false }).includes('gate-words'));
   assert.equal(gatesHtml([]), '');
 });
 
@@ -451,7 +451,7 @@ test('the spark: the script, the one animation inside the reduced-motion query, 
   assert.doesNotMatch(query[0], /blur|infinite|gradient/, 'no blur and no loop');
   // The gate rows of a board page have the key of the ticket, and each ingot has its gate and its status.
   const { pages } = demoPages(t);
-  assert.match(pages.board, /<span class="gates" data-gates="app-101"><span class="ingots" role="img"[^>]*><span class="ingot ig-approved" data-gate="Scoped\?" data-status="approved"/);
+  assert.match(pages.board, /<span class="gates" data-gates="app-101"><span class="ingots" role="img"[^>]*><span class="ingot ig-approved" data-gate="Planned\?" data-status="approved"/);
 });
 
 test('the spark script gives the class once, to an ingot that is approved now and was not before, and never on a first visit or without storage', () => {
@@ -471,23 +471,23 @@ test('the spark script gives the class once, to an ingot that is approved now an
   const sparks = (rows) => rows.flatMap((one) => one.items.filter((item) => item.ingot.names.includes('spark')).map((item) => item.name));
   const key = 'forge-ui:gates:app-1';
   // The first visit: nothing is stored, so there is no spark, and the statuses are stored.
-  let first = [row({ 'Scoped?': 'approved', 'Planned?': 'in-review' })];
+  let first = [row({ 'Planned?': 'approved', 'Shippable?': 'in-review' })];
   let storage = store();
   run(first, storage);
   assert.deepEqual(sparks(first), []);
-  assert.deepEqual(JSON.parse(storage.data[key]), { 'Scoped?': 'approved', 'Planned?': 'in-review' });
-  // The next visit: Planned? is approved now.
-  const next = [row({ 'Scoped?': 'approved', 'Planned?': 'approved' })];
+  assert.deepEqual(JSON.parse(storage.data[key]), { 'Planned?': 'approved', 'Shippable?': 'in-review' });
+  // The next visit: Shippable? is approved now.
+  const next = [row({ 'Planned?': 'approved', 'Shippable?': 'approved' })];
   run(next, storage);
-  assert.deepEqual(sparks(next), ['Planned?']);
-  assert.deepEqual(JSON.parse(storage.data[key]), { 'Scoped?': 'approved', 'Planned?': 'approved' });
+  assert.deepEqual(sparks(next), ['Shippable?']);
+  assert.deepEqual(JSON.parse(storage.data[key]), { 'Planned?': 'approved', 'Shippable?': 'approved' });
   // One time: the third visit has no change.
-  const third = [row({ 'Scoped?': 'approved', 'Planned?': 'approved' })];
+  const third = [row({ 'Planned?': 'approved', 'Shippable?': 'approved' })];
   run(third, storage);
   assert.deepEqual(sparks(third), []);
   // The storage is off: no spark, and no error.
   const off = { getItem() { throw new Error('off'); }, setItem() { throw new Error('off'); } };
-  first = [row({ 'Scoped?': 'approved' })];
+  first = [row({ 'Planned?': 'approved' })];
   assert.doesNotThrow(() => run(first, off));
   assert.deepEqual(sparks(first), []);
 });
