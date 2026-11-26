@@ -9,6 +9,7 @@ baseBranch: main
 # 🐙 GitHub pull requests (`gh`)
 
 > forge reads this file as `config/repo.md`. `forge-setup` copies it from `templates/config/`. It holds the values of the GitHub profile.
+> `changeName` is `PR`, `MR`, or `none`. `none`: no change requests, and the agent pushes to the base branch after Shippable?.
 > Change a shared value in the forge repository, so that each user gets it. `repo.<key>` below means the frontmatter key `<key>` of this file.
 
 Tools: gh.

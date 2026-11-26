@@ -183,7 +183,7 @@ Run it before Planned?, after the cold read, only when `policy.planReview` is `a
 
 ## 🥊 Adversarial review
 
-Required before every change request, including a draft. It is a second, hostile read of the change. It tries to break it.
+Required before every change request, including a draft, and before a push to the base branch when the repository has no change requests. It is a second, hostile read of the change. It tries to break it.
 
 1. Run it after the tests pass and before you write the final `review.md`. Do not run it on a half-done change.
 2. Start a `rubber-duck` subagent with `task` (when that agent type is missing, use `code-review` or `general-purpose` with a review-only prompt). Use the model in `policy.adversarialReviewModel` unless the user names another model. When it is not set, pick a model family different from your own. A model different from the author finds different bugs.

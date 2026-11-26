@@ -124,6 +124,14 @@ test('the scope check is a question in chat, and Planned? covers story.md and pl
   assert.match(phase('implement'), /When \`policy\.evidenceOnDeployedEnv\` is \`false\`: do Evidence Testing and write \`proof\.md\`/);
 });
 
+test('a repository with no change requests pushes to the base branch after Shippable?', () => {
+  const implement = phase('implement');
+  assert.match(implement, /\`repo\.changeName\` is \`none\`/);
+  assert.match(implement, /git push origin HEAD:<base branch>/);
+  assert.match(implement, /Never force-push/);
+  assert.match(agents, /and before a push to the base branch when the repository has no change requests/);
+});
+
 test('each review gate has a cold read by a reader without the session history', () => {
   assert.match(agents, /## 🐟 Cold read/);
   assert.match(agents, /Give it only this, and nothing from the session/);

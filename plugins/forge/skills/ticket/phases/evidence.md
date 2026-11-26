@@ -45,7 +45,7 @@ Rules:
    - `false`: go on with `review.md` and Shippable? (see [implement.md](implement.md)). After the push and the creation of the change request, tell the user that it can be merged.
    - `true`: write the new description in `outbox/change-update.draft.md` (the approved change request draft stays as it is), run Sendable?, update the description with `repo.update-change`, and tell the user that the change request can be merged.
    - Never suggest a merge on a day in `policy.noMergeWeekdays`.
-14. When the change request has all approvals (`repo.change-status`) and Evidence Testing is done, report it and stop. The user merges in the web UI of the repository host. Record the merge as a `log` entry when the user reports it.
+14. When the change request has all approvals (`repo.change-status`) and Evidence Testing is done, report it and stop. The user merges in the web UI of the repository host. Record the merge as a `log` entry when the user reports it. With `repo.changeName: none`, there is no description to update: tell the user the pushed commit, and go to Close when the user says that the ticket is done.
 15. After the merge, run the QA handover (next section) when `policy.qaHandover` is `true`. Else go to Close when the user says that the ticket is done.
 
 ## 🧑‍🔬 QA handover

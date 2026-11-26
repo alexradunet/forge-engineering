@@ -24,6 +24,15 @@ After a compaction of the session, read this file again before you use its steps
   5. Open Shippable? with `<F> gate-open <key> shippable`. It adds the draft to the set. When `policy.evidenceOnDeployedEnv` is `false`, it also needs `proof.md` and adds it.
   6. After GO, push.
   7. Create the change request with `repo.open-change` and the text between the `send` markers. The approved Shippable? set is the "yes" for this write (see Sendable? in [gates.md](gates.md)). Add the change request to the README `changes` list.
+- When `repo.changeName` is `none`, the repository has no change requests. The push to the base branch replaces the change request:
+  1. Do steps 1 to 3 of the order above. Write no change request draft.
+  2. Open Shippable? with `<F> gate-open <key> shippable`. In the approval form, say that GO also approves the push to the base branch.
+  3. After GO, run `git fetch`. Then rebase the ticket branch on `origin/<base branch>`.
+  4. When the rebase has no conflict, the GO stays valid. Run the checks of the repository again before the push.
+  5. When the rebase has a conflict, the code changes. Resolve the conflict, run the adversarial review again, and open Shippable? again.
+  6. Push from the ticket worktree with `git push origin HEAD:<base branch>`. Never force-push. Do not push the base branch from the main checkout: the gate guard checks only a push from the ticket worktree.
+  7. Add a `log` entry with the pushed commit to `journal.md`. The README `changes` list stays empty.
+  8. When `policy.evidenceOnDeployedEnv` is `true`, do Evidence Testing after this push.
 - When end-to-end or regression tests exist, run the relevant ones (and the whole suite when the risk is wide) on a deployed branch before you mark the change request ready. The `## Implement` policy section can make this stricter. Ask the user before each deploy or CI trigger (`ci.trigger`). Show the job and its parameters first.
 - Record test results, change request links, and CI results (`ci.status`) as `log` entries in `journal.md`. Record build and test problems as `problem` entries.
 - Set the phase to `implement` and then to `review` in `README.md`. Set `review` when the implementation is done.

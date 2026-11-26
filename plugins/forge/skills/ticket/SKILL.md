@@ -56,7 +56,7 @@ explains the `<file>.<key>` notation. [tools.md](../../context/tools.md) says ho
 | work item | the item in the tracker that `<config>/tracker.md` describes (for example a Jira issue) |
 | `<KEY>` | the work item key as `PREFIX-number`, for example `APP-123`. A ticket with no work item has the local key `L-<n>`, for example `L-3`. |
 | `<key>` | the lower-case key, for example `app-123`. It names the ticket folder. |
-| change request | a pull request or merge request. Use the word in `repo.changeName` (`PR` or `MR`) when you talk to the user. |
+| change request | a pull request or merge request. Use the word in `repo.changeName` (`PR` or `MR`) when you talk to the user. With `repo.changeName: none`, the repository has no change requests, and the push to the base branch replaces them (see Implement). |
 | checkout | a local clone from `repo.checkouts`. The main checkout is the first row. |
 | `tracker.*`, `repo.*`, `ci.*` | a capability. Its command is in the matching config file (see [tools.md](../../context/tools.md)). |
 | policy section | a `## <name>` section of `<config>/policy.md`, for example `## Start` |

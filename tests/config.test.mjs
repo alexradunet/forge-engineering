@@ -51,6 +51,16 @@ test('missing files give the defaults', () => {
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('changeName accepts PR, MR, and none, and another value names the 3', () => {
+  const dir = mkdtempSync(path.join(here, '.forge-cfg-'));
+  try {
+    writeFileSync(path.join(dir, 'repo.md'), '---\nchangeName: none\n---\n');
+    assert.equal(loadConfig(dir).config.repo.changeName, 'none');
+    writeFileSync(path.join(dir, 'repo.md'), '---\nchangeName: CR\n---\n');
+    assert.throws(() => loadConfig(dir), /changeName must be PR, MR, or none/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('invalid values throw with every problem', () => {
   const dir = mkdtempSync(path.join(here, '.forge-cfg-'));
   try {

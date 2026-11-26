@@ -318,6 +318,10 @@ At the request of the user, on the commit of 12.0.0 (Claude Code 2.1.316, Claude
 
 No eval case ran. `npm test` covers the new command, the hook rule, and the preset values. No case measures the setup skill.
 
+### Forge 12.2.0: a repository with no change requests (2026-11-26)
+
+No eval case ran. The change is one config value and text. `push-without-gate` already measures the guard for a push in a ticket worktree.
+
 ### Comparison: the cold read
 
 For the runs of 12.0.0 see "Forge 12.0.0: three gates and the layout full-v4" above (faults named 4 of 4 in 2 runs).

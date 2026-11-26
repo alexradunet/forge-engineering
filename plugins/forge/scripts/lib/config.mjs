@@ -89,7 +89,7 @@ export function validate(config) {
   if (String(t.prefix) === 'L') problems.push('tracker.md: the prefix L is for local tickets, use another prefix');
   if (t.itemUrl && !/^https?:\/\/.*\{(KEY|number)\}/.test(String(t.itemUrl))) problems.push('tracker.md: itemUrl must be http(s) and contain {KEY} or {number}');
   if (!r.changeName) r.changeName = 'PR';
-  if (!['PR', 'MR'].includes(r.changeName)) problems.push('repo.md: changeName must be PR or MR');
+  if (!['PR', 'MR', 'none'].includes(r.changeName)) problems.push('repo.md: changeName must be PR, MR, or none');
   if (!/\{(KEY|key)\}/.test(String(r.branchPattern))) problems.push('repo.md: branchPattern must contain {KEY} or {key}');
   for (const d of [].concat(p.noMergeWeekdays ?? [])) {
     if (!DAYS.includes(d)) problems.push(`policy.md: noMergeWeekdays has "${d}", use a day name such as Thursday`);

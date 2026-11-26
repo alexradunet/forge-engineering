@@ -270,6 +270,17 @@ test('a write for a ticket with a README that cannot be read gets ask, with no e
   assert.equal(run(s.worktree, 'gh pr create -t T').decision, 'deny', 'A new change request is stopped, not only asked.');
 });
 
+test('with changeName none, a push of HEAD:main in the ticket worktree needs the gates', (t) => {
+  const s = setup(t);
+  trustConfig(s, ['repo.changeName=none']);
+  const verdict = run(s.worktree, 'git push origin HEAD:main');
+  assert.equal(verdict.decision, 'deny');
+  assert.match(verdict.reason, /Shippable\? is not approved\./);
+  const all = setup(t, { approved: ['Planned?', 'Shippable?'] });
+  trustConfig(all, ['repo.changeName=none']);
+  assert.equal(run(all.worktree, 'git push origin HEAD:main'), null);
+});
+
 test('a trusted config adds the change request command, and policy.gateGuard selects deny, ask, or off', (t) => {
   const s = setup(t);
   trustConfig(s);

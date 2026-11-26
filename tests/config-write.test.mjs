@@ -190,7 +190,7 @@ test('CLI config set and row print the changed files and fail without writing', 
   assert.equal(loadConfig(dir).config.tracker.queries.mine, '--assignee=@me');
   const bad = spawnSync(process.execPath, [cli, 'config', 'set', 'repo.changeName=XR'], { cwd: app, env, encoding: 'utf8' });
   assert.equal(bad.status, 1);
-  assert.match(bad.stderr, /changeName must be PR or MR/);
+  assert.match(bad.stderr, /changeName must be PR, MR, or none/);
   assert.equal(loadConfig(dir).config.repo.baseBranch, 'develop');
   assert.ok(existsSync(path.join(dir, 'repo.md')));
 });

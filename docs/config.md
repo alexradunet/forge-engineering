@@ -85,7 +85,7 @@ node "<plugin>/scripts/forge.mjs" config row checkouts "old" --delete
 | | `itemUrl` | URL template with `{KEY}` or `{number}` | none |
 | | `host`, `project` | Site and project of the tracker | none |
 | `repo.md` | `provider` | Name of the host | `github` |
-| | `changeName` | The word for a change request | `PR` |
+| | `changeName` | The word for a change request: `PR`, `MR`, or `none` (no change requests: the agent pushes to the base branch after Shippable?) | `PR` |
 | | `branchPattern` | Branch template with `{KEY}` or `{key}`, plus `{number}`, `{slug}`. A template value such as `users/<user>/{KEY}-{slug}` needs your name | `{KEY}-{slug}` |
 | | `baseBranch` | Default target branch | `master` |
 | `ci.md` | `provider` | Name of the CI | `jenkins` |
