@@ -499,3 +499,71 @@ test('forge.mjs hook pre-tool always exits 0 with JSON', (t) => {
     assert.deepEqual(JSON.parse(quiet.stdout), {});
   }
 });
+
+const APPROVE = () => `node ${cli} gate-approve app-7 planned --answer approve`;
+
+test('guardActions gives an approve action for gate-approve and trust approve, in each launcher form', () => {
+  const cwd = '/x';
+  const kinds = (line) => guardActions(line, cwd).map((a) => a.kind);
+  assert.deepEqual(guardActions('node /p/scripts/forge.mjs gate-approve app-7 planned --answer "approve planned" --method chat', cwd),
+    [{ kind: 'approve', cwd, command: 'gate-approve', key: 'app-7', gate: 'planned', answer: 'approve planned' }]);
+  assert.deepEqual(guardActions('node /p/forge.mjs --wiki /w trust approve config/repo.md=abcdef123456', cwd),
+    [{ kind: 'approve', cwd, command: 'trust approve', files: ['config/repo.md=abcdef123456'] }]);
+  assert.deepEqual(kinds('forge gate-approve app-7 planned --answer approve'), ['approve']);
+  assert.deepEqual(kinds('/home/a/bin/forge.cmd gate-approve app-7 planned --answer approve'), ['approve']);
+  assert.deepEqual(kinds('C:\\forge\\forge.mjs gate-approve app-7 planned --answer approve'), ['approve']);
+  assert.deepEqual(kinds('FORGE_X=1 sudo node /p/forge.mjs trust approve a=12345678'), ['approve']);
+  // No verdict for a dry run, a help call, the status call of trust, and a command that only names the words.
+  assert.deepEqual(kinds('node /p/forge.mjs gate-approve app-7 planned --answer approve --dry-run'), []);
+  assert.deepEqual(kinds('node /p/forge.mjs gate-approve --help'), []);
+  assert.deepEqual(kinds('forge trust approve -h'), []);
+  assert.deepEqual(kinds('node /p/forge.mjs trust'), []);
+  assert.deepEqual(kinds('node /p/forge.mjs trust --json'), []);
+  assert.deepEqual(kinds('grep gate-approve plugins/forge/scripts/forge.mjs'), []);
+  assert.deepEqual(kinds('node /p/forge.mjs lint app-7'), []);
+  // A quoted --answer that holds "--dry-run" is one word, so it is still an approval.
+  assert.deepEqual(kinds('node /p/forge.mjs gate-approve app-7 planned --answer "approve --dry-run"'), ['approve']);
+});
+
+test('preTool asks for an approval command in a ticket worktree, in the main checkout, with an untrusted config, and with gateGuard off', (t) => {
+  const s = setup(t);
+  const check = (verdict, text) => {
+    assert.equal(verdict?.decision, 'ask');
+    assert.match(verdict.reason, /^Forge gate guard: /);
+    assert.match(verdict.reason, text);
+    assert.match(verdict.reason, /Allow it only if you gave this answer yourself\./);
+  };
+  // The config is not trusted yet, and the folder is a ticket worktree or the main checkout.
+  check(run(s.worktree, APPROVE()), /gate-approve.*planned.*app-7.*"approve"/);
+  check(run(s.app, APPROVE()), /gate-approve/);
+  check(run(s.worktree, 'forge gate-approve app-7 planned --answer approve'), /gate-approve/);
+  check(run(s.worktree, 'forge.cmd gate-approve app-7 planned --answer approve'), /gate-approve/);
+  check(run(s.worktree, `node ${cli} trust approve config/repo.md=abcdef123456`), /trust approve.*config\/repo\.md=abcdef123456/);
+  // A folder with no repository, no ticket, and no wiki.
+  const bare = mkdtempSync(path.join(os.tmpdir(), 'forge-guard-bare-'));
+  t.after(() => rmSync(bare, { recursive: true, force: true }));
+  check(run(bare, APPROVE()), /gate-approve/);
+  // policy.gateGuard: off does not turn it off.
+  const off = setup(t);
+  trustConfig(off, ['policy.gateGuard=off']);
+  assert.equal(run(off.worktree, `git push origin users/a/APP-7-doc-import`), null, 'Control: the push guard is off.');
+  check(run(off.worktree, APPROVE()), /gate-approve/);
+  check(run(off.app, `node ${cli} trust approve config/repo.md=abcdef123456`), /trust approve/);
+});
+
+test('preTool denies an approval command in bypassPermissions and gives no verdict for the read forms', (t) => {
+  const s = setup(t);
+  const verdict = preTool({ cwd: s.worktree, command: APPROVE(), mode: 'bypassPermissions' }, { env });
+  assert.equal(verdict.decision, 'deny');
+  assert.match(verdict.reason, /gate-approve/);
+  assert.match(verdict.reason, /run it in a terminal/);
+  assert.equal(preTool({ cwd: s.worktree, command: APPROVE(), mode: 'default' }, { env }).decision, 'ask');
+  for (const command of [
+    `node ${cli} gate-approve app-7 planned --answer approve --dry-run`,
+    `node ${cli} gate-approve --help`,
+    `node ${cli} trust`,
+    `node ${cli} trust --json`,
+    'grep gate-approve plugins/forge/scripts/forge.mjs',
+  ]) assert.equal(run(s.worktree, command), null, command);
+  assert.equal(run(s.worktree, `node ${cli} gate-approve app-7 planned --answer "approve --dry-run"`)?.decision, 'ask');
+});

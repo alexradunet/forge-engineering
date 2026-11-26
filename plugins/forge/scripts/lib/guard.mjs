@@ -5,6 +5,9 @@
 // so the prompt of the host is the "yes" for this one write (GH-2). In a mode with no prompt, it denies instead.
 // One exception: a new change request, when its draft is the one `target: change` file of the approved Shippable? set.
 // The approval of that exact set is the yes, so the guard gives no verdict, also in a mode with no prompt.
+// The 2 approval commands (`forge.mjs gate-approve` and `forge.mjs trust approve`) get `ask` in each folder and each policy,
+// also with `policy.gateGuard: off`: an approval is the yes of the user, so the agent must not give it alone.
+// In a mode with no prompt, they are denied, and the user runs them in a terminal.
 // It reads the words of the command, so it is a net and not a wall: a script that pushes is not seen.
 // A ticket whose README cannot be read stops a push and a new change request too: the gates are unknown (policy.gateGuard sets deny or ask).
 // It never stops other work: a folder with no ticket, no wiki, or a config that cannot be read lets the command run.
@@ -27,6 +30,8 @@ const METHOD_OPTIONS = new Set(['-X', '--method']);
 // The shells that run the text of a heredoc or a pipe as commands.
 const SHELLS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'fish', 'pwsh', 'powershell']);
 const HELP = new Set(['--help', '-h']);
+// The options of forge.mjs that take a value, before and after the subcommand.
+const FORGE_VALUE_OPTIONS = new Set(['--wiki', '--cwd', '--profile', '--answer', '--method', '--manifest', '--hash', '--today']);
 // The capabilities that change something outside the workspace. The core holds the names; the trusted config gives the commands.
 export const WRITE_CAPABILITIES = ['tracker.comment', 'tracker.create', 'tracker.transition', 'tracker.link', 'repo.open-change', 'repo.update-change', 'repo.reply', 'ci.trigger'];
 // Permission modes in which a host runs a command with no prompt, also after a hook `ask` (GH-2: Claude Code bypassPermissions).
@@ -143,6 +148,38 @@ function toolWords(words) {
 }
 
 const toolName = (word) => String(word ?? '').split(/[\\/]/).pop().replace(/\.exe$/i, '').toLowerCase();
+
+/**
+ * The approval action of a forge call, or null. The call is `node <...>/forge.mjs` or a launcher (`forge`, `forge.cmd`).
+ * `gate-approve` is an action, except with `--dry-run` or a help word. `trust approve` is an action; `trust` alone is not.
+ */
+function approveCall(words, cwd) {
+  const tool = toolName(words[0]);
+  const base = (word) => String(word).split(/[\\/]/).pop().toLowerCase();
+  let rest;
+  if (tool === 'node') {
+    const at = words.findIndex((word, i) => i > 0 && base(word) === 'forge.mjs');
+    if (at === -1) return null;
+    rest = words.slice(at + 1);
+  } else if (['forge.mjs', 'forge', 'forge.cmd'].includes(base(words[0]))) rest = words.slice(1);
+  else return null;
+  // Plain words and option values: a value option takes the next word, so a quoted --answer is one word.
+  const plain = [];
+  let answer = '';
+  let flags = false;
+  for (let i = 0; i < rest.length; i++) {
+    const word = rest[i];
+    const joined = /^(--[a-z-]+)=(.*)$/s.exec(word);
+    if (joined && FORGE_VALUE_OPTIONS.has(joined[1])) { if (joined[1] === '--answer') answer = joined[2]; continue; }
+    if (FORGE_VALUE_OPTIONS.has(word)) { if (word === '--answer') answer = rest[i + 1] ?? ''; i++; continue; }
+    if (word === '--dry-run' || HELP.has(word)) { flags = true; continue; }
+    if (!word.startsWith('-')) plain.push(word);
+  }
+  const [sub, first, second] = plain;
+  if (sub === 'gate-approve' && !flags) return { kind: 'approve', cwd, command: 'gate-approve', key: first ?? '', gate: second ?? '', answer };
+  if (sub === 'trust' && first === 'approve' && !flags) return { kind: 'approve', cwd, command: 'trust approve', files: plain.slice(2) };
+  return null;
+}
 
 /** The subcommand of a git call, its arguments, and the folder that `-C` selects. */
 function gitCall(words, cwd) {
@@ -265,6 +302,8 @@ function pushTargets(args) {
 
 /**
  * The guarded actions of a shell line. Each action has the folder where it runs: `cd` and `git -C` change it.
+ * - `approve`: a `forge.mjs gate-approve` or `forge.mjs trust approve` call (not with `--dry-run` or a help word), with its
+ *   `command`, and the `key`, `gate`, and `answer` (gate-approve) or the `files` (trust approve).
  * - `push`: each `git push` (not a dry run), with the branches that it names (`refs`, `all`).
  * - `change`: a command that starts with one of the change commands (word lists).
  * - `write`: a command that matches one of the write commands ({ capability, words, method }), with its
@@ -282,6 +321,8 @@ export function guardActions(line, cwd, { changes = [], writes = [] } = {}) {
       if (target) folder = path.resolve(folder, target);
       continue;
     }
+    const approval = approveCall(words, folder);
+    if (approval) { actions.push(approval); continue; }
     if (tool === 'git') {
       const call = gitCall(words, folder);
       if (call.sub === 'push' && !call.args.some((arg) => arg === '--dry-run' || arg === '-n')) actions.push({ kind: 'push', cwd: call.cwd, ...pushTargets(call.args) });
@@ -364,6 +405,16 @@ function writeVerdict(match, action) {
   };
 }
 
+/** The ask verdict for an approval command: the reason names the command and what it approves. */
+function approveVerdict(action) {
+  const what = action.command === 'gate-approve'
+    ? `\`forge.mjs gate-approve\` records the approval of ${action.gate || '(no gate)'} for ${action.key || '(no key)'} with the answer ${JSON.stringify(action.answer)}`
+    : `\`forge.mjs trust approve\` trusts the config and rule files ${action.files.length ? action.files.join(', ') : '(no file named)'}`;
+  const key = action.key ?? '';
+  const question = `this command is an approval: ${what}.`;
+  return { decision: 'ask', key, question, reason: `Forge gate guard: ${question} Allow it only if you gave this answer yourself.` };
+}
+
 /** A host that does not show a prompt in this mode runs an `ask` with no "yes", so the guard denies instead. */
 function noPrompt(verdict, mode) {
   if (verdict?.decision !== 'ask' || !NO_PROMPT_MODES.has(mode)) return verdict;
@@ -382,6 +433,8 @@ function noPrompt(verdict, mode) {
  *   A new change request with valid gates gets `ask` too, unless its draft is the one `target: change` file of the approved
  *   Shippable? set and no draft or open change request exists: then it gets no verdict.
  *   In a mode with no prompt (NO_PROMPT_MODES), each `ask` becomes `deny`.
+ * - An approval command (`gate-approve`, `trust approve`) gets `ask` in each folder, also with `gateGuard: off`,
+ *   and `deny` in a mode with no prompt.
  * - A `deny` wins over an `ask`. Only a trusted config can change the mode or add commands.
  */
 export function preTool(event, { env = process.env } = {}) {
@@ -406,6 +459,8 @@ export function preTool(event, { env = process.env } = {}) {
     } catch { return []; }
   };
   for (const action of guardActions(event.command, base, { changes, writes })) {
+    // An approval needs no ticket, no wiki, and no trusted config, and no gateGuard mode turns it off.
+    if (action.kind === 'approve') { verdicts.push(approveVerdict(action)); continue; }
     let where = samePath(action.cwd, base) ? home : locate(action.cwd, env);
     let config = where === home ? homeConfig : (where?.wiki.exists ? trustedConfig(where, env) : null);
     let found = ticketsAt(where, config, action, action.cwd);

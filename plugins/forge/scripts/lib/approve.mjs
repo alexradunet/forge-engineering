@@ -11,13 +11,13 @@ export const HISTORY = 'approvals/history.md';
 const METHODS = ['form', 'chat'];
 
 // The approval contract of the ticket skill: the form value `approve` (or its 🟢 GO label), or
-// `approve <gate>` in chat, with or without the `?` and in any case.
+// `approve <gate>` in chat: the whole answer, with an optional `?`, then optional `.` or `!`, in any case.
+// Other text before or after (`approve planned only after step 3`) is no approval.
 export function isApproval(name, answer, method) {
   const text = String(answer ?? '').trim();
   if (method === 'form') return /^approve$/i.test(text) || text.startsWith('🟢 GO');
   const base = name.replace(/\?$/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  // (?=(\??))\1 takes the `?` atomically, so `approve scoped?later` cannot backtrack past it.
-  return new RegExp(`^approve\\s+${base}(?=(\\??))\\1(?![\\p{L}\\p{N}_])`, 'iu').test(text);
+  return new RegExp(`^approve\\s+${base}\\??[.!]*$`, 'i').test(text);
 }
 
 function regularOrMissing(target, label) {
@@ -51,7 +51,7 @@ export function approveGate(dir, { gate: name, answer, method = 'form', manifest
   if (!isApproval(name, answer, method)) {
     throw new Error(method === 'form'
       ? 'The form answer is not `approve`. Only the `approve` value of the approval form approves a gate.'
-      : `The chat answer does not start with \`approve ${name.replace(/\?$/, '').toLowerCase()}\`. Only that answer approves the gate.`);
+      : `The chat answer is not \`approve ${name.replace(/\?$/, '').toLowerCase()}\`, with an optional ? and an optional . or !. Only that whole answer approves the gate.`);
   }
   if (!validDate(today)) throw new Error(`Invalid date: ${today}.`);
   const file = path.join(dir, 'README.md');
