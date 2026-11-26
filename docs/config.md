@@ -100,6 +100,15 @@ node "<plugin>/scripts/forge.mjs" config row checkouts "old" --delete
 | | `scopeComment` | After the scope check, draft a tracker comment for the reporter with the scope and the open questions (it needs your yes as each write) | `false` |
 | | `gateGuard` | The gate guard for a push or a new change request of a ticket without the valid approvals of Planned? and Shippable?: `deny`, `ask` (the host asks you), or `off` | `deny` |
 
+`set up forge` asks for the team size and the response style, and writes one set of 4 values with `forge.mjs config set`, and `styleRules` as the user chooses. No code reads the team size. The template `policy.md` holds the small-team set.
+
+| Key | Small team | Large team |
+|---|---|---|
+| `planReview` | `attacker` | `attacker` |
+| `scopeComment` | `false` | `true` |
+| `evidenceOnDeployedEnv` | `false` | `true` |
+| `qaHandover` | `false` | `true` |
+
 ## 📜 Capabilities
 
 Skills never name a tool. They name a **capability**. The file `plugins/forge/context/tools.md` tells the agent how to find its row in the config file.

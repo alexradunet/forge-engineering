@@ -170,3 +170,35 @@ test('the plan has design options, a baseline run, and a plan review, and the ga
   assert.ok(phase('evidence').includes('change-update.draft.md'));
   assert.match(phase('implement'), /Keep this order before the push/);
 });
+
+test('the team size values are the same in the setup skill, the policy template, and docs/config.md', () => {
+  const setup = read('forge-setup/SKILL.md');
+  const policy = readFileSync(new URL('../plugins/forge/templates/config/policy.md', import.meta.url), 'utf8');
+  const docs = readFileSync(new URL('../docs/config.md', import.meta.url), 'utf8');
+  for (const text of ['Team size', '`small` (solo, or a team of 5 or less)', '`large` (a large team with QA and deployed test environments)', 'the response style rules of the plugin', 'one `host.ask` form with 2 questions', '`planReview: panel`']) assert.ok(setup.includes(text), text);
+  const fromSkill = (size) => Object.fromEntries([...new RegExp(`^- ${size}: .*$`, 'm').exec(setup)[0].matchAll(/"policy\.(\w+)=([^"<]+)"/g)].map((m) => [m[1], m[2]]));
+  const fromPolicy = (name) => Object.fromEntries([...new RegExp(`^${name} team: .*$`, 'm').exec(policy)[0].matchAll(/\`(\w+)=(\w+)\`/g)].map((m) => [m[1], m[2]]));
+  const rows = [...docs.matchAll(/^\| \`(\w+)\` \| \`(\w+)\` \| \`(\w+)\` \|$/gm)];
+  const fromDocs = (column) => Object.fromEntries(rows.filter((m) => ['planReview', 'scopeComment', 'evidenceOnDeployedEnv', 'qaHandover'].includes(m[1])).filter((m) => m[2 + column] !== undefined).map((m) => [m[1], m[2 + column]]));
+  const small = fromSkill('small');
+  const large = fromSkill('large');
+  assert.deepEqual(Object.keys(small).sort(), ['evidenceOnDeployedEnv', 'planReview', 'qaHandover', 'scopeComment']);
+  assert.deepEqual([fromPolicy('Small'), fromPolicy('Large')], [small, large]);
+  assert.deepEqual([fromDocs(0), fromDocs(1)], [small, large]);
+  assert.match(setup, /"policy\.styleRules=<true\|false>"/);
+  // The frontmatter of the template is the small-team set, with styleRules false.
+  const { data } = parseFile(policy, 'policy.md');
+  for (const [key, value] of Object.entries(small)) assert.equal(String(data[key]), value, key);
+  assert.equal(data.styleRules, false);
+});
+
+test('the local ticket texts: Start, closing, and the session context name the local key', () => {
+  const start = phase('start');
+  assert.match(start, /### 📝 Local ticket/);
+  assert.match(start, /<F> local-key/);
+  assert.match(start, /evidence\/<yyyy-mm-dd>-request\.md/);
+  assert.match(phase('closing'), /A local ticket \(key \`L-<n>\`\)[\s\S]*another ticket[\s\S]*<F> local-key/);
+  assert.match(ticketCore, /local key \`L-<n>\`/);
+  assert.match(readFileSync(new URL('../plugins/forge/context/forge.md', import.meta.url), 'utf8'), /ticket with no work item[^\n]*"Local ticket" of Start/);
+  assert.match(read('board/SKILL.md'), /local key \(\`L-<n>\`\), skip the tracker read/);
+});

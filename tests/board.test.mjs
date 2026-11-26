@@ -171,3 +171,12 @@ test('the strike is not part of the board model: board --json and raw/board.md h
   assert.ok(!renderBoard(board).includes('Read plan.md'));
   assert.equal(nextStrike(board).text, 'Planned? needs you. Read plan.md.');
 });
+
+test('a local ticket shows on the board like each other ticket', (t) => {
+  const w = wiki(t);
+  w.ticket('L-3', { state: 'needs-me', short: 'Local fix' });
+  const board = buildBoard(w.root, { today: '2026-10-05' });
+  assert.deepEqual(board.groups.filter((group) => group.tickets.length).map((group) => [group.state, group.tickets.map((item) => item.key)]), [['needs-me', ['L-3']]]);
+  assert.equal(board.groups[0].tickets[0].sessionTitle, 'L-3 - 🟡 - Local fix');
+  assert.match(renderBoard(board), /\[L-3 - 🟡 - Local fix\]\(<tickets\/L-3\/README\.md>\)/);
+});

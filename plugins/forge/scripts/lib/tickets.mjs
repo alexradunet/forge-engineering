@@ -1,7 +1,7 @@
 // Finds and reads the ticket folders of a repository: <forge>/raw/tickets/<key>/README.md (rawDir in layout.mjs gives the raw folder of a wiki).
-import { lstatSync, readFileSync, readdirSync } from 'node:fs';
+import { lstatSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { rawDir } from './layout.mjs';
+import { archiveDir, rawDir } from './layout.mjs';
 import { parseTicket } from './ticket.mjs';
 
 export function ticketRoot(wikiPath) {
@@ -56,4 +56,37 @@ export function findTicket(wikiPath, key) {
   if (!match) throw new Error(`No ticket folder for ${key} in ${ticketRoot(wikiPath)}.`);
   if (match.error) throw new Error(`${match.file}: ${match.error}`);
   return match;
+}
+
+/** The prefix of the key of a ticket with no work item: L-<n>. The tracker prefix must not be L. */
+export const LOCAL_PREFIX = 'L';
+
+/**
+ * The next local key, L-<n>. The number is 1 plus the highest of the counter file raw/local-key, the folders l-<n> in raw/tickets and archive/tickets,
+ * and the pages tickets/l-<n>.md of the wiki. It writes the number to the counter file. A link in place of the counter file is an error.
+ */
+export function nextLocalKey(wikiPath) {
+  const raw = rawDir(wikiPath);
+  const counter = path.join(raw, 'local-key');
+  let last = 0;
+  try {
+    if (lstatSync(counter).isSymbolicLink()) throw new Error(`${counter} must not be a link.`);
+    const value = Number(readFileSync(counter, 'utf8').trim());
+    if (Number.isSafeInteger(value) && value > 0) last = value;
+  } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  const pattern = new RegExp(`^${LOCAL_PREFIX}-(\\d+)(\\.md)?$`, 'i');
+  const scan = (dir, markdown) => {
+    let entries = [];
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { /* A missing folder has no keys. */ }
+    for (const entry of entries) {
+      const hit = pattern.exec(entry.name);
+      if (hit && Boolean(hit[2]) === markdown && (markdown ? entry.isFile() : entry.isDirectory())) last = Math.max(last, Number(hit[1]));
+    }
+  };
+  scan(path.join(raw, 'tickets'), false);
+  scan(path.join(archiveDir(wikiPath), 'tickets'), false);
+  scan(path.join(wikiPath, 'tickets'), true);
+  mkdirSync(raw, { recursive: true });
+  writeFileSync(counter, `${last + 1}\n`);
+  return `${LOCAL_PREFIX}-${last + 1}`;
 }

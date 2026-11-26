@@ -129,3 +129,13 @@ test('policy.planReview defaults to off and accepts off, attacker, and panel onl
     assert.throws(() => loadConfig(dir), /planReview must be off, attacker, or panel/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('tracker.prefix L is refused: it is the prefix of the local tickets', () => {
+  const dir = mkdtempSync(path.join(here, '.forge-cfg-'));
+  try {
+    writeFileSync(path.join(dir, 'tracker.md'), '---\nprefix: GH\n---\n');
+    assert.equal(loadConfig(dir).config.tracker.prefix, 'GH');
+    writeFileSync(path.join(dir, 'tracker.md'), '---\nprefix: L\n---\n');
+    assert.throws(() => loadConfig(dir), /prefix L is for local tickets/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});

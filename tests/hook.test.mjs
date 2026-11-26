@@ -540,3 +540,28 @@ test('the hooks of a terminal harness write the start and the end of a session t
   assert.equal(hookArgs(['hook', 'session-end', '--host', 'claude'], {}).host, 'claude');
   assert.equal(hookArgs(['hook', 'session-end', '--host', 'claude', '--part', '1'], {}), null);
 });
+
+test('a local key L-<n> is seen with the tracker prefix GH: open, closed, and unknown', (t) => {
+  const s = setup(t);
+  const where = resolve({ cwd: s.app, env });
+  setValues(seed(where, templates).configDir, ['tracker.prefix=GH']);
+  approve(where, trustStatus(where, { env }).files.filter((f) => f.rel.startsWith('config/')).map((f) => `${f.rel}=${f.sha.slice(0, 12)}`), { env });
+  const folder = path.join(`${s.app}.worktrees`, 'l-3-local-work');
+  git(s.app, 'worktree', 'add', '-q', '-b', 'L-3-local-work', folder);
+  const dir = path.join(s.home, 'raw', 'tickets', 'l-3');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(path.join(dir, 'README.md'), readFileSync(s.readme, 'utf8').replaceAll('APP-7', 'L-3').replace('worktree: ""', `worktree: "${folder.replaceAll('\\', '/')}"`).replace('branch: ""', 'branch: "L-3-local-work"'));
+  const start = (cwd, prompt) => sessionStart({ cwd, source: 'startup', prompt }, { cli, env, host: 'claude', part: 1 }).hookSpecificOutput.additionalContext;
+  assert.match(start(folder, ''), /Forge ticket session: L-3, state .*follow Resume/s, 'the worktree finds the open local ticket');
+  assert.match(start(s.app, 'work on L-3'), /Forge ticket session: L-3/, 'the first prompt finds it');
+  assert.match(promptSubmit({ cwd: s.app, prompt: 'Resume L-3 please', title: '' }, { cli, env }).hookSpecificOutput.additionalContext, /Forge ticket session: L-3/, 'a later prompt finds it');
+  // A closed local ticket gets the closed line.
+  mkdirSync(path.join(s.wiki, 'tickets'), { recursive: true });
+  writeFileSync(path.join(s.wiki, 'tickets', 'l-5.md'), '# L-5 Done local work\n');
+  assert.match(start(s.app, 'start L-5'), /Forge: L-5 is a closed ticket\. Its summary page is .*l-5\.md/);
+  assert.deepEqual(promptSubmit({ cwd: s.app, prompt: 'start L-5', title: '' }, { cli, env }), {});
+  // An unknown local key is never a new tracker ticket.
+  assert.ok(!start(s.app, 'start L-4').includes(TICKET), 'the first prompt');
+  assert.deepEqual(promptSubmit({ cwd: s.app, prompt: 'start L-4', title: '' }, { cli, env }), {}, 'a later prompt');
+  assert.equal(promptSubmit({ cwd: s.app, prompt: 'start GH-9', title: '' }, { cli, env }).hookSpecificOutput.sessionTitle, 'GH-9 - ▶️ - Start ticket', 'a tracker key still starts');
+});

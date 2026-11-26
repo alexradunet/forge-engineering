@@ -17,7 +17,7 @@ import { resolve, samePath } from './repo.mjs';
 import { ownTurn } from './own-turn.mjs';
 import { recordEnd, recordStart } from './sessions.mjs';
 import { STATE_EMOJI, nowCard, sessionTitle } from './ticket.mjs';
-import { listTickets } from './tickets.mjs';
+import { LOCAL_PREFIX, listTickets } from './tickets.mjs';
 import { RULES, assertTrusted, status as trustStatus } from './trust.mjs';
 import { AGENTS_BRANCH } from './worktree.mjs';
 
@@ -274,7 +274,8 @@ function ticketPart(event, where, forge, env, { host = 'vscode', promptOnly = fa
   // A later prompt can name a key only in passing, so it needs the tracker prefix.
   if (promptOnly && !prefix) return { lines: [], key: '', title: '' };
   const candidates = promptOnly ? [...String(event.prompt).matchAll(STRICT_KEY)].map((m) => m[0]) : tokens(event.prompt);
-  const fresh = candidates.find((token) => /^[A-Z][A-Z0-9]*-\d+$/.test(token) && (!prefix || token.startsWith(`${prefix}-`)));
+  // A local key is never a work item of the tracker: it skips the prefix rule, and only a closed page makes it a fresh key.
+  const fresh = candidates.find((token) => /^[A-Z][A-Z0-9]*-\d+$/.test(token) && (token.startsWith(`${LOCAL_PREFIX}-`) ? Boolean(closedFile(where.wiki.path, token)) : (!prefix || token.startsWith(`${prefix}-`))));
   if (!fresh) return { lines: [], key: '', title: '' };
   const closed = closedFile(where.wiki.path, fresh);
   if (closed) return { lines: [`Forge: ${fresh} is a closed ticket. Its summary page is ${closed}. Do not start it again unless the user asks.`], key: '', title: '', closed: true };

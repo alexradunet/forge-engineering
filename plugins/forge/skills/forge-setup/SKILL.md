@@ -67,7 +67,7 @@ Run `detect` and `doctor` first. Then pick one flow and tell the user which one.
 | The wiki exists, but `doctor` shows a `fail` or `warn` | ⏯️ Resume |
 | `doctor` is clean | ✅ Check, then offer the 🧩 Optional extras |
 
-State the progress at each step, for example "step 4 of 10 done".
+State the progress at each step, for example "step 4 of 11 done".
 
 ## ✅ Check or repair
 
@@ -134,12 +134,33 @@ Two values differ for each user. Ask for them in one form. Prefill each field fr
 When a command reports a problem, show it, ask for a corrected value, and run it again.
 Keep the values of an existing wiki config unless the user asks to change them.
 
-### Step 6. Check the values
+### Step 6. Team size
+
+Ask for the team size and the response style. Use one `host.ask` form with 2 questions. Never answer for the user.
+
+1. Team size: `small` (solo, or a team of 5 or less), or `large` (a large team with QA and deployed test environments).
+2. Response style: the response style rules of the plugin (Simplified Technical English, no AI tells, the ADHD response shape) in each session. The answer is `on` or `off`.
+
+Show the values, then write them with one command. `styleRules` is `true` for `on`, and `false` for `off`.
+
+- small: `<F> config set "policy.planReview=attacker" "policy.scopeComment=false" "policy.evidenceOnDeployedEnv=false" "policy.qaHandover=false" "policy.styleRules=<true|false>"`
+- large: `<F> config set "policy.planReview=attacker" "policy.scopeComment=true" "policy.evidenceOnDeployedEnv=true" "policy.qaHandover=true" "policy.styleRules=<true|false>"`
+
+Tell the user what the 3 large-team values do:
+
+- `scopeComment`: after the scope check, forge drafts a comment with the scope for the reporter.
+- `evidenceOnDeployedEnv`: the proof of the change runs after the push, on a deployed environment.
+- `qaHandover`: after the merge, forge drafts a QA handover comment.
+
+The user can change each value. `planReview: panel` (3 reviewer subagents) also exists, and no team size sets it.
+The values are in `policy.md`, so **Trust** (step 9) covers them. Keep the values of a policy that a team already shares, unless the user asks to change them.
+
+### Step 7. Check the values
 
 Run `doctor`. Fix each `config:placeholder` and `config:checkouts` line with step 5.
-Do not continue to **Trust** while `<user>` remains in `repo.branchPattern`. `worktree` refuses that pattern.
+Do not continue to **Trust** (step 9) while `<user>` remains in `repo.branchPattern`. `worktree` refuses that pattern.
 
-### Step 7. Credentials
+### Step 8. Credentials
 
 The user runs each command in a terminal. The prompt hides the input. Never ask for a secret in chat.
 
@@ -148,21 +169,21 @@ Without a profile, use the `cred:<name>` lines of `doctor`, and `node "<plugin>/
 
 Then run `doctor` again. Each `warn cred:<name>` line must be gone. A tenant credential expires. The **Resume** hook of `policy.md` tells how to renew it.
 
-### Step 8. Trust
+### Step 9. Trust
 
 Run `git -C <wiki> status --short` and `git -C <wiki> diff -- forge rules`. Show what changed.
 Run `trust`. Show each `new` or `changed` file with the first 12 characters of its hash.
 After the user says yes, run `trust approve <path>=<hash> ...` for exactly those files.
 A rule page shows as `../rules/<name>.md`. The hook gives a rule page to each session only after approval.
 
-### Step 9. Live read
+### Step 10. Live read
 
 Read `<config>/<kind>.md` and run its **Auth check**. Then run each read capability once against a real item:
 `tracker.fetch` (ask for one real key), `tracker.search` with `mine`, `repo.history`, and `ci.status`.
 Report `ok` or the error with its fix from **Failures**. Also use the **Live read** notes of `profile.md`.
 Never run a write capability during setup.
 
-### Step 10. Finish
+### Step 11. Finish
 
 1. Run `doctor`. It must show no `fail` line.
 2. Offer the 🧩 Optional extras.
@@ -179,7 +200,7 @@ Use this flow when a forge update changed a shared profile value in `templates/c
 3. Run `seed --force` after approval. It replaces `tracker.md`, `repo.md`, and `ci.md`.
 4. Re-apply the saved values with `config set` and `config row` (step 5).
 5. To refresh `policy.md` or a rule page, show the diff against `<plugin>/templates/`, and copy the file only after approval.
-6. Run steps 6 (check), 8 (trust), and 9 (live read).
+6. Run steps 7 (check), 9 (trust), and 10 (live read).
 
 ## ⏯️ Resume
 
@@ -193,10 +214,10 @@ Do not repeat a step that is already done. Do not ask again for values that the 
 | `warn config:<kind>.md Missing` | Step 4 (seed) |
 | `warn config:<kind>.md <cli> is not on PATH` | Step 2 (tools) |
 | `warn config:placeholder` or `warn config:checkouts` | Step 5 (your values) |
-| `warn cred:<name>` | Step 7 (credentials) |
-| `fail trust` | Step 8 (trust) |
+| `warn cred:<name>` | Step 8 (credentials) |
+| `fail trust` | Step 9 (trust) |
 | `fail config` | Show the error. Fix the value with `config set`. |
-| no `fail`, no `warn` | Step 9 (live read), then step 10 |
+| no `fail`, no `warn` | Step 10 (live read), then step 11 |
 
 ## 🧩 Optional extras
 
@@ -204,11 +225,10 @@ Offer the extras in one form after setup, or when the user asks. Each one is opt
 
 ### Policy values
 
-The profile `policy.md` already holds the hook sections and the values. Show the current values with the **Policy notes** of `profile.md`, and change one only when the user asks:
+The profile `policy.md` already holds the hook sections and the values. Step 6 sets `planReview`, `scopeComment`, `evidenceOnDeployedEnv`, `qaHandover`, and `styleRules`.
+Show the current values with the **Policy notes** of `profile.md`, and change one only when the user asks. Step 6 does not set these keys:
 
 - `noMergeWeekdays`: days with no merge, for example a release day.
-- `evidenceOnDeployedEnv`: whether Evidence Testing uses a deployed feature branch.
-- `qaHandover`: whether QA tests after the merge.
 - `maxImplementers`: the maximum number of implementer sessions. The default is 6.
 - `adversarialReviewModel`: the reviewer model. Empty means a model family different from the author.
 - `gateGuard`: what the gate guard does with a push or a new change request of a ticket that has no valid Shippable? approval: `deny` (default), `ask`, or `off`.

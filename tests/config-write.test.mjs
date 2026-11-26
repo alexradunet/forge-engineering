@@ -194,3 +194,22 @@ test('CLI config set and row print the changed files and fail without writing', 
   assert.equal(loadConfig(dir).config.repo.baseBranch, 'develop');
   assert.ok(existsSync(path.join(dir, 'repo.md')));
 });
+
+test('each team size command of the setup skill passes setValues on a copy of the template policy, and the config loads with those values', () => {
+  const skill = readFileSync(path.join(plugin, 'skills', 'forge-setup', 'SKILL.md'), 'utf8');
+  for (const size of ['small', 'large']) {
+    const line = skill.split(/\r?\n/).find((text) => text.startsWith(`- ${size}: `));
+    const template = /config set ((?:"policy\.[A-Za-z]+=[^"]*" ?)+)`/.exec(line)[1];
+    for (const style of ['true', 'false']) {
+      const args = [...template.matchAll(/"([^"]+)"/g)].map((m) => m[1].replace('<true|false>', style));
+      assert.equal(args.length, 5, size);
+      const copy = mkdtempSync(path.join(root, 'preset-'));
+      for (const kind of KINDS) writeFileSync(path.join(copy, `${kind}.md`), readFileSync(path.join(templates, `${kind}.md`)));
+      setValues(copy, args);
+      const policy = loadConfig(copy).config.policy;
+      const wanted = Object.fromEntries(args.map((arg) => { const [key, value] = arg.replace(/^policy\./, '').split('='); return [key, value === 'true' ? true : value === 'false' ? false : value]; }));
+      assert.equal(wanted.styleRules, style === 'true');
+      for (const [key, value] of Object.entries(wanted)) assert.equal(policy[key], value, `${size} ${style} ${key}`);
+    }
+  }
+});

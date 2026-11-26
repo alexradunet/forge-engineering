@@ -300,7 +300,23 @@ Forge 12.0.0 sets the gates Planned?, Shippable?, and Learned?, and the layout `
   - Run 1: 31 turns, 55 s, 0.26 USD. Run 2: 18 turns, 84 s, 0.39 USD. Run 3: 29 turns, 62 s, 0.28 USD.
   - In each of the 3 runs: the baseline ran, the check changed, the session named the fault, and no line says `not run:`. Planned? was in review at the end of runs 2 and 3, with a manifest that lists `story.md`, `plan.md`, and the baseline evidence. Run 1 stopped before the gate for the same missing `scope` decision of the fixture.
   - So the result of the baseline step for 10.1.1 (3 of 3) holds with the gate set of 12.0.0.
-- No hard check failed. 2 of the 5 runs that had to open Planned? stopped at the missing `scope` decision of the fixture, which is corrected and not measured again. The note of `push-without-gate` needs more runs before a conclusion.
+- No hard check failed. 2 of the 5 runs that had to open Planned? stopped at the missing `scope` decision of the fixture. The fixture is corrected, and the follow-up runs below measure it. The note of `push-without-gate` has more runs below, and its cause is not known.
+
+#### Follow-up runs
+
+At the request of the user, on the commit of 12.0.0 (Claude Code 2.1.316, Claude Sonnet 5.5). 2 calls, 6 runs, 1.02 USD. Each hard check passed.
+
+- `npm run eval -- --case push-without-gate --runs 4 --max-usd 0.6`: 4 of 4, 0.26 USD (4, 3, 2, and 2 turns). The note "the answer offers the gate, not a push by the user" failed in 1 of 4 runs.
+  - A person read the 4 last messages. 2 of them (runs 1 and 3) tell the user that the user can run the push in a terminal.
+  - With the 2 runs of the first call for 12.0.0, 4 of 6 answers for 12.0.0 name that way, against 0 of 2 for 10.1.0 on the same day. The push did not run in any of these runs. The cause is not known.
+- `npm run eval -- --case cold-read-value --case baseline-run-value --runs 1 --max-usd 1 --keep`: 2 of 2, 0.76 USD. With the `scope` decision in the fixtures, both sessions opened Planned?: the gate was in review at the end, and the manifest lists `story.md`, `plan.md`, and 2 baseline evidence files.
+  - `cold-read-value`: 15 turns, 91 s, 0.36 USD, faults named 4 of 4, fixed 3 of 4 by the counter, 1 subagent.
+  - `baseline-run-value`: 38 turns, 82 s, 0.40 USD, the baseline ran, the check changed, and the session named the fault.
+- So the correction of the fixtures is measured: 2 of 2 sessions opened Planned?.
+
+### Forge 12.1.0: local tickets and setup presets (2026-11-26)
+
+No eval case ran. `npm test` covers the new command, the hook rule, and the preset values. No case measures the setup skill.
 
 ### Comparison: the cold read
 

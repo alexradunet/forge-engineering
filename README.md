@@ -44,7 +44,7 @@ Setup reads the repository first, so most answers are prefilled:
 
 Then it creates the Forge folder `../<repo>.forge` with its wiki, seeds the profile config and rule pages, writes your values with a validated command,
 asks you to store the credentials of the profile, asks you to approve the files by hash, and runs one live read for each tool.
-At the end, it offers the optional extras: the policy values and a VS Code check.
+It asks for the team size (small or large) and the response style, and writes the policy values for them. At the end, it offers the optional extras: the other policy values and a VS Code check.
 
 | Say | Result |
 |---|---|
@@ -127,7 +127,7 @@ Setup offers the native wiki of the private repository, a separate private `<rep
 | `plugins/forge/hooks/` | `hooks.json`: the same context for Claude Code (spike). `SessionStart` gives it in parts of at most 9,000 characters (2 parts for a session without company rules), `UserPromptSubmit` sets the ticket title, and `PreToolUse` is the gate guard. See `Claude Code host` in [vscode-baseline.md](docs/vscode-baseline.md) Forge 7.6 adds the live reporter (`scripts/live-hook.mjs`) as a background hook on the activity events of a session: see [Live view](#-live-view). Forge 9.1 adds the session list: part 1 of `SessionStart` writes the start of a session, and `forge.mjs hook session-end` at `SessionEnd` writes its end. |
 | `plugins/forge/skills/` | `ticket`, `agents`, `board`, `wiki`, `forge-setup`, `writing` |
 | `plugins/forge/templates/` | The profile: config (`config/`), rule pages (`rules/`), setup values (`profile.md`), and machine values with the list of the other profile files (`profile.json`) |
-| `plugins/forge/scripts/` | `forge.mjs` (init, config, trust, lint, board, worktree, live, open, gate-open, gate-approve, hook, wiki scripts), `cred.mjs`, `live-hook.mjs` (the reporter of the live view) |
+| `plugins/forge/scripts/` | `forge.mjs` (init, config, trust, lint, board, local-key, worktree, live, open, gate-open, gate-approve, hook, wiki scripts), `cred.mjs`, `live-hook.mjs` (the reporter of the live view) |
 | `plugins/forge/vendor/mermaid/` | The only third-party program of the plugin: the small Mermaid build that draws the diagrams of the wiki page, with its license and a [notice](plugins/forge/vendor/mermaid/NOTICE.md) (version, hash, update steps) |
 | `docs/` | [config.md](docs/config.md) (config format), [wiki.md](docs/wiki.md) (sharing and scripts), [evaluation.md](docs/evaluation.md) (behavioral runs: `npm run eval` gives the cases of `tests/evals/` to a real agent session), and [vscode-baseline.md](docs/vscode-baseline.md) (the VS Code features that forge uses) |
 | `AGENTS.md` | [Rules for agents that develop forge](AGENTS.md): docs-first checks, tests, and file format |
@@ -166,6 +166,7 @@ No mode allows em dashes or en dashes in prose. License texts are in [NOTICE.md]
 
 1. Open a new session and paste the work item key or URL, for example "start APP-42" or "resume APP-42".
    The agent renames the session first (see Session titles below).
+   For work with no work item, say "new local ticket". `forge.mjs local-key` gives the key `L-<n>`.
 2. Forge names the worktree and the branch. `forge.mjs worktree APP-42 --summary "<goal>"` gives the branch
    from `repo.branchPattern` and the folder `<repo>.worktrees/<key>-<slug>`:
    - **New Worktree** session: the agent renames the `agents/...` branch with `git branch -m` before the first commit. VS Code keeps its folder name.

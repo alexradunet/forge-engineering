@@ -29,6 +29,10 @@ gateGuard: deny
 | `scopeComment` | After the scope check, draft a tracker comment for the reporter with the scope and the open questions (it needs your yes as each write) | `false` |
 | `gateGuard` | The gate guard (a preToolUse hook) for a push or a new change request of a ticket without the valid approvals of Planned? and Shippable?: `deny`, `ask` (the host asks you), or `off` | `deny` |
 
+Small team: `planReview=attacker`, `scopeComment=false`, `evidenceOnDeployedEnv=false`, `qaHandover=false`.
+Large team: `planReview=attacker`, `scopeComment=true`, `evidenceOnDeployedEnv=true`, `qaHandover=true`.
+`set up forge` asks for the team size and the response style. It writes one set and `styleRules`.
+
 ## 🪝 Hook sections
 
 The `ticket` and `agents` skills read one section below at each step, and follow it.

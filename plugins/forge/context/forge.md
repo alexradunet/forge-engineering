@@ -19,6 +19,7 @@ When `config` or `run` says `Not approved`, show the files and their changes. Ru
 
 - A board request is the exception: "show the board", "show me the board", "refresh", or a question about a ticket that does not ask to work on it (for example "what is APP-123 waiting on?"). Load the `board` skill before any other tool call, and follow it. The sessions list alone is not the board: the board starts with `forge.mjs board --json`. Do not load the `ticket` skill, do not change the session title, and ignore the `# Forge ticket context` part for that request.
 - When the first message names a work item key or URL, load the `ticket` skill (Start or Resume).
+- When the user asks for a ticket with no work item (for example "new local ticket"), load the `ticket` skill and follow "Local ticket" of Start.
 - The user asked for ticket session titles: `<KEY> - <state emoji> - <short>`. Set the title (`host.title`) first, before any other tool call or question, and again at each state change. This overrides the general advice not to rename a fresh chat.
 - When the session context has a `# Forge ticket context` part, follow it.
 - Forge names the ticket worktree and branch: `forge.mjs worktree <KEY> --summary "<goal>"` (see "Worktrees" in the `ticket` skill).

@@ -17,6 +17,7 @@
 //   board   [--json] [--dry-run] [--today <date>] [--links vscode|file]   write <forge>/raw/board.md, the tickets grouped by state,
 //           and the pages: raw/board.html and raw/wiki.html
 //   styleguide [--out <file>] [--json]   write the styleguide page of the UI kit (each token and component, in both themes): <forge>/raw/styleguide.html, or the file of --out
+//   local-key [--json]   the next key L-<n> of a ticket with no work item (it moves the counter <forge>/raw/local-key)
 //   worktree <KEY> --summary "<goal>" [--base <ref>] [--create] [--json]   plan or create the ticket worktree and branch
 //   live    [--port <n>] [--links vscode|file]   show the board and the wiki on http://127.0.0.1 with the live state of the agent sessions
 //            (the session hooks send their events to this server). Its one action for a page is Resume (it opens a terminal for a closed session). It stops at a signal,
@@ -56,7 +57,7 @@ import { createStore } from './lib/cred.mjs';
 import { detect, initWiki, bind, seed } from './lib/setup.mjs';
 import { approve, assertTrusted, status as trustStatus } from './lib/trust.mjs';
 import { lint } from './lib/validation.mjs';
-import { findTicket } from './lib/tickets.mjs';
+import { findTicket, nextLocalKey } from './lib/tickets.mjs';
 import { approveGate } from './lib/approve.mjs';
 import { openReview } from './lib/gate-open.mjs';
 import { writeBoard } from './lib/board.mjs';
@@ -496,6 +497,13 @@ export function main(argv = process.argv.slice(2)) {
         console.log(`wrote: ${file}`);
         console.log(`  open  ${url}`);
       }
+    } else if (cmd === 'local-key') {
+      if (args._.length !== 1) throw new ForgeError('Usage: forge.mjs local-key [--json].', 'bad-args');
+      const where = resolve(opts);
+      if (!where.wiki.exists) throw new ForgeError(`No wiki at ${where.wiki.path}. Run the forge-setup skill.`, 'no-wiki');
+      let key;
+      try { key = nextLocalKey(where.wiki.path); } catch (err) { throw new ForgeError(err.message, 'local-key'); }
+      console.log(args.json ? JSON.stringify({ key }) : key);
     } else if (cmd === 'worktree') {
       if (args._.length !== 2 || !args.summary) throw new ForgeError('Usage: forge.mjs worktree <KEY> --summary "<goal>" [--base <ref>] [--create] [--json].', 'bad-args');
       const where = resolve(opts);
@@ -597,7 +605,7 @@ export function main(argv = process.argv.slice(2)) {
       if (args._[1] === 'approve') console.log(JSON.stringify(approve(where, args._.slice(2)), null, 2));
       else console.log(JSON.stringify(trustStatus(where), null, 2));
     } else {
-      console.error('Usage: node forge.mjs <where|config|doctor|lint|detect|init|bind|seed|board|styleguide|worktree|live|open|gate-open|gate-approve|hook|context|trust|run> [--wiki <dir>] [--cwd <dir>] [--json]');
+      console.error('Usage: node forge.mjs <where|config|doctor|lint|detect|init|bind|seed|board|styleguide|local-key|worktree|live|open|gate-open|gate-approve|hook|context|trust|run> [--wiki <dir>] [--cwd <dir>] [--json]');
       return 2;
     }
     return 0;

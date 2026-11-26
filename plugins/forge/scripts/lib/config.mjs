@@ -86,6 +86,7 @@ export function validate(config) {
   const problems = [];
   const { tracker: t, repo: r, policy: p } = config;
   if (t.prefix && !/^[A-Z][A-Z0-9]*$/.test(String(t.prefix))) problems.push('tracker.md: prefix must be upper case, for example APP');
+  if (String(t.prefix) === 'L') problems.push('tracker.md: the prefix L is for local tickets, use another prefix');
   if (t.itemUrl && !/^https?:\/\/.*\{(KEY|number)\}/.test(String(t.itemUrl))) problems.push('tracker.md: itemUrl must be http(s) and contain {KEY} or {number}');
   if (!r.changeName) r.changeName = 'PR';
   if (!['PR', 'MR'].includes(r.changeName)) problems.push('repo.md: changeName must be PR or MR');

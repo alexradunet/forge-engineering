@@ -1,6 +1,6 @@
 ---
 name: ticket
-description: Ticket workspace for the work items of one repository, from the tracker of the forge config (for example Jira or GitHub Issues). Every new ticket follows the full-v4 workflow (research, scope check, investigation, plan, implementation, evidence, and learning) with three review gates and a small set of plain documents. Keeps working artifacts in <forge>/raw/tickets/<key>, shared by agent sessions (VS Code Agents window, Copilot CLI, Claude Code), and distills them into canonical wiki pages at close. Use when the user pastes a work item key or URL, or asks to "start ticket APP-123", "work on APP-123", "resume APP-123", "where are we on the ticket", "record this finding", "save the plan to the ticket", "close the ticket", or "archive the ticket".
+description: Ticket workspace for the work items of one repository, from the tracker of the forge config (for example Jira or GitHub Issues). Every new ticket follows the full-v4 workflow (research, scope check, investigation, plan, implementation, evidence, and learning) with three review gates and a small set of plain documents. Keeps working artifacts in <forge>/raw/tickets/<key>, shared by agent sessions (VS Code Agents window, Copilot CLI, Claude Code), and distills them into canonical wiki pages at close. Use when the user pastes a work item key or URL, or asks to "start ticket APP-123", "new local ticket", "work on APP-123", "resume APP-123", "where are we on the ticket", "record this finding", "save the plan to the ticket", "close the ticket", or "archive the ticket".
 ---
 
 # 🎫 Ticket workspace
@@ -54,7 +54,7 @@ explains the `<file>.<key>` notation. [tools.md](../../context/tools.md) says ho
 | Word in this skill | Meaning |
 |---|---|
 | work item | the item in the tracker that `<config>/tracker.md` describes (for example a Jira issue) |
-| `<KEY>` | the work item key as `PREFIX-number`, for example `APP-123`. |
+| `<KEY>` | the work item key as `PREFIX-number`, for example `APP-123`. A ticket with no work item has the local key `L-<n>`, for example `L-3`. |
 | `<key>` | the lower-case key, for example `app-123`. It names the ticket folder. |
 | change request | a pull request or merge request. Use the word in `repo.changeName` (`PR` or `MR`) when you talk to the user. |
 | checkout | a local clone from `repo.checkouts`. The main checkout is the first row. |

@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,6 +11,7 @@ import { LAUNCHER_SH, compareVersions, readPointer, writeLauncher, writePointer 
 import { archiveDir, homeOf, isForgeLayout, rawDir } from '../plugins/forge/scripts/lib/layout.mjs';
 import { resolve } from '../plugins/forge/scripts/lib/repo.mjs';
 import { initWiki } from '../plugins/forge/scripts/lib/setup.mjs';
+import { nextLocalKey } from '../plugins/forge/scripts/lib/tickets.mjs';
 
 const cli = fileURLToPath(new URL('../plugins/forge/scripts/forge.mjs', import.meta.url));
 const plugin = path.dirname(path.dirname(cli));
@@ -160,4 +161,44 @@ test('the session context names the Forge folder, and the session start keeps th
   assert.equal(line, `\`<plugin>\` is \`${plugin}\`. \`<repo>\` is \`${app}\`. \`<forge>\` is \`${home}\`. \`<wiki>\` is \`${path.join(home, 'wiki')}\`. \`<config>\` is \`${path.join(home, 'wiki', 'forge', 'config')}\`.`);
   assert.equal(readPointer(home), plugin);
   assert.ok(existsSync(path.join(home, 'forge')), 'a launcher that is gone comes back');
+});
+
+test('nextLocalKey counts up from the counter, the raw and archive folders, and the wiki pages', (t) => {
+  const s = space(t);
+  const wiki = path.join(s.root, 'app.forge', 'wiki');
+  const raw = rawDir(wiki);
+  mkdirSync(wiki, { recursive: true });
+  assert.deepEqual([nextLocalKey(wiki), nextLocalKey(wiki)], ['L-1', 'L-2']);
+  assert.equal(readFileSync(path.join(raw, 'local-key'), 'utf8').trim(), '2');
+  mkdirSync(path.join(raw, 'tickets', 'l-7'), { recursive: true });
+  assert.equal(nextLocalKey(wiki), 'L-8', 'a raw folder');
+  mkdirSync(path.join(archiveDir(wiki), 'tickets', 'L-9'), { recursive: true });
+  assert.equal(nextLocalKey(wiki), 'L-10', 'an archive folder');
+  s.put(path.join(wiki, 'tickets', 'L-12.md'), '# L-12 Done\n');
+  s.put(path.join(wiki, 'tickets', 'app-99.md'), '# APP-99 Other\n');
+  assert.equal(nextLocalKey(wiki), 'L-13', 'a wiki page in any letter case, and no other prefix');
+  writeFileSync(path.join(raw, 'local-key'), '40\n');
+  assert.equal(nextLocalKey(wiki), 'L-41', 'a higher counter wins');
+  writeFileSync(path.join(raw, 'local-key'), 'text');
+  assert.equal(nextLocalKey(wiki), 'L-13', 'a counter with text gives the scan result');
+});
+
+test('nextLocalKey refuses a link in place of the counter file', (t) => {
+  const s = space(t);
+  const wiki = path.join(s.root, 'app.forge', 'wiki');
+  mkdirSync(path.join(wiki, '..', 'raw'), { recursive: true });
+  s.put(path.join(s.root, 'other'), '5\n');
+  try { symlinkSync(path.join(s.root, 'other'), path.join(wiki, '..', 'raw', 'local-key')); } catch { t.skip('Links cannot be made here.'); return; }
+  assert.throws(() => nextLocalKey(wiki), /must not be a link/);
+  assert.equal(readFileSync(path.join(s.root, 'other'), 'utf8'), '5\n');
+});
+
+test('forge.mjs local-key prints the next key, as text or as JSON', (t) => {
+  const s = space(t);
+  const wiki = path.join(s.root, 'team-wiki');
+  mkdirSync(wiki);
+  const repoRoot = path.resolve(plugin, '..', '..');
+  const call = (...args) => spawnSync(process.execPath, [cli, 'local-key', ...args, '--cwd', repoRoot, '--wiki', wiki], { encoding: 'utf8', env: s.env });
+  assert.equal(call('--json').stdout.trim(), JSON.stringify({ key: 'L-1' }));
+  assert.equal(call().stdout.trim(), 'L-2');
 });

@@ -88,3 +88,19 @@ The scope check is a question in chat. It is not a gate.
 7. `later`: stop. Tell the user how to resume.
 8. When `policy.scopeComment` is `true`, also draft the scope comment for the reporter after `correct`, and run Sendable?. It does not block the investigation.
 9. The scope check has no manifest, no cold read, and no `gate-open`. The user approves `story.md` together with `plan.md` at Planned?.
+
+### 📝 Local ticket
+
+Use this section when the user asks for a ticket with no work item. It also works when the tracker config has a provider.
+
+1. Run `<F> local-key`. The result is the `<KEY>`, for example `L-3`.
+2. Follow the Start steps with these changes:
+   - Do not run `tracker.fetch`.
+   - Save the request of the user, in the words of the user, as `evidence/<yyyy-mm-dd>-request.md`. Use it in place of the work item snapshot.
+   - Write `item: ""` in the README.
+   - Choose `short` from the request.
+3. In each later phase, skip each `tracker.*` step for this ticket: search, comment, transition, and link.
+4. The QA handover has no tracker comment. Give the text to the user.
+5. The reporter is the user. The scope check has no `reporter` option, and `policy.scopeComment` does not apply.
+6. The description of the change request has no `Closes #<n>` line.
+7. A local key never becomes a work item key. When the user makes a work item for the same work, record its URL in `item`. Keep the folder name.

@@ -55,3 +55,7 @@ sources:
 - Knowledge: <links to canonical pages>
 - Local-only working archive: <archive/tickets/<key>/; may be unavailable on another machine>
 ```
+
+A local ticket (key `L-<n>`) has no work item URL. Its `sources` hold the change request URL. With no change request, use the repository path of the main changed file.
+
+Before you write `<wiki>/tickets/<key>.md` for a local key, check the wiki. When a page with that name exists and its title names another ticket, stop and tell the user. Two users of one shared wiki can get the same local key. Ask for a new key with `<F> local-key`.

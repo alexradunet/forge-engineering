@@ -115,3 +115,12 @@ test('forge.mjs worktree prints the plan and needs --summary', (t) => {
   assert.match(made.stdout, /APP-11: created/);
   assert.equal(run('APP-11').status, 1);
 });
+
+test('the worktree plan for a local key L-3 names the folder and the branch like each other key', (t) => {
+  const r = repo(t);
+  assert.deepEqual(parseKey('l-3'), { KEY: 'L-3', key: 'l-3', number: '3' });
+  const plan = planWorktree({ repoPath: r.app, config: r.config, key: 'L-3', summary: 'Local retry fix' });
+  assert.equal(plan.action, 'create');
+  assert.equal(plan.branch, 'users/alex_radu/L-3-local-retry-fix');
+  assert.equal(plan.folder, path.join(`${r.app}.worktrees`, 'l-3-local-retry-fix'));
+});

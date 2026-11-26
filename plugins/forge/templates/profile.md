@@ -49,6 +49,7 @@ This profile needs no credential in the OS credential store. The `gh` login is s
 
 ## Policy notes
 
+- `forge-setup` asks for the team size at step 6, and writes `planReview`, `scopeComment`, `evidenceOnDeployedEnv`, `qaHandover`, and `styleRules` with one `config set`.
 - `noMergeWeekdays`: empty. Add a day when your team has a release day.
 - `evidenceOnDeployedEnv`: `false`. Set it to `true` when you can deploy a branch.
 - `qaHandover`: `false`. Set it to `true` when a QA person tests after the merge.
