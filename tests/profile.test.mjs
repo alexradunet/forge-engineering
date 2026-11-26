@@ -142,3 +142,15 @@ test('forge.mjs seed --profile records the profile, and where --json shows it', 
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('the body of an extra profile config names the key prefix and the host through their keys', () => {
+  for (const name of listProfiles(pluginDir)) {
+    for (const kind of ['tracker', 'repo', 'ci']) {
+      const text = readFileSync(profileFile(pluginDir, name, `config/${kind}.md`), 'utf8').replace(/\r\n/g, '\n');
+      const [, front, body] = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/.exec(text);
+      const value = (key) => new RegExp(`^${key}: *(.+)$`, 'm').exec(front)?.[1].trim();
+      if (value('prefix')) assert.ok(!body.includes(`${value('prefix')}-`), `${name} ${kind}.md: the body holds the fixed prefix`);
+      if (value('host')) assert.ok(!body.includes(value('host')), `${name} ${kind}.md: the body holds the fixed host`);
+    }
+  }
+});

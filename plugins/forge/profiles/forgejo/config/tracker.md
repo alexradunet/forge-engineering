@@ -31,15 +31,15 @@ When it fails, ask the user to run `tea login add` for `https://<tracker.host>`.
 
 ## 🔑 Keys
 
-Forgejo gives an issue the number `#<n>`. forge needs a key with a prefix, so the key of issue `#<n>` is `FJ-<n>`.
-When the user gives `#43` or an issue URL, use the key `FJ-43`. The URL of a key is `https://<tracker.host>/<owner>/<name>/issues/<n>`.
+Forgejo gives an issue the number `#<n>`. forge needs a key with a prefix, so the key of issue `#<n>` is `<tracker.prefix>-<n>`.
+When the user gives `#43` or an issue URL, use the key `<tracker.prefix>-43`. The URL of a key is `https://<tracker.host>/<owner>/<name>/issues/<n>`.
 
 ## 🧰 Capabilities
 
 | Capability | Command | Notes |
 |---|---|---|
 | `tracker.fetch` | `tea issues <n> --comments --output json` | |
-| `tracker.search` | `tea issues list <query> --limit 50 --output json` | `<query>`: a named query, or `--state all --keyword "<text>"`. Show each result as `FJ-<number>`. |
+| `tracker.search` | `tea issues list <query> --limit 50 --output json` | `<query>`: a named query, or `--state all --keyword "<text>"`. Show each result as `<tracker.prefix>-<number>`. |
 | `tracker.comment` | `tea comment <n> "$(cat <body file>)"` | The body is Markdown. |
 | `tracker.transition` | `tea issues close <n>`, or `tea issues reopen <n>` | An issue is only open or closed. A label change is also a transition: `tea issues edit <n> --add-labels <label> --remove-labels <label>`. |
 | `tracker.link` | `tea comment <n> "$(cat <body file>)"` with the line `Related: #<other n>` | Forgejo links an issue reference (`#<n>`) in a comment. |
