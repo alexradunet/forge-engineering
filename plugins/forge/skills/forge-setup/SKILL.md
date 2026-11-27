@@ -31,7 +31,7 @@ resolved path in each command. All commands run on Windows, macOS, and Linux.
 | Command | Use | Writes |
 |---|---|---|
 | `<F> where --json` | Repository, worktree, wiki, and config folder | nothing |
-| `<F> detect` | Host, visibility, default branch, key hints, your branch pattern, wiki state, and suggested values | nothing |
+| `<F> detect` | Host, default branch, key hints, your branch pattern, wiki state, and suggested values | nothing |
 | `<F> doctor [--fetch]` | Read-only check of the whole setup: placeholders, the session start hook, and the plugin version (`--fetch` runs `git fetch` in the plugin clone) | nothing |
 | `<F> init` | Create the Forge folder `../<repo>.forge`: the wiki (`git init`, `index.md`, the binding), `raw/`, `archive/`, and the launcher | the Forge folder |
 | `<F> bind` | Write `<wiki>/forge/repo.json` | the wiki folder |
@@ -74,7 +74,7 @@ State the progress at each step, for example "step 4 of 8 done".
 
 Run `detect` in the main checkout. Do not ask for anything that `detect` already shows. Tell the user, in one short list:
 
-- the host (`repo.host`), the remote, and the visibility,
+- the host (`repo.host`) and the remote,
 - the default branch (`repo.defaultBranch`),
 - the branch pattern of your local branches (`repo.branchPattern`), for example `users/alex/{KEY}-{slug}`.
 
@@ -214,14 +214,11 @@ Tell the user this command at the end of the setup.
 | `suggestion.wikiRemote.type` | Meaning | Action |
 |---|---|---|
 | `existing` | The wiki already has a remote | Keep it |
-| `native` | The repository is private or internal | Use the native wiki `<remote>.wiki.git` |
-| `ask` | The repository is public, or visibility is unknown | Ask: public native wiki, separate private repository (`<remote>-wiki`), or local only |
+| `ask` | The wiki has no remote | Ask the user to pick the wiki remote: the native wiki `<remote>.wiki.git`, a separate private repository (`<remote>-wiki`), or local only |
 
 - Offer the public wiki only when its files and Git history contain public data.
-- Do not offer the native wiki when `wikiEnabled` is false. Use the options from `detect`.
 - Keep internal hosts, personal paths, company rules, and private knowledge out of a public wiki.
   The **Checkouts** table and `forge/repo.json` hold local paths.
-- Never change the visibility of a repository.
 - A GitHub wiki exists only after its first page. Tell the user to open
   `<remote>/wiki`, create a page, and save it. Then the clone and the push work.
 - Create a separate repository only after explicit approval, for example

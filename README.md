@@ -83,7 +83,8 @@ Forge 14.0.0 removes the profiles, the tracker and CI config, the credentials, a
 2. Remove the files that it names, and the `profile` key.
 3. Strip `repo.md` to its 3 keys (`changeName`, `branchPattern`, `baseBranch`) and the **Checkouts** table.
 4. Run `forge.mjs trust approve`. You run this command, not the agent.
-5. Optional: add the native Claude Code deny rule `Bash(gh pr merge:*)` to your user settings.
+5. If `doctor` says that `policy.md` names a removed part, edit its sections, or run `forge.mjs seed --force` for `policy.md` (it replaces your edits).
+6. Optional: add the native Claude Code deny rule `Bash(gh pr merge:*)` to your user settings.
 
 The wiki holds only the config copy, your personal values, and the helper scripts. To share the wiki, commit and push it. See [wiki.md](docs/wiki.md).
 

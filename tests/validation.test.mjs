@@ -370,3 +370,13 @@ test('lint reports a Scoped? record in a full-v4 ticket as an error', (t) => {
   const foreign = findings.filter((item) => item.code === 'workflow-gate');
   assert.deepEqual(foreign.map((item) => [item.severity, item.message]), [['error', 'Scoped? does not belong to full-v4.']]);
 });
+
+test('a Sendable? row of a ticket made before 14.0.0 is dropped by the parser: no finding, no open gate', (t) => {
+  const f = fixture(t);
+  const old = [...allGates(), { name: 'Sendable?', doc: 'outbox/', need: 'required', status: 'todo' }];
+  f.put('README.md', yamlTicket({ gates: old }));
+  const ticket = parseTicket(yamlTicket({ gates: old }));
+  assert.deepEqual(ticket.gates.map((gate) => gate.name), ['Planned?', 'Shippable?', 'Learned?']);
+  const { findings } = lint({ wikiPath: f.wiki, repoPath: f.dir });
+  assert.deepEqual(findings.filter((item) => item.code === 'workflow-gate'), []);
+});

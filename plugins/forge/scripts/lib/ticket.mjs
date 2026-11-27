@@ -183,6 +183,8 @@ export function parseTicket(text) {
   }
   if (data.track != null) throw new Error(`${data.workflow} tickets must not select a track.`);
   if (data.type !== 'ticket') throw new Error(`${data.workflow} metadata needs type: ticket.`);
+  // A ticket made before 14.0.0 has a row for a gate that 14.0.0 removed: Forge drops it, so lint, board, gate-open, and approve agree.
+  if (Array.isArray(data.gates)) data.gates = data.gates.filter((gate) => gate?.name !== 'Sendable?'); // legacy-14
   for (const gate of data.gates ?? []) {
     if (!gate || typeof gate !== 'object' || Array.isArray(gate)
       || typeof gate.name !== 'string' || !GATE_STATUSES.includes(gate.status)) throw new Error('Invalid gate name or status.');

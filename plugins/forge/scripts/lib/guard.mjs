@@ -603,7 +603,7 @@ function noPrompt(verdict, mode) {
  *   (default `deny`; `off` stops the guard).
  * - An approval command (`gate-approve`, `trust approve`) gets `ask` in each folder, also with `gateGuard: off`,
  *   and `deny` in a mode with no prompt.
- * - A `deny` wins over an `ask`. Only a trusted config can change the mode or add commands.
+ * - A `deny` wins over an `ask`. Only a trusted config can change the mode.
  */
 export function preTool(event, { env = process.env, deadlineMs = DEADLINE_MS } = {}) {
   if (!event?.command) return null;

@@ -330,6 +330,11 @@ test('the Claude Code prompt hook gives the ticket part and title once, when the
   for (const prompt of ['Explain UTF-8 encoding', 'Use SHA-256 for checksums', 'Investigate CVE-2024-1234', 'See APP-2024-1234', 'APP-12x is no key']) {
     assert.equal(fresh(prompt), undefined, prompt);
   }
+  assert.equal(fresh('AB-4411 fix login'), 'AB-4411 - ▶️ - Start ticket', 'The first word is a key.');
+  assert.equal(fresh('work on AB-4411 now'), 'AB-4411 - ▶️ - Start ticket', 'work on <key>');
+  assert.equal(fresh('Start AB-4412'), 'AB-4412 - ▶️ - Start ticket');
+  assert.equal(fresh('please look at AB-4413 https://tracker.example.test/AB-4413'), 'AB-4413 - ▶️ - Start ticket', 'A URL in the prompt.');
+  assert.equal(fresh('why does GPT-5 fail the eval?'), undefined, 'A key in the middle of a sentence has no URL.');
   assert.equal(fresh('Resume APP-7', 'My own name'), undefined, 'A custom title stays.');
   assert.deepEqual(promptSubmit({ cwd: s.app, prompt: 'Compare with APP-7', title: 'APP-9 - ▶️ - Other' }, { cli, env }), {}, 'A ticket session keeps its title.');
   assert.deepEqual(promptSubmit({ cwd: s.app, prompt: 'what is the board status', title: '' }, { cli, env }), {});
@@ -422,8 +427,9 @@ test('a later prompt names a ticket only in its first characters', (t) => {
   const call = (prompt) => promptSubmit({ cwd: s.app, prompt, title: '' }, { cli, env });
   const fill = (n) => 'x'.repeat(n);
   for (const key of ['APP-7', 'APP-12']) {
-    assert.deepEqual(call(`${fill(PROMPT_HEAD)} ${key}`), {}, `${key} after the limit`);
-    assert.ok(call(`${fill(PROMPT_HEAD - 20)} ${key}`).hookSpecificOutput, `${key} inside the limit`);
+    const url = 'https://tracker.example.test/x';
+    assert.deepEqual(call(`${fill(PROMPT_HEAD)} ${key} ${url}`), {}, `${key} after the limit`);
+    assert.ok(call(`${fill(PROMPT_HEAD - 80)} ${key} ${url}`).hookSpecificOutput, `${key} inside the limit`);
   }
   const start = call(`Start APP-12 ${fill(5000)}`).hookSpecificOutput;
   assert.match(start.additionalContext, /Forge: the prompt names APP-12, and the wiki has no ticket folder for it yet\./, 'A later prompt says "the prompt names".');

@@ -100,6 +100,13 @@ export function unusedFiles(where) {
   if (binding && Object.hasOwn(binding, 'profile')) {
     found.push({ status: 'warn', check: 'unused:forge/repo.json profile', detail: `The "profile" key in ${path.join(where.wiki.path, 'forge', 'repo.json')} is not used since 14.0.0, remove it.` });
   }
+  // policy.md of a wiki that Forge 13 made can name a part that 14.0.0 removed.
+  const policy = path.join(where.configDir, 'policy.md');
+  if (existsSync(policy)) {
+    const text = readFileSync(policy, 'utf8');
+    const words = ['tracker.', 'ci.status', 'ci.trigger', 'ci.logs', 'Sendable'].filter((word) => text.includes(word)); // legacy-14
+    if (words.length) found.push({ status: 'warn', check: 'unused:config/policy.md', detail: `policy.md names a part removed in 14.0.0: ${words.join(', ')}; edit its sections or run seed --force for policy.md.` });
+  }
   return found;
 }
 

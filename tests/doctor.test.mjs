@@ -113,3 +113,14 @@ test('doctor names the files that Forge 14 does not use, and deletes none', () =
     for (const file of old) rmSync(file, { force: true });
   }
 });
+
+test('doctor warns when policy.md names a part removed in 14.0.0, and changes nothing', () => {
+  const file = path.join(where.configDir, 'policy.md');
+  writeFileSync(file, `---\ngateGuard: deny\n---\n## Old\n\nUse tracker.comment and Sendable? for each write.\n`);
+  try {
+    const hit = doctor({ cwd: app, env }).find((r) => r.check === 'unused:config/policy.md');
+    assert.equal(hit.status, 'warn');
+    assert.match(hit.detail, /^policy\.md names a part removed in 14\.0\.0: tracker\., Sendable; edit its sections or run seed --force for policy\.md\.$/);
+  } finally { rmSync(file, { force: true }); }
+  assert.ok(!doctor({ cwd: app, env }).some((r) => r.check === 'unused:config/policy.md'));
+});

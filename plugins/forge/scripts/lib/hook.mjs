@@ -261,8 +261,13 @@ function ticketPart(event, where, forge, env, { host = 'copilot-cli', promptOnly
   }
   // The prompt hook runs only before the session has a title, and it takes a key only as a whole word.
   const candidates = promptOnly ? [...String(event.prompt).matchAll(STRICT_KEY)].map((m) => m[0]) : tokens(event.prompt);
+  // In the prompt hook a key counts only as the first word, after start, resume, ticket, or work (and an optional `on`), or when the prompt holds a URL.
+  const prompt = String(event.prompt);
+  const lead = promptOnly ? /^\s*(?:(?:start|resume|ticket|work)\s+(?:on\s+)?)?([A-Z][A-Z0-9]*-\d+)(?![A-Za-z0-9-])/i.exec(prompt)?.[1]?.toUpperCase() : null;
+  const hasUrl = /https?:\/\/\S/i.test(prompt);
+  const allowed = (token) => !promptOnly || hasUrl || token === lead;
   // A local key L-<n> is a fresh key only when it has a closed page.
-  const fresh = candidates.find((token) => /^[A-Z][A-Z0-9]*-\d+$/.test(token) && !NOT_KEYS.has(token.split('-')[0]) && (token.startsWith(`${LOCAL_PREFIX}-`) ? Boolean(closedFile(where.wiki.path, token)) : true));
+  const fresh = candidates.find((token) => /^[A-Z][A-Z0-9]*-\d+$/.test(token) && allowed(token) && !NOT_KEYS.has(token.split('-')[0]) && (token.startsWith(`${LOCAL_PREFIX}-`) ? Boolean(closedFile(where.wiki.path, token)) : true));
   if (!fresh) return { lines: [], key: '', title: '' };
   const closed = closedFile(where.wiki.path, fresh);
   if (closed) return { lines: [`Forge: ${fresh} is a closed ticket. Its summary page is ${closed}. Do not start it again unless the user asks.`], key: '', title: '', closed: true };
