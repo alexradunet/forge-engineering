@@ -7,11 +7,11 @@ import path from 'node:path';
 /** The ticket folder of the complete ticket. */
 export const FULL_TICKET = 'app-101';
 
-function ticketReadme(key, { state, phase = 'plan', title, short = '', next = '', waitingOn = '', updated = '2026-11-16', gates = [], people = [], extra = [] }) {
+function ticketReadme(key, { state, phase = 'plan', title, short = '', next = '', waitingOn = '', updated = '2026-11-16', gates = [], people = [], extra = [], changes = [] }) {
   return [
     '---', 'type: ticket', `key: ${key}`, `title: ${JSON.stringify(title)}`, ...(short ? [`short: ${short}`] : []),
     'workflow: full-v4', `phase: ${phase}`, `state: ${state}`, `next: ${next || `Next step of ${key}`}`, `waiting_on: ${JSON.stringify(waitingOn)}`,
-    'changes: []', ...(people.length ? ['people:', ...people] : ['people: []']), 'gates:', ...gates, ...extra, `updated: ${updated}`, '---',
+    ...(changes.length ? ['changes:', ...changes] : ['changes: []']), ...(people.length ? ['people:', ...people] : ['people: []']), 'gates:', ...gates, ...extra, `updated: ${updated}`, '---',
     `# ${key}: ${title}`, '', '## Now', '', `- State: ${state}`, `- Phase: ${phase}`, `- Next: ${next || `Next step of ${key}`}`, '',
   ].join('\n');
 }
@@ -89,7 +89,7 @@ const page = (title, body, { updated = '2026-11-10', status = 'verified' } = {})
 /**
  * Writes the demo and returns { forge, wiki, repo }.
  * - 6 tickets, one in each board state (APP-101 needs me, APP-102 blocked, APP-103 go, APP-104 active, APP-105 waiting, APP-106 done),
- *   a people wait and a sync note on APP-104, and one ticket folder (app-107) that gives a read error.
+ *   a people wait, an item link, and a change on APP-104, and one ticket folder (app-107) that gives a read error.
  * - APP-101 has the 6 documents of the full-v4 layout: a Mermaid block, a gate in review, steps, checks, hypotheses, and a code map with edges.
  * - The wiki has 5 pages that link to each other, and one closed ticket (tickets/app-90.md).
  */
@@ -125,14 +125,13 @@ export function seedDemo(root) {
     state: 'active', phase: 'implement', title: 'Port the settings grid to the new table', short: 'Port the settings grid', next: 'Step 2 of 4: the sort order',
     gates: [gate('Planned?', 'plan.md', 'approved', '2026-11-11'), gate('Shippable?', 'review.md', 'todo')],
     people: ['  - { name: Mara, role: reviewer, status: waiting, since: 2026-11-02, ask: "Is the old grid still used by the admin pages?" }'],
-    extra: ['worktree: "/code/demo.worktrees/APP-104"'],
+    extra: ['item: https://tracker.example.test/APP-104', 'worktree: "/code/demo.worktrees/APP-104"'], changes: ['  - { url: "https://host.example.test/pulls/58", state: open, label: PR }'],
   }));
   raw('tickets/app-105/README.md', ticketReadme('APP-105', {
     state: 'waiting', phase: 'review', title: 'Rename the audit log columns', short: 'Rename audit columns', next: 'Wait for the review of the change request', waitingOn: 'Noor: review of the change request',
     gates: [gate('Shippable?', 'review.md', 'approved', '2026-11-16')], updated: '2026-11-16',
   }));
   raw('tickets/app-106/README.md', ticketReadme('APP-106', { state: 'done', phase: 'closed', title: 'Remove the unused theme flag', short: 'Remove theme flag', next: 'Closed', updated: '2026-11-12' }));
-  raw('sync/APP-104.md', '---\nchecked: 2026-11-17T09:00\npr: "#58 open, 1 approval"\nci: green\ntracker: In Progress\n---\n');
   // A ticket folder that gives a read error: the README has no valid ticket fields.
   raw('tickets/app-107/README.md', '---\nkey: APP-107\n---\n');
 

@@ -7,6 +7,7 @@ import path from 'node:path';
 import { POINTER_FILE, writeLauncher, writePointer } from './launcher.mjs';
 import { homeOf, isForgeLayout } from './layout.mjs';
 import { ForgeError, normalizeRemote, readBinding } from './repo.mjs';
+import { NOT_KEYS } from './tickets.mjs';
 
 // The config templates of <plugin>/templates/config. policy.md is seeded apart: only when missing.
 export const CONFIG_FILES = ['repo.md'];
@@ -31,8 +32,6 @@ export function hostKind(remote) {
   return 'other';
 }
 
-// Upper-case words that look like keys but are standards or encodings.
-const NOT_KEYS = new Set(['UTF', 'SHA', 'ISO', 'RFC', 'CVE', 'HTTP', 'TLS', 'SSL', 'PEP', 'ES', 'MD', 'AES', 'RSA', 'X', 'WIP', 'V']);
 const KEY_RE = /(?<![A-Za-z0-9])([A-Z][A-Z0-9]{1,9})-(\d+)(?![A-Za-z0-9])/g;
 
 /** Work item key prefixes in branch names and commit subjects, most frequent first. */

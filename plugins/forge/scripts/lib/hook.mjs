@@ -17,7 +17,7 @@ import { resolve, samePath } from './repo.mjs';
 import { ownTurn } from './own-turn.mjs';
 import { recordEnd, recordStart } from './sessions.mjs';
 import { STATE_EMOJI, nowCard, sessionTitle } from './ticket.mjs';
-import { LOCAL_PREFIX, listTickets } from './tickets.mjs';
+import { LOCAL_PREFIX, NOT_KEYS, listTickets } from './tickets.mjs';
 import { RULES, assertTrusted, status as trustStatus } from './trust.mjs';
 
 const KEY_TOKEN = /[A-Za-z][A-Za-z0-9]*-\d+/g;
@@ -214,8 +214,8 @@ function titleLine(host, title) {
 
 /** Step 1 of the ticket part: the session title of a new ticket. */
 function freshTitleLine(host, key, title) {
-  if (host === 'claude') return `1. The Forge hook set the session title to "${title}". After the fetch of the work item, tell the user to run \`/rename ${key} - ▶️ - <summary>\`.`;
-  return `1. After the fetch of the work item, tell the user to run \`/rename ${key} - ▶️ - <summary>\`. The Copilot CLI has no title tool.`;
+  if (host === 'claude') return `1. The Forge hook set the session title to "${title}". After the Start interview, tell the user to run \`/rename ${key} - ▶️ - <summary>\`.`;
+  return `1. After the Start interview, tell the user to run \`/rename ${key} - ▶️ - <summary>\`. The Copilot CLI has no title tool.`;
 }
 
 /**
@@ -259,12 +259,10 @@ function ticketPart(event, where, forge, env, { host = 'copilot-cli', promptOnly
   if (stuck) {
     return { lines: [`Forge: the ticket folder ${stuck.folder} has a README that Forge cannot read: ${stuck.error} README: ${stuck.file}. Do not start this ticket again. Show the user the error, and repair the README only as the user says.`], key: '', title: '' };
   }
-  const prefix = getConfig()?.tracker?.prefix ?? null;
-  // A later prompt can name a key only in passing, so it needs the tracker prefix.
-  if (promptOnly && !prefix) return { lines: [], key: '', title: '' };
+  // The prompt hook runs only before the session has a title, and it takes a key only as a whole word.
   const candidates = promptOnly ? [...String(event.prompt).matchAll(STRICT_KEY)].map((m) => m[0]) : tokens(event.prompt);
-  // A local key is never a work item of the tracker: it skips the prefix rule, and only a closed page makes it a fresh key.
-  const fresh = candidates.find((token) => /^[A-Z][A-Z0-9]*-\d+$/.test(token) && (token.startsWith(`${LOCAL_PREFIX}-`) ? Boolean(closedFile(where.wiki.path, token)) : (!prefix || token.startsWith(`${prefix}-`))));
+  // A local key L-<n> is a fresh key only when it has a closed page.
+  const fresh = candidates.find((token) => /^[A-Z][A-Z0-9]*-\d+$/.test(token) && !NOT_KEYS.has(token.split('-')[0]) && (token.startsWith(`${LOCAL_PREFIX}-`) ? Boolean(closedFile(where.wiki.path, token)) : true));
   if (!fresh) return { lines: [], key: '', title: '' };
   const closed = closedFile(where.wiki.path, fresh);
   if (closed) return { lines: [`Forge: ${fresh} is a closed ticket. Its summary page is ${closed}. Do not start it again unless the user asks.`], key: '', title: '', closed: true };

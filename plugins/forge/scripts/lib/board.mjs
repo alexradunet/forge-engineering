@@ -2,14 +2,11 @@
 import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { rawDir } from './layout.mjs';
-import { STATE_EMOJI, parseFrontmatter, sessionTitle, validDate } from './ticket.mjs';
+import { STATE_EMOJI, sessionTitle, validDate } from './ticket.mjs';
 import { listTickets } from './tickets.mjs';
 
 export const BOARD_ORDER = ['needs-me', 'blocked', 'go', 'active', 'waiting', 'done'];
 export const STATE_LABEL = { 'needs-me': 'Needs me', blocked: 'Blocked', go: 'Go', active: 'Active', waiting: 'Waiting', done: 'Done' };
-export const SYNC_FIELDS = ['checked', 'tracker', 'pr', 'ci'];
-// Old sync notes name the tracker status `jira`.
-const SYNC_ALIASES = { tracker: 'jira' };
 const OPEN_GATE = ['in-review', 'blocked', 'todo'];
 const byKey = (a, b) => a.localeCompare(b, 'en', { numeric: true, sensitivity: 'base' }) || (a < b ? -1 : a > b ? 1 : 0);
 const oneLine = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
@@ -55,20 +52,6 @@ export function daysSince(updated, today) {
   return Math.round((Date.parse(today) - Date.parse(updated)) / 86_400_000);
 }
 
-/** The sync note that the `board` skill writes: raw/sync/<key>.md frontmatter. */
-export function readSync(wikiPath, key) {
-  const file = path.join(rawDir(wikiPath), 'sync', `${key}.md`);
-  if (!existsSync(file)) return null;
-  try {
-    if (lstatSync(file).isSymbolicLink()) throw new Error('The sync note must not be a link.');
-    const data = parseFrontmatter(readFileSync(file, 'utf8'), []);
-    const value = (field) => [data[field], data[SYNC_ALIASES[field]]].find((v) => typeof v === 'string');
-    return Object.fromEntries(SYNC_FIELDS.map((field) => [field, value(field) === undefined ? '' : oneLine(value(field))]));
-  } catch (error) {
-    return { error: `raw/sync/${key}.md: ${error.message}` };
-  }
-}
-
 export function buildBoard(wikiPath, { today = new Date().toISOString().slice(0, 10) } = {}) {
   if (!validDate(today)) throw new Error(`Invalid date: ${today}. Use YYYY-MM-DD.`);
   const tickets = [];
@@ -76,15 +59,12 @@ export function buildBoard(wikiPath, { today = new Date().toISOString().slice(0,
   for (const entry of listTickets(wikiPath)) {
     if (entry.error) { errors.push({ folder: entry.folder, message: entry.error }); continue; }
     const ticket = entry.ticket;
-    const sync = readSync(wikiPath, ticket.key);
-    if (sync?.error) errors.push({ folder: entry.folder, message: sync.error });
     tickets.push({
-      key: ticket.key, folder: entry.folder, sessionTitle: sessionTitle(ticket), title: oneLine(ticket.title), short: oneLine(ticket.short),
+      key: ticket.key, item: oneLine(ticket.item), folder: entry.folder, sessionTitle: sessionTitle(ticket), title: oneLine(ticket.title), short: oneLine(ticket.short),
       state: ticket.state, emoji: STATE_EMOJI[ticket.state], phase: ticket.phase, workflow: ticket.workflow,
       openGate: openGate(ticket), gates: ticket.gates.filter((gate) => gate.need === 'required').map((gate) => ({ name: gate.name, status: gate.status, doc: gate.doc ?? '' })), next: oneLine(ticket.next), waitingOn: oneLine(ticket.waitingOn),
       updated: ticket.updated, days: daysSince(ticket.updated, today), branch: ticket.branch, worktree: ticket.worktree,
       changes: ticket.changes.map((change) => ({ url: change.url, state: change.state, label: change.label ?? '' })),
-      sync: sync && !sync.error ? sync : null,
       waits: longWaits(ticket, today),
     });
   }
@@ -125,12 +105,7 @@ const cell = (value) => oneLine(value).replace(/\\/g, '\\\\').replace(/\|/g, '\\
 const age = (days) => days === null ? '?' : days <= 0 ? 'today' : days === 1 ? '1 day' : `${days} days`;
 
 function changeText(item) {
-  const parts = [];
-  if (item.sync?.pr) parts.push(`PR ${item.sync.pr}`);
-  else if (item.changes.length) parts.push(item.changes.map((change) => `${change.label || 'PR'} ${change.state}`).join(', '));
-  if (item.sync?.ci) parts.push(`CI ${item.sync.ci}`);
-  if (item.sync?.tracker) parts.push(`Tracker ${item.sync.tracker}`);
-  return parts.join(' · ');
+  return item.changes.map((change) => `${change.label || 'PR'} ${change.state}`).join(', ');
 }
 
 export function renderBoard(board) {
@@ -142,7 +117,7 @@ export function renderBoard(board) {
   if (!board.total) lines.push('No tickets yet.', '');
   for (const group of board.groups.filter((item) => item.tickets.length)) {
     lines.push(`## ${group.emoji} ${group.label} (${group.tickets.length})`, '',
-      '| Ticket | Phase | Open gate | Next | Waiting on | Updated | PR / CI / Tracker |',
+      '| Ticket | Phase | Open gate | Next | Waiting on | Updated | Changes |',
       '| --- | --- | --- | --- | --- | --- | --- |');
     for (const item of group.tickets) {
       const gate = item.openGate ? `${item.openGate.name} ${item.openGate.status}` : '';

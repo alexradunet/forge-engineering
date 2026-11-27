@@ -58,8 +58,10 @@ export function findTicket(wikiPath, key) {
   return match;
 }
 
-/** The prefix of the key of a ticket with no work item: L-<n>. The tracker prefix must not be L. */
+/** The prefix of the key of a ticket with no work item: L-<n>. A key from another system must not use the prefix L. */
 export const LOCAL_PREFIX = 'L';
+// Upper-case words that look like keys but are standards or encodings.
+export const NOT_KEYS = new Set(['UTF', 'SHA', 'ISO', 'RFC', 'CVE', 'HTTP', 'TLS', 'SSL', 'PEP', 'ES', 'MD', 'AES', 'RSA', 'X', 'WIP', 'V']);
 
 /**
  * The next local key, L-<n>. The number is 1 plus the highest of the counter file raw/local-key, the folders l-<n> in raw/tickets and archive/tickets,

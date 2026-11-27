@@ -264,7 +264,6 @@ export function buildFixture(name, { env = process.env } = {}) {
   };
   const gates = [];
   for (const [gate, doc] of Object.entries(DOCS)) {
-    if (gate === 'Shippable?') gates.push('  - { name: Sendable?, doc: outbox/, need: required, status: todo }');
     // proof.md is in the Shippable? set when the scenario has it (the default policy.evidenceOnDeployedEnv is false).
     const review = 'evidence/code-review-001.md';
     if (gate === 'Shippable?' && binding) put(path.join(dir, review), `---\ntype: evidence\nticket: ${KEY}\ndate: 2026-11-17\nhead: ${binding.head}\npatch-id: ${binding.patchId}\nreviewer: eval fixture\n---\n# Code review ${KEY} 001\n\nNo finding. This is a synthetic report.\n`);

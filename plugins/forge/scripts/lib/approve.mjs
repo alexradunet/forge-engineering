@@ -1,6 +1,6 @@
 // Records one explicit user approval of a gate. The same steps in each host: the agent gives the
 // exact answer of the user, and this command checks and writes the record. It never creates an approval
-// on its own, and it refuses Sendable? (the host prompt of the gate guard is the "yes" for each write).
+// on its own.
 import { appendFileSync, existsSync, lstatSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { parseTicket, validDate } from './ticket.mjs';
@@ -47,7 +47,6 @@ function relativePath(value) {
  * @param {{ gate: string, answer: string, method?: string, manifest?: string, hash?: string, today?: string, dryRun?: boolean }} options
  */
 export function approveGate(dir, { gate: name, answer, method = 'form', manifest, hash, today = new Date().toISOString().slice(0, 10), dryRun = false }) {
-  if (name === 'Sendable?') throw new Error('Sendable? has no gate approval: the host prompt that the gate guard asks for is the "yes" for each write. Use the Sendable? steps of the ticket skill.');
   if (typeof answer !== 'string' || !answer.trim()) throw new Error('Give the exact answer of the user with --answer.');
   if (!METHODS.includes(method)) throw new Error(`Unknown method: ${method}. Use ${METHODS.join(' or ')}.`);
   if (!isApproval(name, answer, method)) {

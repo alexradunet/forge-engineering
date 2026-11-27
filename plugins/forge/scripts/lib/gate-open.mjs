@@ -92,7 +92,6 @@ function setCardState(text, state) {
  * @returns {{ gate: string, key: string, manifest: string, hash: string, documents: {path: string, sha256: string}[], code: {head: string, base: string, patchId: string, branch: string}|null, diff: string, carried: string|null, notes: string[], review: {file: string, openBlockers: string, concerns: string}|null, dryRun: boolean }}
  */
 export function openReview(dir, { gate, extra = [], policy = null, repoPath = '', checkouts = [], baseBranch = '', today = new Date().toISOString().slice(0, 10), dryRun = false }) {
-  if (/^sendable\??$/i.test(String(gate).trim())) throw new Error('Sendable? has its own steps: the host prompt that the gate guard asks for is the "yes" for each write. Use the Sendable? steps of the ticket skill.');
   const name = gateName(gate);
   if (!validDate(today)) throw new Error(`Invalid date: ${today}.`);
   const file = path.join(dir, 'README.md');
@@ -105,7 +104,7 @@ export function openReview(dir, { gate, extra = [], policy = null, repoPath = ''
   const record = matches[0];
   if (record.status === 'skipped') throw new Error(`${name} is skipped. A skipped gate has no review.`);
 
-  for (const before of GATES.slice(0, GATES.indexOf(name)).filter((item) => item !== 'Sendable?')) {
+  for (const before of GATES.slice(0, GATES.indexOf(name))) {
     const verdict = checkGate(ticket, file, before);
     if (!verdict.allowed) throw new Error(`${before} must be approved before you open ${name}: ${verdict.findings.map((item) => item.message).join(' ')}`);
   }

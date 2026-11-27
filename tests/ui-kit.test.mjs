@@ -109,7 +109,7 @@ test('the demo has a ticket in each of the 6 states, a read error, a people wait
   for (const state of STATES) assert.ok(board.groups.find((group) => group.state === state)?.tickets.length, `a ticket in ${state}`);
   assert.deepEqual(board.errors.map((error) => error.folder), ['app-107']);
   assert.equal(board.groups.flatMap((group) => group.tickets).filter((item) => item.waits.length).length, 1, 'one people wait');
-  assert.ok(board.groups.flatMap((group) => group.tickets).some((item) => item.sync), 'a sync note');
+  assert.ok(board.groups.flatMap((group) => group.tickets).some((item) => item.item && item.changes.length), 'an item link and a change');
   const folder = path.join(demo.forge, 'raw', 'tickets', FULL_TICKET);
   for (const name of ['README.md', 'story.md', 'map.md', 'plan.md', 'review.md', 'proof.md']) assert.ok(existsSync(path.join(folder, name)), `the full ticket has ${name}`);
   assert.ok(board.groups.flatMap((group) => group.tickets).some((item) => item.folder === FULL_TICKET), 'the full ticket is on the board');

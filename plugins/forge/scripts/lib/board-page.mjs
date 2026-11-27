@@ -12,7 +12,7 @@ export const BOARD_PAGE = 'board.html';
 export const STALE_DAYS = 7;
 
 // The steps of the first run: the board has no ticket yet.
-const FIRST_STEPS = ['Start an agent session in the repository.', 'Give it a work item key, for example APP-123.', 'The ticket shows here after its first step.'];
+const FIRST_STEPS = ['Start an agent session in the repository.', 'Give it a key and a link, or ask for a new local ticket.', 'The ticket shows here after its first step.'];
 
 /** The link to a file of the ticket folder: the link of the nav (a relative link, or the route of the live server). */
 function ticketHref(item, ctx, name) {
@@ -39,10 +39,7 @@ const external = (url, label) => {
 
 function tags(item) {
   const out = [tagHtml(item.phase)];
-  if (item.sync?.pr) out.push(tagHtml(`PR ${item.sync.pr}`));
-  else for (const change of item.changes) out.push(tagHtml(`${change.label || 'PR'} ${change.state}`));
-  if (item.sync?.ci) out.push(tagHtml(`CI ${item.sync.ci}`, /\b(green|pass|passed|success)\b/i.test(item.sync.ci) ? 'ok' : /\b(red|fail|failed|failure|broken)\b/i.test(item.sync.ci) ? 'bad' : ''));
-  if (item.sync?.tracker) out.push(tagHtml(`Tracker ${item.sync.tracker}`));
+  for (const change of item.changes) out.push(tagHtml(`${change.label || 'PR'} ${change.state}`));
   for (const wait of item.waits) out.push(tagHtml(`⏳ ${wait.name}, ${wait.workdays} working days`, 'wait'));
   return out.join('');
 }
@@ -57,6 +54,7 @@ function cardHtml(item, label, ctx) {
   const allDone = !item.openGate && item.gates.length && item.gates.every((one) => ['approved', 'skipped'].includes(one.status));
   const links = [];
   links.push(`<a href="${esc(ticketHref(item, ctx, 'README.md'))}">README</a>`);
+  links.push(external(item.item, 'Item'));
   for (const change of item.changes) links.push(external(change.url, change.label || 'Change'));
   const inner = `<header><span class="key">${esc(item.key)}</span><span class="age"${stale ? ` title="No update for ${item.days} days"` : ''}>${age(item.days)}</span></header>`
     + `<h3><a class="open" href="${esc(href)}"${navAttr(href)} title="${esc(item.title)}">${esc(item.short || item.title)}</a></h3>`

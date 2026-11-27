@@ -30,10 +30,10 @@
 //   open --new-link [--no-browser] [--port <n>]   write a new page token for this repository, so each older link stops (use it when a link leaked):
 //            a server that runs is stopped and started again, and the new links print as for open
 //   gate-open <key> <gate> [extra files...] [--dry-run] [--json] [--today <yyyy-mm-dd>]
-//            open the review of a gate in one call (not Sendable?): checks the earlier gates and the plan, writes approvals/<gate>-<n>.json,
+//            open the review of a gate in one call: checks the earlier gates and the plan, writes approvals/<gate>-<n>.json,
 //            saves the snapshot, and sets the gate to in-review; prints the set, the diff, and the open points of the plan review
 //   gate-approve <key> <gate> --answer "<exact user answer>" [--method form|chat] [--manifest <path>] [--hash <sha>] [--dry-run] [--json]
-//            record an explicit approval of an in-review gate (not Sendable?); checks the manifest, then writes the README and approvals/history.md
+//            record an explicit approval of an in-review gate; checks the manifest, then writes the README and approvals/history.md
 //   hook session-start [--host <host>]   read the hook event on stdin; print {"additionalContext"} with the Forge context, else {}
 //   hook session-start --host claude --part <n>   the same for Claude Code: part n of the context in {"hookSpecificOutput"}
 //   hook prompt-submit --host claude   Claude Code: the ticket part and the session title when the prompt names a ticket

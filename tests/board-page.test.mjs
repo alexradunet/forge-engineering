@@ -25,10 +25,10 @@ function wiki(t) {
     mkdirSync(path.dirname(file), { recursive: true });
     writeFileSync(file, text);
   };
-  const ticket = (key, { state = 'active', phase = 'plan', updated = '2026-11-16', title = `Title of ${key}`, short = '', workflow = 'full-v4', gates = [], people = [], extra = [] } = {}) => put(`raw/tickets/${key.toLowerCase()}/README.md`, [
+  const ticket = (key, { state = 'active', phase = 'plan', updated = '2026-11-16', title = `Title of ${key}`, short = '', workflow = 'full-v4', gates = [], people = [], extra = [], changes = [] } = {}) => put(`raw/tickets/${key.toLowerCase()}/README.md`, [
     '---', 'type: ticket', `key: ${key}`, `title: ${JSON.stringify(title)}`, ...(short ? [`short: ${short}`] : []),
     `workflow: ${workflow}`, `phase: ${phase}`, `state: ${state}`, `next: Next step for ${key}`, 'waiting_on: ""',
-    'changes: []', ...(people.length ? ['people:', ...people] : ['people: []']), 'gates:', ...gates, ...extra, `updated: ${updated}`, '---', `# ${key}`, '',
+    ...(changes.length ? ['changes:', ...changes] : ['changes: []']), ...(people.length ? ['people:', ...people] : ['people: []']), 'gates:', ...gates, ...extra, `updated: ${updated}`, '---', `# ${key}`, '',
   ].join('\n'));
   return { root, put, ticket };
 }
@@ -43,9 +43,8 @@ function fill(w) {
   w.ticket('APP-10', { state: 'blocked', updated: '2026-11-03', title: 'A </script><script>alert(1)</script> "title" & more', people: [
     '  - { name: Ana, role: reviewer, status: waiting, since: 2026-11-05, ask: "Log access" }',
   ] });
-  w.ticket('APP-11', { state: 'active', short: 'Port the grid' });
+  w.ticket('APP-11', { state: 'active', short: 'Port the grid', extra: ['item: https://tracker.example.test/APP-11'], changes: ['  - { url: "https://host.example.test/pr/12", state: open, label: PR }'] });
   w.ticket('APP-2', { state: 'done', phase: 'closed', short: 'Old fix' });
-  w.put('raw/sync/APP-11.md', '---\nchecked: 2026-11-17T09:00\npr: "#12 open"\nci: red\ntracker: In Progress\n---\n');
 }
 
 test('the design system gives each page the same tokens, both themes, and a script that sits in the page', () => {
@@ -133,7 +132,9 @@ test('the board page is one self-contained file: the tickets that wait first, on
   assert.match(html, /<article class="frame edge st-blocked tcard stale" id="ticket-app-10"/, 'an open ticket without an update for 7 days has a mark');
   assert.match(html, /<span class="age" title="No update for 14 days">14 days<\/span>/);
   // Forge 9.2: the tags are the kit tags, and the color of a tag is a tg-* class.
-  assert.match(html, /<span class="tag">PR #12 open<\/span><span class="tag tg-bad">CI red<\/span><span class="tag">Tracker In Progress<\/span>/);
+  assert.match(html, /<span class="tag">PR open<\/span>/);
+  assert.match(html, /<a href="https:\/\/tracker\.example\.test\/APP-11" target="_blank" rel="noopener noreferrer">Item<\/a>/);
+  assert.doesNotMatch(html, /Tracker|CI red/);
   assert.match(html, /<span class="tag tg-wait">⏳ Ana, 8 working days<\/span>/);
   assert.match(html, /<p class="tline tclamp"><span class="eyebrow">Next<\/span> /);
   assert.ok(html.includes(`<a class="open" href="tickets/app-2/README.md" data-nav title="Title of APP-2">Old fix</a><span class="age">`));
@@ -166,7 +167,7 @@ test('a board without a waiting ticket says so, and an empty wiki gives an empty
   const w = wiki(t);
   const empty = renderBoardPage(buildBoard(w.root, { today: TODAY }));
   // Forge 9.2: the first run has the cold anvil, a sentence, and 3 numbered steps (emptyHtml).
-  assert.match(empty, /<div class="empty"><svg class="px"[^>]*>.*<\/svg><p>No tickets yet\.<\/p><ol><li>Start an agent session in the repository\.<\/li><li>Give it a work item key, for example APP-123\.<\/li><li>The ticket shows here after its first step\.<\/li><\/ol><\/div>/);
+  assert.match(empty, /<div class="empty"><svg class="px"[^>]*>.*<\/svg><p>No tickets yet\.<\/p><ol><li>Start an agent session in the repository\.<\/li><li>Give it a key and a link, or ask for a new local ticket\.<\/li><li>The ticket shows here after its first step\.<\/li><\/ol><\/div>/);
   assert.doesNotMatch(empty, /id="lane-needs-me"/);
   w.ticket('APP-1', { state: 'go' });
   const calm = renderBoardPage(buildBoard(w.root, { today: TODAY }));

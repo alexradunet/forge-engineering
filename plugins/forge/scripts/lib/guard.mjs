@@ -1,28 +1,19 @@
-// The gate guard: the preToolUse hook of each host. Before a shell command pushes a ticket branch or
-// creates a change request, it checks the gates of the ticket with checkAction('ship'): the same check
+// The gate guard: the preToolUse hook of each host. Before a shell command pushes a ticket branch,
+// it checks the gates of the ticket with checkAction('ship'): the same check
 // as `forge.mjs lint`, so a missing or stale Shippable? approval stops the command, not only a written rule.
-// Before an external write of a ticket (a command of a write capability in the trusted config), it answers `ask`,
-// so the prompt of the host is the "yes" for this one write (GH-2). In a mode with no prompt, it denies instead.
-// One exception: a new change request, when its draft is the one `target: change` file of the approved Shippable? set.
-// The approval of that exact set is the yes, so the guard gives no verdict, also in a mode with no prompt.
 // The 2 approval commands (`forge.mjs gate-approve` and `forge.mjs trust approve`) get `ask` in each folder and each policy,
 // also with `policy.gateGuard: off`: an approval is the yes of the user, so the agent must not give it alone.
 // In a mode with no prompt, they are denied, and the user runs them in a terminal.
-// A never word (merge, approve, or close of a change request) is the step of the user in the web page: the profile lists the words,
-// and the guard gives deny or ask in a ticket folder, also with `policy.gateGuard: off`. The list is the union of each shipped profile.
-// A new change request gets no question only when its body option names the one approved draft (the profile lists the body options).
 // It reads the words of the command, so it is a net and not a wall: a script that pushes is not seen.
-// A ticket whose README cannot be read stops a push and a new change request too: the gates are unknown (policy.gateGuard sets deny or ask).
+// A ticket whose README cannot be read stops a push too: the gates are unknown (policy.gateGuard sets deny or ask).
 // It never stops other work: a folder with no ticket, no wiki, or a config that cannot be read lets the command run.
 import { spawnSync } from 'node:child_process';
-import { readFileSync, realpathSync, statSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { resolve, samePath } from './repo.mjs';
 import { isForgeLayout } from './layout.mjs';
-import { pluginRoot } from './plugin-root.mjs';
 import { listTickets } from './tickets.mjs';
-import { approvedDrafts, checkAction, isChangeDraft, regular, within } from './validation.mjs';
+import { checkAction, regular, within } from './validation.mjs';
 import { baseBranchOf, codeBinding, resolveCommit } from './code-bind.mjs';
 import { FORGE_VALUE_OPTIONS } from './cli-options.mjs';
 import { ticketOfFolder, trustedConfig } from './hook.mjs';
@@ -53,14 +44,11 @@ const MOVES = new Set(['cd', 'pushd', 'chdir', 'set-location', 'sl']);
 const GIT_VALUE_OPTIONS = new Set(['-c', '--git-dir', '--work-tree', '--namespace', '--super-prefix', '--config-env']);
 const PUSH_VALUE_OPTIONS = new Set(['-o', '--push-option', '--repo', '--receive-pack', '--exec']);
 const MAX_FINDINGS = 5;
-const METHOD_OPTIONS = new Set(['-X', '--method']);
 // The shells that run the text of a heredoc or a pipe as commands.
 const SHELLS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'fish', 'pwsh', 'powershell']);
 const HELP = new Set(['--help', '-h']);
 // The time budget of one preTool call (the hook limit is 30 s).
 const DEADLINE_MS = 20000;
-// The capabilities that change something outside the workspace. The core holds the names; the trusted config gives the commands.
-export const WRITE_CAPABILITIES = ['tracker.comment', 'tracker.create', 'tracker.transition', 'tracker.link', 'repo.open-change', 'repo.update-change', 'repo.reply', 'ci.trigger'];
 // Permission modes in which a host runs a command with no prompt, also after a hook `ask` (GH-2: Claude Code bypassPermissions).
 const NO_PROMPT_MODES = new Set(['bypassPermissions']);
 
@@ -428,138 +416,6 @@ function gitCall(words, cwd, env) {
 }
 
 /**
- * The HTTP method that a command names with `-X <method>`, `-X<method>`, `--method <method>`, or `--method=<method>`, in capitals.
- * When a command names more than one, the last one counts, as in the tools that read these options.
- */
-function commandMethod(words) {
-  let method = null;
-  for (let i = 0; i < words.length; i++) {
-    if (METHOD_OPTIONS.has(words[i])) {
-      const value = words[i + 1];
-      method = value && !value.includes('<') ? value.toUpperCase() : null;
-      i++;
-      continue;
-    }
-    const joined = /^(?:-X|--method=)(.+)$/.exec(words[i]);
-    if (joined) method = joined[1].toUpperCase();
-  }
-  return method;
-}
-
-/** The cells after the name cell of the row of capability `name` in a config text, or null when the row is missing. */
-function capabilityCells(text, name) {
-  const head = new RegExp(`^\\|\\s*\`${name.replace('.', '\\.')}\`\\s*\\|`);
-  const row = String(text ?? '').replace(/\r\n/g, '\n').split('\n').find((line) => head.test(line));
-  return row ? row.split(/(?<!\\)\|/).slice(2, -1) : null;
-}
-
-/**
- * The commands of capability `name` in a config text: for each code span of the row, the first words up to the
- * first option or placeholder, as { words, method }. `method` is set when the span names an HTTP method option,
- * because then the same first words can also read. A git command is not in the list: `git push` is a ship action.
- * `notes: false` reads only the Command cell.
- */
-export function capabilityCommands(text, name, { notes = true } = {}) {
-  const cells = capabilityCells(text, name);
-  if (!cells) return [];
-  const found = [];
-  for (const cell of notes ? cells : cells.slice(0, 1)) {
-    for (const [, span] of cell.matchAll(/`([^`]+)`/g)) {
-      const words = toolWords(shellCommands(span)[0] ?? []);
-      const end = words.findIndex((word) => /^[-<[]/.test(word) || word.includes('<'));
-      const first = (end === -1 ? words : words.slice(0, end)).map((word, i) => (i === 0 ? toolName(word) : word));
-      if (first.length < 2 || first[0] === 'git') continue;
-      const method = commandMethod(words);
-      found.push(method ? { words: first, method } : { words: first });
-    }
-  }
-  return found;
-}
-
-/** The commands that create a change request: the Command cell of the `repo.open-change` row of a repo.md text. */
-export function changeCommands(repoText) {
-  return capabilityCommands(repoText, 'repo.open-change', { notes: false }).map((command) => command.words);
-}
-
-/**
- * The write commands of a config: { capability, words, method } for each command of each write capability.
- * `texts` holds the text of each config file by its kind: { tracker, repo, ci }.
- */
-export function writeCommands(texts = {}) {
-  return WRITE_CAPABILITIES.flatMap((capability) => capabilityCommands(texts[capability.split('.')[0]], capability)
-    .map((command) => ({ capability, ...command })));
-}
-
-/**
- * True when the words of a command (from index `from`) have the words `rest` in order, with options between them.
- * An option can have a value or not, so both readings are tried: a match in one of them is a match.
- * A word of `rest` can be a list of words: any one of them matches (the aliases of a never command).
- */
-function wordsInOrder(words, rest, from = 1) {
-  if (!rest.length) return true;
-  const word = words[from];
-  if (word === undefined) return false;
-  if (Array.isArray(rest[0]) ? rest[0].includes(word) : word === rest[0]) return wordsInOrder(words, rest.slice(1), from + 1);
-  if (!word.startsWith('-')) return false;
-  return wordsInOrder(words, rest, from + 1) || (!word.includes('=') && wordsInOrder(words, rest, from + 2));
-}
-
-/**
- * True when a command matches a config command: the same tool, then the config words in order, also with options
- * between them (`tool sub -R o/r word`). A command with a method must name a method other than GET. A help call is no match.
- */
-function matches(words, command) {
-  if (toolName(words[0]) !== command.words[0] || !wordsInOrder(words, command.words.slice(1))) return false;
-  if (words.some((word) => HELP.has(word))) return false;
-  if (!command.method) return true;
-  const method = commandMethod(words);
-  return Boolean(method) && method !== 'GET';
-}
-
-/**
- * True when a word of a command is the option `option`: the same word, the long option with a value (`--x=v`), or a short option letter
- * in a cluster of short options (`-ab`, `-ab=v`, `-ba`), because a short option can join the others.
- */
-function hasOption(word, option) {
-  if (word === option) return true;
-  if (option.startsWith('--')) return word.startsWith(`${option}=`);
-  if (!/^-[A-Za-z]$/.test(option)) return false;
-  const cluster = /^-([^-=][^=]*)/.exec(word);
-  return Boolean(cluster) && cluster[1].includes(option[1]);
-}
-
-/**
- * True when a command matches a never command of a profile: { words, with, verdict }. The same rules as `matches`, and when `with` is set,
- * one of its options must be in the command (see hasOption).
- */
-function matchesNever(words, entry) {
-  if (!Array.isArray(entry?.words) || toolName(words[0]) !== entry.words[0] || !wordsInOrder(words, entry.words.slice(1))) return false;
-  if (words.some((word) => HELP.has(word))) return false;
-  return !Array.isArray(entry.with) || entry.with.some((option) => words.some((word) => hasOption(word, option)));
-}
-
-// Interim (Forge 14 brief A): the lists of the removed GitHub profile. Brief B replaces this code.
-const SHIPPED = {
-  never: [
-    { words: ['gh', 'pr', 'merge'], verdict: 'deny' },
-    { words: ['gh', 'pr', 'review'], with: ['--approve', '-a'], verdict: 'deny' },
-    { words: ['gh', 'pr', 'close'], verdict: 'ask' },
-  ],
-  bodyOptions: ['-F', '--body-file'],
-  otherBodyOptions: ['-b', '--body', '-T', '--template', '-e', '--editor', '-w', '--web', '--fill', '--fill-first', '--fill-verbose', '--recover'],
-};
-
-/** The lists of the shipped never commands and body options: { never, bodyOptions, otherBodyOptions }. */
-export function shippedLists() {
-  return { never: [...SHIPPED.never], bodyOptions: [...SHIPPED.bodyOptions], otherBodyOptions: [...SHIPPED.otherBodyOptions] };
-}
-
-/** The shipped config text of a kind: no shipped text holds commands since Forge 14. */
-function shippedConfig() {
-  return '';
-}
-
-/**
  * The branches that a `git push` names: { refs, all, sources, deletes }. The first plain word is the remote, and each other word is a
  * refspec `[+]<source>[:<target>]`. `all` is true for `--all`, `--mirror`, and `--branches`.
  * `sources` lists what the push sends: the source of each refspec, or `HEAD` for a push with no refspec (it is empty for a push of
@@ -595,17 +451,13 @@ function pushTargets(args) {
  *   `command`, and the `key`, `gate`, and `answer` (gate-approve) or the `files` (trust approve). A command that approveCall
  *   does not read, but that the text scan finds (approvalText), is an `approve` action with `scan: true`.
  * - `push`: each `git push` (not a dry run), with the branches that it names (`refs`, `all`).
- * - `never`: a command that matches one of the `never` commands of the profiles ({ words, with, verdict }), with its `verdict` and its `words`.
- * - `change`: a command that starts with one of the change commands (word lists), with its `words`.
- * - `write`: a command that matches one of the write commands ({ capability, words, method }), with its
- *   `capabilities` and its first `words`. A change command is not also a write action: the change action asks.
  * A `cd` inside parentheses, `$( )`, or backticks does not change the folder after them. A `cd` in a pipeline (`cd x | cmd`) or before `&`
  * runs in another shell and does not move the folder. A `cd` after `&&` or `||`, or before `||`, may not run: the next commands have two
- * possible folders (before and after), and a push or a change request command gets an action for each. When a `cd` or `git -C` target cannot be known,
+ * possible folders (before and after), and a push gets an action for each. When a `cd` or `git -C` target cannot be known,
  * the action has `unknown: true` and the session folder `cwd`, so that preTool uses the ticket of the session folder.
  * `env` gives the home folder for `~` (HOME, USERPROFILE).
  */
-export function guardActions(line, cwd, { changes = [], writes = [], never = [], env = process.env } = {}) {
+export function guardActions(line, cwd, { env = process.env } = {}) {
   const actions = [];
   let folders = [cwd]; // the possible folders of the next command (null when a folder is unknown)
   const saved = [];
@@ -636,21 +488,8 @@ export function guardActions(line, cwd, { changes = [], writes = [], never = [],
       }
       continue;
     }
-    const forbidden = never.find((entry) => matchesNever(words, entry));
-    if (forbidden) { actions.push({ kind: 'never', ...here(), verdict: forbidden.verdict, words: words.map((word, i) => (i === 0 ? tool : word)) }); continue; }
-    if (changes.some((first) => matches(words, { words: first }))) { for (const from of folders) actions.push({ kind: 'change', ...here(from), words }); continue; }
-    const hits = writes.filter((command) => matches(words, command));
-    if (hits.length) {
-      const longest = hits.reduce((a, b) => (b.words.length > a.words.length ? b : a));
-      actions.push({ kind: 'write', ...here(), capabilities: [...new Set(hits.map((hit) => hit.capability))], words: [tool, ...longest.words.slice(1)] });
-    }
   }
   return actions;
-}
-
-/** The ship actions of a shell line: each push and each change request command (see guardActions). */
-export function shipActions(line, cwd, changes = []) {
-  return guardActions(line, cwd, { changes });
 }
 
 /**
@@ -691,131 +530,7 @@ function unplaced(folder, { where, error }) {
   return error.code === 'wiki-mismatch' ? error.message : `Forge cannot find the wiki of this work tree: ${error.message}`;
 }
 
-function configText(where, file) {
-  try { return readFileSync(path.join(where.configDir, file), 'utf8'); } catch { return ''; }
-}
-
-const LABEL = { push: 'a push', change: 'a new change request' };
-
-/** The draft of the next write of a ticket: the README Sendable? `doc`, when it is an existing `outbox/*.draft.md` file. */
-function draftOf(match) {
-  if (match.broken) return null;
-  const doc = match.ticket.gates.find((gate) => gate.name === 'Sendable?')?.doc;
-  if (typeof doc !== 'string' || !/^outbox[\\/].+\.draft\.md$/.test(doc)) return null;
-  const file = path.join(path.dirname(match.file), ...doc.split(/[\\/]/));
-  try {
-    return checkAction(match.ticket, match.file, 'write', { draft: doc }).allowed ? file : null;
-  } catch { return null; }
-}
-
-/** True when the Shippable? approval covers exactly one `target: change` draft, and the ticket has no draft or open change request yet. */
-function changeApproved(match) {
-  const dir = path.dirname(match.file);
-  const drafts = approvedDrafts(match.ticket, match.file, 'Shippable?').filter((relative) => isChangeDraft(dir, relative));
-  return drafts.length === 1 && !(match.ticket.changes ?? []).some((entry) => ['draft', 'open'].includes(entry.state));
-}
-
-/** The value of each body option (a short option with a value, joined or not, and a long option with a value or with `=`) in the words of a command. */
-function bodyValues(words, options) {
-  const values = [];
-  for (let i = 1; i < words.length; i++) {
-    const word = words[i];
-    if (options.includes(word)) { values.push(words[i + 1] ?? ''); i++; continue; }
-    const joined = /^(--[^=]+)=(.*)$/s.exec(word);
-    if (joined && options.includes(joined[1])) { values.push(joined[2]); continue; }
-    const short = options.find((option) => /^-[A-Za-z]$/.test(option) && word.startsWith(option) && word.length > 2);
-    if (short) values.push(word.slice(2));
-  }
-  return values;
-}
-
-/** The path that a body value names: the value itself, or the file of `$(cat <path>)`. It is null for any other form (a variable, a second command). */
-function bodyPath(value) {
-  const sub = /^\$\(\s*cat\s+(.+?)\s*\)$/s.exec(value);
-  let file = sub ? sub[1] : value;
-  const quoted = /^(["'])(.*)\1$/s.exec(file);
-  if (quoted) file = quoted[2];
-  if (!file || /[$`]/.test(file) || file.startsWith('~')) return null;
-  if (sub && (/[;|&<>()*?]/.test(file) || (!quoted && /\s/.test(file)))) return null;
-  return file;
-}
-
-const SEND_START = '<!-- send: start -->';
-const SEND_END = '<!-- send: end -->';
-// The size cap of a file that the guard reads: the hook has a time limit, and a body is short text.
-const MAX_BODY_BYTES = 256 * 1024;
-
-/** The text with LF line ends, and with no blank line at the start or at the end. */
-function trimBlank(text) {
-  return text.replace(/\r\n/g, '\n').replace(/^(?:[ \t]*\n)+/, '').replace(/(?:\n[ \t]*)+$/, '');
-}
-
-/** The text of a file by its real path, or null when it is no regular file, is too big, or cannot be read. */
-function regularText(file) {
-  try {
-    const real = realpathSync(file);
-    const info = statSync(real);
-    return info.isFile() && info.size <= MAX_BODY_BYTES ? readFileSync(real, 'utf8') : null;
-  } catch { return null; }
-}
-
-/** The send text of a draft: the lines between the send markers, with no blank line at the ends. It is null when a marker is missing or the text is empty. */
-function sendText(text) {
-  const plain = text.replace(/\r\n/g, '\n');
-  const start = plain.indexOf(SEND_START);
-  const end = start === -1 ? -1 : plain.indexOf(SEND_END, start + SEND_START.length);
-  if (end === -1) return null;
-  const inner = trimBlank(plain.slice(start + SEND_START.length, end));
-  return inner || null;
-}
-
-/**
- * True when the body of a new change request is the send text of the one approved draft: the command has exactly one body option, and its
- * value is the path of a regular file (or `$(cat <path>)` of it), resolved from the folder of the command, whose text is the send text.
- * The approved draft file itself has the frontmatter, so it is no match. A file that cannot be read, a second body option, and each other form ask.
- */
-function bodyIsDraft(match, action, bodyOptions, otherBodyOptions) {
-  const dir = path.dirname(match.file);
-  const [relative, ...more] = approvedDrafts(match.ticket, match.file, 'Shippable?').filter((item) => isChangeDraft(dir, item));
-  const values = bodyValues(action.words ?? [], bodyOptions);
-  if (!relative || more.length || values.length !== 1) return false;
-  // An option that gives a body in another way, next to the draft, is no approved draft.
-  const listed = (word) => bodyOptions.some((option) => word === option || word.startsWith(`${option}=`) || (/^-[A-Za-z]$/.test(option) && word.startsWith(option)));
-  if ((action.words ?? []).slice(1).some((word) => !listed(word) && otherBodyOptions.some((option) => hasOption(word, option)))) return false;
-  const file = bodyPath(values[0]);
-  if (file === null) return false;
-  const expected = sendText(regularText(path.join(dir, ...relative.split(/[\\/]/))) ?? '');
-  if (expected === null) return false;
-  const given = regularText(path.resolve(action.cwd, file));
-  return given !== null && trimBlank(given) === expected;
-}
-
-/** The ask verdict for a write: the reason names the ticket, the command, and the draft. */
-function writeVerdict(match, action) {
-  const key = match.ticket.key;
-  const what = action.kind === 'change' ? 'a new change request (repo.open-change)' : `\`${action.words.join(' ')}\` (${action.capabilities.join(' or ')})`;
-  const draft = draftOf(match);
-  const text = draft ? `The text is in ${draft}.` : 'No outbox draft is in review for it (the README Sendable? doc).';
-  return {
-    decision: 'ask', key,
-    question: `${key}: this command is an external write: ${what}. ${text}`,
-    reason: `Forge gate guard: ${key}: this command is an external write: ${what}. ${text} Allow it only if you read the text and you want this one write now.`,
-  };
-}
-
-/** The verdict for a never word: deny, or ask. The user merges, approves, or closes in the web page. */
-function neverVerdict(match, action) {
-  const key = match.ticket.key;
-  const command = action.words.slice(0, 4).join(' ');
-  if (action.verdict === 'ask') {
-    const question = `${key}: \`${command}\` closes a change request.`;
-    return { decision: 'ask', key, question, reason: `Forge gate guard: ${question} Allow it only if you want this one close now.` };
-  }
-  return {
-    decision: 'deny', key,
-    reason: `Forge gate guard: ${key}: \`${command}\` merges or approves a change request. This is a step of the user, in the web page. Do not run the command in another form. Tell the user which change request is ready, and let the user merge or approve it in the web page.`,
-  };
-}
+const LABEL = { push: 'a push' };
 
 /** The ask verdict for an approval command: the reason names the command and what it approves. */
 function approveVerdict(action) {
@@ -884,12 +599,8 @@ function noPrompt(verdict, mode) {
 
 /**
  * The verdict for one tool call: null to let it run, or { decision, key, reason }.
- * - A push or a new change request needs the ship gates. Without them: `deny` or `ask`, from `policy.gateGuard`
+ * - A push needs the ship gates. Without them: `deny` or `ask`, from `policy.gateGuard`
  *   (default `deny`; `off` stops the guard).
- * - A write (one of WRITE_CAPABILITIES) gets `ask`: the prompt of the host is the "yes" for this one write.
- *   A new change request with valid gates gets `ask` too, unless the Shippable? set has the one `target: change` draft, no
- *   draft or open change request exists, and the body option is a file with the send text of that draft: then it gets no verdict.
- *   In a mode with no prompt (NO_PROMPT_MODES), each `ask` becomes `deny`.
  * - An approval command (`gate-approve`, `trust approve`) gets `ask` in each folder, also with `gateGuard: off`,
  *   and `deny` in a mode with no prompt.
  * - A `deny` wins over an `ask`. Only a trusted config can change the mode or add commands.
@@ -902,16 +613,6 @@ export function preTool(event, { env = process.env, deadlineMs = DEADLINE_MS } =
   const homeTry = tryLocate(base, env);
   const home = homeTry.where;
   const homeConfig = home?.wiki.exists ? trustedConfig(home, env) : null;
-  const { never, bodyOptions, otherBodyOptions } = shippedLists();
-  const kinds = ['tracker', 'repo', 'ci'];
-  const textsOf = (read) => Object.fromEntries(kinds.map((kind) => [kind, read(kind)]));
-  // A trusted config with files gives the commands. An untrusted config, or no config file, adds the wiki text to the shipped profile config: the agent can write the wiki text,
-  // so it must not remove a command of the profile (the union of both lists).
-  const wikiTexts = home ? textsOf((kind) => configText(home, `${kind}.md`)) : textsOf(() => '');
-  const shipped = textsOf((kind) => shippedConfig(pluginRoot, home?.profile ?? null, kind));
-  const own = homeConfig && kinds.some((kind) => wikiTexts[kind]);
-  const changes = own ? changeCommands(wikiTexts.repo) : [...changeCommands(shipped.repo), ...changeCommands(wikiTexts.repo)];
-  const writes = own ? writeCommands(wikiTexts) : [...writeCommands(shipped), ...writeCommands(wikiTexts)];
   const verdicts = [];
   // The ticket of a folder, and each ticket whose branch a push names: a push of a ticket branch runs from each folder.
   const ticketsAt = (where, config, action, cwd) => {
@@ -926,7 +627,7 @@ export function preTool(event, { env = process.env, deadlineMs = DEADLINE_MS } =
       return [...new Set([here, ...named].filter(Boolean))];
     } catch { return []; }
   };
-  for (const action of guardActions(event.command, base, { changes, writes, never, env })) {
+  for (const action of guardActions(event.command, base, { env })) {
     // An approval needs no ticket, no wiki, and no trusted config, and no gateGuard mode turns it off.
     if (action.kind === 'approve') { verdicts.push(approveVerdict(action)); continue; }
     const placed = samePath(action.cwd, base) ? homeTry : tryLocate(action.cwd, env);
@@ -941,24 +642,19 @@ export function preTool(event, { env = process.env, deadlineMs = DEADLINE_MS } =
     }
     let config = where === home ? homeConfig : (where?.wiki.exists ? trustedConfig(where, env) : null);
     let found = ticketsAt(where, config, action, action.cwd);
-    // A write names its target (for example `-R owner/repo`), so a `cd` to another folder does not change it:
-    // the ticket of the session folder is the ticket of the write (GH-2 review).
-    // A push or a new change request in a folder that Forge cannot know (`cd $X`) or that is no Git work tree (`cd ~/nowhere`)
+    // A push in a folder that Forge cannot know (`cd $X`) or that is no Git work tree (`cd ~/nowhere`)
     // uses the ticket of the session folder too. A push in another real repository keeps its folder.
-    const lost = action.kind === 'write' || action.kind === 'never' || ((action.kind === 'push' || action.kind === 'change') && (action.unknown || !where));
+    const lost = action.kind === 'push' && (action.unknown || !where);
     if (!found.length && lost && where !== home) {
       where = home;
       config = homeConfig;
       found = ticketsAt(home, homeConfig, action, base);
     }
     if (!found.length) continue;
-    // A never word comes before the ship check, and no gateGuard mode turns it off.
-    if (action.kind === 'never') { for (const match of found) verdicts.push(neverVerdict(match, action)); continue; }
     const mode = GUARD_MODES.includes(config?.policy?.gateGuard) ? config.policy.gateGuard : 'deny';
     if (mode === 'off') continue;
     for (const match of found) {
       if (match.broken) {
-        if (action.kind === 'write') { verdicts.push(writeVerdict(match, action)); continue; }
         const key = match.ticket.key;
         const question = `${key} has a README that Forge cannot read, so the gates for ${LABEL[action.kind]} are unknown. README: ${match.file}. Error: ${match.error}`;
         verdicts.push(mode === 'ask'
@@ -966,34 +662,28 @@ export function preTool(event, { env = process.env, deadlineMs = DEADLINE_MS } =
           : { decision: 'deny', key, reason: `Forge gate guard: ${question} Show the user the error. Repair the README only as the user says, and check it with \`forge.mjs lint\`. Do not run the command in another form.` });
         continue;
       }
-      if (action.kind !== 'write') {
-        let verdict;
-        try { verdict = checkAction(match.ticket, match.file, 'ship'); } catch { continue; }
-        if (!verdict.allowed) {
-          const messages = [...new Set(verdict.findings.map((item) => item.message))];
-          const shown = messages.slice(0, MAX_FINDINGS).join(' ');
-          const more = messages.length > MAX_FINDINGS ? ` There are ${messages.length - MAX_FINDINGS} more findings: run \`forge.mjs lint\`.` : '';
-          const key = match.ticket.key;
-          const question = `${key} has no valid approval for ${LABEL[action.kind]}. ${shown}${more}`;
-          verdicts.push(mode === 'ask'
-            ? { decision: 'ask', key, question, reason: `Forge gate guard: ${question} Allow this command only if you accept the step without the gate.` }
-            : { decision: 'deny', key, reason: `Forge gate guard: ${question} Open the gate as the ticket skill says (Review gates), and wait for the answer of the user. Do not run the command in another form. Tell the user which approval is missing, and offer to open the gate.` });
-          continue;
-        }
-        if (action.kind === 'push') {
-          const problem = codeMismatch(match, where, config, action, deadline);
-          if (problem) {
-            const key = match.ticket.key;
-            const question = `${key}: ${problem}`;
-            verdicts.push(mode === 'ask'
-              ? { decision: 'ask', key, question, reason: `Forge gate guard: ${question} Allow this push only if you accept the step without the code check.` }
-              : { decision: 'deny', key, reason: `Forge gate guard: ${question} Do not run the command in another form. Tell the user what is wrong.` });
-            continue;
-          }
-        }
-        if (action.kind === 'push' || (action.kind === 'change' && changeApproved(match) && bodyIsDraft(match, action, bodyOptions, otherBodyOptions))) continue;
+      let verdict;
+      try { verdict = checkAction(match.ticket, match.file, 'ship'); } catch { continue; }
+      if (!verdict.allowed) {
+        const messages = [...new Set(verdict.findings.map((item) => item.message))];
+        const shown = messages.slice(0, MAX_FINDINGS).join(' ');
+        const more = messages.length > MAX_FINDINGS ? ` There are ${messages.length - MAX_FINDINGS} more findings: run \`forge.mjs lint\`.` : '';
+        const key = match.ticket.key;
+        const question = `${key} has no valid approval for ${LABEL[action.kind]}. ${shown}${more}`;
+        verdicts.push(mode === 'ask'
+          ? { decision: 'ask', key, question, reason: `Forge gate guard: ${question} Allow this command only if you accept the step without the gate.` }
+          : { decision: 'deny', key, reason: `Forge gate guard: ${question} Open the gate as the ticket skill says (Review gates), and wait for the answer of the user. Do not run the command in another form. Tell the user which approval is missing, and offer to open the gate.` });
+        continue;
       }
-      verdicts.push(writeVerdict(match, action));
+      const problem = codeMismatch(match, where, config, action, deadline);
+      if (problem) {
+        const key = match.ticket.key;
+        const question = `${key}: ${problem}`;
+        verdicts.push(mode === 'ask'
+          ? { decision: 'ask', key, question, reason: `Forge gate guard: ${question} Allow this push only if you accept the step without the code check.` }
+          : { decision: 'deny', key, reason: `Forge gate guard: ${question} Do not run the command in another form. Tell the user what is wrong.` });
+        continue;
+      }
     }
   }
   const verdict = verdicts.find((item) => item.decision === 'deny') ?? verdicts[0] ?? null;

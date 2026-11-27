@@ -37,7 +37,7 @@ function fixture(t, { gates = {}, plan = '# Plan SYN-4\n\nThe plan.\n', frontmat
   const readme = [
     '---', 'type: ticket', 'key: SYN-4', 'title: Synthetic gate-open ticket', 'short: Synthetic open',
     'workflow: full-v4', 'phase: start', 'state: active', 'next: Review the scope', 'waiting_on: ""', 'changes: []', 'people: []', ...frontmatter,
-    'gates:', record('Planned?', 'plan.md'), record('Sendable?', 'outbox/'), record('Shippable?', 'review.md'), record('Learned?', 'close.md'),
+    'gates:', record('Planned?', 'plan.md'), record('Shippable?', 'review.md'), record('Learned?', 'close.md'),
     'updated: 2026-10-01', '---', '# SYN-4: Synthetic', '', '## Now', '', '- State: ▶️ active', '- Phase: start', '- Open gate: none', '- Next: Review the scope', '- Waiting on: nobody', '- Updated: 2026-10-01', '', '## Files', '', '- [story.md](story.md)', '',
   ].join('\r\n');
   put('README.md', readme);
@@ -223,12 +223,12 @@ test('Shippable? with evidenceOnDeployedEnv true needs no proof.md and does not 
   assert.deepEqual(open(f, 'Shippable?', { policy: { evidenceOnDeployedEnv: true }, dryRun: true }).documents.map((doc) => doc.path), ['review.md'], 'proof.md stays outside the manifest.');
 });
 
-test('refusals: Sendable?, a skipped gate, outside paths, journal.md, a missing file, a link', (t) => {
+test('refusals: an unknown gate, a skipped gate, outside paths, journal.md, a missing file, a link', (t) => {
   const f = fixture(t, { gates: { 'Shippable?': 'skipped' } });
   const outside = path.join(f.wiki, 'outside.md');
   writeFileSync(outside, 'x\n');
   const before = [listing(f.dir), readFileSync(f.file)];
-  assert.throws(() => open(f, 'Sendable?'), /Sendable\? has its own steps/);
+  assert.throws(() => open(f, 'Sendable?'), /Unknown gate: Sendable\?/);
   assert.throws(() => open(f, 'Shippable?'), /Shippable\? is skipped/);
   assert.throws(() => open(f, 'Planned?', { extra: ['../../../outside.md'] }), /outside the ticket folder/);
   assert.throws(() => open(f, 'Planned?', { extra: [outside] }), /outside the ticket folder/);
@@ -289,7 +289,7 @@ test('the command prints the set and opens the gate (--json too)', (t) => {
   assert.deepEqual([result.gate, result.key, result.manifest, result.carried, result.dryRun], ['Planned?', 'SYN-4', 'approvals/planned-002.json', null, false]);
   const bad = run('SYN-4', 'sendable');
   assert.equal(bad.status, 1);
-  assert.match(bad.stderr, /forge: Sendable\? has its own steps/);
+  assert.match(bad.stderr, /forge: Unknown gate: sendable/);
   assert.equal(run('SYN-4').status, 1);
 });
 

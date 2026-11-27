@@ -18,10 +18,10 @@ function wiki(t) {
     mkdirSync(path.dirname(file), { recursive: true });
     writeFileSync(file, text);
   };
-  const ticket = (key, { state = 'active', phase = 'plan', updated = '2026-10-01', short = '', gates = [], extra = [], people = [] } = {}) => put(`raw/tickets/${key}/README.md`, [
+  const ticket = (key, { state = 'active', phase = 'plan', updated = '2026-10-01', short = '', gates = [], extra = [], people = [], item = '', changes = [] } = {}) => put(`raw/tickets/${key}/README.md`, [
     '---', 'type: ticket', `key: ${key}`, `title: Title of ${key} | with a pipe`, ...(short ? [`short: ${short}`] : []),
     'workflow: full-v4', `phase: ${phase}`, `state: ${state}`, `next: Next step for ${key}`, 'waiting_on: ""',
-    'changes: []', ...(people.length ? ['people:', ...people] : ['people: []']), 'gates:', ...gates, ...extra, `updated: ${updated}`, '---', `# ${key}`, '',
+    ...(item ? [`item: ${item}`] : []), ...(changes.length ? ['changes:', ...changes] : ['changes: []']), ...(people.length ? ['people:', ...people] : ['people: []']), 'gates:', ...gates, ...extra, `updated: ${updated}`, '---', `# ${key}`, '',
   ].join('\n'));
   return { root, put, ticket };
 }
@@ -72,25 +72,24 @@ test('people waits list open tickets with a waiting person after more than 3 wor
 test('the open gate prefers in-review, then blocked, then todo, and ignores recommended gates', () => {
   const gates = (...list) => ({ gates: list.map(([name, status, need = 'required']) => ({ name, status, need })) });
   assert.deepEqual(openGate(gates(['Planned?', 'approved'], ['Learned?', 'todo'], ['Shippable?', 'in-review'])), { name: 'Shippable?', status: 'in-review' });
-  assert.deepEqual(openGate(gates(['Planned?', 'todo'], ['Sendable?', 'blocked'])), { name: 'Sendable?', status: 'blocked' });
+  assert.deepEqual(openGate(gates(['Planned?', 'todo'], ['Shippable?', 'blocked'])), { name: 'Shippable?', status: 'blocked' });
   assert.equal(openGate(gates(['Extra?', 'in-review', 'recommended'], ['Planned?', 'skipped'])), null);
 });
 
-test('sync notes add PR, CI, and tracker status (an old note names it jira); bad notes and bad READMEs are read errors', (t) => {
+test('a card has the item link and the changes of the README; a bad README is a read error', (t) => {
   const w = wiki(t);
-  w.ticket('APP-3', { state: 'waiting' });
+  w.ticket('APP-3', { state: 'waiting', item: 'https://tracker.example.test/APP-3', changes: ['  - { url: "https://host.example.test/pr/12", state: open, label: PR }'] });
   w.ticket('APP-4', { state: 'go' });
-  w.put('raw/sync/APP-3.md', '---\nchecked: 2026-10-05T09:00\npr: "#12 open, 1 approval"\nci: green\njira: In Review\n---\nNotes.\n');
-  w.put('raw/sync/APP-4.md', 'no frontmatter\n');
   w.put('raw/tickets/APP-5/README.md', '---\nkey: APP-5\n---\n');
   mkdirSync(path.join(w.root, 'raw', 'tickets', 'empty'), { recursive: true });
   const board = buildBoard(w.root, { today: '2026-10-05' });
   const waiting = board.groups.find((group) => group.state === 'waiting').tickets[0];
-  assert.deepEqual(waiting.sync, { checked: '2026-10-05T09:00', tracker: 'In Review', pr: '#12 open, 1 approval', ci: 'green' });
-  assert.match(renderBoard(board), /PR #12 open, 1 approval · CI green · Tracker In Review/);
-  w.put('raw/sync/APP-3.md', '---\ntracker: Done\njira: In Review\n---\n');
-  assert.equal(buildBoard(w.root, { today: '2026-10-05' }).groups.find((group) => group.state === 'waiting').tickets[0].sync.tracker, 'Done');
-  assert.deepEqual(board.errors.map((error) => error.folder), ['APP-4', 'APP-5', 'empty']);
+  assert.equal(waiting.item, 'https://tracker.example.test/APP-3');
+  assert.deepEqual(waiting.changes, [{ url: 'https://host.example.test/pr/12', state: 'open', label: 'PR' }]);
+  assert.equal(waiting.sync, undefined, 'The board reads no sync note.');
+  assert.match(renderBoard(board), /\| PR open \|/);
+  assert.doesNotMatch(renderBoard(board), /Tracker|CI /);
+  assert.deepEqual(board.errors.map((error) => error.folder), ['APP-5', 'empty']);
   assert.match(renderBoard(board), /## ⚠️ Read errors/);
 });
 

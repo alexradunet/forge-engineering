@@ -169,32 +169,15 @@ export function checkGate(ticket, file, name) {
   return { allowed, findings };
 }
 
-/** The outbox drafts (ticket-relative paths) in the manifest of a gate, only when the approval is valid and current. Else []. */
-export function approvedDrafts(ticket, file, gateName) {
-  try {
-    const { allowed, documents } = gateCheck(ticket, file, gateName);
-    return allowed ? documents.filter((relative) => /^outbox\/[^/]+\.draft\.md$/i.test(relative)) : [];
-  } catch { return []; }
-}
-
 /** True when the file is an outbox draft with `target: change`. The read is link-safe: a draft that cannot be read does not count. */
 export function isChangeDraft(dir, relative) {
   try { return parseFrontmatter(regular(within(dir, relative)).toString('utf8'), []).target === 'change'; } catch { return false; }
 }
 
-export function checkAction(ticket, file, action, write) {
+export function checkAction(ticket, file, action) {
   const required = ACTION_GATES[action];
   if (!required) throw new Error(`Unknown blocked action: ${action}`);
   const findings = required.flatMap((name) => checkGate(ticket, file, name).findings);
-  if (action === 'write') {
-    const draft = write?.draft;
-    if (typeof draft !== 'string' || !/^outbox[\\/].+\.draft\.md$/.test(draft)) {
-      findings.push(finding(file, 'write-draft', 'The write names no outbox/<target>.draft.md file.', 'Write the text from the outbox.draft.md template before the write.'));
-    } else {
-      try { regular(within(path.dirname(file), draft)); }
-      catch (error) { findings.push(finding(file, 'write-draft', `${draft}: ${error.message}`, 'Write the text from the outbox.draft.md template before the write.')); }
-    }
-  }
   return { allowed: findings.length === 0, findings };
 }
 

@@ -116,7 +116,7 @@ function preview() {
     count: 1,
     html: card('needs-me', {
       key: 'APP-101', age: '3 days', title: 'Fix outbox retry', next: 'Approve the review (Shippable?)', tags: ['review'], links: ['README', 'Worktree'],
-      gates: [{ name: 'Planned?', status: 'approved' }, { name: 'Shippable?', status: 'in-review' }, { name: 'Sendable?', status: 'todo' }],
+      gates: [{ name: 'Planned?', status: 'approved' }, { name: 'Shippable?', status: 'in-review' }],
     }),
   });
   const go = lane('GO', {

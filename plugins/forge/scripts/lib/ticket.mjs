@@ -4,19 +4,16 @@ export const WORKFLOWS = ['full-v4'];
 export const PHASES = ['start', 'investigate', 'plan', 'implement', 'review', 'closed'];
 // The gates of a full-v4 ticket. Planned? holds the scope (story.md) and the plan (plan.md) in one manifest.
 // The last document of a gate is its primary document. The plan has no approved copy.
-export const GATES = ['Planned?', 'Shippable?', 'Sendable?', 'Learned?'];
+export const GATES = ['Planned?', 'Shippable?', 'Learned?'];
 export const GATE_DOCS = { 'Planned?': ['story.md', 'plan.md'], 'Shippable?': ['review.md'], 'Learned?': ['close.md'] };
 export const PREREQUISITES = {
   start: [], investigate: [], plan: [],
   implement: ['Planned?'], review: ['Planned?'],
   closed: ['Planned?', 'Shippable?', 'Learned?'],
 };
-// GH-2: the "yes" for a write is the prompt of the host that the gate guard asks for. A write needs
-// no Sendable? approval record, only its outbox draft.
 export const ACTION_GATES = {
   implement: ['Planned?'],
   ship: ['Planned?', 'Shippable?'],
-  write: [],
   close: ['Planned?', 'Shippable?', 'Learned?'],
 };
 const GATE_STATUSES = ['todo', 'in-review', 'approved', 'skipped', 'blocked'];

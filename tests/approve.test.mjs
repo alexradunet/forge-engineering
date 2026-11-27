@@ -26,7 +26,6 @@ function fixture(t, { pending } = {}) {
     'workflow: full-v4', 'phase: start', 'state: needs-me', 'next: Approve the scope', 'waiting_on: ""', 'changes: []', 'people: []',
     'gates:',
     `  - { name: Planned?, doc: plan.md, need: required, status: in-review, manifest: approvals/planned-001.json${pending ? `, hash: ${pending}` : ''} }`,
-    '  - { name: Sendable?, doc: outbox/, need: required, status: todo }',
     '  - { name: Shippable?, doc: review.md, need: required, status: todo }',
     '  - { name: Learned?, doc: close.md, need: required, status: todo }',
     'updated: 2026-10-01', '---', '# 🎫 Ticket (SYN-3): Synthetic', '', '> 🔥 Keep the body bytes.', '',
@@ -70,7 +69,7 @@ test('gate-approve writes nothing when the review set changed, in a dry run, or 
   assert.equal(readFileSync(path.join(dry.dir, 'README.md'), 'utf8'), dry.readme);
   assert.equal(existsSync(path.join(dry.dir, 'approvals', 'history.md')), false);
 
-  assert.throws(() => approveGate(dir, { gate: 'Sendable?', answer: 'approve' }), /the host prompt that the gate guard asks for/);
+  assert.throws(() => approveGate(dir, { gate: 'Sendable?', answer: 'approve' }), /Sendable\? is not recorded/);
   assert.throws(() => approveGate(dir, { gate: 'Shippable?', answer: 'approve' }), /Shippable\? is todo, not in-review/);
   assert.throws(() => approveGate(dir, { gate: 'Planned?', answer: ' ' }), /exact answer/);
   const cliResult = run(wiki, 'SYN-3', 'planned', '--answer', 'approve', '--hash', digest);

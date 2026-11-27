@@ -6,7 +6,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { parseTicket } from '../plugins/forge/scripts/lib/ticket.mjs';
-import { approvedDrafts, checkAction, checkGate, classifySource, GATES, lint, sha256, validateTicket } from '../plugins/forge/scripts/lib/validation.mjs';
+import { checkAction, checkGate, classifySource, GATES, lint, sha256, validateTicket } from '../plugins/forge/scripts/lib/validation.mjs';
 
 const cli = fileURLToPath(new URL('../plugins/forge/scripts/forge.mjs', import.meta.url));
 const cwd = fileURLToPath(new URL('..', import.meta.url));
@@ -51,7 +51,7 @@ test('full-v4 is the only workflow, it is never inferred, and full-v3 gets the F
   assert.throws(() => parseTicket(yamlTicket({ track: 'S' })), /must not select a track/);
 });
 
-test('full-v4 has three review gates plus Sendable? and blocks phases until their approvals', (t) => {
+test('full-v4 has three review gates and blocks phases until their approvals', (t) => {
   const f = fixture(t);
   const ticket = parseTicket(yamlTicket({ phase: 'implement', gates: allGates() }));
   const findings = validateTicket(ticket, f.file);
@@ -63,22 +63,6 @@ test('full-v4 has three review gates plus Sendable? and blocks phases until thei
 
   const skipped = parseTicket(yamlTicket({ gates: allGates().map((gate) => gate.name === 'Planned?' ? { ...gate, status: 'skipped' } : gate) }));
   assert.ok(validateTicket(skipped, f.file).some((item) => item.code === 'workflow-gate' && item.message === 'Planned? is mandatory for full-v4.'));
-});
-
-test('approvedDrafts lists the outbox drafts of a valid approved manifest, and nothing else', (t) => {
-  const f = fixture(t);
-  f.put('review.md', 'Review\n');
-  f.put('outbox\\pr.draft.md', 'Draft\n');
-  f.put('outbox\\notes.md', 'Notes\n');
-  const gate = record(f, 'Shippable?', ['review.md', 'outbox\\pr.draft.md', 'outbox\\notes.md']);
-  const ticket = parseTicket(yamlTicket({ gates: [gate] }));
-  assert.deepEqual(approvedDrafts(ticket, f.file, 'Shippable?'), ['outbox/pr.draft.md'], 'Only a draft file, with forward slashes.');
-  assert.deepEqual(approvedDrafts(ticket, f.file, 'Learned?'), [], 'A gate that is not recorded has none.');
-  f.put('outbox\\pr.draft.md', 'Changed draft\n');
-  assert.deepEqual(approvedDrafts(ticket, f.file, 'Shippable?'), [], 'A stale approval has none.');
-  const open = parseTicket(yamlTicket({ gates: [{ ...gate, status: 'in-review' }] }));
-  assert.deepEqual(approvedDrafts(open, f.file, 'Shippable?'), [], 'A gate that is not approved has none.');
-  assert.deepEqual(approvedDrafts(null, f.file, 'Shippable?'), [], 'It never throws.');
 });
 
 test('combined approval covers every listed revision with one user record', (t) => {
@@ -119,19 +103,6 @@ test('manifest revision, exact document set, traversal, missing files and circul
   assert.ok(codes(check(missing).findings).includes('approval-manifest'));
 });
 
-test('full-v4: a write needs only its outbox draft', (t) => {
-  // GH-2: the "yes" for a write is the prompt of the host that the gate guard asks for, so a new write has no record.
-  const f = fixture(t);
-  f.put('outbox\\comment.draft.md', '---\nstatus: draft\n---\nDraft');
-  const gates = allGates().map((gate) => (gate.name === 'Sendable?' ? { ...gate, doc: 'outbox/comment.draft.md', status: 'in-review' } : gate));
-  const ticket = parseTicket(yamlTicket({ gates }));
-  f.put('README.md', yamlTicket({ gates }));
-  assert.equal(checkAction(ticket, f.file, 'write', { draft: 'outbox/comment.draft.md' }).allowed, true, 'No Sendable? approval is needed.');
-  assert.deepEqual(codes(checkAction(ticket, f.file, 'write', { draft: 'outbox/missing.draft.md' }).findings), ['write-draft']);
-  assert.deepEqual(codes(checkAction(ticket, f.file, 'write', { draft: 'notes.md' }).findings), ['write-draft']);
-  assert.deepEqual(codes(checkAction(ticket, f.file, 'write').findings), ['write-draft']);
-  assert.deepEqual(validateTicket(ticket, f.file), [], 'A Sendable? row in review with a draft and no manifest is valid.');
-});
 
 test('links and malformed draft metadata block repairs without touching external bytes', (t) => {
   const f = fixture(t);

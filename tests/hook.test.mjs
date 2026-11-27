@@ -325,12 +325,9 @@ test('the Claude Code prompt hook gives the ticket part and title once, when the
   assert.match(known.additionalContext, /^# Forge ticket context\n\nForge ticket session: APP-7/);
   assert.doesNotMatch(known.additionalContext, /# forge plugin/, 'The rules come from the session start hook.');
   const fresh = (prompt, title = '') => promptSubmit({ cwd: s.app, prompt, title }, { cli, env }).hookSpecificOutput?.sessionTitle;
-  assert.equal(fresh('APP-241223 Doc import fails'), undefined, 'Without a tracker prefix, a later prompt starts no new ticket.');
-  const where = resolve({ cwd: s.app, env });
-  setValues(seed(where, templates).configDir, ['tracker.prefix=APP']);
-  approve(where, trustStatus(where, { env }).files.filter((f) => f.rel.startsWith('config/')).map((f) => `${f.rel}=${f.sha.slice(0, 12)}`), { env });
-  assert.equal(fresh('APP-241223 Doc import fails'), 'APP-241223 - ▶️ - Start ticket');
-  for (const prompt of ['Explain UTF-8 encoding', 'Use SHA-256 for checksums', 'Investigate CVE-2024-1234', 'See APP-2024-1234', 'OPS-12 is a key of another tracker']) {
+  assert.equal(fresh('APP-241223 Doc import fails'), 'APP-241223 - ▶️ - Start ticket', 'An untitled session with a new whole-word key starts it.');
+  assert.equal(fresh('OPS-12 is a key of another system'), 'OPS-12 - ▶️ - Start ticket', 'Any prefix is a key.');
+  for (const prompt of ['Explain UTF-8 encoding', 'Use SHA-256 for checksums', 'Investigate CVE-2024-1234', 'See APP-2024-1234', 'APP-12x is no key']) {
     assert.equal(fresh(prompt), undefined, prompt);
   }
   assert.equal(fresh('Resume APP-7', 'My own name'), undefined, 'A custom title stays.');
@@ -353,15 +350,6 @@ test('the prompt hook ignores an old canvas-comments.md file: it adds nothing an
   assert.ok(!existsSync(`${file}.taking`));
 });
 
-// A setup with the tracker prefix APP approved, so a later prompt can start a new ticket.
-function withPrefix(t) {
-  const s = setup(t);
-  const where = resolve({ cwd: s.app, env });
-  setValues(seed(where, templates).configDir, ['tracker.prefix=APP']);
-  approve(where, trustStatus(where, { env }).files.filter((f) => f.rel.startsWith('config/')).map((f) => `${f.rel}=${f.sha.slice(0, 12)}`), { env });
-  return s;
-}
-
 test('ownTurn knows the turns that Claude Code starts by itself, and only by their first words', () => {
   for (const start of OWN_TURN_STARTS) {
     assert.equal(ownTurn(`${start}rest of the text`), true, start);
@@ -375,7 +363,7 @@ test('ownTurn knows the turns that Claude Code starts by itself, and only by the
 });
 
 test('the prompt hook gives {} for a turn that Claude Code started by itself', (t) => {
-  const s = withPrefix(t);
+  const s = setup(t);
   const call = (prompt) => promptSubmit({ cwd: s.app, prompt, title: '' }, { cli, env });
   assert.equal(call('Start APP-12').hookSpecificOutput.sessionTitle, 'APP-12 - ▶️ - Start ticket', 'A typed prompt with a new key still starts it.');
   assert.equal(call('Resume app-7 please').hookSpecificOutput.sessionTitle, 'APP-7 - 🟡 - Doc import error telemetry', 'A typed prompt with a known key still resumes it.');
@@ -391,7 +379,7 @@ test('the prompt hook gives {} for a turn that Claude Code started by itself', (
 });
 
 test('a closed ticket is not a new ticket: the prompt hook gives {}, and the session start gives one line and no title', (t) => {
-  const s = withPrefix(t);
+  const s = setup(t);
   mkdirSync(path.join(s.wiki, 'tickets'), { recursive: true });
   writeFileSync(path.join(s.wiki, 'tickets', 'app-8.md'), '# APP-8 Done work\n');
   mkdirSync(path.join(s.home, 'archive', 'tickets', 'app-9'), { recursive: true });
@@ -408,7 +396,7 @@ test('a closed ticket is not a new ticket: the prompt hook gives {}, and the ses
 });
 
 test('a ticket folder with a README that cannot be read gives one "cannot read" line and no Start', (t) => {
-  const s = withPrefix(t);
+  const s = setup(t);
   writeFileSync(s.readme, '---\nkey: APP-7\nworkflow: full-v2\n---\n');
   const line = (text) => text.match(/# Forge ticket context\n\n([^\n]*)/)[1];
   const folder = sessionStart({ cwd: s.app, source: 'startup', prompt: 'work on APP-7' }, { cli, env, host: 'claude', part: 1 }).hookSpecificOutput;
@@ -422,7 +410,7 @@ test('a ticket folder with a README that cannot be read gives one "cannot read" 
 });
 
 test('a full-v3 ticket gives the "cannot read" line with the Forge 10.1 hint and no Start', (t) => {
-  const s = withPrefix(t);
+  const s = setup(t);
   writeFileSync(s.readme, readFileSync(s.readme, 'utf8').replace('workflow: full-v4', 'workflow: full-v3'));
   const out = sessionStart({ cwd: s.app, source: 'startup', prompt: 'work on APP-7' }, { cli, env, host: 'claude', part: 1 }).hookSpecificOutput;
   assert.match(out.additionalContext, /has a README that Forge cannot read: Unsupported ticket workflow: full-v3\. Forge 12 reads only workflow: full-v4\. Finish this ticket with Forge 10\.1\. README: /);
@@ -430,7 +418,7 @@ test('a full-v3 ticket gives the "cannot read" line with the Forge 10.1 hint and
 });
 
 test('a later prompt names a ticket only in its first characters', (t) => {
-  const s = withPrefix(t);
+  const s = setup(t);
   const call = (prompt) => promptSubmit({ cwd: s.app, prompt, title: '' }, { cli, env });
   const fill = (n) => 'x'.repeat(n);
   for (const key of ['APP-7', 'APP-12']) {
@@ -532,11 +520,8 @@ test('the hooks of a terminal harness write the start and the end of a session t
   assert.equal(hookArgs(['hook', 'session-end', '--host', 'claude', '--part', '1'], {}), null);
 });
 
-test('a local key L-<n> is seen with the tracker prefix GH: open, closed, and unknown', (t) => {
+test('a local key L-<n> is seen: open, closed, and unknown', (t) => {
   const s = setup(t);
-  const where = resolve({ cwd: s.app, env });
-  setValues(seed(where, templates).configDir, ['tracker.prefix=GH']);
-  approve(where, trustStatus(where, { env }).files.filter((f) => f.rel.startsWith('config/')).map((f) => `${f.rel}=${f.sha.slice(0, 12)}`), { env });
   const folder = path.join(`${s.app}.worktrees`, 'l-3-local-work');
   git(s.app, 'worktree', 'add', '-q', '-b', 'L-3-local-work', folder);
   const dir = path.join(s.home, 'raw', 'tickets', 'l-3');
@@ -551,8 +536,8 @@ test('a local key L-<n> is seen with the tracker prefix GH: open, closed, and un
   writeFileSync(path.join(s.wiki, 'tickets', 'l-5.md'), '# L-5 Done local work\n');
   assert.match(start(s.app, 'start L-5'), /Forge: L-5 is a closed ticket\. Its summary page is .*l-5\.md/);
   assert.deepEqual(promptSubmit({ cwd: s.app, prompt: 'start L-5', title: '' }, { cli, env }), {});
-  // An unknown local key is never a new tracker ticket.
+  // An unknown local key is never a new ticket.
   assert.ok(!start(s.app, 'start L-4').includes(TICKET), 'the first prompt');
   assert.deepEqual(promptSubmit({ cwd: s.app, prompt: 'start L-4', title: '' }, { cli, env }), {}, 'a later prompt');
-  assert.equal(promptSubmit({ cwd: s.app, prompt: 'start GH-9', title: '' }, { cli, env }).hookSpecificOutput.sessionTitle, 'GH-9 - ▶️ - Start ticket', 'a tracker key still starts');
+  assert.ok(start(s.app, 'start GH-9').includes(TICKET), 'a key of another system starts at the first prompt');
 });

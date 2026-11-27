@@ -19,7 +19,7 @@ export function homeOf(wikiPath) {
   return isForgeLayout(wiki) ? path.dirname(wiki) : wiki;
 }
 
-/** The folder of the working files: the tickets, the board, the pages and the sync notes. It stays on this machine. */
+/** The folder of the working files: the tickets, the board, and the pages. It stays on this machine. */
 export const rawDir = (wikiPath) => path.join(homeOf(wikiPath), 'raw');
 /** The folder of the closed ticket folders. It stays on this machine. */
 export const archiveDir = (wikiPath) => path.join(homeOf(wikiPath), 'archive');
