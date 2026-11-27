@@ -8,7 +8,7 @@ A Forge skill names a host verb, for example `host.title`. Do the step of the ve
 
 | Verb | Step in Claude Code |
 |---|---|
-| `host.title` | The Forge hook sets the title at session start. In a ticket worktree, the hook corrects the title at the next prompt of the user. At a state change that must show before the next prompt (a 🟡 gate), tell the user to run `/rename <title>`. In the main checkout, always tell the user to run `/rename <title>`. A new session gets its title from `claude -n "<title>"`. |
+| `host.title` | The Forge hook sets the title at session start. In a ticket worktree, the hook corrects the title at the next prompt of the user, but not for a closed ticket. At a state change that must show before the next prompt (a 🟡 gate) and at Close (✅), tell the user to run `/rename <title>`. In the main checkout, always tell the user to run `/rename <title>`. A new session gets its title from `claude -n "<title>"`. |
 | `host.ask` | Call `AskUserQuestion`. Put the recommended answer first and give its reason. The user can write a free answer in the `Other` row. |
 | `host.move` | Call `EnterWorktree` with `path` set to the worktree folder. The user approves the move. When the tool is not available or it refuses, tell the user to run `cd "<folder>"; claude` and then say "continue". |
 | `host.spawn` | Give the user the command for a new terminal: `cd "<folder>"; claude -n "<title>" "<prompt>"`. The `Agent` tool starts only a subagent, not a ticket session. |

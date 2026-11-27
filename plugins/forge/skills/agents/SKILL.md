@@ -40,7 +40,7 @@ flowchart LR
 1. Check the gate first. For a ticket, validate fresh plan-gate revision evidence before starting implementation. For `workflow: full-v4`, that is Planned?: verify the manifest, its raw-byte SHA-256, and every covered document (`story.md`, `plan.md`, and the listed evidence). Unverifiable approval blocks implementation, not read-only resume.
 2. Select the execution worktree with the checks below. Continue here when it is suitable. Do not start another implementer merely because the ticket reached Implement. `<F>` means `node "<plugin>/scripts/forge.mjs"`, where `<plugin>` is the folder two levels above this skill. `<F> worktree <KEY> --summary "<short>"` gives the ticket branch, the folder, and the suggested action (see "Worktrees" in the `ticket` skill).
 3. Only when another session is needed, start it with `host.spawn`:
-   - title: `<KEY> - ▶️ - <short>` (for example `APP-123 - ▶️ - Implement outbox retry on timeout`). The session keeps it current. See "Session title" in the `ticket` skill.
+   - title: `<KEY> - ▶️ - <short>` (for example `APP-123 - ▶️ - Implement outbox retry on timeout`). In the ticket worktree, the Forge hooks set the title of the ticket README (the title of the ticket session), so the implementer session does not keep its own title. See "Session title" in the `ticket` skill.
    - folder: the verified worktree path when one already exists; otherwise the checkout from `repo.checkouts` or the task repository.
    - a new worktree: only when no suitable worktree exists (see "Select the execution worktree"). Never assume that a new worktree selects the ticket branch or a required commit. For a pinned baseline, use the pinned baseline step below.
 4. Write a self-contained `prompt`:

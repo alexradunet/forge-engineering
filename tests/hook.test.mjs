@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -677,4 +677,16 @@ test('the prompt hook corrects a Forge title of another key that is not an open 
   // Two open tickets with the same worktree: no title.
   writeFileSync(path.join(other, 'README.md'), readFileSync(s.readme, 'utf8').replaceAll('APP-7', 'APP-8'));
   assert.deepEqual(call(''), {}, 'Two open tickets with one worktree give {}.');
+});
+
+test('the prompt hook does not throw when the tickets folder cannot be read in a worktree', (t) => {
+  if (process.platform === 'win32' || process.getuid?.() === 0) return t.skip('needs a mode that blocks reading');
+  const s = setup(t);
+  const folder = path.join(`${s.app}.worktrees`, 'app-7-doc-import');
+  git(s.app, 'worktree', 'add', '-q', '-b', 'APP-7-doc-import', folder);
+  const dir = path.join(s.home, 'raw', 'tickets');
+  chmodSync(dir, 0o000);
+  try {
+    assert.doesNotThrow(() => promptSubmit({ cwd: folder, prompt: 'go on', title: '' }, { cli, env }));
+  } finally { chmodSync(dir, 0o755); }
 });

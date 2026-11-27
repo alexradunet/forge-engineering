@@ -312,7 +312,7 @@ function closedFile(wikiPath, key) {
 
 /** Step 1 of the ticket part: the session title of a known ticket. */
 function titleLine(host, title) {
-  if (host === 'claude') return `1. The Forge hook set the session title to "${title}", unless the session already had a custom title. You cannot see the title, so do not ask the user to rename the session now. In a ticket worktree, the hook corrects the title at the next prompt of the user. At a state change that must show before the next prompt (a 🟡 gate), tell the user to run \`/rename <new title>\`. In the main checkout, always tell the user to run \`/rename <new title>\`.`;
+  if (host === 'claude') return `1. The Forge hook set the session title to "${title}", unless the session already had a custom title. You cannot see the title, so do not ask the user to rename the session now. In a ticket worktree, the hook corrects the title at the next prompt of the user. At a state change that must show before the next prompt (a 🟡 gate), and at Close (✅), tell the user to run \`/rename <new title>\`. In the main checkout, always tell the user to run \`/rename <new title>\`.`;
   return `1. In your first answer, tell the user to run \`/rename ${title}\`. The Copilot CLI has no title tool. At a later state change, give the new \`/rename\` command.`;
 }
 
@@ -536,14 +536,16 @@ export function promptSubmit(event, { cli, env = process.env } = {}) {
   let titleOut = '';
   // In a linked worktree of an open ticket, the folder decides: the key path does not run.
   if (where.repo.worktree && where.top) {
-    const all = listTickets(where.wiki.path).filter((entry) => entry.ticket && entry.ticket.state !== 'done');
-    const here = all.filter((entry) => entry.ticket.worktree && samePath(entry.ticket.worktree, where.top));
-    if (here.length > 1) return {};
-    if (here.length === 1) {
-      const title = sessionTitle(here[0].ticket);
-      if (title !== event.title && (forgeOwnsTitle(event.title, title) || forgeKeyNotOpen(event.title, all))) return { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', sessionTitle: title } };
-      return {};
-    }
+    try {
+      const all = listTickets(where.wiki.path).filter((entry) => entry.ticket && entry.ticket.state !== 'done');
+      const here = all.filter((entry) => entry.ticket.worktree && samePath(entry.ticket.worktree, where.top));
+      if (here.length > 1) return {};
+      if (here.length === 1) {
+        const title = sessionTitle(here[0].ticket);
+        if (title !== event.title && (forgeOwnsTitle(event.title, title) || forgeKeyNotOpen(event.title, all))) return { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', sessionTitle: title } };
+        return {};
+      }
+    } catch { /* The folder match failed: use the key path. */ }
   }
   const head = { ...event, prompt: String(event.prompt).slice(0, PROMPT_HEAD) };
   if (!event.title && tokens(head.prompt).length) {
