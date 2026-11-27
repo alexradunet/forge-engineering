@@ -157,5 +157,5 @@ test('KINDS are repo and policy, and an old tracker.md or ci.md is ignored witho
 
 test('policy.gateGuard accepts deny, ask, and off (off acts as deny in the guard), and refuses another value', () => {
   for (const value of ['deny', 'ask', 'off']) assert.equal(buildConfig({ policy: `---\ngateGuard: ${value}\n---\n` }).policy.gateGuard, value);
-  assert.throws(() => buildConfig({ policy: '---\ngateGuard: maybe\n---\n' }), /gateGuard must be deny or ask/);
+  assert.throws(() => buildConfig({ policy: '---\ngateGuard: maybe\n---\n' }), /gateGuard must be deny, ask, or off/);
 });

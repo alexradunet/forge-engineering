@@ -105,8 +105,9 @@ export function unusedFiles(where) {
     if (words.length) found.push({ status: 'warn', check: 'unused:config/policy.md', detail: `policy.md names a part removed in 14.0.0: ${words.join(', ')}; edit its sections or run seed --force for policy.md.` });
   }
   try {
-    if (loadConfig(where.configDir).config.policy.gateGuard === 'off') {
-      found.push({ status: 'warn', check: 'unused:policy.gateGuard', detail: 'policy.gateGuard off is not used since 14.1.0: set FORGE_GATE_GUARD=off in your environment' });
+    const value = loadConfig(where.configDir).config.policy.gateGuard;
+    if (value === 'off' || value === 'ask') {
+      found.push({ status: 'warn', check: 'unused:policy.gateGuard', detail: `policy.gateGuard ${value} is not used since 14.1.0: set FORGE_GATE_GUARD=${value} in your environment` });
     }
   } catch { /* config reports it */ }
   return found;

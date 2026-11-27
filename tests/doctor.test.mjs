@@ -136,6 +136,8 @@ test('doctor has no trust check, and it warns when policy.gateGuard is off since
     assert.equal(hit.detail, 'policy.gateGuard off is not used since 14.1.0: set FORGE_GATE_GUARD=off in your environment');
     assert.ok(!results.some((r) => r.status === 'fail'), 'An off value is no config error.');
     writeFileSync(file, '---\ngateGuard: ask\n---\n');
+    assert.equal(doctor({ cwd: app, env }).find((r) => r.check === 'unused:policy.gateGuard').detail, 'policy.gateGuard ask is not used since 14.1.0: set FORGE_GATE_GUARD=ask in your environment');
+    writeFileSync(file, '---\ngateGuard: deny\n---\n');
     assert.ok(!doctor({ cwd: app, env }).some((r) => r.check === 'unused:policy.gateGuard'));
   } finally { rmSync(file, { force: true }); }
 });

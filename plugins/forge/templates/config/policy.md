@@ -27,7 +27,7 @@ gateGuard: deny
 | `planReview` | Review of the plan before Planned?: `off`, `attacker` (one reviewer subagent), or `panel` (3 reviewer subagents). A missing key means `off`. This template sets `attacker`. | `off` |
 | `styleRules` | Add the response style rules of the plugin (Simplified Technical English, no AI tells, the ADHD response shape) to each session. A missing key means `true`. This template sets `false`. | `true` |
 | `scopeComment` | After the scope check, draft a comment for the reporter with the scope and the open questions, as a paste text for you | `false` |
-| `gateGuard` | The gate guard (a preToolUse hook) for a push of a ticket without the valid approvals of Planned? and Shippable?: `deny` or `ask` (the host asks you). A value `off` acts as `deny` since 14.1.0: to turn the guard off, set `FORGE_GATE_GUARD=off` in your environment (it wins over this value, and it accepts `deny`, `ask`, and `off`) | `deny` |
+| `gateGuard` | The gate guard (a preToolUse hook) for a push of a ticket without the valid approvals of Planned? and Shippable?: `deny`. The values `ask` and `off` act as `deny` since 14.1.0, because the agent can edit this file: to loosen the guard, set `FORGE_GATE_GUARD=ask` or `FORGE_GATE_GUARD=off` in your environment | `deny` |
 
 Small team: `planReview=attacker`, `scopeComment=false`, `evidenceOnDeployedEnv=false`, `qaHandover=false`.
 Large team: `planReview=attacker`, `scopeComment=true`, `evidenceOnDeployedEnv=true`, `qaHandover=true`.

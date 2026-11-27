@@ -79,7 +79,7 @@ To update `forge`:
 
 Forge 14.1.0 removes the hash trust and `forge.mjs run`. There is nothing to approve: delete the old `trust` folder in the user data folder if you want, it is not read. Two changes can need your action:
 
-- A `policy.gateGuard: off` in a wiki acts as `deny` now, and `doctor` warns. To turn the guard off, set `FORGE_GATE_GUARD=off` in your environment (it also accepts `deny` and `ask`, and wins over the wiki value).
+- A `policy.gateGuard` of `ask` or `off` in a wiki acts as `deny` now, and `doctor` warns, because the agent can edit the wiki. To loosen the guard, set `FORGE_GATE_GUARD=ask` or `FORGE_GATE_GUARD=off` in your environment.
 - A rule page of the wiki (`rules/*.md`) goes into each session with no approval. When a page changes between two sessions, the agent tells you (the commit and its author, or "not committed"). Review a rule change in the `git log` of the wiki.
 
 ### ⬆️ Upgrade to 14.0.0
@@ -197,7 +197,7 @@ Before a gate opens, a subagent without the session history reads the gate docum
 It gives a paraphrase and the terms that it cannot resolve, and the session corrects the document before you see it.
 
 The gate guard is a `preToolUse` hook. Before a `git push` in a ticket worktree, it checks the approvals of Planned? and Shippable?. For a ticket with a branch, it also checks that the code of the push is the code of the Shippable? approval (the patch-id in the manifest). It always asks you before `forge.mjs gate-approve`, also with the guard off.
-When one is missing or stale, it stops the command and names each finding. `policy.gateGuard` selects `deny` (default) or `ask` (the host asks you). The environment variable `FORGE_GATE_GUARD` (`deny`, `ask`, or `off`) wins over it, and it is the only way to turn the guard off.
+When one is missing or stale, it stops the command and names each finding. The mode is `deny`, and only the environment variable `FORGE_GATE_GUARD` (`deny`, `ask`, or `off`) changes it. A wiki value of `policy.gateGuard` does not loosen it.
 The guard reads the words of a shell command, so it is a net and not a wall: the written rules stay in force.
 When the README of the ticket cannot be read, the guard stops a push.
 

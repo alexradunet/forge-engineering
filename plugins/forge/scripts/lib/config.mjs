@@ -90,8 +90,8 @@ export function validate(config) {
     if (!DAYS.includes(d)) problems.push(`policy.md: noMergeWeekdays has "${d}", use a day name such as Thursday`);
   }
   if (!Number.isInteger(p.maxImplementers) || p.maxImplementers < 1) problems.push('policy.md: maxImplementers must be a whole number of 1 or more');
-  // `off` is read as `deny` since 14.1.0 (doctor warns): the guard mode `off` is the environment variable FORGE_GATE_GUARD.
-  if (!['deny', 'ask', 'off'].includes(p.gateGuard)) problems.push('policy.md: gateGuard must be deny or ask');
+  // `ask` and `off` are read and ignored since 14.1.0 (the guard acts as `deny`, and doctor warns): the guard mode is the environment variable FORGE_GATE_GUARD.
+  if (!['deny', 'ask', 'off'].includes(p.gateGuard)) problems.push('policy.md: gateGuard must be deny, ask, or off (only deny acts since 14.1.0)');
   if (!['off', 'attacker', 'panel'].includes(p.planReview)) problems.push('policy.md: planReview must be off, attacker, or panel');
   for (const k of ['evidenceOnDeployedEnv', 'qaHandover', 'styleRules', 'scopeComment']) {
     if (typeof p[k] !== 'boolean') problems.push(`policy.md: ${k} must be true or false`);

@@ -182,7 +182,7 @@ Show the current values, and change one only when the user asks. Step 5 does not
 - `noMergeWeekdays`: days with no merge, for example a release day.
 - `maxImplementers`: the maximum number of implementer sessions. The default is 6.
 - `adversarialReviewModel`: the reviewer model. Empty means a model family different from the author.
-- `gateGuard`: what the gate guard does with a push of a ticket that has no valid Shippable? approval: `deny` (default) or `ask`. To turn the guard off, the user sets `FORGE_GATE_GUARD=off` in the environment: a wiki value `off` acts as `deny`.
+- `gateGuard`: what the gate guard does with a push of a ticket that has no valid Shippable? approval: `deny`. Only the user can loosen the guard, with `FORGE_GATE_GUARD=ask` or `FORGE_GATE_GUARD=off` in the environment: a wiki value `ask` or `off` acts as `deny`. Never set that variable for the user.
 
 Write a change with `config set`, for example `"policy.maxImplementers=4"`.
 A hook can add steps and make rules stricter. It can never weaken a core rule.

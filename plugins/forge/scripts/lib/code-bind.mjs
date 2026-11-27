@@ -42,9 +42,12 @@ function runner(worktree, end) {
 /**
  * The binding of the code of a ticket branch: { head, base, patchId, branch }. It throws an Error with a clear message and never returns an empty value.
  * base is the merge base with origin/<baseBranch> when that ref exists, else with <baseBranch>.
+ * With `requireRemote` only origin/<baseBranch> counts (the guard at a push): a local-only base branch is no base, and a missing origin ref gives an Error
+ * with `code` 'remote-missing'. The merge base is then a commit that origin/<baseBranch> holds.
+ * The result names the base branch (`baseBranch`): the manifest keeps the name, and the guard uses that name, not the live config.
  * A missing or unknown base branch gives an Error with `code` 'base-missing'. The time budget is `deadline` (absolute) or `deadlineMs`.
  */
-export function codeBinding({ worktree, branch, baseBranch, deadline, deadlineMs }) {
+export function codeBinding({ worktree, branch, baseBranch, deadline, deadlineMs, requireRemote = false }) {
   if (!worktree) throw new Error('The ticket has no worktree folder to read the code from.');
   if (!branch || !REF_PART.test(branch) || branch.startsWith('-')) throw new Error(`The ticket branch name is not valid: ${JSON.stringify(branch)}.`);
   if (!baseBranch || !REF_PART.test(baseBranch) || baseBranch.startsWith('-')) throw Object.assign(new Error(`No valid base branch: ${JSON.stringify(baseBranch ?? '')}. Check the repo config (baseBranch).`), { code: 'base-missing', baseBranch: baseBranch ?? '' });
@@ -53,6 +56,7 @@ export function codeBinding({ worktree, branch, baseBranch, deadline, deadlineMs
   if (head.status !== 0 || !head.out) throw new Error(`The branch ${branch} does not exist in ${worktree}.`);
   const remote = git(['rev-parse', '--verify', '--quiet', `refs/remotes/origin/${baseBranch}^{commit}`], { ok: [0, 1] });
   let baseRef = remote.status === 0 && remote.out ? `origin/${baseBranch}` : '';
+  if (!baseRef && requireRemote) throw Object.assign(new Error(`origin/${baseBranch} is not known here, and a base branch that exists only here is no base.`), { code: 'remote-missing', baseBranch });
   if (!baseRef) {
     const local = git(['rev-parse', '--verify', '--quiet', `${baseBranch}^{commit}`], { ok: [0, 1] });
     if (local.status !== 0 || !local.out) throw Object.assign(new Error(`The base branch ${baseBranch} is not known here (no origin/${baseBranch} and no ${baseBranch}).`), { code: 'base-missing', baseBranch });
@@ -66,7 +70,7 @@ export function codeBinding({ worktree, branch, baseBranch, deadline, deadlineMs
   const id = git(['patch-id', '--verbatim'], { command: 'git', input: diff.raw, maxBuffer: 1024 * 1024 });
   const patchId = id.out.split(/\s+/)[0];
   if (!/^[0-9a-f]{40,64}$/.test(patchId)) throw new Error('git patch-id gave no value. A Git that has `git patch-id --verbatim` is needed.');
-  return { head: head.out, base, patchId, branch };
+  return { head: head.out, base, patchId, branch, baseBranch };
 }
 
 const hex = (value) => typeof value === 'string' && /^[0-9a-f]{7,64}$/.test(value);

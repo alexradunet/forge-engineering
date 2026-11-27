@@ -5,7 +5,7 @@
 // also with FORGE_GATE_GUARD=off: an approval is the yes of the user, so the agent must not give it alone.
 // In a mode with no prompt, they are denied, and the user runs them in a terminal.
 // It reads the words of the command, so it is a net and not a wall: a script that pushes is not seen.
-// A ticket whose README cannot be read stops a push too: the gates are unknown (FORGE_GATE_GUARD and policy.gateGuard set deny or ask).
+// A ticket whose README cannot be read stops a push too: the gates are unknown (FORGE_GATE_GUARD sets deny, ask, or off).
 // It never stops other work: a folder with no ticket, no wiki, or a config that cannot be read lets the command run.
 import { spawnSync } from 'node:child_process';
 import os from 'node:os';
@@ -21,13 +21,13 @@ import { safeConfig, ticketOfFolder } from './hook.mjs';
 export const GUARD_MODES = ['deny', 'ask', 'off'];
 
 /**
- * The mode of the guard. FORGE_GATE_GUARD (deny, ask, off) wins. Else the wiki value: only `ask` counts, and any other value
- * (also `off` since 14.1.0) acts as `deny`.
+ * The mode of the guard. Only FORGE_GATE_GUARD (deny, ask, off) can loosen it: the agent can edit the wiki, but not the environment of the hook.
+ * The wiki value is not read since 14.1.0 (`ask` and `off` act as `deny`, and doctor warns). `config` stays for the callers.
  */
 export function guardMode(config, env = process.env) {
   const fromEnv = String(env.FORGE_GATE_GUARD ?? '').trim().toLowerCase();
   if (GUARD_MODES.includes(fromEnv)) return fromEnv;
-  return config?.policy?.gateGuard === 'ask' ? 'ask' : 'deny';
+  return 'deny';
 }
 const ENDS = ';|&()`';
 // The wrappers that start another command, with their options that take a value (the next word).
@@ -554,6 +554,7 @@ function approveVerdict(action) {
 /** The message for a git error of the code check: the time limit and a missing base branch have their own text. */
 function gitProblem(error, ticket, baseBranch) {
   if (error.code === 'deadline') return `Forge ran out of time while it read the code of ${ticket.branch} (the hook has a limit of ${DEADLINE_MS / 1000} s). Try again.`;
+  if (error.code === 'remote-missing') return `${error.message} Run \`git fetch\`, then try again. The base branch of the approval is ${error.baseBranch}.`;
   if (error.code === 'base-missing') return `base branch ${error.baseBranch ?? baseBranch} not found: set repo.baseBranch.`;
   return `Forge cannot read the code of ${ticket.branch} to compare it with the Shippable? approval: ${error.message} Run \`git fetch\`, then try again.`;
 }
@@ -577,10 +578,12 @@ function codeMismatch(match, where, config, action, deadline) {
   }
   if (!ticket.branch) return `the README branch is empty, but the Shippable? approval binds the branch ${code.branch}. Open Shippable? again.`;
   if (code.branch !== ticket.branch) return `The README branch (${ticket.branch}) is not the branch of the Shippable? approval (${code.branch}). Open Shippable? again.`;
-  if (!config) return 'the Forge config cannot be read (run `forge.mjs doctor`).';
-  const baseBranch = baseBranchOf(config, where.repo.path);
+  // The approval names its base branch. The live config does not count: the agent can edit it. An older manifest has no name: today's rule, from the config.
+  const recorded = typeof code.baseBranch === 'string' && code.baseBranch ? code.baseBranch : '';
+  if (!recorded && !config) return 'the Forge config cannot be read (run `forge.mjs doctor`).';
+  const baseBranch = recorded || baseBranchOf(config, where.repo.path);
   let now;
-  try { now = codeBinding({ worktree: ticket.worktree || where.repo.path, branch: ticket.branch, baseBranch, deadline }); }
+  try { now = codeBinding({ worktree: ticket.worktree || where.repo.path, branch: ticket.branch, baseBranch, deadline, requireRemote: true }); }
   catch (error) { return gitProblem(error, ticket, baseBranch); }
   for (const source of action.sources ?? []) {
     let sent = '';
@@ -604,8 +607,8 @@ function noPrompt(verdict, mode) {
 
 /**
  * The verdict for one tool call: null to let it run, or { decision, key, reason }.
- * - A push needs the ship gates. Without them: `deny` or `ask`, from guardMode (FORGE_GATE_GUARD, then `policy.gateGuard`;
- *   default `deny`; only FORGE_GATE_GUARD=off stops the guard).
+ * - A push needs the ship gates. Without them: `deny` or `ask`, from guardMode (FORGE_GATE_GUARD only; default `deny`;
+ *   FORGE_GATE_GUARD=off stops the guard).
  * - An approval command (`gate-approve`) gets `ask` in each folder, also with the guard off,
  *   and `deny` in a mode with no prompt.
  * - A `deny` wins over an `ask`.
@@ -628,7 +631,7 @@ export function preTool(event, { env = process.env, deadlineMs = DEADLINE_MS } =
       const tickets = [...all.filter((entry) => entry.ticket), ...all.filter((entry) => !entry.ticket).map((entry) => ({ ...entry, broken: true, ticket: { ...entry.head, gates: [], changes: [] } }))];
       const branch = git(cwd, ['branch', '--show-current']);
       const here = ticketOfFolder(tickets, { here: where.top, branch, inMain: samePath(where.top, where.repo.path), getConfig: () => config });
-      const named = action.kind === 'push' ? tickets.filter((entry) => entry.ticket.branch && (action.all || action.refs.includes(entry.ticket.branch))) : [];
+      const named = action.kind === 'push' ? tickets.filter((entry) => entry.ticket.branch && (action.all || action.refs.includes(entry.ticket.branch) || (!action.refs.length && entry.ticket.branch === branch))) : [];
       return [...new Set([here, ...named].filter(Boolean))];
     } catch { return []; }
   };

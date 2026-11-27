@@ -94,10 +94,9 @@ export function safeConfig(where) {
 
 // A ticket can record a base branch (for example `branch: main`). A branch match on it
 // would select that ticket in every session on the base branch.
-function baseBranches(cwd, config) {
+// The names come from Git only, never from the config: the agent can edit the config, and a ticket branch named there would match no ticket.
+function baseBranches(cwd) {
   const names = new Set(['main', 'master']);
-  if (config?.repo?.baseBranch) names.add(config.repo.baseBranch);
-  for (const row of config?.repo?.checkouts ?? []) if (row.baseBranch) names.add(row.baseBranch);
   const head = git(cwd, ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']);
   if (head) names.add(head.replace(/^[^/]+\//, ''));
   return names;
@@ -106,14 +105,14 @@ function baseBranches(cwd, config) {
 /**
  * The ticket of a folder: by the recorded worktree, then by the recorded branch (not a base branch),
  * then by a key in the branch name or the folder name. The main checkout matches only by a ticket branch.
- * here is the top folder of the work tree, and getConfig gives the config or null.
+ * here is the top folder of the work tree,.
  */
 export function ticketOfFolder(tickets, { here, branch, inMain, getConfig }) {
   if (!here) return null;
   let match = !inMain ? tickets.find((entry) => entry.ticket.worktree && samePath(entry.ticket.worktree, here)) : null;
   if (!match && branch) {
     const hit = tickets.find((entry) => entry.ticket.branch === branch);
-    if (hit && !baseBranches(here, getConfig()).has(branch)) match = hit;
+    if (hit && !baseBranches(here).has(branch)) match = hit;
   }
   if (!match && !inMain) match = findByKey(tickets, `${branch} ${path.basename(here)}`);
   return match ?? null;
@@ -143,18 +142,28 @@ export function ruleBody(raw) {
   return text.split('\n').some((line) => line.trim() && !/^#{1,6}\s/.test(line)) ? text : '';
 }
 
-/** The rule pages of <wiki>/rules/*.md: the file names, sorted. */
+/** The rule pages of <wiki>/rules/**\/*.md: the paths relative to rules/, with "/", sorted. */
 function ruleFiles(where) {
-  const dir = path.join(where.wiki.path, 'rules');
-  try { return readdirSync(dir, { withFileTypes: true }).filter((entry) => entry.isFile() && entry.name.endsWith('.md')).map((entry) => entry.name).sort(); } catch { return []; }
+  const root = path.join(where.wiki.path, 'rules');
+  const out = [];
+  const walk = (dir, rel) => {
+    let entries = [];
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const entry of entries) {
+      if (entry.isDirectory()) walk(path.join(dir, entry.name), `${rel}${entry.name}/`);
+      else if (entry.isFile() && entry.name.endsWith('.md')) out.push(`${rel}${entry.name}`);
+    }
+  };
+  walk(root, '');
+  return out.sort();
 }
 
-/** The company rules of <wiki>/rules/*.md. A change notice (see ruleNotice) comes first. */
+/** The company rules of <wiki>/rules/**\/*.md. A change notice (see ruleNotice) comes first. */
 function wikiRules(where, notice = []) {
   const dir = path.join(where.wiki.path, 'rules');
   const texts = [];
   for (const name of ruleFiles(where)) {
-    const body = ruleBody(readFileSync(path.join(dir, name), 'utf8'));
+    const body = ruleBody(readFileSync(path.join(dir, ...name.split('/')), 'utf8'));
     if (body) texts.push(body);
   }
   let text = texts.join('\n\n');
@@ -172,53 +181,67 @@ function wikiGit(wiki, args) {
   return result.status === 0 ? (result.stdout ?? '').replace(/\r?\n$/, '') : null;
 }
 
+/** The HEAD of the wiki when the wiki is its own git repository, else ''. */
+function wikiHead(wiki) {
+  const top = wikiGit(wiki, ['rev-parse', '--show-toplevel']);
+  if (!top || !samePath(top, wiki)) return '';
+  return wikiGit(wiki, ['rev-parse', 'HEAD']) ?? '';
+}
+
 /**
- * The notice lines for the rule pages (rules/*.md) of a wiki that is a git repository: a page that changed between the commit of the
- * last session and the HEAD, or that has an uncommitted change. The last seen commit is in <forge>/raw/rules-seen: the lines
- * "<head>", "<session>", "<previous head>". The session lines let the parts of one Claude Code start (one process each) see the same baseline.
- * Without that file the HEAD is written and no line comes. Not a git repository, or a git error: no line, and the hook does not fail.
- * `write` false reads only.
+ * The notice lines for the rule pages (rules/**\/*.md) of a wiki that is a git repository. <forge>/raw/rules-seen holds the wiki HEAD of the last
+ * session end (one line). A page that changed between that commit and the HEAD, or that has an uncommitted change, gets one line.
+ * When the commit is not in the history any more, one line says that the history changed. Session start only reads: recordRulesSeen writes at session end.
+ * No file yet, not a git repository, or a git error: no line, and the hook does not fail.
  */
-export function ruleNotice(where, event = {}, { write = false } = {}) {
+export function ruleNotice(where) {
   try {
     const wiki = where?.wiki?.path;
     if (!wiki || !where.wiki.exists) return [];
-    const top = wikiGit(wiki, ['rev-parse', '--show-toplevel']);
-    if (!top || !samePath(top, wiki)) return [];
-    const head = wikiGit(wiki, ['rev-parse', 'HEAD']);
+    const head = wikiHead(wiki);
     if (!head) return [];
-    const file = path.join(rawDir(wiki), SEEN_FILE);
-    let lines = null;
-    try { lines = readFileSync(file, 'utf8').replace(/\r/g, '').split('\n'); } catch { /* No file yet. */ }
-    const session = event.session || '';
-    const saved = lines?.[0]?.trim() ?? '';
-    let base = saved;
-    if (session && lines?.[1]?.trim() === session) base = lines[2]?.trim() ?? '';
-    const out = [];
-    if (/^[0-9a-f]{7,64}$/.test(base)) {
-      const dirty = new Map();
-      for (const row of (wikiGit(wiki, ['status', '--porcelain', '-uall', '--', 'rules']) ?? '').split('\n')) {
-        const name = /^..\s+(?:.* -> )?"?(rules\/[^"/]+\.md)"?$/.exec(row)?.[1];
-        if (name) dirty.set(name, 'not committed');
-      }
-      const changed = base === head ? [] : (wikiGit(wiki, ['diff', '--name-only', base, head, '--', 'rules']) ?? '').split('\n').filter((name) => /^rules\/[^/]+\.md$/.test(name));
-      const names = [...new Set([...changed, ...dirty.keys()])].sort();
-      for (const name of names) {
-        let how = 'not committed';
-        if (!dirty.has(name)) {
-          const [short, author] = (wikiGit(wiki, ['log', '-1', '--format=%h%x09%an', `${base}..${head}`, '--', name]) ?? '').split('\t');
-          how = short ? `commit ${short} by ${author}` : 'not committed';
-        }
-        out.push(`Forge: the rule page ${name} changed since your last session (${how}). Tell the user, and show the change when the user asks.`);
+    let base = '';
+    try { base = readFileSync(path.join(rawDir(wiki), SEEN_FILE), 'utf8').split(/\r?\n/)[0].trim(); } catch { return []; }
+    if (!/^[0-9a-f]{7,64}$/.test(base)) return [];
+    const tail = 'Tell the user, and show the change when the user asks.';
+    if (wikiGit(wiki, ['cat-file', '-e', `${base}^{commit}`]) === null) return ['Forge: the wiki history changed since your last session. Review the rule pages in rules/.'];
+    const state = new Map();
+    const rule = (name) => /^rules\/.+\.md$/.test(name);
+    if (base !== head) {
+      for (const row of (wikiGit(wiki, ['diff', '--name-status', '--no-renames', base, head, '--', 'rules']) ?? '').split('\n')) {
+        const [code, name] = row.split('\t');
+        if (name && rule(name)) state.set(name, code === 'D' ? 'removed' : 'commit');
       }
     }
-    if (write && (!lines || saved !== head || (session && lines[1]?.trim() !== session))) {
-      mkdirSync(path.dirname(file), { recursive: true });
-      const keep = session && lines?.[1]?.trim() === session ? (lines[2] ?? '') : saved;
-      writeFileSync(file, session ? `${head}\n${session}\n${keep}\n` : `${head}\n`);
+    for (const row of (wikiGit(wiki, ['status', '--porcelain', '-uall', '--', 'rules']) ?? '').split('\n')) {
+      const name = /^(..)\s+(?:.* -> )?"?([^"]+\.md)"?$/.exec(row);
+      if (name && rule(name[2])) state.set(name[2], name[1].includes('D') ? 'removed' : 'dirty');
+    }
+    const out = [];
+    for (const [name, kind] of [...state].sort(([a], [b]) => (a < b ? -1 : 1))) {
+      let how = 'has an uncommitted change';
+      if (kind === 'removed') how = 'was removed';
+      else if (kind === 'commit') {
+        const [short, author] = (wikiGit(wiki, ['log', '-1', '--format=%h%x09%an', `${base}..${head}`, '--', name]) ?? '').split('\t');
+        how = short ? `changed (commit ${short} by ${author})` : 'changed';
+      }
+      out.push(`Forge: the rule page ${name} ${how} since your last session. ${tail}`);
     }
     return out;
   } catch { return []; }
+}
+
+/** Writes the wiki HEAD to <forge>/raw/rules-seen (the session end hook). A wiki that is no git repository, or a failure, writes nothing. */
+export function recordRulesSeen(where) {
+  try {
+    const wiki = where?.wiki?.path;
+    if (!wiki || !where.wiki.exists) return;
+    const head = wikiHead(wiki);
+    if (!head) return;
+    const file = path.join(rawDir(wiki), SEEN_FILE);
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, `${head}\n`);
+  } catch { /* The notice of the next session is then missing or old. */ }
 }
 
 function pathsLine(pluginDir, where) {
@@ -348,7 +371,7 @@ function locate(event, env) {
  * The full Forge context for one session, without the end marker: { body, title, where }.
  * body is '' when no part can be read. cli is the absolute path of forge.mjs. where is the place of the session (resolve in repo.mjs), or null.
  */
-export function buildContext(event, { cli, env = process.env, host = 'copilot-cli', noticeWrite = false } = {}) {
+export function buildContext(event, { cli, env = process.env, host = 'copilot-cli' } = {}) {
   if (!event || !cli) return { body: '', title: '' };
   const pluginDir = path.dirname(path.dirname(cli));
   const forge = `node "${cli}"`;
@@ -370,7 +393,7 @@ export function buildContext(event, { cli, env = process.env, host = 'copilot-cl
   const style = !where?.wiki.exists || safeConfig(where)?.policy?.styleRules !== false;
   const rules = pluginRules(pluginDir, { style });
   let company = '';
-  try { if (where?.wiki.exists) company = wikiRules(where, ruleNotice(where, event, { write: noticeWrite })); } catch { company = ''; }
+  try { if (where?.wiki.exists) company = wikiRules(where, ruleNotice(where)); } catch { company = ''; }
   if (!ticket && !rules && !company) return { body: '', title: '', where };
 
   const table = hostTable(pluginDir, host);
@@ -449,13 +472,16 @@ function noteStart(event, where, host, title) {
 }
 
 /**
- * The hook result for one session end event: always {}. It writes the end line of the session list.
+ * The hook result for one session end event: always {}. It writes the end line of the session list and the rule pages seen (recordRulesSeen).
  * A host without a row in the harness table stops before it reads the repository.
  */
 export function sessionEnd(event, { env = process.env, host = 'copilot-cli' } = {}) {
   try {
-    if (!event?.session || !harness(host)) return {};
+    if (!event) return {};
     const where = locate(event, env);
+    // The rule pages that this session saw: the next session start compares them with the wiki HEAD.
+    if (where?.wiki.exists) recordRulesSeen(where);
+    if (!event.session || !harness(host)) return {};
     if (where?.wiki.exists) recordEnd(where.raw, { host, id: event.session, cwd: event.cwd || process.cwd(), reason: event.reason });
   } catch { /* The live server shows such a session with the state "open". */ }
   return {};
@@ -467,7 +493,7 @@ export function sessionEnd(event, { env = process.env, host = 'copilot-cli' } = 
  * claude: { hookSpecificOutput } with part `part` of the context; part 1 also sets the session title.
  */
 export function sessionStart(event, { cli, env = process.env, host = 'copilot-cli', part = 1 } = {}) {
-  const { body, title, where } = buildContext(event, { cli, env, host, noticeWrite: true });
+  const { body, title, where } = buildContext(event, { cli, env, host });
   // Claude Code runs one hook for each part: only part 1 writes the line of the session list.
   if (part === 1) noteStart(event, where, host, title);
   if (!body) return {};

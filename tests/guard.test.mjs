@@ -39,6 +39,8 @@ function setup(t, { approved = [], workflow = 'full-v4', code = 'bound' } = {}) 
   writeFileSync(path.join(app, 'a.txt'), 'a\n');
   git(app, 'add', 'a.txt');
   git(app, 'commit', '-q', '-m', 'init');
+  // The push check reads origin/<base> only: a local-only base branch is no base.
+  git(app, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
   const worktree = path.join(`${app}.worktrees`, 'app-7-doc-import');
   git(app, 'worktree', 'add', '-q', '-b', 'users/a/APP-7-doc-import', worktree);
   let binding = null;
@@ -46,7 +48,9 @@ function setup(t, { approved = [], workflow = 'full-v4', code = 'bound' } = {}) 
     writeFileSync(path.join(worktree, 'b.txt'), 'change\n');
     git(worktree, 'add', 'b.txt');
     git(worktree, 'commit', '-q', '-m', 'change');
-    if (code === 'bound') binding = codeBinding({ worktree, branch: 'users/a/APP-7-doc-import', baseBranch: 'main' });
+    if (code === 'bound' || code === 'legacy') binding = codeBinding({ worktree, branch: 'users/a/APP-7-doc-import', baseBranch: 'main' });
+    // A manifest of Forge 14.0.0 and older has no base branch name.
+    if (code === 'legacy') delete binding.baseBranch;
   }
   const dir = path.join(root, 'app.forge', 'raw', 'tickets', 'app-7');
   mkdirSync(path.join(dir, 'approvals'), { recursive: true });
@@ -75,6 +79,8 @@ function setup(t, { approved = [], workflow = 'full-v4', code = 'bound' } = {}) 
 }
 
 const run = (cwd, command) => preTool({ cwd, command }, { env });
+// Only the environment of the hook loosens the guard to `ask`.
+const runAsk = (cwd, command, mode) => preTool({ cwd, command, mode }, { env: { ...env, FORGE_GATE_GUARD: 'ask' } });
 
 /** Seeds the config and sets values, as the user does in setup. */
 function seedConfig(s, values = []) {
@@ -233,7 +239,8 @@ test('an unsupported workflow stops a push by the guard mode, and a broken READM
   assert.match(v3deny.reason, /Unsupported ticket workflow: full-v3\. Forge 12 reads only workflow: full-v4\. Finish this ticket with Forge 10\.1\./);
   const asks = setup(t, { workflow: 'full-v2' });
   seedConfig(asks, ['policy.gateGuard=ask']);
-  const ask = run(asks.worktree, 'git push');
+  assert.equal(run(asks.worktree, 'git push').decision, 'deny', 'A wiki ask acts as deny.');
+  const ask = runAsk(asks.worktree, 'git push');
   assert.equal(ask.decision, 'ask');
   assert.match(ask.reason, /Unsupported ticket workflow: full-v2/);
   const off = setup(t, { workflow: 'full-v2' });
@@ -270,8 +277,7 @@ test('in bypassPermissions the host shows no prompt, so each ask becomes a deny'
   assert.match(deny.reason, /^Forge gate guard: this command is an approval: `forge\.mjs gate-approve`/);
   assert.match(deny.reason, /This session runs in bypassPermissions mode, so the host shows the user no prompt for it\. Do not run the command in another form\. Show the user the text and the exact command/);
   const asks = setup(t);
-  seedConfig(asks, ['policy.gateGuard=ask']);
-  const push = preTool({ cwd: asks.worktree, command: 'git push', mode: 'bypassPermissions' }, { env });
+  const push = runAsk(asks.worktree, 'git push', 'bypassPermissions');
   assert.equal(push.decision, 'deny', 'The ask mode of a push also needs a prompt.');
   assert.match(push.reason, /APP-7 has no valid approval for a push\./);
   assert.equal(preTool({ cwd: s.worktree, command: 'git status', mode: 'bypassPermissions' }, { env }), null);
@@ -377,6 +383,7 @@ test('a push is bound to the code of the Shippable? approval: a new commit is de
   writeFileSync(path.join(s.app, 'c.txt'), 'other\n');
   git(s.app, 'add', 'c.txt');
   git(s.app, 'commit', '-q', '-m', 'other');
+  git(s.app, 'update-ref', 'refs/remotes/origin/main', 'main');
   git(s.worktree, 'rebase', '-q', 'main');
   assert.notEqual(git(s.worktree, 'rev-parse', 'HEAD'), s.binding.head);
   assert.equal(run(s.worktree, push), null, 'A clean rebase keeps the patch-id.');
@@ -397,12 +404,11 @@ test('a push is denied with no code binding, with a read error (own message), an
   assert.equal(noCode.decision, 'deny');
   assert.match(noCode.reason, /approved before Forge 13\.1\.0 or without a code binding.*Open Shippable\? again/);
   // A base branch that does not exist: the binding cannot be read, which is not a mismatch.
-  const gone = setup(t, { approved: ['Planned?', 'Shippable?'] });
+  const gone = setup(t, { approved: ['Planned?', 'Shippable?'], code: 'legacy' });
   seedConfig(gone, ['repo.baseBranch=nope']);
   const error = run(gone.worktree, push);
   assert.equal(error.decision, 'deny');
-  assert.match(error.reason, /base branch nope not found: set repo\.baseBranch/);
-  assert.doesNotMatch(error.reason, /git fetch/);
+  assert.match(error.reason, /origin\/nope is not known here/);
   assert.doesNotMatch(error.reason, /code changed after/);
   // The missing worktree is the same kind of error.
   const away = setup(t, { approved: ['Planned?', 'Shippable?'] });
@@ -417,10 +423,9 @@ test('a push is denied with no code binding, with a read error (own message), an
   const branch = run(other.worktree, push);
   assert.equal(branch.decision, 'deny');
   assert.match(branch.reason, /is not the branch of the Shippable\? approval/);
-  // policy.gateGuard ask keeps its meaning, and the environment off skips the check.
+  // FORGE_GATE_GUARD=ask asks, and the environment off skips the check.
   const asks = setup(t, { approved: ['Planned?', 'Shippable?'], code: 'none' });
-  seedConfig(asks, ['policy.gateGuard=ask']);
-  assert.equal(run(asks.worktree, push).decision, 'ask');
+  assert.equal(runAsk(asks.worktree, push).decision, 'ask');
   const off = setup(t, { approved: ['Planned?', 'Shippable?'], code: 'none' });
   assert.equal(preTool({ cwd: off.worktree, command: push }, { env: { ...env, FORGE_GATE_GUARD: 'off' } }), null);
 });
@@ -480,16 +485,16 @@ test('H3: an empty README branch does not turn the code binding off', (t) => {
 
 test('M2: a config that cannot be read and a missing base branch have their own message, a closed ticket and a delete get no binding check', (t) => {
   const push = 'git push -u origin users/a/APP-7-doc-import';
-  const broken = setup(t, { approved: ['Planned?', 'Shippable?'] });
+  const broken = setup(t, { approved: ['Planned?', 'Shippable?'], code: 'legacy' });
   seedConfig(broken, ['repo.baseBranch=main']);
   writeFileSync(path.join(resolveConfigDir(broken), 'policy.md'), '---\ngateGuard: bogus\n---\n');
   const a = run(broken.worktree, push);
   assert.equal(a.decision, 'deny');
   assert.match(a.reason, /the Forge config cannot be read \(run \`forge\.mjs doctor\`\)/);
   assert.doesNotMatch(a.reason, /git fetch/);
-  const gone = setup(t, { approved: ['Planned?', 'Shippable?'] });
+  const gone = setup(t, { approved: ['Planned?', 'Shippable?'], code: 'legacy' });
   seedConfig(gone, ['repo.baseBranch=nope']);
-  assert.match(run(gone.worktree, push).reason, /base branch nope not found: set repo\.baseBranch/);
+  assert.match(run(gone.worktree, push).reason, /origin\/nope is not known here/);
   assert.equal(run(gone.worktree, 'git push origin --delete users/a/APP-7-doc-import'), null, 'A delete is not checked.');
   // A closed ticket: its work is merged, so the binding does not apply.
   const closed = setup(t, { approved: ['Planned?', 'Shippable?'] });
@@ -734,21 +739,80 @@ test('L-2: a push in a work tree that Forge cannot resolve is denied, and a wiki
   assert.equal(run(s.root, 'git push'), null);
 });
 
-test('L-2: G1b, G1c: a wiki gateGuard value off acts as deny, and FORGE_GATE_GUARD wins over the wiki value', (t) => {
+test('L-2: G1b, G1c: a wiki gateGuard value (ask or off) acts as deny, and only FORGE_GATE_GUARD loosens the guard', (t) => {
   const s = setup(t);
   seedConfig(s, ['policy.gateGuard=off']);
   assert.equal(run(s.worktree, 'git push')?.decision, 'deny', 'A wiki off acts as deny.');
   const withEnv = (mode) => preTool({ cwd: s.worktree, command: 'git push' }, { env: { ...env, FORGE_GATE_GUARD: mode } });
-  assert.equal(withEnv('off'), null, 'The environment off wins over the wiki value.');
+  assert.equal(withEnv('off'), null, 'The environment off loosens the guard.');
   assert.equal(withEnv('ask')?.decision, 'ask');
   assert.equal(withEnv('deny')?.decision, 'deny');
   assert.equal(withEnv('bogus')?.decision, 'deny', 'An unknown value is ignored.');
   const asks = setup(t);
   seedConfig(asks, ['policy.gateGuard=ask']);
-  assert.equal(run(asks.worktree, 'git push')?.decision, 'ask');
-  assert.equal(preTool({ cwd: asks.worktree, command: 'git push' }, { env: { ...env, FORGE_GATE_GUARD: 'deny' } })?.decision, 'deny', 'The environment deny wins over a wiki ask.');
+  assert.equal(run(asks.worktree, 'git push')?.decision, 'deny', 'A wiki ask acts as deny: only the environment loosens the guard.');
+  assert.equal(preTool({ cwd: asks.worktree, command: 'git push' }, { env: { ...env, FORGE_GATE_GUARD: 'deny' } })?.decision, 'deny', 'The environment deny.');
   assert.equal(guardMode(null, {}), 'deny');
   assert.equal(guardMode({ policy: { gateGuard: 'off' } }, {}), 'deny');
-  assert.equal(guardMode({ policy: { gateGuard: 'ask' } }, {}), 'ask');
+  assert.equal(guardMode({ policy: { gateGuard: 'ask' } }, {}), 'deny');
   assert.equal(guardMode({ policy: { gateGuard: 'ask' } }, { FORGE_GATE_GUARD: ' OFF ' }), 'off');
+});
+
+/** The attack of the review: the branch holds main, an unapproved commit X, then the approved change. A local branch "evil" names X. */
+function plantBase(s) {
+  git(s.worktree, 'reset', '-q', '--hard', 'main');
+  writeFileSync(path.join(s.worktree, 'x.txt'), 'unreviewed\n');
+  git(s.worktree, 'add', 'x.txt');
+  git(s.worktree, 'commit', '-q', '-m', 'X');
+  git(s.worktree, 'branch', 'evil');
+  writeFileSync(path.join(s.worktree, 'b.txt'), 'change\n');
+  git(s.worktree, 'add', 'b.txt');
+  git(s.worktree, 'commit', '-q', '-m', 'change again');
+}
+
+test('review H1: the guard uses the base branch name of the approval, not the live config, and the manifest records it', (t) => {
+  const push = 'git push -u origin users/a/APP-7-doc-import';
+  const s = setup(t, { approved: ['Planned?', 'Shippable?'] });
+  assert.equal(s.binding.baseBranch, 'main', 'The manifest code entry names the base branch.');
+  assert.equal(run(s.worktree, push), null, 'Control: the approved code passes.');
+  plantBase(s);
+  seedConfig(s, ['repo.baseBranch=evil']);
+  const verdict = run(s.worktree, push);
+  assert.equal(verdict?.decision, 'deny', 'A base branch that the agent made does not hide an unapproved commit.');
+  assert.match(verdict.reason, /The code changed after the Shippable\? approval/);
+  // An older manifest without the name: the config name counts, but only origin/<name> is a base.
+  const old = setup(t, { approved: ['Planned?', 'Shippable?'], code: 'legacy' });
+  plantBase(old);
+  seedConfig(old, ['repo.baseBranch=evil']);
+  const oldVerdict = run(old.worktree, push);
+  assert.equal(oldVerdict?.decision, 'deny', 'A local-only base branch is no base.');
+  assert.match(oldVerdict.reason, /origin\/evil is not known here/);
+});
+
+test('review H1: a clean rebase onto a newer origin/main keeps the push allowed, and a missing origin ref is denied', (t) => {
+  const push = 'git push -u origin users/a/APP-7-doc-import';
+  const s = setup(t, { approved: ['Planned?', 'Shippable?'] });
+  writeFileSync(path.join(s.app, 'c.txt'), 'newer main\n');
+  git(s.app, 'add', 'c.txt');
+  git(s.app, 'commit', '-q', '-m', 'newer main');
+  git(s.app, 'update-ref', 'refs/remotes/origin/main', 'main');
+  git(s.worktree, 'rebase', '-q', 'main');
+  assert.equal(run(s.worktree, push), null, 'The patch-id is the same after a clean rebase.');
+  const lost = setup(t, { approved: ['Planned?', 'Shippable?'] });
+  git(lost.app, 'update-ref', '-d', 'refs/remotes/origin/main');
+  const verdict = run(lost.worktree, push);
+  assert.equal(verdict?.decision, 'deny');
+  assert.match(verdict.reason, /origin\/main is not known here.*git fetch/);
+});
+
+test('review M: a base branch set in the config to the ticket branch does not hide the ticket from a bare push in the main checkout', (t) => {
+  const s = setup(t);
+  git(s.app, 'worktree', 'remove', '--force', s.worktree);
+  git(s.app, 'checkout', '-q', 'users/a/APP-7-doc-import');
+  assert.equal(run(s.app, 'git push')?.decision, 'deny', 'Control: a bare push of the ticket branch needs the gates.');
+  seedConfig(s, ['repo.baseBranch=users/a/APP-7-doc-import']);
+  const verdict = run(s.app, 'git push');
+  assert.equal(verdict?.decision, 'deny', 'The config name is no exemption.');
+  assert.match(verdict.reason, /Shippable\? is not approved/);
+  assert.equal(run(s.app, 'git push origin users/a/APP-7-doc-import')?.decision, 'deny');
 });

@@ -77,7 +77,7 @@ node "<plugin>/scripts/forge.mjs" config row checkouts "old" --delete
 | | `planReview` | Review of the plan before Planned?: `off`, `attacker` (one reviewer subagent), or `panel` (3 reviewer subagents) | `off` |
 | | `styleRules` | Add the response style rules of the plugin (Simplified Technical English, no AI tells, the ADHD response shape) to each session. A missing key means `true`. The template for a new wiki sets `false` | `true` |
 | | `scopeComment` | After the scope check, draft a comment for the reporter with the scope and the open questions, as a paste text for you | `false` |
-| | `gateGuard` | The guard for a push of a ticket without the valid approvals of Planned? and Shippable?: `deny`, `ask` (the host asks you), or `off` | `deny` |
+| | `gateGuard` | The guard for a push of a ticket without the valid approvals of Planned? and Shippable?: `deny`. The values `ask` and `off` act as `deny` since 14.1.0: to loosen the guard, set `FORGE_GATE_GUARD` (`ask` or `off`) in your environment | `deny` |
 
 `set up forge` asks for the team size and the response style, and writes one set of 4 values with `forge.mjs config set`, and `styleRules` as the user chooses. No code reads the team size. The template `policy.md` holds the small-team set.
 
