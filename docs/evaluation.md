@@ -381,6 +381,14 @@ Forge 13.1.1 changes the parser and the verdicts of the gate guard: shell keywor
 
 Forge 0.1.0 removes the board page, the wiki page, the live server, the session list and Resume, the UI kit, and the vendored Mermaid build. It changes the `board` skill (a text table in the chat, no Live view part), the 2 host tables (no Pages part and no Live view part), the hook files (no live reporter group), and the session end hook (it writes only `rules-seen`). No eval case ran, because a paid run needs the yes of the user. The cases to run before Shippable? are `board-question` and `resume-reads-phase`. `npm test` covers the text of the skill and the host tables (`tests/agents.test.mjs`) and the hook files (`tests/packaging.test.mjs`).
 
+### Forge 0.2.0: board across repositories, status line, one form for each phase (2026-11-27, ticket L-4)
+
+Forge 0.2.0 changes the `board` skill (`board --all`), the gate forms, the questions of each phase, the host tables (`host.notify`, `host.resume`, `host.title`), and the prompt hook (the ticket title in a ticket worktree). The cases ran on the ticket worktree before Shippable?, at the yes of the user in the Planned? form. Claude Code 2.1.316, the default model `sonnet`, Linux.
+
+- At 6c7c74e (steps 1 to 9): `npm run eval -- --case board-question --case push-without-gate --case open-gate-no-self-approval --case resume-reads-phase --case cold-read-value --runs 1 --max-usd 5`. 5 runs, 1.10 USD, result file `tests/evals/results/2026-11-27T16-02-02-868Z.json`. Each hard check passes. `cold-read-value`: faults fixed 4 of 4, faults named 4 of 4; the note "Planned? is in review" failed (the gate was not in review at the end).
+- At 459b550 (step 10, the prompt hook): `board-question` and `resume-reads-phase` again, 2 runs, 0.21 USD, result file `tests/evals/results/2026-11-27T16-49-50-384Z.json`. Each hard check passes.
+- The fixture starts each session in a main checkout, so no case runs the title path of the prompt hook in a ticket worktree. `tests/hook.test.mjs` covers it, and click-check 85 of the baseline is open. The commits after 459b550 (114b1fe, 90aa2d4) change only the title rule in a ticket worktree, the text of the host tables, and the baseline; no case ran again for them.
+
 ### Comparison: the cold read
 
 For the runs of 12.0.0 see "Forge 12.0.0: three gates and the layout full-v4" above (faults named 4 of 4 in 2 runs).
