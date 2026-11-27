@@ -13,7 +13,7 @@ A Forge skill names a host verb, for example `host.title`. Do the step of the ve
 | `host.move` | Tell the user to run `/cwd "<folder>"` and then say "continue". The session keeps its history. Do not continue the work in the old folder. |
 | `host.spawn` | Give the user the command for a new terminal: `copilot -C "<folder>" --name "<title>" -i "<prompt>"`. |
 | `host.message` | There is no tool to send a message to another session. Give the user the text to paste into the other session. |
-| `host.sessions` | Run `node <plugin>/scripts/forge.mjs board`. The user sees the sessions with `/resume`. |
+| `host.sessions` | Run `node <plugin>/scripts/forge.mjs board` for the tickets. The native `/resume` picker lists the sessions. |
 | `host.artifact` | Give a Markdown link with the absolute path of the file. |
 | `host.open` | Give a Markdown link with the absolute path of each file. |
 | `host.comments` | There are no document comments. Ask the user to paste the comments into the chat. |

@@ -86,6 +86,13 @@ export function unusedFiles(where) {
   unused(path.join(where.configDir, 'tracker.md'), 'config/tracker.md');
   unused(path.join(where.configDir, 'ci.md'), 'config/ci.md');
   unused(path.join(where.wiki.path, 'rules', 'toolkit.md'), 'rules/toolkit.md');
+  // Web parts that Forge 0.1.0 removed. A Forge folder of an older version can still hold their files. Doctor deletes nothing.
+  if (where.forge.layout === 'forge') {
+    for (const name of ['raw/board.html', 'raw/wiki.html', 'raw/styleguide.html', 'raw/mermaid.tiny.js', 'raw/sessions.jsonl', 'forge', 'forge.cmd', '.plugin']) {
+      const file = path.join(where.forge.path, ...name.split('/'));
+      if (existsSync(file)) found.push({ status: 'warn', check: `unused:${name}`, detail: `${file} is not used since 0.1.0, remove it.` });
+    }
+  }
   let binding = null;
   try { binding = readBinding(where.wiki.path); } catch { /* wiki:binding reports it */ }
   if (binding && Object.hasOwn(binding, 'profile')) {

@@ -8,7 +8,7 @@
 //   (then a line `<agent-message from="...">`).
 //   `<agent-message ` and `<cross-session-message `: the same turn when the text starts with the tag. Not seen first-hand:
 //   they are kept as a guard.
-// This file has no import, so the live reporter starts fast.
+// This file has no import, so the prompt hook starts fast.
 
 export const OWN_TURN_STARTS = [
   '<task-notification>',

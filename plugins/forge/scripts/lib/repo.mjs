@@ -95,7 +95,7 @@ function boundRepo(home) {
  * @param {object} [opts]
  * @param {string} [opts.cwd] start folder
  * @param {string} [opts.wiki] explicit wiki folder (per call override)
- * @param {object} [opts.env] environment (for tests). FORGE_HOME names a Forge folder: the launcher of that folder sets it.
+ * @param {object} [opts.env] environment (for tests). FORGE_HOME names a Forge folder. An old launcher (before 0.1.0) or the user sets it.
  */
 export function resolve({ cwd = process.cwd(), wiki, env = process.env } = {}) {
   const warnings = [];
@@ -105,7 +105,7 @@ export function resolve({ cwd = process.cwd(), wiki, env = process.env } = {}) {
   let wikiPath = null;
   let source = 'convention';
 
-  // The launcher of a Forge folder selects that folder, also from a folder of another repository.
+  // FORGE_HOME (an old launcher or the user) selects a Forge folder, also from a folder of another repository.
   const launched = env.FORGE_HOME && !wiki ? path.resolve(env.FORGE_HOME) : '';
   // A folder of a Forge folder outside of its wiki (raw/, archive/) is in no git repository, or in a git repository that is not its own.
   const above = launched ? null : forgeAbove(cwd);

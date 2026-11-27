@@ -39,6 +39,22 @@ test('doctor has no hook check and no check of a server, a page, or Mermaid', ()
   assert.ok(!checks.some((check) => /live|page|mermaid|server/i.test(check)));
 });
 
+test('doctor warns about each file of a removed web part, and deletes nothing', () => {
+  const names = ['raw/board.html', 'raw/wiki.html', 'raw/styleguide.html', 'raw/mermaid.tiny.js', 'raw/sessions.jsonl', 'forge', 'forge.cmd', '.plugin'];
+  mkdirSync(path.join(where.forge.path, 'raw'), { recursive: true });
+  const files = names.map((name) => path.join(where.forge.path, ...name.split('/')));
+  for (const file of files) writeFileSync(file, 'x');
+  const results = doctor({ cwd: app, env });
+  for (const name of names) {
+    const found = line(results, `unused:${name}`);
+    assert.equal(found?.status, 'warn', name);
+    assert.match(found.detail, /is not used since 0\.1\.0, remove it\./);
+  }
+  assert.ok(files.every((file) => existsSync(file)), 'doctor deletes nothing');
+  for (const file of files) rmSync(file);
+  assert.ok(!doctor({ cwd: app, env }).some((item) => item.check.startsWith('unused:raw/') || item.check === 'unused:.plugin'));
+});
+
 test('plugin version: behind warns, up to date is ok, a non-clone is ok', () => {
   const bare = path.join(root, 'upstream.git');
   git(root, 'init', '-q', '--bare', '-b', 'main', bare);

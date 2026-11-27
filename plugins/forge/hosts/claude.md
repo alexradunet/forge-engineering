@@ -13,7 +13,7 @@ A Forge skill names a host verb, for example `host.title`. Do the step of the ve
 | `host.move` | Call `EnterWorktree` with `path` set to the worktree folder. The user approves the move. When the tool is not available or it refuses, tell the user to run `cd "<folder>"; claude` and then say "continue". |
 | `host.spawn` | Give the user the command for a new terminal: `cd "<folder>"; claude -n "<title>" "<prompt>"`. The `Agent` tool starts only a subagent, not a ticket session. |
 | `host.message` | When cross-session messages are on, find the session with `ListAgents` and call `SendMessage`. Otherwise give the user the text to paste into the other session. |
-| `host.sessions` | Call `ListAgents` when it is available. Otherwise run `node <plugin>/scripts/forge.mjs board`. |
+| `host.sessions` | Call `ListAgents` when it is available. Otherwise run `node <plugin>/scripts/forge.mjs board` for the tickets. The native `/resume` picker lists the sessions. |
 | `host.artifact` | Give a Markdown link with the absolute path of the file. Never use the `Artifact` tool: it sends the file to claude.ai. |
 | `host.open` | Give a Markdown link with the absolute path of each file. |
 | `host.comments` | There are no document comments. Ask the user to paste the comments into the chat. |
