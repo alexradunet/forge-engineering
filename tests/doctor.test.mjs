@@ -16,7 +16,7 @@ const git = (cwd, ...args) => execFileSync('git', args, { cwd, stdio: 'pipe', en
 const line = (results, check) => results.find((r) => r.check === check);
 before(() => {
   root = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'forge-doctor-')));
-  env = { ...process.env, FORGE_DATA_DIR: path.join(root, 'data') };
+  env = { ...process.env, FORGE_DATA_DIR: path.join(root, 'data'), CLAUDE_CONFIG_DIR: path.join(root, 'no-claude-config') };
   app = path.join(root, 'app');
   mkdirSync(app);
   git(app, 'init', '-q', '-b', 'main');
@@ -168,4 +168,18 @@ test('doctor warns when a base branch is not the default branch of the remote, a
     writeFileSync(file, original);
     try { git(app, 'update-ref', '--no-deref', '-d', 'refs/remotes/origin/HEAD'); } catch { /* Not set. */ }
   }
+});
+
+test('doctor has a statusline line: not set is ok, a missing shim is a warning that names the key to delete', () => {
+  const config = path.join(root, 'claude-config');
+  const own = { ...env, CLAUDE_CONFIG_DIR: config };
+  assert.equal(line(doctor({ cwd: app, env: own }), 'statusline').status, 'ok');
+  assert.match(line(doctor({ cwd: app, env: own }), 'statusline').detail, /not set/);
+  mkdirSync(config, { recursive: true });
+  const shim = path.join(root, 'gone-data', 'statusline.mjs');
+  writeFileSync(path.join(config, 'settings.json'), JSON.stringify({ statusLine: { type: 'command', command: `node "${shim}"` } }));
+  const found = line(doctor({ cwd: app, env: own }), 'statusline');
+  assert.equal(found.status, 'warn');
+  assert.match(found.detail, /is missing/);
+  assert.ok(found.detail.includes('Delete the "statusLine" key in'));
 });

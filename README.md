@@ -73,6 +73,8 @@ To update `forge`:
 2. Copilot CLI: if you installed from a Git clone (`~/.copilot/installed-plugins/_direct/forge`), pull the latest `main` in that folder, or uninstall and reinstall the plugin.
 3. When the update changed `plugins/forge/templates/config/`, say "refresh the forge config".
 
+Before you uninstall `forge` from Claude Code, delete the `statusLine` key in `~/.claude/settings.json` (or in `$CLAUDE_CONFIG_DIR/settings.json`) when the Forge setup added it. Claude Code deletes the plugin data folder at an uninstall, and the status line command then fails after each message. `forge.mjs doctor` has a `statusline` line that names the key.
+
 "check forge" reports when the installed plugin is behind its remote.
 
 ### ⬆️ Upgrade to 0.1.0
@@ -124,7 +126,7 @@ Setup offers the native wiki of the private repository, a separate private `<rep
 | `plugins/forge/hooks/` | `hooks.json`: the same context for Claude Code (spike). `SessionStart` gives it in parts of at most 9,000 characters (2 parts for a session without company rules), `UserPromptSubmit` sets the ticket title, and `PreToolUse` is the gate guard. See `Claude Code host` in [baseline.md](docs/baseline.md). `forge.mjs hook session-end` at `SessionEnd` writes the rule pages that the session saw. |
 | `plugins/forge/skills/` | `ticket`, `agents`, `board`, `wiki`, `forge-setup`, `writing` |
 | `plugins/forge/templates/` | The config templates (`config/`) and the rule pages (`rules/`) |
-| `plugins/forge/scripts/` | `forge.mjs` (init, config, lint, board, local-key, worktree, gate-open, gate-approve, hook, context, doctor, detect, bind, seed) |
+| `plugins/forge/scripts/` | `forge.mjs` (init, config, lint, board, local-key, worktree, gate-open, gate-approve, hook, context, doctor, detect, bind, seed, statusline) |
 | `docs/` | [config.md](docs/config.md) (config format), [wiki.md](docs/wiki.md) (sharing and scripts), [evaluation.md](docs/evaluation.md) (behavioral runs: `npm run eval` gives the cases of `tests/evals/` to a real agent session), and [baseline.md](docs/baseline.md) (the host features that forge uses) |
 | `AGENTS.md` | [Rules for agents that develop forge](AGENTS.md): docs-first checks, tests, and file format |
 
@@ -289,6 +291,7 @@ See [People](plugins/forge/skills/ticket/SKILL.md#-people).
 Say "show the board" or "my tickets". The agent reads the README frontmatter of each ticket
 and groups the tickets by state: 🟡 Needs me, 🔴 Blocked, 🟢 Go, ▶️ Active, ⏳ Waiting, ✅ Done.
 `forge.mjs board` writes the same view to `<forge>/raw/board.md`.
+`forge.mjs board --all` shows the boards of this repository and of the other Forge folders next to it (`../*.forge` with a bound wiki), with the 🟡 tickets of all repositories first. It writes no file. Each ticket has a `resumeFolder` in the JSON: the folder where its session starts.
 Each row shows the session title, the open gate, the next step, who the ticket waits on, and the days since the update.
 
 `forge.mjs board --json` gives the same data to agents. The board is a text table in the chat: Forge has no board page. Ticket README files remain the source of truth.
@@ -312,6 +315,7 @@ A question that names a key does not start or resume that ticket.
 | Say | Result |
 |---|---|
 | "Show the board" | A text table in the chat: the count for each state, then one row for each ticket, with the tickets that need you first |
+| "Show all boards" or "What needs me" | The 🟡 tickets of all repositories, then one table for each repository, with the command to resume each ticket |
 | "What did we do on APP-42?" | The Now card, the latest journal entries, and the session link |
 | "What must I approve on APP-42?" | The summary of the open gate document |
 | "Fix the session titles" | Renames stale ticket session titles |

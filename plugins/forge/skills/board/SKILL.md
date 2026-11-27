@@ -1,6 +1,6 @@
 ---
 name: board
-description: The ticket board of one repository, in any session. Shows the state of each forge ticket, answers questions about tickets and their sessions, and keeps the ticket session titles current. Read-only for code and tickets. Use when the user asks to "show the board", "refresh the board", "which tickets need me", "what is APP-123 waiting on", or "fix the session titles".
+description: The ticket board of one repository, or of all repositories with a Forge folder, in any session. Shows the state of each forge ticket, answers questions about tickets and their sessions, and keeps the ticket session titles current. Read-only for code and tickets. Use when the user asks to "show the board", "refresh the board", "which tickets need me", "show all boards", "what needs me", "what is APP-123 waiting on", or "fix the session titles".
 ---
 
 # 🧭 Board
@@ -19,6 +19,7 @@ the folder two levels above the folder of this file.
 
 ## 🎯 Scope
 
+- "Show all boards" and "what needs me" mean all repositories with a Forge folder next to this one: use the section "Show all boards". Any other board question is about this repository.
 - A board question that names a work item key (for example "what is APP-123 waiting on?") is a question.
   It does not start or resume the ticket. Answer it, and ignore the `# Forge ticket context` part for it.
 - Do not change the title of this session. In a ticket session, the `ticket` skill owns the title.
@@ -33,6 +34,13 @@ the folder two levels above the folder of this file.
    It also writes `<forge>/raw/board.md`.
 2. Answer in chat with a text table. Put the count for each state on the first line, for example `🟡 2 · ▶️ 1 · ✅ 3`. Then write one table row for each ticket: key, state emoji, phase, open gate, next step, waiting on, and days since the update. Put the 🟡 tickets first, with their open gate.
 3. Give the path of `<forge>/raw/board.md` as a Markdown link. Write no link to a page and start no server: Forge has no board page.
+
+## 🗂️ Show all boards
+
+1. Run `<F> board --all --json`. It reads the Forge folders next to this one (`repos`), and it gives one `needsMe` list for all of them. It writes no file. A repository that it cannot read has an `error`: name it in one line and go on.
+2. Answer in chat. Start with the 🟡 tickets of all repositories (`needsMe`): repository, key, open gate, and next step. Then write one table for each repository, with the same columns as "Show the board". Put the current repository first.
+3. After each ticket, give one resume command (`host.resume`). Take the folder from `resumeFolder` of that ticket. When the folder is the main checkout of a ticket that had a worktree, add the Ctrl+W hint of the verb.
+4. Write no link to a file: `board --all` writes none.
 
 ## 📚 Questions
 
@@ -60,10 +68,10 @@ When the user asks:
 
 ## 🚫 Rules
 
-- The board steps write only `<forge>/raw/board.md`, through `<F> board`.
+- The board steps write only `<forge>/raw/board.md`, through `<F> board` (`board --all` writes nothing).
   The file is a view: no approval lists it.
   The board steps change no code, no ticket document, no approval, and no wiki page.
-- In the terminal, the board steps run only `<F> board`, `<F> where`, and read-only `git` commands.
+- In the terminal, the board steps run only `<F> board` (with `--all` or not), `<F> where`, and read-only `git` commands.
 - Never call a tracker, a change request host, or a CI tool.
 - Never answer a session's question or permission prompt for the user. Report it.
 - Never approve a gate for the user. An approval covers the exact revision that the ticket session shows,

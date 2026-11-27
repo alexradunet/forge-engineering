@@ -187,6 +187,12 @@ Show the current values, and change one only when the user asks. Step 5 does not
 Write a change with `config set`, for example `"policy.maxImplementers=4"`.
 A hook can add steps and make rules stricter. It can never weaken a core rule.
 
+### Status line (Claude Code only)
+
+Add a row for the status line to the form of the extras, only in Claude Code. It shows the ticket of the folder, its open gate, and the 🟡 tickets of other repositories in the prompt bar.
+Skip the row when the `statusline` line of `doctor` says that `statusLine` exists, and in Copilot CLI (it has no status line).
+After a yes, run `<F> statusline --install --data "${CLAUDE_PLUGIN_DATA}"`. Write `${CLAUDE_PLUGIN_DATA}` as it is: Claude Code fills in the path in this text. The command writes a small script in that folder and adds `statusLine` to the user settings. It changes nothing when `statusLine` exists. Show its output.
+
 ### Board
 
 Tell the user: say "show the board" in any session. The `board` skill shows the state of each ticket and keeps the ticket session titles current. There is nothing to set up.

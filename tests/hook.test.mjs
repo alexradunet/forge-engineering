@@ -15,7 +15,7 @@ import { setValues } from '../plugins/forge/scripts/lib/config-write.mjs';
 
 const cli = fileURLToPath(new URL('../plugins/forge/scripts/forge.mjs', import.meta.url));
 const templates = path.join(path.dirname(path.dirname(cli)), 'templates', 'config');
-const env = { ...process.env, FORGE_WIKI_ROOT: '', FORGE_DATA_DIR: mkdtempSync(path.join(os.tmpdir(), 'forge-hook-data-')) };
+const env = { ...process.env, FORGE_WIKI_ROOT: '', CLAUDE_PLUGIN_DATA: '', FORGE_DATA_DIR: mkdtempSync(path.join(os.tmpdir(), 'forge-hook-data-')) };
 const pluginDir = path.dirname(path.dirname(cli));
 // Without a ticket the hook still gives the paths and the rules, but no ticket part.
 const TICKET = '\n# Forge ticket context\n';
@@ -610,4 +610,28 @@ test('a local key L-<n> is seen: open, closed, and unknown', (t) => {
   assert.ok(!start(s.app, 'start L-4').includes(TICKET), 'the first prompt');
   assert.deepEqual(promptSubmit({ cwd: s.app, prompt: 'start L-4', title: '' }, { cli, env }), {}, 'a later prompt');
   assert.ok(start(s.app, 'start GH-9').includes(TICKET), 'a key of another system starts at the first prompt');
+});
+
+test('the Claude Code session start hook refreshes an old status line shim, and never creates one', (t) => {
+  const w = setup(t);
+  const data = path.join(w.root, 'plugin-data');
+  const shim = path.join(data, 'statusline.mjs');
+  const claude = (extra) => sessionStart({ cwd: w.app, prompt: 'hello', session: 'sl1' }, { cli, env: { ...env, ...extra }, host: 'claude', part: 1 });
+  claude({ CLAUDE_PLUGIN_DATA: '' });
+  claude({ CLAUDE_PLUGIN_DATA: data });
+  assert.equal(existsSync(shim), false, 'no CLAUDE_PLUGIN_DATA, or no shim: nothing is created');
+  mkdirSync(data, { recursive: true });
+  writeFileSync(shim, `// old\n// forge-root: ${path.join(w.root, 'old-plugin')}\n`);
+  claude({ CLAUDE_PLUGIN_DATA: '' });
+  assert.match(readFileSync(shim, 'utf8'), /^\/\/ old\n/, 'no CLAUDE_PLUGIN_DATA: nothing is written');
+  sessionStart({ cwd: w.app, prompt: 'hello', session: 'sl1' }, { cli, env: { ...env, CLAUDE_PLUGIN_DATA: data }, host: 'claude', part: 2 });
+  assert.match(readFileSync(shim, 'utf8'), /^\/\/ old\n/, 'only part 1 refreshes');
+  sessionStart({ cwd: w.app, prompt: 'hello', session: 'sl1' }, { cli, env: { ...env, CLAUDE_PLUGIN_DATA: data }, host: 'copilot-cli' });
+  assert.match(readFileSync(shim, 'utf8'), /^\/\/ old\n/, 'a Copilot CLI session does not refresh');
+  claude({ CLAUDE_PLUGIN_DATA: data });
+  const text = readFileSync(shim, 'utf8');
+  assert.ok(text.includes(`// forge-root: ${pluginDir}\n`), text);
+  assert.ok(!existsSync(`${shim}.${process.pid}.tmp`), 'no temporary file stays');
+  claude({ CLAUDE_PLUGIN_DATA: data });
+  assert.equal(readFileSync(shim, 'utf8'), text, 'the same root: no change');
 });

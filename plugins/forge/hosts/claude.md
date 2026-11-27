@@ -16,6 +16,8 @@ A Forge skill names a host verb, for example `host.title`. Do the step of the ve
 | `host.sessions` | Call `ListAgents` when it is available. Otherwise run `node <plugin>/scripts/forge.mjs board` for the tickets. The native `/resume` picker lists the sessions. |
 | `host.artifact` | Give a Markdown link with the absolute path of the file. Never use the `Artifact` tool: it sends the file to claude.ai. |
 | `host.open` | Give a Markdown link with the absolute path of each file. |
+| `host.notify` | Call `PushNotification` with the text. It sends nothing when the user is at the terminal. When the tool is not loaded, load it with the tool search. When it is not there, skip the step. |
+| `host.resume` | Give the user `cd "<folder>" && claude --resume "<KEY>"`. When the folder is the main checkout of a ticket that had a worktree, add: press Ctrl+W in the picker to see the sessions of all worktrees. |
 | `host.comments` | There are no document comments. Ask the user to paste the comments into the chat. |
 
 ## Claude Code features

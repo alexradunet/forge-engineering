@@ -67,6 +67,8 @@ explains the `<file>.<key>` notation. Forge calls no tracker, no change request 
 
 This skill names host verbs, for example `host.title` and `host.ask`. The `# Forge host` table of the session context gives the step for this host. When the host cannot do the step, give the user the manual step.
 
+Ask in one `host.ask` form for each phase. Put the questions of the phase together (at most 4 in a form), and put the recommended answer first in each option list.
+
 This skill does not repeat other tools. Use them:
 
 | Need | Use |

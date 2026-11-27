@@ -231,3 +231,22 @@ test('the setup skill has no profile, tool, or credential step', () => {
   for (const text of ['repo.changeName=<value>', 'Never answer for the user', 'Forge calls no tracker, no change request host, and no CI tool']) assert.ok(setup.includes(text), text);
   assert.doesNotMatch(setup, /profile\.md|seed --profile|bind --profile|cred\.mjs|Live read|Queries|MCP/);
 });
+
+test('L-4: one form for each phase, no question for create, and the board skill shows all boards with resume commands', () => {
+  assert.match(phase('start'), /one \`host\.ask\` form with at most 4 questions/);
+  assert.match(ticket, /at most 4 questions/);
+  assert.ok(ticket.includes('one `host.ask` form for each phase'));
+  assert.match(phase('start'), /scope answer is void/);
+  assert.doesNotMatch(phase('worktrees'), /`create`[^\n]*`host\.ask`/);
+  assert.match(phase('worktrees'), /`create` \| No ticket worktree exists \| [^\n]*Ask no question/);
+  assert.doesNotMatch(agents, /after one `host\.ask` confirmation/);
+  assert.match(phase('gates'), /`host\.notify`: "<KEY> <gate> waits for you"/);
+  assert.match(phase('gates'), /`gate-approve --answer` carries the `decision` answer alone/);
+  assert.match(phase('implement'), /Ask no commit question/);
+  assert.match(phase('closing'), /`git worktree remove "<folder>"` command for a terminal in the main checkout/);
+  const board = read('board/SKILL.md');
+  assert.ok(board.includes('board --all --json'));
+  assert.ok(board.includes('host.resume'));
+  const setup = read('forge-setup/SKILL.md');
+  assert.ok(setup.includes('statusline --install --data "${CLAUDE_PLUGIN_DATA}"'));
+});

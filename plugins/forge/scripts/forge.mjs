@@ -14,6 +14,9 @@
 //   bind    [--wiki <dir>]   write <wiki>/forge/repo.json
 //   seed [--force]   copy the config templates to <wiki>/forge/config
 //   board   [--json] [--dry-run] [--today <date>]   write <forge>/raw/board.md, the tickets grouped by state; print the groups (--json: the whole board)
+//   board --all [--json] [--today <date>]   the boards of this repository and of the sibling Forge folders (../*.forge); writes no file
+//   statusline   the Claude Code status line: the status line JSON on stdin, one line on stdout; writes nothing, prints an empty line on an error
+//   statusline --install --data <plugin data folder> [--settings <file>]   write <data>/statusline.mjs and add statusLine to the settings (only when it has none)
 //   local-key [--json]   the next key L-<n> of a ticket with no work item (it moves the counter <forge>/raw/local-key)
 //   worktree <KEY> --summary "<goal>" [--base <ref>] [--create] [--json]   plan or create the ticket worktree and branch
 //   gate-open <key> <gate> [extra files...] [--dry-run] [--json] [--today <yyyy-mm-dd>]
@@ -42,7 +45,8 @@ import { findTicket, nextLocalKey } from './lib/tickets.mjs';
 import { approveGate } from './lib/approve.mjs';
 import { openReview } from './lib/gate-open.mjs';
 import { baseBranchOf } from './lib/code-bind.mjs';
-import { writeBoard } from './lib/board.mjs';
+import { buildAllBoards, renderAllBoards, writeBoard } from './lib/board.mjs';
+import { installStatusline, statusLine, statuslineCheck } from './lib/statusline.mjs';
 import { createWorktree, planWorktree } from './lib/worktree.mjs';
 import { CLAUDE_PARTS, HOST_NAMES, contextText, promptSubmit, readEvent, resolveHost, sessionEnd, sessionStart, safeConfig } from './lib/hook.mjs';
 import { preTool, preToolOutput, readToolEvent } from './lib/guard.mjs';
@@ -127,6 +131,8 @@ export function parseArgs(argv) {
     else if (a === '--fix') out.fix = true;
     else if (a === '--dry-run') out.dryRun = true;
     else if (a === '--create') out.create = true;
+    else if (a === '--all') out.all = true;
+    else if (a === '--install') out.install = true;
     else if (REQUIRED_VALUE_OPTIONS.includes(a)) {
       if (argv[i + 1] === undefined || argv[i + 1].startsWith('--')) throw new ForgeError(`${a} needs a value.`, 'bad-args');
       out[a.slice(2)] = argv[++i];
@@ -175,6 +181,7 @@ export function doctor({ cwd, wiki, env = process.env, plugin = pluginRoot, fetc
   const major = Number.parseInt(process.versions.node.split('.')[0], 10);
   add('tool:node', major >= 20 ? 'ok' : 'fail', `v${process.versions.node}${major >= 20 ? '' : '. forge needs Node.js 20 or later.'}`);
   add('tool:git', onPath('git', env) ? 'ok' : 'fail', onPath('git', env) ? '' : 'Not on PATH. Install Git.');
+  { const line = statuslineCheck(env); add('statusline', line.status, line.detail); }
 
   for (const rel of ['plugin.json', 'skills']) {
     add(`plugin:${rel}`, existsSync(path.join(pluginRoot, rel)) ? 'ok' : 'fail', path.join(pluginRoot, rel));
@@ -304,6 +311,17 @@ export function main(argv = process.argv.slice(2)) {
     return 0;
   }
   if (argv[0] === 'context') return printContext(argv);
+  if (argv[0] === 'statusline' && !argv.includes('--install')) {
+    // The status line never breaks the prompt: one line on stdout, empty on any error, exit 0.
+    let line = '';
+    try {
+      let raw = '';
+      try { if (!process.stdin.isTTY) raw = readFileSync(0, 'utf8'); } catch { /* no input */ }
+      line = statusLine(raw);
+    } catch { line = ''; }
+    console.log(line);
+    return 0;
+  }
   if (argv[0] === 'config' && ['set', 'row'].includes(argv[1])) {
     try {
       console.log(JSON.stringify(configEdit(argv.slice(1)), null, 2));
@@ -358,10 +376,26 @@ export function main(argv = process.argv.slice(2)) {
     } else if (cmd === 'seed') {
       const templates = path.join(pluginRoot, 'templates', 'config');
       console.log(JSON.stringify(seed(resolve(opts), templates, { force: args.force }), null, 2));
+    } else if (cmd === 'statusline') {
+      // Only the install reaches here (the status line command returns above).
+      if (args._.length !== 1 || !args.install || !args.data) throw new ForgeError('Usage: forge.mjs statusline --install --data <plugin data folder> [--settings <file>]. Without --install it reads the status line JSON on stdin.', 'bad-args');
+      let result;
+      try { result = installStatusline({ data: args.data, settings: args.settings, root: pluginRoot }); }
+      catch (err) { throw new ForgeError(err.message, 'statusline'); }
+      console.log(result.status === 'already-set'
+        ? `already set: ${result.settings} has a statusLine key. Nothing was changed.`
+        : `installed: ${result.shim} runs ${result.root}; statusLine added to ${result.settings}. Start a new session to see it.`);
     } else if (cmd === 'board') {
-      if (args._.length !== 1) throw new ForgeError(`Usage: forge.mjs board [--json] [--dry-run] [--today <YYYY-MM-DD>].`, 'bad-args');
+      if (args._.length !== 1) throw new ForgeError(`Usage: forge.mjs board [--all] [--json] [--dry-run] [--today <YYYY-MM-DD>].`, 'bad-args');
       const where = resolve(opts);
       if (!where.wiki.exists) throw new ForgeError(`No wiki at ${where.wiki.path}. Run the forge-setup skill.`, 'no-wiki');
+      if (args.all) {
+        let all;
+        try { all = buildAllBoards(where.wiki.path, { today: args.today }); }
+        catch (err) { throw new ForgeError(err.message, 'board'); }
+        if (args.json) console.log(JSON.stringify(all, null, 2)); else for (const line of renderAllBoards(all)) console.log(line);
+        return 0;
+      }
       let board;
       try { board = writeBoard(where.wiki.path, { today: args.today, dryRun: args.dryRun }); }
       catch (err) { throw new ForgeError(err.message, 'board'); }
@@ -429,7 +463,7 @@ export function main(argv = process.argv.slice(2)) {
       if (args.json) console.log(JSON.stringify(result, null, 2));
       else console.log(` ${result.gate} ${result.status} (${result.date}, ${result.method}): ${result.manifest} sha256 ${result.hash}. ${args.dryRun ? 'Would write' : 'Wrote'}: ${result.writes.join(', ')}.`);
     } else {
-      console.error('Usage: node forge.mjs <where|config|doctor|lint|detect|init|bind|seed|board|local-key|worktree|gate-open|gate-approve|hook|context> [--wiki <dir>] [--cwd <dir>] [--json]');
+      console.error('Usage: node forge.mjs <where|config|doctor|lint|detect|init|bind|seed|board|local-key|worktree|gate-open|gate-approve|hook|context|statusline> [--wiki <dir>] [--cwd <dir>] [--json]');
       return 2;
     }
     return 0;

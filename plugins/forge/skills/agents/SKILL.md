@@ -68,7 +68,7 @@ Read the ticket `README.md`, approved plan, and current request. Inspect Git in 
 |---|---|
 | Current linked worktree belongs to this task and meets its baseline rule | Reuse the current session. A different generated branch name alone does not require another worktree. |
 | Another recorded worktree belongs to this task and meets its baseline rule | Resume its existing session, or start a session there (`host.spawn` with that path as the folder). |
-| No suitable worktree exists | Create one from the selected baseline: `<F> worktree <KEY> --summary "<short>" --base <full SHA> --create`, after one `host.ask` confirmation. Then move this session to the new folder (`host.move`), or start a session there (`host.spawn`). Verify its actual HEAD before any edits, builds, or fixtures. |
+| No suitable worktree exists | Create one from the selected baseline: `<F> worktree <KEY> --summary "<short>" --base <full SHA> --create`. Ask no question: tell the user the folder. Then move this session to the new folder (`host.move`), or start a session there (`host.spawn`). Verify its actual HEAD before any edits, builds, or fixtures. |
 | Repository, task ownership, or local changes are uncertain | Report the evidence and ask before switching, moving, or replacing work. |
 
 Baseline rules:
@@ -79,7 +79,7 @@ Baseline rules:
 
 Pinned baseline step:
 
-1. Create the worktree from the required SHA: `<F> worktree <KEY> --summary "<short>" --base <full SHA> --create`, after one `host.ask` confirmation. Never move an existing branch to that SHA.
+1. Create the worktree from the required SHA: `<F> worktree <KEY> --summary "<short>" --base <full SHA> --create`. Ask no question: tell the user the folder. Never move an existing branch to that SHA.
 2. Give the new session a self-contained prompt with the absolute ticket path and the required SHA. Require the Git checks above before execution.
 3. After verification, continue in that session. Do not create another worktree at Implement.
 

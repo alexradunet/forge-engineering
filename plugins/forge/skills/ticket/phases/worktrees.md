@@ -17,7 +17,7 @@ Run `<F> worktree <KEY> --summary "<short>"` at Start and before the first commi
 |---|---|---|
 | `reuse` | This session folder is a linked worktree on the ticket branch | Continue here. |
 | `resume` | Another worktree already has the ticket branch or folder | Tell the user the path. Confirm the folder, then move the session to it (`host.move`). |
-| `create` | No ticket worktree exists | Run the command again with `--create`. Ask one `host.ask` question that confirms `folder`. Then move the session to `folder` (`host.move`). |
+| `create` | No ticket worktree exists | Run the command again with `--create`. Ask no question. Tell the user the `folder`. Then move the session to `folder` (`host.move`). |
 
 - Preserve an existing session worktree. When `current` is a linked worktree in `related` (a ticket worktree with an older name), continue there; do not create another one. Do not rename an existing suitable branch merely to match the pattern.
 - `host.move` uses the Forge worktree as it is. Never let the host make a second worktree for the ticket.

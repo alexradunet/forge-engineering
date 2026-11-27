@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildContext } from '../plugins/forge/scripts/lib/hook.mjs';
-import { archiveDir, homeOf, isForgeLayout, rawDir } from '../plugins/forge/scripts/lib/layout.mjs';
+import { archiveDir, homeOf, isForgeLayout, rawDir, repoNameOf, siblingWikis } from '../plugins/forge/scripts/lib/layout.mjs';
 import { resolve } from '../plugins/forge/scripts/lib/repo.mjs';
 import { initWiki } from '../plugins/forge/scripts/lib/setup.mjs';
 import { nextLocalKey } from '../plugins/forge/scripts/lib/tickets.mjs';
@@ -142,4 +142,16 @@ test('forge.mjs local-key prints the next key, as text or as JSON', (t) => {
   const call = (...args) => spawnSync(process.execPath, [cli, 'local-key', ...args, '--cwd', repoRoot, '--wiki', wiki], { encoding: 'utf8', env: s.env });
   assert.equal(call('--json').stdout.trim(), JSON.stringify({ key: 'L-1' }));
   assert.equal(call().stdout.trim(), 'L-2');
+});
+
+test('siblingWikis: the bound Forge folders next to this one, this one first, and a folder from --wiki alone', (t) => {
+  const s = space(t);
+  const bind = (name) => { s.put(path.join(s.root, `${name}.forge`, 'wiki', 'forge', 'repo.json'), '{"repo":{"path":"x"}}'); return path.join(s.root, `${name}.forge`, 'wiki'); };
+  const [b, a, mine] = [bind('b'), bind('a'), bind('mine')];
+  mkdirSync(path.join(s.root, 'tool.forge', 'wiki'), { recursive: true }); // a code repository with a wiki/ and no binding
+  mkdirSync(path.join(s.root, 'plain'), { recursive: true });
+  assert.deepEqual(siblingWikis(mine), [mine, a, b]);
+  assert.deepEqual(siblingWikis(b), [b, a, mine]);
+  assert.deepEqual(siblingWikis(path.join(s.root, 'plain')), [path.join(s.root, 'plain')]);
+  assert.deepEqual([repoNameOf(mine), repoNameOf(path.join(s.root, 'plain'))], ['mine', 'plain']);
 });

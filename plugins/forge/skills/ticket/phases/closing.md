@@ -25,12 +25,12 @@ Run only when the user says that the ticket is done.
    node -e "const fs=require('fs'),[,a,b]=process.argv;fs.mkdirSync(require('path').dirname(b),{recursive:true});fs.renameSync(a,b)" "<forge>/raw/tickets/<key>" "<forge>/archive/tickets/<key>"
    ```
 9. Append a `close` entry to `<wiki>/log.md` that lists each changed page. Commit the canonical pages in the wiki repository.
-10. Clean up the ticket worktree. Ask the user first, with one `host.ask` confirmation. Without a "yes", leave it.
+10. Clean up the ticket worktree. Ask the user first: it is the second question of the Learned? form (see Approval form in [gates.md](gates.md)), with the recommended answer first. Without a "yes", leave it.
     - Run `git status --short` and check for outgoing commits in the worktree. Uncommitted or unpushed work blocks the cleanup. Report it.
     - Run the repository cleanup that the `## Close` policy section names (for example a database per worktree).
-    - A worktree that `<F> worktree --create` made (its folder is in `<repo>.worktrees/`): after the "yes", run `git worktree remove "<folder>"` from the main checkout. Keep the branch. Never use `--force`.
+    - A worktree that `<F> worktree --create` made (its folder is in `<repo>.worktrees/`): after the "yes", the user runs `git worktree remove "<folder>"` from the main checkout (see the last bullet). Keep the branch. Never use `--force`.
     - A worktree that another tool made needs the remove command of that tool.
-    - A session that runs in the worktree locks the folder. Report the path that is left.
+    - The ticket session runs in the worktree, and a session locks its folder. After a "yes", give the user the `git worktree remove "<folder>"` command for a terminal in the main checkout. Do not run it from this session. Report the path that is left.
 11. Tell the user what you recorded, in one line per page.
 
 ## Ticket summary page

@@ -16,6 +16,8 @@ A Forge skill names a host verb, for example `host.title`. Do the step of the ve
 | `host.sessions` | Run `node <plugin>/scripts/forge.mjs board` for the tickets. The native `/resume` picker lists the sessions. |
 | `host.artifact` | Give a Markdown link with the absolute path of the file. |
 | `host.open` | Give a Markdown link with the absolute path of each file. |
+| `host.notify` | No step: Copilot CLI has no notification tool. |
+| `host.resume` | Give the user `cd "<folder>" && copilot --resume`. It opens the picker. |
 | `host.comments` | There are no document comments. Ask the user to paste the comments into the chat. |
 
 ## Copilot CLI features

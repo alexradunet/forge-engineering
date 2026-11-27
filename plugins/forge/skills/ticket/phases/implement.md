@@ -10,6 +10,7 @@ After a compaction of the session, read this file again before you use its steps
 - Use the `agents` skill to select the execution worktree (see Worktrees). Continue in a suitable current worktree; start another session only when needed. Do not edit code in the main checkout.
 - Validate Planned? and its manifest before implementation. Unverifiable evidence blocks implementation, not read-only research.
 - Follow the repository's own instructions and skills for the code change.
+- Ask no commit question. The Planned? answer covers the commits on the ticket branch and the proof runs that the plan names. When the user answered `no` there, ask before each commit.
 - After each plan step, add a `step <n> done` entry to `journal.md` with the commit or the files and the test result. Set **Change** to `done` in `map.md` for the components of that step.
 - For a quick code review before Shippable?, use a reviewer subagent (the `agents` skill).
 - Before Shippable?, and so before any push or change request (draft too), run the adversarial review subagent (the `agents` skill, "Adversarial review"). The reviewer gets no story of the change. Save its report in `evidence/code-review-NNN.md`, and handle its findings. Record what you did in **Findings** of `review.md`. `gate-open <key> shippable` needs this file.

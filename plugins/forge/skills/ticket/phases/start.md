@@ -60,17 +60,17 @@ Start after the research. Ground each question in the story or its evidence.
 
 1. Before you ask, run a spike for each question that depends on a checkable fact.
 2. State your reading of the work item in 1 or 2 lines. Give 2 other possible readings, for example a smaller scope, another cause, or another user group. Do this also when the item looks clear: a wrong reading passes each review that only repeats it. Ask which reading is right as the first question of the form (step 3).
-3. Ask up to 5 questions in one `host.ask` form, grouped by topic. For each question, give why it matters, the options, and the recommended answer as the field default with its reason in the field description. Never answer for the user or accept recommendations in auto mode.
+3. Ask in one `host.ask` form with at most 4 questions (the limit of the tool). Put the reading question first, then at most 2 other questions, then the scope check last (see Scope check). A question that does not fit goes to a second round only when an answer needs it, or to a `Decision` line of the plan. For each question, give why it matters and the options, with the recommended answer first and its reason in its description. Set no default. Never answer for the user or accept recommendations in auto mode.
 4. Run a second round only for answers that raise new questions.
 5. Record each answer in **Answers** of `story.md`, with the question, the answer, and why it matters. Add one `decision` entry to `journal.md` for an answer that changes the scope.
 
 ### 🎯 Scope check
 
-The scope check is a question in chat. It is not a gate.
+The scope check is a question in chat. It is not a gate. It is the last question of the interview form (see Interview). Write the draft scope in the message of the form before you ask.
 
 1. Complete `story.md`: the summary, **Scope** (In and Out), and **Done when**, each acceptance check with its proof. Put the scope choice that changes the plan most first in the summary.
-2. Show the scope in chat in at most 8 lines: the problem in one line, In, Out, Done when, and each open question that can change the scope.
-3. Ask with one `host.ask`. Never answer for the user. Options:
+2. Show the scope in chat in at most 8 lines: the problem in one line, In, Out, Done when, and each open question that can change the scope. Use these lines as the draft scope in the message of the interview form.
+3. Ask it as the last question of the interview form. Never answer for the user. The scope answer is void when the user picks a reading that is not the recommended one: update `story.md`, then ask the scope check again as its own `host.ask` form. Options (the recommended answer first):
 
 | Value | Title |
 |---|---|

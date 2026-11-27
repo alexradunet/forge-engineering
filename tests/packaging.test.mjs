@@ -25,7 +25,7 @@ function scratch(t) {
   return root;
 }
 
-const hookEnv = (root, extra) => ({ ...process.env, FORGE_WIKI_ROOT: '', FORGE_DATA_DIR: root, CLAUDECODE: '', ...extra });
+const hookEnv = (root, extra) => ({ ...process.env, FORGE_WIKI_ROOT: '', FORGE_DATA_DIR: root, CLAUDE_PLUGIN_DATA: '', CLAUDECODE: '', ...extra });
 
 test('the manifest and both marketplaces have the same name and version', () => {
   assert.equal(manifest.$schema, 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json', 'The manifest names the Agent Plugins schema.');

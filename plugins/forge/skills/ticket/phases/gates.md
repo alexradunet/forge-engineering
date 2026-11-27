@@ -22,20 +22,21 @@ Run it one time for each review revision. Run a second cold read only after you 
 1. Write or update the gate document from its template. Run the cold read. Run `<F> lint` and remove its warnings for this document.
 2. Run `<F> gate-open <key> <gate> [extra files]`. It builds the document set and writes the manifest in `approvals/` with the SHA-256 of each file. It saves the snapshot, sets the gate to `in-review`, and sets `state: needs-me`. For Planned?, it runs the plan checks first. It prints the form text. You still set `next` and the other lines of the Now card in the same edit. When it refuses, correct what the message names, then run it again. Never write a manifest by hand.
 3. Set the 🟡 title (`host.title`, see Session title) before the form.
-4. Give the link to the document with `host.open`. Tell the user: add comments in the chat (`host.comments`).
-5. Show the approval form (below) with `host.ask`. Do not start the blocked step.
-6. Act on the answer:
-   - GO: record the approval (step 8), then start the next workflow step.
-   - Comments: handle the comments (step 7). Run `gate-open` again (step 2), then show the form again. For Planned? with a plan review, the form then says that the reviewers did not read the change.
+4. Send the notice with `host.notify`: "<KEY> <gate> waits for you". Do it after `gate-open` and before the form.
+5. Give the link to the document with `host.open`. Tell the user: add comments in the chat (`host.comments`).
+6. Show the approval form (below) with `host.ask`. Do not start the blocked step.
+7. Act on the answer:
+   - GO: record the approval (step 9), then start the next workflow step.
+   - Comments: handle the comments (step 8). Run `gate-open` again (step 2), then show the form again. For Planned? with a plan review, the form then says that the reviewers did not read the change.
    - Changes: apply the free-text request to the document. Run `gate-open` again (step 2), then show the form again. For Planned? with a plan review, the form then says that the reviewers did not read the change.
    - Hold: stop. Tell the user how to resume (`approve <gate>` in chat, or "review my comments").
-7. Handle the comments. They come from `host.comments` or from the chat.
+8. Handle the comments. They come from `host.comments` or from the chat.
    - Answer a question in its thread, or in chat. If the answer changes the document, update the document.
    - Apply a change request to the document. Record a design change as a `decision` entry in `journal.md`, and in the gate document when the approval depends on it.
    - When a comment is not clear, ask the user. Do not guess.
    - Resolve each handled correction thread.
    - Summarize what changed in 5 lines or less before you show the form again.
-8. Record the approval. For each gate, run `<F> gate-approve <key> <gate> --answer "<the exact answer of the user>" --method form|chat`. The option `--hash <the manifest SHA-256 that you showed>` is optional: the README record has the digest. It checks the answer, the manifest, and each document hash, then writes the README and `approvals/history.md`. It writes nothing when a check fails. Run it only after an explicit answer of the user, never in auto mode. Then update `state`, `next`, `updated`, and the Now card, and set the title with the new state emoji (`host.title`).
+9. Record the approval. For each gate, run `<F> gate-approve <key> <gate> --answer "<the exact answer of the user>" --method form|chat`. The option `--hash <the manifest SHA-256 that you showed>` is optional: the README record has the digest. It checks the answer, the manifest, and each document hash, then writes the README and `approvals/history.md`. It writes nothing when a check fails. Run it only after an explicit answer of the user, never in auto mode. Then update `state`, `next`, `updated`, and the Now card, and set the title with the new state emoji (`host.title`).
 
 ### Approval revisions
 
@@ -65,7 +66,7 @@ The draft of a new change request (`target: change` in its frontmatter) is part 
 
 ### ✅ Approval form
 
-Show it with `host.ask` at each gate. Use one field, `decision`, with these options. Put the gate question first in the message, for example "Planned? Are the scope and the plan for APP-123 correct?".
+Show it with `host.ask` at each gate. Use one question, `decision`, with these options (GO first). Put the gate question first in the message, for example "Planned? Are the scope and the plan for APP-123 correct?".
 
 | Value | Title |
 |---|---|
@@ -83,6 +84,7 @@ The message body is short. Put in it, in this order:
    - For Planned?: the open blockers and the concerns of the plan review, and the carry sentence when it shows.
 3. State that GO approves this exact set.
 
+- The Planned? form has a second question: "Commits on the ticket branch, and the proof runs with this cost: <the cost that the plan names>?" Options: `yes` (the recommended answer first), and `no` (ask me for each commit and each run). A yes covers each commit on the ticket branch and the proof run, so Implement asks nothing more. `gate-approve --answer` carries the `decision` answer alone. The Learned? form has a second question for the worktree cleanup (see Close in [closing.md](closing.md)). Shippable? has the `decision` question only.
 - Set no default. The user must pick an option.
 - If unhandled comments exist on the document, say so in the message.
 - If the user declines or cancels the form, treat it as `later` (Hold).

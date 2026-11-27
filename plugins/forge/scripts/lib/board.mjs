@@ -1,7 +1,8 @@
 // The ticket board: <forge>/raw/board.md, grouped by state. The output is the same for the same wiki and day. board-page.mjs shows the same model as a page.
-import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { rawDir } from './layout.mjs';
+import { homeOf, rawDir, repoNameOf, siblingWikis } from './layout.mjs';
+import { readBinding } from './repo.mjs';
 import { STATE_EMOJI, sessionTitle, validDate } from './ticket.mjs';
 import { listTickets } from './tickets.mjs';
 
@@ -52,6 +53,18 @@ export function daysSince(updated, today) {
   return Math.round((Date.parse(today) - Date.parse(updated)) / 86_400_000);
 }
 
+const isFolder = (folder) => { try { return statSync(folder).isDirectory(); } catch { return false; } };
+
+/** The folder where a session of the ticket starts: the README worktree when it exists, else the repository of the binding, else <parent>/<name>. */
+export function resumeFolderOf(wikiPath, ticket) {
+  if (ticket.worktree && isFolder(ticket.worktree)) return path.resolve(ticket.worktree);
+  try {
+    const repo = readBinding(wikiPath)?.repo?.path;
+    if (repo) return path.resolve(repo);
+  } catch { /* An unreadable binding: use the name. */ }
+  return path.join(path.dirname(homeOf(wikiPath)), repoNameOf(wikiPath));
+}
+
 export function buildBoard(wikiPath, { today = new Date().toISOString().slice(0, 10) } = {}) {
   if (!validDate(today)) throw new Error(`Invalid date: ${today}. Use YYYY-MM-DD.`);
   const tickets = [];
@@ -63,7 +76,7 @@ export function buildBoard(wikiPath, { today = new Date().toISOString().slice(0,
       key: ticket.key, item: oneLine(ticket.item), folder: entry.folder, sessionTitle: sessionTitle(ticket), title: oneLine(ticket.title), short: oneLine(ticket.short),
       state: ticket.state, emoji: STATE_EMOJI[ticket.state], phase: ticket.phase, workflow: ticket.workflow,
       openGate: openGate(ticket), gates: ticket.gates.filter((gate) => gate.need === 'required').map((gate) => ({ name: gate.name, status: gate.status, doc: gate.doc ?? '' })), next: oneLine(ticket.next), waitingOn: oneLine(ticket.waitingOn),
-      updated: ticket.updated, days: daysSince(ticket.updated, today), branch: ticket.branch, worktree: ticket.worktree,
+      updated: ticket.updated, days: daysSince(ticket.updated, today), branch: ticket.branch, worktree: ticket.worktree, resumeFolder: resumeFolderOf(wikiPath, ticket),
       changes: ticket.changes.map((change) => ({ url: change.url, state: change.state, label: change.label ?? '' })),
       waits: longWaits(ticket, today),
     });
@@ -74,6 +87,38 @@ export function buildBoard(wikiPath, { today = new Date().toISOString().slice(0,
   }));
   errors.sort((a, b) => byKey(a.folder, b.folder) || byKey(a.message, b.message));
   return { version: 1, generated: today, total: tickets.length, groups, errors };
+}
+
+const needsMeOf = (row) => row.board?.groups.find((group) => group.state === 'needs-me')?.tickets ?? [];
+
+/**
+ * The boards of this repository and of the sibling Forge folders (siblingWikis). It writes no file.
+ * { version, generated, repos: [{ repo, forge, wiki, current, board, error }], needsMe: [{ repo, ...ticket }], errors }.
+ * A repository that cannot be read has an error and no board.
+ */
+export function buildAllBoards(wikiPath, { today = new Date().toISOString().slice(0, 10) } = {}) {
+  if (!validDate(today)) throw new Error(`Invalid date: ${today}. Use YYYY-MM-DD.`);
+  const repos = siblingWikis(wikiPath).map((wiki, index) => {
+    const row = { repo: repoNameOf(wiki), forge: homeOf(wiki), wiki, current: index === 0, board: null, error: '' };
+    try { row.board = buildBoard(wiki, { today }); } catch (error) { row.error = oneLine(error.message); }
+    return row;
+  });
+  const needsMe = repos.flatMap((row) => needsMeOf(row).map((ticket) => ({ repo: row.repo, ...ticket })));
+  const errors = repos.filter((row) => row.error).map((row) => ({ repo: row.repo, message: row.error }));
+  return { version: 1, generated: today, repos, needsMe, errors };
+}
+
+/** The lines of `board --all`: the 🟡 count of each repository, then one block for each repository. */
+export function renderAllBoards(all) {
+  const lines = [`🟡 ${all.repos.map((row) => `${row.repo} ${needsMeOf(row).length}`).join(' · ')}`];
+  for (const row of all.repos) {
+    lines.push('', `${row.repo}${row.current ? ' (this repository)' : ''}`);
+    if (row.error) { lines.push(`  read error: ${row.error}`); continue; }
+    lines.push(`  ${row.board.groups.map((group) => `${group.emoji} ${group.label} ${group.tickets.length}`).join(' · ')}`);
+    for (const ticket of needsMeOf(row)) lines.push(`  ${ticket.key} ${ticket.openGate ? `${ticket.openGate.name} ${ticket.openGate.status}` : ticket.phase}: ${ticket.next}`.trimEnd());
+    for (const error of row.board.errors) lines.push(`  read error ${error.folder}: ${error.message}`);
+  }
+  return lines;
 }
 
 const cell = (value) => oneLine(value).replace(/\\/g, '\\\\').replace(/\|/g, '\\|') || ' ';

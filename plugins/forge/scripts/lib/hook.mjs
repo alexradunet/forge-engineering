@@ -13,6 +13,8 @@ import { loadConfig } from './config.mjs';
 import { archiveDir, rawDir } from './layout.mjs';
 import { resolve, samePath } from './repo.mjs';
 import { ownTurn } from './own-turn.mjs';
+import { pluginRoot } from './plugin-root.mjs';
+import { refreshShim } from './statusline.mjs';
 import { STATE_EMOJI, nowCard, sessionTitle } from './ticket.mjs';
 import { LOCAL_PREFIX, NOT_KEYS, listTickets } from './tickets.mjs';
 
@@ -500,6 +502,10 @@ export function sessionEnd(event, { env = process.env, host = 'copilot-cli' } = 
 export function sessionStart(event, { cli, env = process.env, host = 'copilot-cli', part = 1 } = {}) {
   const { body, title, where } = buildContext(event, { cli, env, host });
   if (where?.wiki.exists) recordRulesStart(where, event.session);
+  // Claude Code part 1: keep the status line shim of the plugin data folder on the current plugin root. It never creates the shim.
+  if (host === 'claude' && part === 1 && env.CLAUDE_PLUGIN_DATA) {
+    try { refreshShim(env.CLAUDE_PLUGIN_DATA, pluginRoot); } catch { /* The hook never blocks a session. */ }
+  }
   if (!body) return {};
   if (host !== 'claude') return { additionalContext: `${body}\n\n${END_MARKER}` };
   const text = claudeParts(body, `node "${cli}"`)[part - 1];
