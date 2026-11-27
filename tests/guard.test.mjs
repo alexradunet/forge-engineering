@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -160,7 +160,7 @@ test('shipActions finds each push and each change request command, with its fold
   assert.deepEqual(shipActions('gh pr create -t T', base, []), [], 'Without a trusted config there is no change command.');
   assert.deepEqual(shipActions('git -C ../wt push', base, []), [{ kind: 'push', cwd: path.resolve(base, '../wt'), refs: [], all: false, sources: ['HEAD'], deletes: false }]);
   assert.deepEqual(shipActions('cd sub/dir && git push; cd .. && gh pr create', base, changes), [
-    { kind: 'push', cwd: path.resolve(base, 'sub/dir'), refs: [], all: false, sources: ['HEAD'], deletes: false }, { kind: 'change', cwd: path.resolve(base, 'sub') },
+    { kind: 'push', cwd: path.resolve(base, 'sub/dir'), refs: [], all: false, sources: ['HEAD'], deletes: false }, { kind: 'change', cwd: path.resolve(base, 'sub'), words: ['gh', 'pr', 'create'] },
   ]);
   // A push names its branches: the first plain word is the remote, and each other word is a refspec.
   const targets = (line) => shipActions(line, base, []).map(({ refs, all }) => ({ refs, all }));
@@ -237,7 +237,7 @@ test('the guard finds the ticket from the folder of the command, and it ignores 
   assert.equal(run(s.app, 'git push'), null, 'The main checkout on the base branch has no ticket.');
   assert.equal(run(s.wiki, 'git push'), null, 'The wiki is not a ticket worktree.');
   assert.equal(run(os.tmpdir(), 'git push'), null, 'A folder outside a repository.');
-  assert.equal(run(s.worktree, 'gh pr create -t T'), null, 'Without a trusted config, only git push is a ship action.');
+  assert.equal(run(s.worktree, 'gh pr create -t T')?.decision, 'deny', 'Without a trusted config, the shipped profile config still names the change command (L-2).');
   assert.equal(preTool(null, { env }), null);
   rmSync(path.join(s.root, 'app.forge'), { recursive: true, force: true });
   assert.equal(run(s.worktree, 'git push'), null, 'No wiki, no ticket.');
@@ -383,7 +383,7 @@ test('a write in a ticket worktree gets ask, and the reason names the ticket, th
   }
   assert.equal(run(s.app, `cd "${s.worktree}" && ${comment}`).decision, 'ask', 'A cd into the ticket worktree also asks.');
   const plain = setup(t);
-  assert.equal(run(plain.worktree, comment), null, 'Without a trusted config there is no write command.');
+  assert.equal(run(plain.worktree, comment)?.decision, 'ask', 'Without a trusted config the shipped profile config still names the write command (L-2).');
 });
 
 test('a new change request asks after its gates pass, and a deny wins over an ask', (t) => {
@@ -405,10 +405,14 @@ test('a new change request asks after its gates pass, and a deny wins over an as
   assert.equal(run(asks.worktree, 'gh issue comment 7 -F b.md').decision, 'ask', 'The ask mode changes only the ship verdict.');
 });
 
+/** The send text of a draft of the tests, and the same text in a file outside the ticket folder (the body file of the command). */
+const SEND_TEXT = 'APP-7 T\n\nThe text that goes out.\n';
+
 /** Puts outbox drafts (name: target) into the Shippable? manifest, and records the new manifest hash in the README. */
 function approveDrafts(s, drafts, { listed = Object.keys(drafts) } = {}) {
   mkdirSync(path.join(s.dir, 'outbox'), { recursive: true });
-  for (const [name, target] of Object.entries(drafts)) writeFileSync(path.join(s.dir, 'outbox', name), `---\nstatus: draft\ntarget: ${target}\n---\n# Title\n\nText\n`);
+  for (const [name, target] of Object.entries(drafts)) writeFileSync(path.join(s.dir, 'outbox', name), `---\nstatus: draft\ntarget: ${target}\n---\n# Title\n\nWhy now: a reason\n\n<!-- send: start -->\n${SEND_TEXT}<!-- send: end -->\n\n## Why this wording\n\nBecause.\n`);
+  writeFileSync(path.join(s.root, 'send-body.md'), SEND_TEXT);
   const documents = ['review.md', ...listed.map((name) => `outbox/${name}`)].map((doc) => ({ path: doc, sha256: sha256(readFileSync(path.join(s.dir, ...doc.split('/')))) }));
   const bytes = JSON.stringify({ version: 1, gate: 'Shippable?', documents, ...(s.binding ? { code: s.binding } : {}) });
   writeFileSync(path.join(s.dir, 'approvals', 'shippable-001.json'), bytes);
@@ -416,7 +420,8 @@ function approveDrafts(s, drafts, { listed = Object.keys(drafts) } = {}) {
 }
 
 test('the approval of the Shippable? set that holds the one change draft is the yes for a new change request', (t) => {
-  const create = 'gh pr create -R a/b -t "APP-7 T" -F outbox/pr.draft.md';
+  // The body option names the approved draft by its path (L-2: a relative path would resolve from the folder of the command).
+  const create = (s) => `gh pr create -R a/b -t "APP-7 T" -F ${path.join(s.root, 'send-body.md')}`;
   const ready = () => {
     const s = setup(t, { approved: ['Planned?', 'Shippable?'] });
     trustConfig(s);
@@ -424,35 +429,35 @@ test('the approval of the Shippable? set that holds the one change draft is the 
   };
   const s = ready();
   approveDrafts(s, { 'pr.draft.md': 'change' });
-  assert.equal(run(s.worktree, create), null);
-  assert.equal(preTool({ cwd: s.worktree, command: create, mode: 'bypassPermissions' }, { env }), null, 'No verdict, also with no prompt.');
+  assert.equal(run(s.worktree, create(s)), null);
+  assert.equal(preTool({ cwd: s.worktree, command: create(s), mode: 'bypassPermissions' }, { env }), null, 'No verdict, also with no prompt.');
   assert.equal(run(s.worktree, 'git push -u origin users/a/APP-7-doc-import'), null);
   for (const command of ['gh issue comment 7 -R a/b -F b.md', 'gh issue close 7', 'gh workflow run ci.yml', 'gh api -X POST repos/a/b/pulls/1/comments/2/replies -F body=@b.md']) {
     assert.equal(run(s.worktree, command).decision, 'ask', `Another write keeps its ask: ${command}`);
   }
   // The draft changes after the approval: the gate is stale.
   writeFileSync(path.join(s.dir, 'outbox', 'pr.draft.md'), '---\nstatus: draft\ntarget: change\n---\n# Title\n\nOther text\n');
-  assert.equal(run(s.worktree, create).decision, 'deny');
+  assert.equal(run(s.worktree, create(s)).decision, 'deny');
   // A draft that is not in the manifest is no approval.
   const none = ready();
-  assert.equal(run(none.worktree, create).decision, 'ask');
-  assert.equal(preTool({ cwd: none.worktree, command: create, mode: 'bypassPermissions' }, { env }).decision, 'deny');
+  assert.equal(run(none.worktree, create(none)).decision, 'ask');
+  assert.equal(preTool({ cwd: none.worktree, command: create(none), mode: 'bypassPermissions' }, { env }).decision, 'deny');
   const unlisted = ready();
   approveDrafts(unlisted, { 'pr.draft.md': 'change' }, { listed: [] });
-  assert.equal(run(unlisted.worktree, create).decision, 'ask');
+  assert.equal(run(unlisted.worktree, create(unlisted)).decision, 'ask');
   // Two change drafts, a draft of another target, and an existing change request all keep the ask.
   const two = ready();
   approveDrafts(two, { 'pr.draft.md': 'change', 'pr-2.draft.md': 'change' });
-  assert.equal(run(two.worktree, create).decision, 'ask');
+  assert.equal(run(two.worktree, create(two)).decision, 'ask');
   const other = ready();
   approveDrafts(other, { 'item-comment.draft.md': 'tracker-comment' });
-  assert.equal(run(other.worktree, create).decision, 'ask');
+  assert.equal(run(other.worktree, create(other)).decision, 'ask');
   const open = ready();
   approveDrafts(open, { 'pr.draft.md': 'change' });
   writeFileSync(open.readme, readFileSync(open.readme, 'utf8').replace('changes: []', 'changes:\n  - { url: "https://github.com/a/b/pull/9", state: open }'));
-  assert.equal(run(open.worktree, create).decision, 'ask');
+  assert.equal(run(open.worktree, create(open)).decision, 'ask');
   writeFileSync(open.readme, readFileSync(open.readme, 'utf8').replace('state: open }', 'state: merged }'));
-  assert.equal(run(open.worktree, create), null, 'A merged change request does not count.');
+  assert.equal(run(open.worktree, create(open)), null, 'A merged change request does not count.');
 });
 
 test('in bypassPermissions the host shows no prompt, so each ask becomes a deny', (t) => {
@@ -730,4 +735,394 @@ test('M3: one deadline for the whole call: an over deadline denies with a clear 
   assert.equal(preTool({ cwd: s.worktree, command: push }, { env, deadlineMs: 0 }).decision, 'deny');
   assert.match(preTool({ cwd: s.worktree, command: push }, { env, deadlineMs: 0 }).reason, /ran out of time/);
   assert.equal(preTool({ cwd: s.worktree, command: push }, { env }), null, 'The default budget is enough.');
+});
+
+// L-2 step 1: the parser reads shell keywords, wrapper options, substitutions in quotes, folders, and hidden approval forms.
+const HIDDEN = [
+  'if true; then CMD; fi', 'while true; do CMD; break; done', 'for b in a; do CMD; done', '{ CMD || true; }', '! CMD', 'if ! CMD; then echo x; fi',
+  'timeout 120 CMD', 'timeout -s KILL 30 CMD', 'timeout --signal=KILL -k 5 30 CMD', 'nice -n 5 CMD', 'stdbuf -o0 CMD', 'stdbuf -o 0 -e L CMD',
+  'env -i CMD', 'env -i -u NAME CMD', 'env -u NAME -C /x CMD', 'sudo -u x CMD', 'sudo -u x -g y CMD', 'command -p CMD', 'exec -a name CMD', 'time -p CMD',
+  'nohup CMD', 'sudo -- CMD', 'sudo env -i timeout 5 nice -n 1 CMD', 'env -S "CMD"',
+  'out="$(CMD)"', 'echo "x $(CMD) y"', 'echo "`CMD`"', 'echo "a $(echo "$(CMD)")"',
+];
+
+test('L-2: a push is found behind shell keywords, wrapper options, and substitutions in double quotes', () => {
+  const base = path.resolve('/base');
+  for (const form of HIDDEN) {
+    const line = form.replace('CMD', 'git push');
+    assert.deepEqual(shipActions(line, base, []).map((action) => action.kind), ['push'], line);
+  }
+});
+
+test('L-2: a change command and a write command are found in the same hidden forms', () => {
+  const base = path.resolve('/base');
+  const texts = Object.fromEntries(['tracker', 'repo', 'ci'].map((kind) => [kind, readFileSync(path.join(templates, `${kind}.md`), 'utf8')]));
+  const options = { changes: changeCommands(texts.repo), writes: writeCommands(texts) };
+  for (const form of HIDDEN) {
+    assert.deepEqual(guardActions(form.replace('CMD', 'gh pr create -t T'), base, options).map((action) => action.kind), ['change'], form);
+    assert.deepEqual(guardActions(form.replace('CMD', 'gh issue comment 7 -F b.md'), base, options).map((action) => action.kind), ['write'], form);
+  }
+});
+
+test('L-2: an approval command is found in the hidden forms, and a text scan finds the forms that no word parser reads', () => {
+  const cwd = path.resolve('/base');
+  for (const form of HIDDEN) {
+    const line = form.replace('CMD', 'node /p/forge.mjs gate-approve L-2 Planned? --answer approve');
+    assert.deepEqual(guardActions(line, cwd).map((action) => action.kind), ['approve'], line);
+  }
+  const asks = [
+    'F=/x/forge.mjs; node $F gate-approve L-2 Planned? --answer approve',
+    'node "$F" trust approve config/repo.md=abcdef123456',
+    'npx forge gate-approve L-2 Planned?',
+    'bun $F gate-approve',
+    `node -e "import('/x/plugins/forge/scripts/lib/approve.mjs').then((m) => m.approveGate())"`,
+    `node --eval "import('/x/approve.mjs')"`,
+    `node -p "require('/x/approve.mjs')"`,
+    'node --import /x/lib/approve.mjs a.js',
+    'node -r /x/approve.mjs a.js',
+    `bash -c 'node "$F" gate-approve L-2 Planned?'`,
+    `sh -c "node forge.mjs trust approve x=1"`,
+    `bash -lc "node /x/approve.mjs"`,
+    "node - <<'EOF'\nimport('/x/approve.mjs');\nEOF",
+    "node <<EOF\nawait import('/x/approve.mjs')\nEOF",
+    "bash <<'EOF'\nF=/x/forge.mjs; node $F gate-approve L-2 Planned?\nEOF",
+    'timeout 5 node $F gate-approve',
+  ];
+  for (const line of asks) assert.deepEqual(guardActions(line, cwd).map((action) => action.kind), ['approve'], line);
+  const none = [
+    'grep gate-approve x', 'cat approve.mjs', 'echo "node forge.mjs gate-approve"', 'node --check plugins/forge/scripts/lib/approve.mjs',
+    'node --test', 'node --test tests/approve.test.mjs', 'node a.js', 'if true; then git log; fi', 'timeout 5 gh pr view 5',
+    'node /p/forge.mjs gate-approve L-2 Planned? --dry-run', 'node $F gate-approve --help', 'npx forge lint', 'bash -c "ls approve"',
+    'node -e "console.log(1)"', "cat <<EOF\nnode forge.mjs gate-approve\nEOF", 'sudo -u x ls', 'timeout 5 sleep 1', 'env -i ls', 'ls "$(pwd)"',
+  ];
+  for (const line of none) assert.deepEqual(guardActions(line, cwd).map((action) => action.kind), [], line);
+});
+
+test('L-2: a text scan hit has the verdict of an approval: ask, and deny in a mode with no prompt', (t) => {
+  const s = setup(t);
+  const line = 'F=/x/forge.mjs; node $F gate-approve L-2 Planned?';
+  assert.equal(run(s.worktree, line).decision, 'ask');
+  assert.equal(preTool({ cwd: s.worktree, command: line, mode: 'bypassPermissions' }, { env }).decision, 'deny');
+  assert.equal(run(os.tmpdir(), 'timeout 30 node /p/forge.mjs gate-approve L-2 Planned? --answer approve').decision, 'ask');
+  assert.equal(run(s.worktree, 'grep gate-approve x'), null);
+  assert.equal(run(s.worktree, 'node --check plugins/forge/scripts/lib/approve.mjs'), null);
+  assert.equal(run(s.worktree, 'if true; then git log; fi'), null);
+});
+
+test('L-2: a push in a hidden form is denied in a ticket worktree with no approvals', (t) => {
+  const s = setup(t);
+  for (const form of HIDDEN) {
+    const line = form.replace('CMD', 'git push');
+    assert.equal(run(s.worktree, line)?.decision, 'deny', line);
+  }
+});
+
+test('L-2: a substitution in a heredoc with an unquoted delimiter gives commands, and a quoted delimiter keeps the body as data', () => {
+  const base = path.resolve('/base');
+  const kinds = (line) => shipActions(line, base, []).map((action) => action.kind);
+  assert.deepEqual(kinds('cat <<EOF\nresult: $(git push)\nEOF'), ['push']);
+  assert.deepEqual(kinds('cat <<EOF\nresult: `git push`\nEOF'), ['push']);
+  assert.deepEqual(kinds('cat <<-EOF\n\t$(git push)\n\tEOF'), ['push']);
+  assert.deepEqual(kinds('cat > a.md <<EOF\nline $(echo $(git push))\nEOF\necho done'), ['push']);
+  assert.deepEqual(kinds("cat <<'EOF'\n$(git push)\nEOF"), []);
+  assert.deepEqual(kinds('cat <<"EOF"\n$(git push)\n`git push`\nEOF'), []);
+  assert.deepEqual(kinds('cat <<\\EOF\n$(git push)\nEOF'), []);
+  assert.deepEqual(kinds('cat <<EOF\nescaped \\$(git push) and \\`git push\\`\nEOF'), [], 'An escaped substitution is text.');
+  assert.deepEqual(kinds('cat <<EOF\nplain git push text\nEOF'), []);
+  assert.deepEqual(shellCommands("cat <<'EOF'\n$(git push)\nEOF\ngit status"), [['cat'], ['git', 'status']]);
+  assert.deepEqual(shellCommands('echo "$(git push)"'), [['echo', '$(git push)'], ['git', 'push']], 'The quoted word stays, and the substitution gives its command.');
+});
+
+test('L-2 review M6: the text scan of gate-approve reads the subcommand position of a known script', () => {
+  const cwd = path.resolve('/base');
+  const kinds = (line) => guardActions(line, cwd).map((action) => action.kind);
+  for (const line of ['node forge.mjs wiki search gate-approve', 'node --test --test-name-pattern "gate-approve" t.mjs', 'node x.mjs trust status approve', 'node x.mjs gate-approve', 'bun run gate-approve', 'npx forge wiki search gate-approve', 'npx -y x trust status approve']) {
+    assert.deepEqual(kinds(line), [], line);
+  }
+  for (const line of ['F=/x/forge.mjs; node $F gate-approve L-2 Planned?', 'node $F trust x approve', 'node `pwd`/forge.mjs gate-approve', 'npx forge gate-approve L-2 Planned?', 'npx forge trust approve x=1', 'node /p/scripts/forge.mjs --base x gate-approve L-2 Planned?']) {
+    assert.deepEqual(kinds(line), ['approve'], line);
+  }
+});
+
+test('L-2 review M3: a cd in a pipeline or before & does not move the folder, and a cd after && or || gives both folders', () => {
+  const base = path.resolve('/base');
+  const one = path.resolve('/one');
+  const two = path.resolve('/two');
+  const cwds = (line) => shipActions(line, base, []).map((action) => action.cwd);
+  assert.deepEqual(cwds('cd /one | git push'), [base]);
+  assert.deepEqual(cwds('echo x | cd /one; git push'), [base]);
+  assert.deepEqual(cwds('cd /one & git push'), [base]);
+  assert.deepEqual(cwds('cd /one; git push'), [one]);
+  assert.deepEqual(cwds('cd /one && git push'), [one]);
+  assert.deepEqual(cwds('cd /one 2>&1 && git push'), [one]);
+  assert.deepEqual(cwds('false && cd /one; git push'), [base, one]);
+  assert.deepEqual(cwds('false || cd /one; git push'), [base, one]);
+  assert.deepEqual(cwds('cd /one || git push'), [base, one]);
+  assert.deepEqual(cwds('cd /one && cd /two && git push'), [one, two]);
+  assert.deepEqual(cwds('(cd /one; git push); git push'), [one, base]);
+  assert.deepEqual(cwds('true && (cd /one; git push)'), [one]);
+  assert.deepEqual(cwds('false && cd /one; git push; cd /two; git push'), [base, one, two]);
+});
+
+test('L-2 review M3: a push after a cd in a pipeline is checked in the session folder', (t) => {
+  const s = setup(t);
+  trustConfig(s);
+  assert.equal(run(s.worktree, `cd ${s.app} | git push`)?.decision, 'deny');
+  assert.equal(run(s.worktree, `cd ${s.app} & git push`)?.decision, 'deny');
+  assert.equal(run(s.worktree, `false && cd ${s.app}; git push`)?.decision, 'deny');
+  assert.equal(run(s.worktree, `cd ${s.app} && git push`), null, 'The main checkout is no ticket folder.');
+});
+
+test('L-2: a cd inside parentheses does not leak after the closing parenthesis', () => {
+  const base = path.resolve('/base');
+  const cwds = (line) => shipActions(line, base, []).map((action) => action.cwd);
+  assert.deepEqual(cwds('(cd /tmp/x && ls); git push'), [base]);
+  assert.deepEqual(cwds('(cd /tmp/x && git push); git push'), [path.resolve('/tmp/x'), base]);
+  assert.deepEqual(cwds('cd /one && (cd /two; ls) && git push'), [path.resolve('/one')]);
+  assert.deepEqual(cwds('echo $(cd /tmp/x; pwd); git push'), [base]);
+  assert.deepEqual(cwds('echo "$(cd /tmp/x; pwd)"; git push'), [base]);
+  assert.deepEqual(cwds('cd /one; git push'), [path.resolve('/one')]);
+  assert.deepEqual(cwds('cd /other/repo && git push'), [path.resolve('/other/repo')], 'A real folder keeps its own folder.');
+});
+
+test('L-2: cd and git -C expand ~ with HOME, then USERPROFILE, then the home of the user, and a target that cannot be known has no folder', () => {
+  const base = path.resolve('/base');
+  const home = path.resolve('/home/u');
+  const withEnv = (line, vars) => guardActions(line, base, { env: vars });
+  assert.deepEqual(withEnv('cd ~ && git push', { HOME: home }).map((a) => a.cwd), [home]);
+  assert.deepEqual(withEnv('cd ~/x && git push', { HOME: home }).map((a) => a.cwd), [path.join(home, 'x')]);
+  assert.deepEqual(withEnv('git -C ~/x push', { HOME: home }).map((a) => a.cwd), [path.join(home, 'x')]);
+  assert.deepEqual(withEnv('git -C ~ push', { HOME: home }).map((a) => a.cwd), [home]);
+  assert.deepEqual(withEnv('cd ~/x && git push', { USERPROFILE: home }).map((a) => a.cwd), [path.join(home, 'x')]);
+  assert.deepEqual(withEnv('cd ~/x && git push', { HOME: '', USERPROFILE: home }).map((a) => a.cwd), [path.join(home, 'x')]);
+  assert.deepEqual(withEnv('cd ~/x && git push', {}).map((a) => a.cwd), [path.join(os.homedir(), 'x')]);
+  assert.deepEqual(withEnv('cd && git push', { HOME: home }).map((a) => a.cwd), [home]);
+  assert.deepEqual(withEnv('cd /abs/dir && git push', { HOME: home }).map((a) => a.cwd), [path.resolve('/abs/dir')]);
+  for (const target of ['$HOME/x', '"$X"', '`pwd`', '$(pwd)', '~root/x', '-', '${HOME}']) {
+    const actions = withEnv(`cd ${target} && git push`, { HOME: home });
+    assert.deepEqual(actions.map((a) => [a.kind, a.cwd, a.unknown]), [['push', base, true]], target);
+  }
+  assert.deepEqual(withEnv('git -C $X push', { HOME: home }).map((a) => [a.cwd, a.unknown]), [[base, true]]);
+  assert.deepEqual(withEnv('cd $X; cd /abs && git push', { HOME: home }).map((a) => [a.cwd, a.unknown]), [[path.resolve('/abs'), undefined]], 'An absolute folder after an unknown one is known again.');
+  assert.deepEqual(withEnv('cd $X; cd sub && git push', { HOME: home }).map((a) => a.unknown), [true], 'A relative folder after an unknown one is unknown.');
+});
+
+test('L-2: G3a, G3b: a push after a cd to a folder that cannot be a ticket folder uses the ticket of the session folder', (t) => {
+  const s = setup(t);
+  assert.equal(run(s.worktree, 'cd ~/nowhere-forge-test && git push')?.decision, 'deny', 'G3a: the folder does not exist.');
+  assert.equal(run(s.worktree, 'cd $HOME/x && git push')?.decision, 'deny', 'G3b: the folder is unknown.');
+  assert.equal(run(s.worktree, 'cd "$(mktemp -d)" && git push')?.decision, 'deny');
+  assert.equal(run(s.worktree, 'git -C $X push')?.decision, 'deny');
+  // A change request command follows the same rule.
+  trustConfig(s);
+  assert.equal(run(s.worktree, 'cd $HOME/x && gh pr create -t T')?.decision, 'deny');
+  // A push in another real repository keeps its folder, so it is not a step of this ticket.
+  const other = path.join(s.root, 'other');
+  mkdirSync(other);
+  git(other, 'init', '-q', '-b', 'main');
+  assert.equal(run(s.worktree, `cd ${other} && git push`), null);
+  assert.equal(run(s.worktree, `(cd ${other}; ls); git push`)?.decision, 'deny', 'The cd in parentheses does not leak.');
+  // `~` uses the HOME of the event env.
+  const home = path.join(s.root, 'home');
+  mkdirSync(path.join(home, 'x'), { recursive: true });
+  git(path.join(home, 'x'), 'init', '-q', '-b', 'main');
+  assert.equal(preTool({ cwd: s.worktree, command: 'git -C ~/x push' }, { env: { ...env, HOME: home } }), null);
+  assert.equal(preTool({ cwd: s.worktree, command: 'cd ~/x && git push' }, { env: { ...env, HOME: home } }), null);
+});
+
+// L-2, step 2: the verdicts of the guard that hold in a fixture (the probes of the ticket: G4, G6, U5, and G1).
+const plant = (dir, repoPath) => {
+  mkdirSync(path.join(dir, 'forge'), { recursive: true });
+  writeFileSync(path.join(dir, 'forge', 'repo.json'), JSON.stringify({ repo: { path: repoPath } }));
+};
+
+test('L-2: G4a, G4b, G4c: a planted forge/repo.json is no wiki binding, and a push is denied', (t) => {
+  const a = setup(t);
+  plant(a.worktree, path.join(a.root, 'elsewhere'));
+  assert.equal(run(a.worktree, 'git push')?.decision, 'deny', 'G4a: the file names another folder.');
+  const b = setup(t);
+  plant(b.worktree, b.app);
+  assert.equal(run(b.worktree, 'git push')?.decision, 'deny', 'G4b: the file names the repository itself.');
+  const c = setup(t);
+  plant(c.app, path.join(c.root, 'elsewhere'));
+  assert.equal(run(c.worktree, 'git push')?.decision, 'deny', 'G4c: the file is in the main checkout.');
+});
+
+test('L-2: resolve takes an own binding only in a Forge layout or with --wiki', (t) => {
+  const s = setup(t);
+  const elsewhere = path.join(s.root, 'elsewhere');
+  mkdirSync(elsewhere);
+  plant(s.worktree, elsewhere);
+  const planted = resolve({ cwd: s.worktree, env });
+  assert.equal(planted.wiki.path, path.join(s.root, 'app.forge', 'wiki'), 'The planted file is ignored.');
+  assert.equal(planted.repo.path, s.app);
+  const named = resolve({ cwd: s.worktree, wiki: s.worktree, env });
+  assert.equal(named.wiki.path, s.worktree, '--wiki names the folder, so its binding counts.');
+  assert.equal(named.repo.path, elsewhere);
+});
+
+test('L-2: a push in a work tree that Forge cannot resolve is denied, and a wiki-mismatch keeps its own text', (t) => {
+  const s = setup(t);
+  git(s.app, 'remote', 'add', 'origin', 'https://example.test/a/app.git');
+  mkdirSync(path.join(s.wiki, 'forge'), { recursive: true });
+  writeFileSync(path.join(s.wiki, 'forge', 'repo.json'), JSON.stringify({ repo: { path: s.app, remote: 'https://example.test/other/app' } }));
+  const verdict = run(s.worktree, 'git push');
+  assert.equal(verdict?.decision, 'deny');
+  assert.match(verdict.reason, /belongs to https:\/\/example\.test\/other\/app/, 'The error of resolve is the text.');
+  assert.equal(run(s.worktree, 'git status'), null, 'Only a push is stopped.');
+  // A folder that is not a Git work tree gets no verdict.
+  assert.equal(run(s.root, 'git push'), null);
+});
+
+/** A repository where Shippable? is approved with one `target: change` draft, and the config is trusted. `draft` is the absolute path of the draft. */
+function readyToOpen(t, profile) {
+  const s = setup(t, { approved: ['Planned?', 'Shippable?'] });
+  if (profile) {
+    const where = resolve({ cwd: s.app, env });
+    const { configDir } = seed(where, templates, { profile, force: true });
+    setValues(configDir, ['repo.baseBranch=main']);
+    approve(where, trustStatus(where, { env }).files.filter((f) => f.rel.startsWith('config/')).map((f) => `${f.rel}=${f.sha.slice(0, 12)}`), { env });
+  } else trustConfig(s);
+  approveDrafts(s, { 'pr.draft.md': 'change' });
+  return { ...s, draft: path.join(s.dir, 'outbox', 'pr.draft.md'), body: path.join(s.root, 'send-body.md') };
+}
+
+test('L-2: G6a, G6b, G6c, G6d: a new change request is no question only when its body option names a file with the send text of the approved draft', (t) => {
+  const s = readyToOpen(t);
+  const open = (body) => run(s.worktree, `gh pr create -R a/b -t "APP-7 T" ${body}`);
+  assert.equal(open('-b "other text"')?.decision, 'ask', 'G6a: another body, inline.');
+  assert.equal(open('--body-file /tmp/other.md')?.decision, 'ask', 'G6b: another file.');
+  assert.equal(open(`-F ${s.body}`), null, 'G6c: a file with the send text, by its absolute path.');
+  assert.equal(open('--fill')?.decision, 'ask', 'G6d: no body option.');
+  assert.equal(open(`--body-file ${s.body}`), null);
+  assert.equal(open(`--body-file=${s.body}`), null);
+  assert.equal(open(`-F${s.body}`), null);
+  assert.equal(open(`-F "$(cat ${s.body})"`), null, 'The form $(cat <path>) of the file.');
+  assert.equal(open(`-F ${s.draft}`)?.decision, 'ask', 'The approved draft file itself holds the frontmatter: no match.');
+  assert.equal(open(`-F ${s.body} -b "other text"`)?.decision, 'ask', 'One more body option that is not the file.');
+  assert.equal(open(`-F ${s.body} -F ${s.body}`)?.decision, 'ask', 'Two body options.');
+  assert.equal(open(`-F ${s.body} --body-file ${s.body}`)?.decision, 'ask', 'Two body options.');
+  assert.equal(open('-F -')?.decision, 'ask', 'A body from stdin.');
+  assert.equal(open(`-F ${s.body}.other`)?.decision, 'ask', 'A file that cannot be read.');
+  assert.equal(open(`-F "$(cat ${s.body}; echo more)"`)?.decision, 'ask');
+  assert.equal(open('')?.decision, 'ask', 'No body option at all.');
+  assert.equal(open(`-F ${s.root}`)?.decision, 'ask', 'A folder is no regular file.');
+  // A relative path resolves from the folder of the command, and a link to the file counts as the file (a real path compare).
+  assert.equal(run(s.worktree, 'gh pr create -R a/b -t T -F send-body.md')?.decision, 'ask', 'The worktree has no such file.');
+  assert.equal(run(s.worktree, `cd ${s.root} && gh pr create -R a/b -t T -F send-body.md`), null);
+  const link = path.join(s.root, 'link.md');
+  symlinkSync(s.body, link);
+  assert.equal(open(`-F ${link}`), null);
+  assert.equal(preTool({ cwd: s.worktree, command: `gh pr create -R a/b -t T -F ${s.body}`, mode: 'bypassPermissions' }, { env }), null, 'No verdict, also with no prompt.');
+  // The content is compared: the line ends and the blank lines at the ends do not count, any other change does.
+  writeFileSync(s.body, `\r\n${SEND_TEXT.replace(/\n/g, '\r\n')}\r\n\r\n`);
+  assert.equal(open(`-F ${s.body}`), null, 'CRLF and blank lines at the ends.');
+  writeFileSync(s.body, `${SEND_TEXT}Extra line\n`);
+  assert.equal(open(`-F ${s.body}`)?.decision, 'ask', 'One more line.');
+  writeFileSync(s.body, SEND_TEXT.replace('goes out', 'goes out now'));
+  assert.equal(open(`-F ${s.body}`)?.decision, 'ask', 'Another word.');
+  writeFileSync(s.body, 'x'.repeat(300 * 1024));
+  assert.equal(open(`-F ${s.body}`)?.decision, 'ask', 'A file over the size cap.');
+});
+
+test('L-2 review M4: a body option of the profile list next to the send text gives the ask', (t) => {
+  const s = readyToOpen(t);
+  const open = (body) => run(s.worktree, `gh pr create -R a/b -t "APP-7 T" ${body}`);
+  for (const other of ['--recover x', '--recover=x', '-e', '--editor', '-w', '--fill', '--fill-first', '--fill-verbose', '-T x', '--template x', '--body x', '-b x']) {
+    assert.equal(open(`-F ${s.body} ${other}`)?.decision, 'ask', other);
+  }
+  const forgejo = readyToOpen(t, 'forgejo');
+  const tea = (body) => run(forgejo.worktree, `tea pulls create --base main --head users/a/APP-7-doc-import --title "APP-7 T" ${body}`);
+  assert.equal(tea(`--description "$(cat ${forgejo.body})" -d other`)?.decision, 'ask');
+  assert.equal(tea(`--description "$(cat ${forgejo.body})" -dother`)?.decision, 'ask');
+});
+
+test('L-2: the shipped Forgejo repo.open-change command with the send text gets no question, and another body asks', (t) => {
+  const s = readyToOpen(t, 'forgejo');
+  const open = (body) => run(s.worktree, `tea pulls create --base main --head users/a/APP-7-doc-import --title "APP-7 T" ${body}`);
+  assert.equal(open(`--description "$(cat ${s.body})"`), null);
+  assert.equal(open(`--description ${s.body}`), null);
+  assert.equal(open(`--description "$(cat ${s.draft})"`)?.decision, 'ask', 'The draft file itself is no match.');
+  assert.equal(open('--description "other text"')?.decision, 'ask');
+  assert.equal(open(`--description "$(cat /tmp/other.md)"`)?.decision, 'ask');
+  assert.equal(open('')?.decision, 'ask');
+});
+
+test('L-2: U5a, U5b: an untrusted config still gives the write ask of the shipped profile', (t) => {
+  const s = setup(t);
+  assert.equal(run(s.worktree, 'gh issue comment 7 --body x')?.decision, 'ask', 'U5a');
+  assert.equal(run(s.worktree, 'gh pr comment 7 --body x')?.decision, 'ask', 'U5b');
+  assert.equal(run(s.worktree, 'gh issue view 7'), null, 'A read gets no verdict.');
+  // The untrusted wiki text adds commands to the union.
+  const where = resolve({ cwd: s.app, env });
+  const { configDir } = seed(where, templates);
+  writeFileSync(path.join(configDir, 'tracker.md'), readFileSync(path.join(configDir, 'tracker.md'), 'utf8').replace('gh issue comment', 'zz issue comment'));
+  assert.equal(run(s.worktree, 'zz issue comment 7 --body x')?.decision, 'ask');
+  assert.equal(run(s.worktree, 'gh issue comment 7 --body x')?.decision, 'ask', 'The shipped command stays.');
+});
+
+test('L-2: guardActions gives the action kind never, with its verdict, before a write', () => {
+  const never = [{ words: ['gh', 'pr', 'merge'], verdict: 'deny' }, { words: ['gh', 'pr', 'review'], with: ['--approve', '-a'], verdict: 'deny' }, { words: ['tea', ['pulls', 'pr'], ['merge', 'm']], verdict: 'deny' }];
+  const kinds = (line) => guardActions(line, '/x', { never }).map((a) => [a.kind, a.verdict]);
+  assert.deepEqual(kinds('gh pr merge 5 --squash'), [['never', 'deny']]);
+  assert.deepEqual(kinds('timeout 5 gh pr -R a/b merge 5'), [['never', 'deny']]);
+  assert.deepEqual(kinds('gh pr review 5 --approve'), [['never', 'deny']]);
+  assert.deepEqual(kinds('gh pr review 5 --comment'), []);
+  assert.deepEqual(kinds('tea pr m 5'), [['never', 'deny']]);
+  assert.deepEqual(kinds('gh pr merge --help'), []);
+  assert.deepEqual(kinds('gh pr view 5'), []);
+});
+
+test('L-2 review H1: a with option also matches the form with a value and a letter in a short cluster', () => {
+  const never = [{ words: ['gh', 'pr', 'review'], with: ['--approve', '-a'], verdict: 'deny' }];
+  const kinds = (line) => guardActions(line, '/x', { never }).map((a) => a.kind);
+  for (const line of ['gh pr review 5 -a', 'gh pr review 5 -ab x', 'gh pr review 5 -ba x', 'gh pr review 5 -ab=x', 'gh pr review 5 --approve=true', 'gh pr review 5 -b x --approve']) assert.deepEqual(kinds(line), ['never'], line);
+  for (const line of ['gh pr review 5 --comment -b x', 'gh pr review 5 -b x', 'gh pr review 5 --body x', 'gh pr review 5 --approved-by x', 'gh pr review 5 --comment']) assert.deepEqual(kinds(line), [], line);
+});
+
+test('L-2 review M5: the Forgejo never list denies tea pulls reject', (t) => {
+  const s = setup(t);
+  trustConfig(s);
+  for (const command of ['tea pulls reject 5 "no"', 'tea pr reject 5 x', 'tea pull reject 5 x']) assert.equal(run(s.worktree, command)?.decision, 'deny', command);
+});
+
+test('L-2: the never words: merge and approve are denied, close asks, in a ticket folder, with gateGuard off, and after a cd', (t) => {
+  const s = setup(t);
+  trustConfig(s);
+  for (const command of ['gh pr merge 5 --squash', 'gh pr review 5 --approve', 'gh pr review 5 -a', 'gh pr -R a/b merge 5', 'timeout 5 gh pr merge 5', 'if true; then gh pr merge 5; fi']) {
+    const verdict = run(s.worktree, command);
+    assert.equal(verdict?.decision, 'deny', command);
+    assert.match(verdict.reason, /web page/, 'The reason says that the user does it in the web page.');
+  }
+  for (const command of ['tea pulls merge 5', 'tea pull m 5', 'tea pr merge 5', 'tea pulls approve 5', 'tea pr lgtm 5', 'tea pull a 5']) {
+    assert.equal(run(s.worktree, command)?.decision, 'deny', command);
+  }
+  assert.equal(run(s.worktree, 'gh pr close 5')?.decision, 'ask');
+  assert.equal(run(s.worktree, 'tea pulls close 5')?.decision, 'ask');
+  assert.equal(preTool({ cwd: s.worktree, command: 'gh pr close 5', mode: 'bypassPermissions' }, { env })?.decision, 'deny', 'No prompt: the ask is a deny.');
+  for (const command of ['gh pr view 5', 'gh pr review 5 --comment', 'gh pr list', 'tea pulls list', 'gh pr merge --help']) assert.equal(run(s.worktree, command), null, command);
+  assert.equal(run(s.worktree, 'cd / && gh pr merge 5')?.decision, 'deny', 'A cd out of the ticket folder does not help.');
+  assert.equal(run(s.app, 'gh pr merge 5'), null, 'The main checkout is no ticket folder.');
+  // A wiki that names another profile or an unknown one does not remove the list.
+  for (const profile of ['forgejo', 'nope']) {
+    const named = setup(t);
+    trustConfig(named);
+    writeFileSync(path.join(named.wiki, 'forge', 'repo.json'), JSON.stringify({ repo: { path: named.app }, profile }));
+    assert.equal(run(named.worktree, 'gh pr merge 5')?.decision, 'deny', profile);
+  }
+  // The verdict holds with gateGuard off, and with an untrusted config.
+  const off = setup(t);
+  trustConfig(off, ['policy.gateGuard=off']);
+  assert.equal(run(off.worktree, 'git push'), null, 'The guard is off for a push.');
+  assert.equal(run(off.worktree, 'gh pr merge 5')?.decision, 'deny');
+  const untrusted = setup(t);
+  assert.equal(run(untrusted.worktree, 'gh pr merge 5')?.decision, 'deny');
+});
+test('L-2: G1b, G1c: a gateGuard value that is not re-trusted keeps the push denied, and trust approve asks', (t) => {
+  const s = setup(t);
+  trustConfig(s);
+  const where = resolve({ cwd: s.app, env });
+  setValues(seed(where, templates).configDir, ['policy.gateGuard=off']);
+  assert.equal(run(s.worktree, 'git push')?.decision, 'deny', 'G1b');
+  assert.equal(run(s.worktree, `node ${cli} trust approve config/policy.md=abcdef123456`)?.decision, 'ask', 'G1c');
 });

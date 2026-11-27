@@ -6,8 +6,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, 
 import os from 'node:os';
 import path from 'node:path';
 import { buildBoard } from '../plugins/forge/scripts/lib/board.mjs';
-import { renderBoardPage } from '../plugins/forge/scripts/lib/board-page.mjs';
-import { markdown } from '../plugins/forge/scripts/lib/markdown.mjs';
+import { BOARD_SCRIPT, renderBoardPage } from '../plugins/forge/scripts/lib/board-page.mjs';
+import { markdown } from '../plugins/forge/scripts/lib/markdown.mjs';
 import { MERMAID_FILE, MERMAID_INTEGRITY, MERMAID_ROUTE, MERMAID_SHA256, MERMAID_VERSION, copyMermaid, mermaidPath, needsMermaid, readMermaid } from '../plugins/forge/scripts/lib/mermaid.mjs';
 import { UI_SCRIPT, UI_STYLE, buildNav } from '../plugins/forge/scripts/lib/ui.mjs';
 import { writeViews } from '../plugins/forge/scripts/lib/views.mjs';
@@ -305,4 +305,51 @@ test('the wiki page is built from the kit: the bar shape, a pixel title, the pro
   assert.match(renderWikiPage(buildWiki(empty)), /<div class="empty"><svg class="px"[^>]*>.*<\/svg><p>No wiki pages yet\. The wiki skill records a page, and it shows here\.<\/p><\/div>/);
   // The script has the Show all button.
   assert.match(WIKI_SCRIPT, /byId\('show-all'\)\.addEventListener\('click', showAll\)/);
+});
+
+// No kept piece of HTML (a link) may land inside the href of another link.
+const HREF_WITH_TAG = /href="[^"]*<a\b/;
+
+test('a bare URL stops at a kept link, so no HTML lands in an href', (t) => {
+  const attack = 'https://a/b[x](onmouseover=alert(1))';
+  const html = markdown(attack);
+  assert.doesNotMatch(html, HREF_WITH_TAG);
+  assert.match(html, /<a href="https:\/\/a\/b"[^>]*>https:\/\/a\/b<\/a>/, 'the URL before the mark is still a link');
+  // The same on a wiki page, and the control: a URL, then a link, then a word give 2 correct links.
+  const w = wiki(t);
+  w.put('app/attack.md', page('Attack', `See ${attack} now. And see \`code\` https://a/b\`x\` end.`));
+  const wikiHtml = renderWikiPage(buildWiki(w.root));
+  assert.doesNotMatch(wikiHtml, HREF_WITH_TAG);
+  const control = markdown('see https://a.b/x [y](https://c.d/e) z');
+  assert.equal(control.match(/<a\b/g).length, 2);
+  assert.match(control, /<a href="https:\/\/a\.b\/x"[^>]*>https:\/\/a\.b\/x<\/a> <a href="https:\/\/c\.d\/e"[^>]*>y<\/a> z/);
+});
+
+const CSP_META = /<meta http-equiv="Content-Security-Policy" content="([^"]*)">/;
+
+test('a file page has a content policy meta right after the charset, and a served page has none', (t) => {
+  const w = wiki(t);
+  w.put('app/flow.md', page('Flow', ['```mermaid', 'flowchart LR', '  A --> B', '```'].join('\n')));
+  const board = buildBoard(w.root, { today: TODAY });
+  const model = buildWiki(w.root, { board });
+  const hash = (script) => `'sha256-${createHash('sha256').update(script).digest('base64')}'`;
+  const files = [['board', renderBoardPage(board), BOARD_SCRIPT], ['wiki', renderWikiPage(model), WIKI_SCRIPT]];
+  for (const [name, html, script] of files) {
+    const meta = CSP_META.exec(html);
+    assert.ok(meta, `the file page of the ${name} has the meta`);
+    assert.equal(html.indexOf(meta[0]), html.indexOf('<meta charset="utf-8">') + '<meta charset="utf-8">\n'.length, 'the meta comes right after the charset');
+    assert.ok(html.indexOf(meta[0]) < html.indexOf('<style>') && html.indexOf(meta[0]) < html.indexOf('<script'), 'before the style and each script');
+    assert.ok(meta[1].includes(`script-src ${hash(script)}`), 'it names the script of the page by its hash');
+    assert.doesNotMatch(meta[1], /connect-src|unsafe-inline'; script|unsafe-eval/, 'a file page connects nowhere');
+    assert.match(meta[1], /default-src 'none'.*base-uri 'none'; form-action 'none'/);
+    // Only a wiki page with a Mermaid block may load a script file, and only one of its own place ('self' on file: is the folder of the page).
+    assert.equal(meta[1].includes("'self'"), name === 'wiki', `${name}: 'self' only for the Mermaid file`);
+  }
+  const plain = buildWiki(w.root, { board });
+  assert.doesNotMatch(CSP_META.exec(renderWikiPage({ ...plain, pages: plain.pages.filter((item) => !item.path.includes('flow')) }))[1], /'self'/, 'a wiki with no diagram allows no script file');
+  const served = [renderBoardPage(board, { serve: { token: TOKEN } }), renderWikiPage(model, { serve: { token: TOKEN } })];
+  for (const html of served) assert.doesNotMatch(html, /Content-Security-Policy/, 'a served page has its header, and a meta would block its fetch');
+  // The files that writeViews writes have the meta too.
+  writeViews(w.root, { today: TODAY });
+  for (const name of ['board.html', 'wiki.html']) assert.match(readFileSync(path.join(w.root, 'raw', name), 'utf8'), CSP_META, name);
 });

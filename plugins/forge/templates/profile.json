@@ -12,5 +12,28 @@
   ],
   "mainCheckout": null,
   "mcpServers": [],
-  "mcpRetired": []
+  "mcpRetired": [],
+  "never": [
+    { "words": ["gh", "pr", "merge"], "verdict": "deny" },
+    { "words": ["gh", "pr", "review"], "with": ["--approve", "-a"], "verdict": "deny" },
+    { "words": ["gh", "pr", "close"], "verdict": "ask" }
+  ],
+  "bodyOptions": [
+    "-F",
+    "--body-file"
+  ],
+  "otherBodyOptions": [
+    "-b",
+    "--body",
+    "-T",
+    "--template",
+    "-e",
+    "--editor",
+    "-w",
+    "--web",
+    "--fill",
+    "--fill-first",
+    "--fill-verbose",
+    "--recover"
+  ]
 }

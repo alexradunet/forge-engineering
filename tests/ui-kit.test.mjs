@@ -13,7 +13,7 @@ import { BREAK, COMPONENTS, GATE_TEXT, TOOLS_HTML, PAIRS, TOKENS, UI_SCRIPT, UI_
 import { gatesHtml } from '../plugins/forge/scripts/lib/ui/gates.mjs';
 import { FONT, SPRITES, canPixel, iconHtml, pixelText, spritePath } from '../plugins/forge/scripts/lib/ui/pixel.mjs';
 import { renderStyleguide } from '../plugins/forge/scripts/lib/ui/styleguide.mjs';
-import { policy } from '../plugins/forge/scripts/lib/live-serve.mjs';
+import { policy } from '../plugins/forge/scripts/lib/ui/page.mjs';
 import { WIKI_SCRIPT, WIKI_STYLE, renderWikiPage } from '../plugins/forge/scripts/lib/wiki-page.mjs';
 import { buildWiki } from '../plugins/forge/scripts/lib/wiki.mjs';
 import { FULL_TICKET, seedDemo } from './fixtures/demo.mjs';
@@ -496,6 +496,8 @@ test('the content policy of a served page allows an image from a data address on
   const text = policy('var a;');
   assert.match(text, /; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; /);
   assert.ok(!/img-src[^;]*(https?:|\*|'self')/.test(text), 'no network image');
+  assert.match(policy('var a;', { connect: false }), /; img-src data:; base-uri 'none'; form-action 'none'$/, 'the file page form has no connect-src');
+  assert.match(policy('var a;', { self: true }), /^default-src 'none'; script-src 'sha256-[^']+' 'self'; /);
 });
 
 // --- Forge 9.2, stage 5: the notice and the error page ---

@@ -28,7 +28,7 @@ One file for each part. The folder is `plugins/forge/scripts/lib/ui/`.
 | `kit.mjs` | `esc()`, `client()`, and `checkComponent()` |
 | `tokens.mjs` | `TOKENS` (data), `PAIRS` (the contrast contract), `BREAK`, `tokensCss()`, `tokenTable()`, `ratio()`, `mix()` |
 | `pixel.mjs` | The sprites (`SPRITES`, `iconHtml()`), the 5 by 7 letters (`FONT`, `pixelText()`), `faviconUri()`, and `step()` |
-| `page.mjs` | `pageHtml()`, `pageScript()`, `NOTICE_HTML`, `errorPage()`, and `ERROR_POLICY` |
+| `page.mjs` | `pageHtml()`, `pageScript()`, `NOTICE_HTML`, `errorPage()`, `policy()`, and `ERROR_POLICY` |
 | `nav.mjs` | `buildNav()`, `navData()`, `GATE_TEXT`, `pageLabel()`, the links script, and the shared keys |
 | `base.mjs` | The reset, the focus ring, `kbd`, `code`, `.sr`, `.skip`, `.eyebrow`, the table, the `st-*` classes, and the script helpers |
 | `button.mjs` | The buttons, `TOOLS_HTML`, and the theme script |
@@ -220,6 +220,7 @@ Parts that belong to one page:
 A served page has this policy (`policy()` in `live-serve.mjs`): `default-src 'none'`, `script-src` with the hash of the script, `style-src 'unsafe-inline'`, `img-src data:`, `connect-src 'self'`, `base-uri 'none'`, and `form-action 'none'`.
 
 - `img-src data:` is there for the tab icon. A `data:` address in a `<link rel="icon">` needs it. No other image source is allowed, so a page cannot load an image from a network.
+- The content policy of a page that runs one script is `policy(script, { self, connect })`. A served page (its data block has a `token`) gets it as a header from the live server, with `connect-src 'self'`. A file page that Forge writes (`raw/board.html`, `raw/wiki.html`) gets it as a `<meta http-equiv="Content-Security-Policy">` right after `<meta charset>`, with no `connect-src`. A served page has no meta, because a meta adds to the header and would block the fetch of the page code. A wiki file page with a diagram block adds `'self'`, so that it can load the Mermaid file from its own folder.
 - An error page (`errorPage()`) has no script. It has its own `ERROR_POLICY`: `default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'`. It follows the system theme, because it has no script to read the stored choice.
 
 ## 🔤 The words of the pages

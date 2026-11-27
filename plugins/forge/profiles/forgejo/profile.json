@@ -11,6 +11,19 @@
   "mainCheckout": null,
   "mcpServers": [],
   "mcpRetired": [],
+  "never": [
+    { "words": ["tea", ["pulls", "pull", "pr"], ["merge", "m"]], "verdict": "deny" },
+    { "words": ["tea", ["pulls", "pull", "pr"], ["approve", "lgtm", "a"]], "verdict": "deny" },
+    { "words": ["tea", ["pulls", "pull", "pr"], "reject"], "verdict": "deny" },
+    { "words": ["tea", ["pulls", "pull", "pr"], "close"], "verdict": "ask" }
+  ],
+  "bodyOptions": [
+    "--description"
+  ],
+  "otherBodyOptions": [
+    "-d",
+    "--description"
+  ],
   "detect": {
     "tool": "tea",
     "args": [

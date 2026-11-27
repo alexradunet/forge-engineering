@@ -90,6 +90,16 @@ test('plan-baseline: an evidence link or "not run: reason" passes, the rest is a
   assert.deepEqual(result.evidence, ['evidence/a.md']);
 });
 
+test('a plan step that links an evidence file puts it in the evidence list', (t) => {
+  const f = setup(t);
+  f.put('evidence/x.md', 'out');
+  f.put('notes.md', 'x');
+  f.put('plan.md', plan('1. Edit\n   - Why: the cause ([x](evidence/x.md)), not [notes](notes.md) and not [gone](evidence/gone.md)\n'));
+  assert.deepEqual(plannedChecks(f.dir, {}, {}).evidence, ['evidence/x.md']);
+  f.put('plan.md', `${plan()}\n## Diagnosis\n\n- see [x](evidence/x.md)\n`);
+  assert.deepEqual(plannedChecks(f.dir, {}, {}).evidence, [], 'Only the Steps section adds evidence.');
+});
+
 test('plan-baseline: a link outside evidence/ or a link file does not count, and an empty Checks section is quiet', (t) => {
   const f = setup(t);
   f.put('notes.md', 'x');

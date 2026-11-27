@@ -55,7 +55,8 @@ function inline(text, ctx) {
     });
   }
   out = strong(out);
-  out = out.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, (all, lead, url) => `${lead}<a href="${url.replace(/"/g, '%22')}" target="_blank" rel="noopener noreferrer">${url}</a>`);
+  // A bare URL stops at the mark of a kept piece (), so that no kept HTML lands inside the href.
+  out = out.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, (all, lead, url) => `${lead}<a href="${url.replace(/"/g, '%22')}" target="_blank" rel="noopener noreferrer">${url}</a>`);
   // A kept piece can hold the mark of another piece: the code in the label of a link.
   const restore = (value) => value.replace(/(\d+)/g, (_, index) => restore(kept[Number(index)] ?? ''));
   return restore(out);

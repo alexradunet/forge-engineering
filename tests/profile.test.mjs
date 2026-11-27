@@ -157,3 +157,32 @@ test('the body of an extra profile config names the key prefix and the host thro
     }
   }
 });
+
+test('L-2: each profile has never words and bodyOptions of the right shape, and guard.mjs names no CLI word', () => {
+  const profiles = [loadProfileOf(pluginDir), ...listProfiles(pluginDir).map((name) => loadProfileOf(pluginDir, name))];
+  const word = (item) => (typeof item === 'string' && item.length > 0) || (Array.isArray(item) && item.length > 0 && item.every((alt) => typeof alt === 'string' && alt.length > 0));
+  const has = (entry, name) => entry.words.some((item) => [].concat(item).includes(name)) || (entry.with ?? []).includes(`--${name}`);
+  for (const profile of profiles) {
+    const label = profile.name ?? 'default';
+    assert.ok(Array.isArray(profile.never) && profile.never.length >= 3, `${label}: never needs merge, approve, and close`);
+    for (const entry of profile.never) {
+      assert.ok(Array.isArray(entry.words) && entry.words.length >= 2 && entry.words.every(word), `${label}: bad words ${JSON.stringify(entry)}`);
+      assert.ok(typeof entry.words[0] === 'string' && profile.tools.includes(entry.words[0]), `${label}: the tool of ${JSON.stringify(entry.words)} is a tool of the profile`);
+      assert.ok(['deny', 'ask'].includes(entry.verdict), `${label}: verdict of ${JSON.stringify(entry.words)}`);
+      assert.ok(entry.with === undefined || (Array.isArray(entry.with) && entry.with.length > 0 && entry.with.every((item) => typeof item === 'string' && item.startsWith('-'))), `${label}: bad with`);
+    }
+    const verdicts = (name) => [...new Set(profile.never.filter((entry) => has(entry, name)).map((entry) => entry.verdict))];
+    assert.deepEqual(verdicts('merge'), ['deny'], `${label}: merge is denied`);
+    assert.deepEqual(verdicts('approve'), ['deny'], `${label}: approve is denied`);
+    assert.deepEqual(verdicts('close'), ['ask'], `${label}: close asks`);
+    assert.ok(Array.isArray(profile.bodyOptions) && profile.bodyOptions.length > 0 && profile.bodyOptions.every((item) => /^-/.test(item)), `${label}: bodyOptions`);
+    assert.ok(Array.isArray(profile.otherBodyOptions) && profile.otherBodyOptions.length > 0 && profile.otherBodyOptions.every((item) => typeof item === 'string' && /^-/.test(item)), `${label}: otherBodyOptions`);
+  }
+  assert.ok(profiles[0].otherBodyOptions.includes('--recover') && profiles[0].otherBodyOptions.includes('-b'));
+  assert.ok(profiles.find((p) => p.name === 'forgejo').otherBodyOptions.includes('-d'));
+  assert.deepEqual(profiles[0].bodyOptions.slice().sort(), ['--body-file', '-F']);
+  assert.deepEqual(profiles.find((p) => p.name === 'forgejo').bodyOptions, ['--description']);
+  const text = readFileSync(path.join(pluginDir, 'scripts', 'lib', 'guard.mjs'), 'utf8');
+  for (const option of profiles.flatMap((profile) => profile.otherBodyOptions).filter((item) => item.startsWith('--'))) assert.equal(text.includes(option), false, `guard.mjs names the CLI option ${option}`);
+  for (const tool of profiles.flatMap((profile) => profile.tools)) assert.equal(new RegExp(`\\b${tool}\\b`).test(text), false, `guard.mjs names the CLI word ${tool}`);
+});

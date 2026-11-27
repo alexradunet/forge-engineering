@@ -9,13 +9,15 @@ import { hashedDocuments, rewriteFrontmatter } from './readme-write.mjs';
 
 export const HISTORY = 'approvals/history.md';
 const METHODS = ['form', 'chat'];
+// The one label of the approval form that means approve. Other text that starts with 🟢 GO is no approval.
+const FORM_LABEL = '🟢 GO: approve and start the next step';
 
 // The approval contract of the ticket skill: the form value `approve` (or its 🟢 GO label), or
 // `approve <gate>` in chat: the whole answer, with an optional `?`, then optional `.` or `!`, in any case.
 // Other text before or after (`approve planned only after step 3`) is no approval.
 export function isApproval(name, answer, method) {
   const text = String(answer ?? '').trim();
-  if (method === 'form') return /^approve$/i.test(text) || text.startsWith('🟢 GO');
+  if (method === 'form') return /^approve$/i.test(text) || text === FORM_LABEL;
   const base = name.replace(/\?$/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return new RegExp(`^approve\\s+${base}\\??[.!]*$`, 'i').test(text);
 }

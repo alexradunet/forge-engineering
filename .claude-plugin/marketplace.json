@@ -5,13 +5,13 @@
   },
   "metadata": {
     "description": "forge: an engineering workflow plugin for GitHub Copilot CLI and Claude Code.",
-    "version": "13.1.0"
+    "version": "13.1.1"
   },
   "plugins": [
     {
       "name": "forge",
       "description": "Ticket workspace (GitHub by default, or Forgejo; issues, pull requests, and CI) with review gates, plain ticket documents, ticket worktrees and session titles, a ticket board skill, and a repository wiki.",
-      "version": "13.1.0",
+      "version": "13.1.1",
       "source": "./plugins/forge"
     }
   ]

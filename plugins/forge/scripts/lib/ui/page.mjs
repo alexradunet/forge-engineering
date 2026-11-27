@@ -2,6 +2,7 @@
 // The head holds everything that the page needs: the meta tags, the title, the icon, the style, the data block, and the one script.
 // The script is in the head, so its first part can set the theme before the first paint: a user of the dark theme on a light system sees no light flash.
 // The rest of the script waits for the DOM (the page code finds its elements by id).
+import { createHash } from 'node:crypto';
 import { bannerHtml } from './banner.mjs';
 import { esc } from './kit.mjs';
 import { UI_SCRIPT, UI_STYLE } from './index.mjs';
@@ -27,14 +28,25 @@ export function pageScript(dataId, body, { before = '' } = {}) {
 }
 
 /**
+ * The content policy of a page that runs one script: only that script (by its hash), an inline style, an image from a data address (the icon of the tab),
+ * no base address, and no form. `self` also allows a script file of the same place: the Mermaid file of the wiki page.
+ * A served page sends it as a header, and it also lets the page connect to its own server (`connect`). A file page has it as a meta element
+ * (pageHtml), with no connection: a file page asks no server. `frame-ancestors`, `report-uri`, and `sandbox` do not work in a meta element, so they are not here.
+ */
+export const policy = (script, { self = false, connect = true } = {}) => `default-src 'none'; script-src 'sha256-${createHash('sha256').update(script).digest('base64')}'${self ? " 'self'" : ''}; style-src 'unsafe-inline'; img-src data:;${connect ? " connect-src 'self';" : ''} base-uri 'none'; form-action 'none'`;
+
+/**
  * The text of a page. `title` is plain text. `style` is the style text, `data` is the object of the data block, and `script` is the one script (pageScript).
  * `icon` is the variant of the tab icon: calm, or needs for a page with a ticket that needs the user. `main` is the id of the main part of the page,
  * where the first link of the body goes ("Skip to the content"). `body` is the HTML of the body after that link.
+ * A page with no server token in its data (a file that Forge writes) gets the content policy as a meta element, right after the charset.
+ * A served page has a token, and its header has the policy: a meta element would add to the header and block the fetch of the page code.
  */
 export function pageHtml({ title, lang = 'en', bodyClass = '', style, dataId, data = {}, script, body, icon = 'calm', main = 'main' }) {
   const json = JSON.stringify(data).replace(/</g, '\\u003c');
   return [
     '<!doctype html>', `<html lang="${esc(lang)}">`, '<head>', '<meta charset="utf-8">',
+    ...(data.token ? [] : [`<meta http-equiv="Content-Security-Policy" content="${esc(policy(script, { self: Boolean(data.mermaid), connect: false }))}">`]),
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
     '<meta name="color-scheme" content="light dark">',
     `<title>${esc(title)}</title>`,
