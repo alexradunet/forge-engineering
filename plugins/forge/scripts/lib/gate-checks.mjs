@@ -54,7 +54,7 @@ const lineValue = (body, label) => new RegExp(`^-\\s+${label}:[ \\t]*(.*)$`, 'im
  * The checks of a ticket folder before the Planned? gate.
  * dir is the ticket folder and ticket is the parsed README. It returns
  * { findings, evidence, review }: the findings (the caller sets the severity), the evidence files that the
- * Baseline and Control lines link, and the newest plan review file that covers the current plan.md.
+ * Baseline and Control lines and the Steps section link, and the newest plan review file that covers the current plan.md.
  * A link is not followed: a plan.md, map.md, or evidence file that is a link counts as missing.
  */
 export function plannedChecks(dir, ticket, { policy = null, repoPath = '', checkouts = [] } = {}) {
@@ -115,6 +115,8 @@ export function plannedChecks(dir, ticket, { policy = null, repoPath = '', check
   const evidenceDir = path.join(dir, 'evidence');
   const evidenceLinks = (value) => links(value).map((item) => cleanTarget(item.target)).filter(Boolean)
     .map((target) => path.resolve(dir, target)).filter((file) => inside(evidenceDir, file) && readRegular(file));
+  // The evidence files that a line of the Steps section links are in the list too (not the Diagnosis lines).
+  for (const file of evidenceLinks(steps?.text ?? '')) out.evidence.add(path.relative(dir, file).split(path.sep).join('/'));
   const checks = section(plan, 'Checks');
   const hasFiles = (steps ? numberedItems(steps.text) : []).some((item) => item.body.split('\n').some((text) => /^-\s+Files:/i.test(text)));
   if (hasFiles && !(checks ? numberedItems(checks.text) : []).length) {

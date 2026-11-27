@@ -84,6 +84,10 @@ test('gate-approve accepts only the approval contract of the ticket skill and a 
   assert.equal(isApproval('Planned?', ' approve ', 'form'), true);
   assert.equal(isApproval('Planned?', '🟢 GO: approve and start the next step', 'form'), true);
   assert.equal(isApproval('Planned?', 'GO, ship it', 'form'), false);
+  assert.equal(isApproval('Planned?', '🟢 GO away', 'form'), false);
+  assert.equal(isApproval('Planned?', '🟢 GO', 'form'), false);
+  assert.equal(isApproval('Planned?', ' 🟢 GO: approve and start the next step ', 'form'), true);
+  assert.equal(isApproval('Planned?', '🟢 GO: approve and start the next step, later', 'form'), false);
   assert.equal(isApproval('Planned?', 'approve planned', 'form'), false);
   assert.equal(isApproval('Planned?', 'APPROVE planned?', 'chat'), true);
   assert.equal(isApproval('Planned?', 'approve planned', 'chat'), true);
