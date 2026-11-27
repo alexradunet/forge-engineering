@@ -9,23 +9,12 @@
           { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/forge.mjs", "hook", "session-start", "--host", "claude", "--part", "3"], "timeout": 30 },
           { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/forge.mjs", "hook", "session-start", "--host", "claude", "--part", "4"], "timeout": 30 }
         ]
-      },
-      {
-        "matcher": "startup|resume|clear|compact|fork",
-        "hooks": [
-          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/live-hook.mjs", "--host", "claude"], "async": true }
-        ]
       }
     ],
     "UserPromptSubmit": [
       {
         "hooks": [
           { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/forge.mjs", "hook", "prompt-submit", "--host", "claude"], "timeout": 30 }
-        ]
-      },
-      {
-        "hooks": [
-          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/live-hook.mjs", "--host", "claude"], "async": true }
         ]
       }
     ],
@@ -35,72 +24,9 @@
         "hooks": [
           { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/forge.mjs", "hook", "pre-tool", "--host", "claude"], "timeout": 30 }
         ]
-      },
-      {
-        "matcher": "*",
-        "hooks": [
-          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/live-hook.mjs", "--host", "claude"], "async": true }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "*",
-        "hooks": [
-          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/live-hook.mjs", "--host", "claude"], "async": true }
-        ]
-      }
-    ],
-    "PostToolUseFailure": [
-      {
-        "matcher": "*",
-        "hooks": [
-          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/live-hook.mjs", "--host", "claude"], "async": true }
-        ]
-      }
-    ],
-    "Notification": [
-      {
-        "matcher": "permission_prompt|idle_prompt|agent_needs_input|elicitation_dialog|elicitation_url_dialog|elicitation_complete|elicitation_response",
-        "hooks": [
-          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/live-hook.mjs", "--host", "claude"], "async": true }
-        ]
-      }
-    ],
-    "SubagentStart": [
-      {
-        "hooks": [
-          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/live-hook.mjs", "--host", "claude"], "async": true }
-        ]
-      }
-    ],
-    "SubagentStop": [
-      {
-        "hooks": [
-          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/live-hook.mjs", "--host", "claude"], "async": true }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/live-hook.mjs", "--host", "claude"], "async": true }
-        ]
-      }
-    ],
-    "StopFailure": [
-      {
-        "hooks": [
-          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/live-hook.mjs", "--host", "claude"], "async": true }
-        ]
       }
     ],
     "SessionEnd": [
-      {
-        "hooks": [
-          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/live-hook.mjs", "--host", "claude"], "timeout": 2 }
-        ]
-      },
       {
         "hooks": [
           { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/forge.mjs", "hook", "session-end", "--host", "claude"], "timeout": 2 }

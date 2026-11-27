@@ -15,8 +15,7 @@ flowchart LR
 
 ```text
 <repo>.forge/             the Forge folder (<forge>)
-  forge, forge.cmd        the launcher: "../<repo>.forge/forge open" shows the board and the wiki
-  raw/                    local working material: tickets, pages
+  raw/                    local working material: tickets
   archive/                local archives of closed tickets
   wiki/                   the wiki (<wiki>): a git repository
     index.md              knowledge index

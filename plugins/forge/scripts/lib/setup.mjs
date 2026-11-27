@@ -4,7 +4,6 @@
 import { spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { POINTER_FILE, writeLauncher, writePointer } from './launcher.mjs';
 import { homeOf, isForgeLayout } from './layout.mjs';
 import { ForgeError, normalizeRemote, readBinding } from './repo.mjs';
 import { NOT_KEYS } from './tickets.mjs';
@@ -145,9 +144,9 @@ const INDEX = '---\ntitle: Wiki index\ntype: index\n---\n# Wiki index\n\nOne lin
 
 /**
  * Creates the Forge folder of a repository when it does not exist, and binds its wiki: the wiki (git init, index.md), raw/, archive/,
- * and the launcher. `pluginDir` is the plugin folder for the launcher. A wiki folder from --wiki outside of a Forge folder gets only its wiki parts.
+ * A wiki folder from --wiki outside of a Forge folder gets only its wiki parts.
  */
-export function initWiki(where, { pluginDir = '' } = {}) {
+export function initWiki(where) {
   const dir = where.wiki.path;
   const created = [];
   const forgeLayout = isForgeLayout(dir);
@@ -164,21 +163,19 @@ export function initWiki(where, { pluginDir = '' } = {}) {
     writeFileSync(gi, current + (current && !current.endsWith('\n') ? '\n' : '') + missing.join('\n') + '\n');
     created.push('.gitignore');
   }
-  if (forgeLayout) created.push(...furnish(homeOf(dir), pluginDir));
+  if (forgeLayout) created.push(...furnish(homeOf(dir)));
   const index = path.join(dir, 'index.md');
   if (!existsSync(index)) { writeFileSync(index, INDEX); created.push('index.md'); }
   created.push(...bind(where).written);
   return { wiki: dir, created };
 }
 
-// The parts of a Forge folder next to its wiki: raw/, archive/, the launcher, and the path of the plugin.
-function furnish(home, pluginDir) {
+// The parts of a Forge folder next to its wiki: raw/ and archive/.
+function furnish(home) {
   const created = [];
   for (const name of ['raw', 'archive']) {
     if (!existsSync(path.join(home, name))) { mkdirSync(path.join(home, name), { recursive: true }); created.push(`../${name}/`); }
   }
-  created.push(...writeLauncher(home).map((name) => `../${name}`));
-  if (pluginDir && writePointer(home, pluginDir)) created.push(`../${POINTER_FILE}`);
   return created;
 }
 

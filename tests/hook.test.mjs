@@ -7,7 +7,6 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { CLAUDE_PARTS, END_MARKER, HOSTS, PROMPT_HEAD, buildContext, detectHost, promptSubmit, readEvent, resolveHost, ruleBody, recordRulesSeen, recordRulesStart, ruleNotice, sessionEnd, sessionStart, splitParts } from '../plugins/forge/scripts/lib/hook.mjs';
 import { OWN_TURN_STARTS, ownTurn } from '../plugins/forge/scripts/lib/own-turn.mjs';
-import { readSessions } from '../plugins/forge/scripts/lib/sessions.mjs';
 import { resolve } from '../plugins/forge/scripts/lib/repo.mjs';
 import { nowCard } from '../plugins/forge/scripts/lib/ticket.mjs';
 import { hookArgs } from '../plugins/forge/scripts/forge.mjs';
@@ -571,46 +570,17 @@ test('a full-v4 ticket gets the plain Now card and Resume', (t) => {
   assert.deepEqual(nowCard('# A\n\n## Now\n\n- State: ▶️ active\n- Waiting on: nobody\n\n## Files\n').fields, { state: '▶️ active', 'waiting on': 'nobody' });
 });
 
-test('the hooks of a terminal harness write the start and the end of a session to the session list, and a host without a row writes nothing', (t) => {
+test('the hooks write no session list, and the session end hook prints {}', (t) => {
   const s = setup(t);
-  const raw = path.join(s.home, 'raw');
-  const file = path.join(raw, 'sessions.jsonl');
-  const lines = () => (existsSync(file) ? readFileSync(file, 'utf8').trim().split('\n').map((line) => JSON.parse(line)) : []);
   const id = '11111111-2222-4333-8444-555555555555';
-
-  // No session id (a test payload, an old host version), a host without a row, or an id of another shape: no line.
-  sessionStart({ cwd: s.app, source: 'startup', prompt: '', session: '' }, { cli, env, host: 'claude', part: 1 });
-  sessionStart({ cwd: s.app, source: 'new', prompt: '', session: 'vs-1' }, { cli, env, host: 'other-host' });
-  sessionStart({ cwd: s.app, source: 'startup', prompt: '', session: '--dangerously-skip-permissions' }, { cli, env, host: 'claude', part: 1 });
-  sessionStart({ cwd: s.app, source: 'startup', prompt: '', session: '-x' }, { cli, env, host: 'copilot-cli' });
-  assert.deepEqual(lines(), []);
-
-  // Claude Code runs one hook for each part. Only part 1 writes.
   for (let part = 1; part <= CLAUDE_PARTS; part++) sessionStart({ cwd: s.app, source: 'startup', prompt: 'Resume APP-7', session: id, title: '' }, { cli, env, host: 'claude', part });
-  const [first, ...more] = lines();
-  assert.equal(more.length, 0);
-  assert.deepEqual({ ...first, ts: 0 }, { v: 1, e: 'start', host: 'claude', id, cwd: s.app, ts: 0, title: 'APP-7 - 🟡 - Doc import error telemetry', label: 'Resume APP-7', source: 'startup' });
-  assert.ok(first.ts > 0);
-
-  // The Copilot CLI gives the first prompt at the start. A secret value in it gets a mask.
-  sessionStart({ cwd: s.app, source: 'new', prompt: 'Check why token=abc123XYZ fails', session: 'cp-1' }, { cli, env, host: 'copilot-cli' });
-  assert.deepEqual({ ...lines()[1], ts: 0 }, { v: 1, e: 'start', host: 'copilot-cli', id: 'cp-1', cwd: s.app, ts: 0, label: 'Check why token=*** fails', source: 'new' });
-
+  sessionStart({ cwd: s.app, source: 'new', prompt: '', session: 'cp-1' }, { cli, env, host: 'copilot-cli' });
   assert.deepEqual(sessionEnd({ cwd: s.app, session: id, reason: 'prompt_input_exit' }, { env, host: 'claude' }), {});
-  assert.deepEqual(sessionEnd({ cwd: s.app, session: 'vs-1', reason: 'complete' }, { env, host: 'other-host' }), {});
-  assert.deepEqual(sessionEnd({ cwd: s.app, session: '', reason: 'complete' }, { env, host: 'copilot-cli' }), {});
   assert.deepEqual(sessionEnd(null, { env, host: 'claude' }), {});
-  assert.equal(lines().length, 3);
-  assert.deepEqual({ ...lines()[2], ts: 0 }, { v: 1, e: 'end', host: 'claude', id, cwd: s.app, ts: 0, reason: 'prompt_input_exit' });
-  const records = readSessions(raw);
-  assert.ok(records.get(id).end > 0, 'the Claude Code session is closed');
-  assert.equal(records.get('cp-1').end, 0, 'the Copilot CLI session has no end yet');
-
-  // The commands of the hook files: the end hook prints {} and writes the line, and a folder without a wiki gets no file.
-  const call = (args, input, extra = {}) => spawnSync(process.execPath, [cli, 'hook', ...args], { input: JSON.stringify(input), encoding: 'utf8', env: { ...env, CLAUDECODE: '', ...extra }, cwd: s.app });
+  assert.ok(!existsSync(path.join(s.home, 'raw', 'sessions.jsonl')), 'no session list file');
+  const call = (args, input) => spawnSync(process.execPath, [cli, 'hook', ...args], { input: JSON.stringify(input), encoding: 'utf8', env: { ...env, CLAUDECODE: '' }, cwd: s.app });
   const ended = call(['session-end'], { cwd: s.app, sessionId: 'cp-1', reason: 'user_exit' });
   assert.deepEqual([ended.status, JSON.parse(ended.stdout)], [0, {}]);
-  assert.equal(readSessions(raw).get('cp-1').reason, 'user_exit');
   const outside = mkdtempSync(path.join(os.tmpdir(), 'forge-hook-none-'));
   t.after(() => rmSync(outside, { recursive: true, force: true }));
   assert.deepEqual(sessionEnd({ cwd: outside, session: id, reason: 'other' }, { env, host: 'claude' }), {});

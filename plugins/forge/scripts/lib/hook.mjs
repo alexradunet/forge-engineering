@@ -10,12 +10,9 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { loadConfig } from './config.mjs';
-import { harness } from './harness.mjs';
 import { archiveDir, rawDir } from './layout.mjs';
-import { writeLauncher, writePointer } from './launcher.mjs';
 import { resolve, samePath } from './repo.mjs';
 import { ownTurn } from './own-turn.mjs';
-import { recordEnd, recordStart } from './sessions.mjs';
 import { STATE_EMOJI, nowCard, sessionTitle } from './ticket.mjs';
 import { LOCAL_PREFIX, NOT_KEYS, listTickets } from './tickets.mjs';
 
@@ -288,7 +285,7 @@ export function hostTable(pluginDir, host) {
   const verbs = text.indexOf('\n## Host verbs');
   const next = verbs === -1 ? -1 : text.indexOf('\n## ', verbs + 1);
   if (next === -1) return text;
-  return `${text.slice(0, next).trimEnd()}\n\nMore steps for this host are in \`${file}\`: the board page and the feature documentation. Read that file before you show a board page, start the live server, or advise on a feature of the host.`;
+  return `${text.slice(0, next).trimEnd()}\n\nMore steps for this host are in \`${file}\`: the feature documentation. Read that file before you advise on a feature of the host.`;
 }
 
 /**
@@ -398,8 +395,6 @@ export function buildContext(event, { cli, env = process.env, host = 'copilot-cl
   const pluginDir = path.dirname(path.dirname(cli));
   const forge = `node "${cli}"`;
   const where = locate(event, env);
-  // The launcher of the Forge folder needs the path of this plugin, which changes at each plugin update. A failure here stops no session.
-  try { if (where?.wiki.exists && where.forge.layout === 'forge') { writePointer(where.forge.path, pluginDir); writeLauncher(where.forge.path); } } catch { /* The launcher says what is missing. */ }
 
   let ticket = '';
   let title = '';
@@ -484,18 +479,8 @@ export function claudeParts(body, forge) {
   });
 }
 
-// The session list (sessions.mjs) gets one line for a session of a terminal harness in a repository with a wiki.
-// The title is the title of the session, or the ticket title that Forge sets or gives to the user. An error here stops no session.
-function noteStart(event, where, host, title) {
-  try {
-    if (!event?.session || !harness(host) || !where?.wiki.exists) return;
-    recordStart(where.raw, { host, id: event.session, cwd: event.cwd || process.cwd(), title: event.title || title, prompt: event.prompt, source: event.source });
-  } catch { /* The session list is a view. */ }
-}
-
 /**
- * The hook result for one session end event: always {}. It writes the end line of the session list and the rule pages seen (recordRulesSeen).
- * A host without a row in the harness table stops before it reads the repository.
+ * The hook result for one session end event: always {}. It writes the rule pages seen (recordRulesSeen).
  */
 export function sessionEnd(event, { env = process.env, host = 'copilot-cli' } = {}) {
   try {
@@ -503,9 +488,7 @@ export function sessionEnd(event, { env = process.env, host = 'copilot-cli' } = 
     const where = locate(event, env);
     // The rule pages that this session saw at its start: the next session start compares them with the wiki HEAD.
     if (where?.wiki.exists) recordRulesSeen(where, event.session);
-    if (!event.session || !harness(host)) return {};
-    if (where?.wiki.exists) recordEnd(where.raw, { host, id: event.session, cwd: event.cwd || process.cwd(), reason: event.reason });
-  } catch { /* The live server shows such a session with the state "open". */ }
+  } catch { /* The notice of the next session is then missing or old. */ }
   return {};
 }
 
@@ -516,8 +499,6 @@ export function sessionEnd(event, { env = process.env, host = 'copilot-cli' } = 
  */
 export function sessionStart(event, { cli, env = process.env, host = 'copilot-cli', part = 1 } = {}) {
   const { body, title, where } = buildContext(event, { cli, env, host });
-  // Claude Code runs one hook for each part: only part 1 writes the line of the session list.
-  if (part === 1) noteStart(event, where, host, title);
   if (where?.wiki.exists) recordRulesStart(where, event.session);
   if (!body) return {};
   if (host !== 'claude') return { additionalContext: `${body}\n\n${END_MARKER}` };

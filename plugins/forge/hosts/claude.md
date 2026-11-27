@@ -18,32 +18,6 @@ A Forge skill names a host verb, for example `host.title`. Do the step of the ve
 | `host.open` | Give a Markdown link with the absolute path of each file. |
 | `host.comments` | There are no document comments. Ask the user to paste the comments into the chat. |
 
-## Pages
-
-The board page (`board.html` in `<forge>/raw`, from `forge.mjs board`) shows all tickets, and a card opens the document of its ticket. The wiki page (`wiki.html`, in the same folder) shows the pages of the wiki and the summary pages of the closed tickets. The two pages have links to each other.
-
-- Give the user the `file://` link that the command prints. The user opens it in a browser, and loads the page again after each `board` run.
-- Never use the `Artifact` tool for the board page or the wiki page: it sends the page to claude.ai.
-- To start the live server, run `forge.mjs open --no-browser` with `Bash` (see Live view). Give the user the links that it prints (`http://127.0.0.1`, this machine only).
-- The link works only in a browser on the machine of the session. For a browser on another machine, run `forge.mjs open --no-browser --port <n>`, and tell the user to forward that port. Never use another address than `127.0.0.1`.
-
-## Live view
-
-The live view shows the board page with what each Claude Code session does now (`forge.mjs open`).
-
-- Start it only when the user asks for it, for example "live view" or "show the sessions live". Run `forge.mjs open --no-browser` with `Bash`. It starts the server of this repository as a process of its own and prints the links of the board and the wiki. Give them to the user.
-- A second run starts no second server: it prints the same links. One server runs for each repository, and `forge.mjs open --list` gives each one.
-- When the command says that the server did not start, run `forge.mjs live` with `Bash` and `run_in_background: true`, and read the link from its output.
-- A page cannot send text to a session.
-- A session that is not live shows as "closed" or "no end seen", with the buttons **Resume** and **Copy command**. **Resume** opens a terminal of the user with `claude --resume <id>` in the folder of the session.
-- **Resume** is a button for the user. Never send a request to the `/resume` route, and never start or continue a session for the user without a "yes".
-- The Forge hooks write the session list `<forge>/raw/sessions.jsonl` at the start and at the end of a session. Do not change that file.
-- A session shows on its ticket when it runs in the worktree of the ticket, or when its title starts with the ticket key. Each other session is in the list **Other sessions**.
-- A session shows after its next prompt or tool call. The hooks load at session start, so a session that started before an update of forge reports after a restart.
-- A "needs you" line is a report. Never answer that prompt for the user.
-- The rules of the Pages part apply: the link works only in a browser on the machine of the session, `--port <n>` gives a fixed port to forward, and the `Artifact` tool is never used.
-- The server stops after 8 hours with no event and no request of a page. To stop it before that, run `forge.mjs open --stop`.
-
 ## Claude Code features
 
 - Before you advise on a Claude Code feature, read its current documentation page. Claude Code changes often.

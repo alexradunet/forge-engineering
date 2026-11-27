@@ -10,25 +10,12 @@
 //            (--fetch runs git fetch in the plugin clone, to count the commits behind)
 //   lint    [--wiki <dir>] [--json] [--fix]   validate tickets, approvals and wiki metadata
 //   detect  [--wiki <dir>]   host, branch hints, inferred values (JSON, read-only)
-//   init    [--wiki <dir>] create the Forge folder ../<repo>.forge of the repository and bind its wiki: wiki/ (git init, index.md), raw/, archive/,
-//            and the launcher (forge, forge.cmd).
+//   init    [--wiki <dir>] create the Forge folder ../<repo>.forge of the repository and bind its wiki: wiki/ (git init, index.md), raw/, archive/.
 //   bind    [--wiki <dir>]   write <wiki>/forge/repo.json
 //   seed [--force]   copy the config templates to <wiki>/forge/config
-//   board   [--json] [--dry-run] [--today <date>]   write <forge>/raw/board.md, the tickets grouped by state,
-//           and the pages: raw/board.html and raw/wiki.html
-//   styleguide [--out <file>] [--json]   write the styleguide page of the UI kit (each token and component, in both themes): <forge>/raw/styleguide.html, or the file of --out
+//   board   [--json] [--dry-run] [--today <date>]   write <forge>/raw/board.md, the tickets grouped by state; print the groups (--json: the whole board)
 //   local-key [--json]   the next key L-<n> of a ticket with no work item (it moves the counter <forge>/raw/local-key)
 //   worktree <KEY> --summary "<goal>" [--base <ref>] [--create] [--json]   plan or create the ticket worktree and branch
-//   live    [--port <n>]   show the board and the wiki on http://127.0.0.1 with the live state of the agent sessions
-//            (the session hooks send their events to this server). Its one action for a page is Resume (it opens a terminal for a closed session). It stops at a signal,
-//            or after 8 hours with no event and no request of a page. The links stay the same after a restart: its page token is in a key file.
-//            One server runs for each repository, and a session reports to the server of its repository.
-//   live --status   print the link of the live server of this repository, or exit 1 when none runs
-//   open    [--no-browser] [--port <n>]   the command for a person: start the live server of this repository in the background
-//            when none runs, print the links of the board and the wiki, and open the board in the browser
-//   open --status | --list | --stop   the server of this repository, each server of this user, or stop the server of this repository
-//   open --new-link [--no-browser] [--port <n>]   write a new page token for this repository, so each older link stops (use it when a link leaked):
-//            a server that runs is stopped and started again, and the new links print as for open
 //   gate-open <key> <gate> [extra files...] [--dry-run] [--json] [--today <yyyy-mm-dd>]
 //            open the review of a gate in one call: checks the earlier gates and the plan, writes approvals/<gate>-<n>.json,
 //            saves the snapshot, and sets the gate to in-review; prints the set, the diff, and the open points of the plan review
@@ -37,16 +24,15 @@
 //   hook session-start [--host <host>]   read the hook event on stdin; print {"additionalContext"} with the Forge context, else {}
 //   hook session-start --host claude --part <n>   the same for Claude Code: part n of the context in {"hookSpecificOutput"}
 //   hook prompt-submit --host claude   Claude Code: the ticket part and the session title when the prompt names a ticket
-//   hook session-end [--host <host>]   write the end of the session to the session list (<forge>/raw/sessions.jsonl); print {}
+//   hook session-end [--host <host>]   write the rule pages that the session saw (<forge>/raw/rules-seen); print {}
 //   hook pre-tool [--host <host>]   the gate guard: read the preToolUse event on stdin; for a push or a new change request
 //            in a ticket worktree without a valid Shippable? approval, print the deny (or ask) decision, else {}
 //   context [--cwd <dir>] [--host <host>]   print the Forge context (for a host without the hook)
 //     <host> is copilot-cli or claude (copilot is an old name). Without --host, forge.mjs finds the host from the environment.
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import { readPointer } from './lib/launcher.mjs';
+import { fileURLToPath } from 'node:url';
 import { resolve, ForgeError, readBinding } from './lib/repo.mjs';
 import { loadConfig, KINDS } from './lib/config.mjs';
 import { setValues, upsertRow } from './lib/config-write.mjs';
@@ -61,11 +47,6 @@ import { createWorktree, planWorktree } from './lib/worktree.mjs';
 import { CLAUDE_PARTS, HOST_NAMES, contextText, promptSubmit, readEvent, resolveHost, sessionEnd, sessionStart, safeConfig } from './lib/hook.mjs';
 import { preTool, preToolOutput, readToolEvent } from './lib/guard.mjs';
 import { gateName } from './lib/reading.mjs';
-import { writeViews } from './lib/views.mjs';
-import { renderStyleguide } from './lib/ui/styleguide.mjs';
-import { homeOf, rawDir } from './lib/layout.mjs';
-import { liveStatus, serveLive } from './lib/live-serve.mjs';
-import { listForge, openForge, renewLink, stopForge } from './lib/open.mjs';
 import { pluginRoot } from './lib/plugin-root.mjs';
 import { OPTIONAL_VALUE_OPTIONS, REQUIRED_VALUE_OPTIONS } from './lib/cli-options.mjs';
 
@@ -139,11 +120,6 @@ export function parseArgs(argv) {
     else if (a === '--fix') out.fix = true;
     else if (a === '--dry-run') out.dryRun = true;
     else if (a === '--create') out.create = true;
-    else if (a === '--status') out.status = true;
-    else if (a === '--list') out.list = true;
-    else if (a === '--stop') out.stop = true;
-    else if (a === '--new-link') out.newLink = true;
-    else if (a === '--no-browser') out.noBrowser = true;
     else if (REQUIRED_VALUE_OPTIONS.includes(a)) {
       if (argv[i + 1] === undefined || argv[i + 1].startsWith('--')) throw new ForgeError(`${a} needs a value.`, 'bad-args');
       out[a.slice(2)] = argv[++i];
@@ -221,12 +197,6 @@ export function doctor({ cwd, wiki, env = process.env, plugin = pluginRoot, fetc
     : `Not found: ${where.wiki.path}. Run "forge.mjs init", or say "set up forge".`);
   if (where.wiki.exists) add('wiki:binding', where.wiki.bound ? 'ok' : 'warn', where.wiki.bound ? 'forge/repo.json' : 'No forge/repo.json. Run "forge.mjs bind".');
   for (const w of where.warnings.filter((x) => !x.includes('has no forge/repo.json'))) add('warning', 'warn', w);
-  if (where.forge.layout === 'forge') {
-    const seen = readPointer(where.forge.path);
-    if (!seen) add('hook', 'warn', 'No session start seen. Install the plugin in your host, then start a session in this repository.');
-    else if (!existsSync(path.join(seen, 'scripts', 'forge.mjs'))) add('hook', 'warn', `The plugin folder in .plugin is gone: ${seen}. Start a session to update it.`);
-    else add('hook', 'ok', seen);
-  }
   results.push(...pluginVersion(plugin, fetch));
   if (!where.wiki.exists) return results;
 
@@ -375,7 +345,7 @@ export function main(argv = process.argv.slice(2)) {
     } else if (cmd === 'detect') {
       console.log(JSON.stringify(detect(resolve(opts)), null, 2));
     } else if (cmd === 'init') {
-      console.log(JSON.stringify(initWiki(resolve(opts), { pluginDir: path.dirname(path.dirname(fileURLToPath(import.meta.url))) }), null, 2));
+      console.log(JSON.stringify(initWiki(resolve(opts)), null, 2));
     } else if (cmd === 'bind') {
       console.log(JSON.stringify(bind(resolve(opts)), null, 2));
     } else if (cmd === 'seed') {
@@ -386,43 +356,13 @@ export function main(argv = process.argv.slice(2)) {
       const where = resolve(opts);
       if (!where.wiki.exists) throw new ForgeError(`No wiki at ${where.wiki.path}. Run the forge-setup skill.`, 'no-wiki');
       let board;
-      let views;
-      try {
-        board = writeBoard(where.wiki.path, { today: args.today, dryRun: args.dryRun });
-        // The pages of the same board: raw/board.html and raw/wiki.html.
-        views = writeViews(where.wiki.path, { today: args.today, dryRun: args.dryRun });
-      } catch (err) { throw new ForgeError(err.message, 'board'); }
-      const page = {
-        file: views.page.file, url: pathToFileURL(views.page.file).href, written: views.page.written,
-        // The wiki page: each canonical page of the wiki, and the summary pages of the closed tickets.
-        wiki: { file: views.wiki.file, url: pathToFileURL(views.wiki.file).href, written: views.wiki.written, pages: views.wiki.pages, closed: views.wiki.closed },
-      };
-      if (args.json) console.log(JSON.stringify({ ...board, page }, null, 2));
+      try { board = writeBoard(where.wiki.path, { today: args.today, dryRun: args.dryRun }); }
+      catch (err) { throw new ForgeError(err.message, 'board'); }
+      if (args.json) console.log(JSON.stringify(board, null, 2));
       else {
         console.log(board.groups.map((group) => `${group.emoji} ${group.label} ${group.tickets.length}`).join(' · '));
         for (const error of board.errors) console.log(`  read error ${error.folder}: ${error.message}`);
         console.log(`${board.written ? 'wrote' : !board.changed ? 'unchanged' : 'would write'}: ${board.file}`);
-        console.log(`  open  ${page.url}`);
-        console.log(`  wiki  ${page.wiki.url}`);
-      }
-    } else if (cmd === 'styleguide') {
-      if (args._.length !== 1) throw new ForgeError('Usage: forge.mjs styleguide [--out <file>] [--json].', 'bad-args');
-      let file;
-      if (args.out) file = path.resolve(args.out);
-      else {
-        const where = resolve(opts);
-        if (!where.wiki.exists) throw new ForgeError(`No wiki at ${where.wiki.path}. Run the forge-setup skill.`, 'no-wiki');
-        file = path.join(rawDir(where.wiki.path), 'styleguide.html');
-      }
-      try {
-        mkdirSync(path.dirname(file), { recursive: true });
-        writeFileSync(file, renderStyleguide());
-      } catch (err) { throw new ForgeError(err.message, 'styleguide'); }
-      const url = pathToFileURL(file).href;
-      if (args.json) console.log(JSON.stringify({ file, url }, null, 2));
-      else {
-        console.log(`wrote: ${file}`);
-        console.log(`  open  ${url}`);
       }
     } else if (cmd === 'local-key') {
       if (args._.length !== 1) throw new ForgeError('Usage: forge.mjs local-key [--json].', 'bad-args');
@@ -450,51 +390,6 @@ export function main(argv = process.argv.slice(2)) {
         for (const item of result.related) console.log(`  other  ${item.path} [${item.branch || 'detached'}]`);
         for (const command of result.status ? [] : result.commands) console.log(`  run    ${command}`);
       }
-    } else if (cmd === 'live') {
-      const port = args.port === undefined ? undefined : Number(args.port);
-      const badPort = args.port !== undefined && (!/^\d{1,5}$/.test(args.port) || (port !== 0 && (port < 1024 || port > 65535)));
-      if (args._.length !== 1 || args.json || badPort || args.newLink || (args.status && args.port !== undefined)) {
-        throw new ForgeError(`Usage: forge.mjs live [--port <n>], or forge.mjs live --status. A port is 0, or 1024 to 65535.`, 'bad-args');
-      }
-      const where = resolve(opts);
-      if (args.status) {
-        const running = liveStatus(process.env, homeOf(where.wiki.path));
-        if (!running) { console.log('live: no server runs for this repository. Start it with: forge.mjs open'); return 1; }
-        console.log(`live: serving ${running.link}\n  wiki  ${running.wikiLink}\n  state ${running.file}`);
-      } else {
-        if (!where.wiki.exists) throw new ForgeError(`No wiki at ${where.wiki.path}. Run the forge-setup skill.`, 'no-wiki');
-        // The server runs after main() returns. The exit code comes when the server stops.
-        serveLive(where.wiki.path, { port, repo: where.repo.path }).then(
-          (code) => { process.exitCode = code; },
-          (err) => { console.error(`forge: ${err.message}`); process.exitCode = 1; },
-        );
-      }
-    } else if (cmd === 'open') {
-      const port = args.port === undefined ? undefined : Number(args.port);
-      const badPort = args.port !== undefined && (!/^\d{1,5}$/.test(args.port) || (port !== 0 && (port < 1024 || port > 65535)));
-      const modes = [args.status, args.list, args.stop].filter(Boolean).length;
-      if (args._.length !== 1 || args.json || badPort || modes > 1 || (modes && (args.port !== undefined || args.newLink))) {
-        throw new ForgeError(`Usage: forge.mjs open [--no-browser] [--new-link] [--port <n>], or forge.mjs open --status | --list | --stop. A port is 0, or 1024 to 65535.`, 'bad-args');
-      }
-      if (args.list) {
-        // Each live server of this user: the list needs no repository.
-        const lines = listForge();
-        console.log(lines.length ? lines.join('\n') : 'forge: no live server runs.');
-        return 0;
-      }
-      const where = resolve(opts);
-      if (!where.wiki.exists) throw new ForgeError(`No wiki at ${where.wiki.path}. Run the forge-setup skill.`, 'no-wiki');
-      if (args.status) {
-        const running = liveStatus(process.env, homeOf(where.wiki.path));
-        if (!running) { console.log('forge: no server runs for this repository. Start it with: forge.mjs open'); return 1; }
-        console.log(`forge: serving ${running.link}\n  wiki   ${running.wikiLink}\n  folder ${running.home}`);
-        return 0;
-      }
-      // The answer comes after main() returns: the server needs a moment to start or to stop.
-      const work = args.stop
-        ? stopForge({ wiki: where.wiki.path }).then((result) => { console.log(result.stopped ? `forge: stopped the live server of this repository (process ${result.pid}).` : 'forge: no server runs for this repository.'); })
-        : (args.newLink ? renewLink : openForge)({ cli: fileURLToPath(import.meta.url), repo: where.repo.path, wiki: where.wiki.path, port, browser: !args.noBrowser }).then(() => {});
-      work.catch((err) => { console.error(`forge: ${err.message}`); process.exitCode = 1; });
     } else if (cmd === 'gate-open') {
       if (args._.length < 3) throw new ForgeError('Usage: forge.mjs gate-open <key> <gate> [extra files...] [--dry-run] [--json] [--today <yyyy-mm-dd>].', 'bad-args');
       const where = resolve(opts);
@@ -527,7 +422,7 @@ export function main(argv = process.argv.slice(2)) {
       if (args.json) console.log(JSON.stringify(result, null, 2));
       else console.log(` ${result.gate} ${result.status} (${result.date}, ${result.method}): ${result.manifest} sha256 ${result.hash}. ${args.dryRun ? 'Would write' : 'Wrote'}: ${result.writes.join(', ')}.`);
     } else {
-      console.error('Usage: node forge.mjs <where|config|doctor|lint|detect|init|bind|seed|board|styleguide|local-key|worktree|live|open|gate-open|gate-approve|hook|context> [--wiki <dir>] [--cwd <dir>] [--json]');
+      console.error('Usage: node forge.mjs <where|config|doctor|lint|detect|init|bind|seed|board|local-key|worktree|gate-open|gate-approve|hook|context> [--wiki <dir>] [--cwd <dir>] [--json]');
       return 2;
     }
     return 0;

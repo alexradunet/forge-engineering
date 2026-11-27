@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { BOARD_ORDER, buildBoard, nextStrike, openGate, renderBoard, workdaysSince, writeBoard } from '../plugins/forge/scripts/lib/board.mjs';
+import { BOARD_ORDER, buildBoard, openGate, renderBoard, workdaysSince, writeBoard } from '../plugins/forge/scripts/lib/board.mjs';
 
 const cli = fileURLToPath(new URL('../plugins/forge/scripts/forge.mjs', import.meta.url));
 const cwd = fileURLToPath(new URL('..', import.meta.url));
@@ -127,48 +127,6 @@ test('forge.mjs board prints JSON and writes the board file', (t) => {
   const bad = spawnSync(process.execPath, [cli, 'board', '--today', '--cwd', cwd, '--wiki', w.root], { encoding: 'utf8' });
   assert.equal(bad.status, 2);
   assert.match(bad.stderr, /--today needs a value/);
-});
-
-// A board model by hand: only the fields that nextStrike reads.
-const strikeBoard = (...tickets) => ({
-  groups: BOARD_ORDER.map((state) => ({ state, tickets: tickets.filter((item) => item.state === state) })),
-});
-const strikeTicket = (key, state, extra = {}) => ({ key, folder: key.toLowerCase(), state, days: 1, next: `Next of ${key}`, waitingOn: '', openGate: null, gates: [], ...extra });
-const inReview = (name, doc) => ({ openGate: { name, status: 'in-review' }, gates: [{ name, status: 'in-review', doc }] });
-
-test('nextStrike gives the one next step: a gate in review, then a ticket that needs you, then a blocked ticket, then a ticket that can start', () => {
-  // 1: a ticket that needs the user, with a gate in review. The oldest comes first, and the text names the gate and its document.
-  const board = strikeBoard(
-    strikeTicket('APP-1', 'needs-me', { days: 2, ...inReview('Planned?', 'plan.md') }),
-    strikeTicket('APP-2', 'needs-me', { days: 9, ...inReview('Shippable?', 'review.md') }),
-    strikeTicket('APP-3', 'needs-me', { days: 20 }),
-    strikeTicket('APP-4', 'blocked', { waitingOn: 'infra: a log' }),
-    strikeTicket('APP-5', 'go'),
-  );
-  assert.deepEqual(nextStrike(board), { key: 'APP-2', folder: 'app-2', kind: 'review', text: 'Shippable? needs you. Read review.md.', doc: 'review.md' });
-  // 2: another ticket that needs the user. The text is its next step. The oldest comes first, and the key breaks a tie.
-  const other = strikeBoard(strikeTicket('APP-10', 'needs-me', { days: 3 }), strikeTicket('APP-9', 'needs-me', { days: 3, next: 'Answer Mara' }), strikeTicket('APP-4', 'blocked'));
-  assert.deepEqual(nextStrike(other), { key: 'APP-9', folder: 'app-9', kind: 'needs-me', text: 'Answer Mara', doc: '' });
-  // 3: a blocked ticket: the person or thing that it waits on, or its next step.
-  assert.deepEqual(nextStrike(strikeBoard(strikeTicket('APP-4', 'blocked', { waitingOn: 'infra: a log' }), strikeTicket('APP-5', 'go'))), { key: 'APP-4', folder: 'app-4', kind: 'blocked', text: 'Blocked: infra: a log', doc: '' });
-  assert.equal(nextStrike(strikeBoard(strikeTicket('APP-4', 'blocked', { days: 5 }), strikeTicket('APP-6', 'blocked', { days: 1, waitingOn: 'x' }))).text, 'Blocked: Next of APP-4', 'the next step when nothing is named, and the oldest first');
-  // 4: a ticket that can start.
-  assert.deepEqual(nextStrike(strikeBoard(strikeTicket('APP-5', 'go'), strikeTicket('APP-7', 'active'), strikeTicket('APP-8', 'waiting'))), { key: 'APP-5', folder: 'app-5', kind: 'go', text: 'Can start: Next of APP-5', doc: '' });
-  // Nothing: no ticket, or only tickets that need nothing from the user.
-  assert.equal(nextStrike(strikeBoard()), null);
-  assert.equal(nextStrike(strikeBoard(strikeTicket('APP-7', 'active'), strikeTicket('APP-8', 'waiting'), strikeTicket('APP-9', 'done'))), null);
-  // A gate in review that has no document still names the gate. A missing age counts as the newest.
-  assert.equal(nextStrike(strikeBoard(strikeTicket('APP-1', 'needs-me', { ...inReview('Planned?', '') }))).text, 'Planned? needs you.');
-  assert.equal(nextStrike(strikeBoard(strikeTicket('APP-1', 'go', { days: null }), strikeTicket('APP-2', 'go', { days: 0 }))).key, 'APP-2');
-});
-
-test('the strike is not part of the board model: board --json and raw/board.md have no strike', (t) => {
-  const w = wiki(t);
-  w.ticket('APP-1', { state: 'needs-me', gates: ['  - { name: Planned?, doc: plan.md, need: required, status: in-review }'] });
-  const board = buildBoard(w.root, { today: '2026-10-05' });
-  assert.ok(!('strike' in board) && !JSON.stringify(board).includes('Read plan.md'));
-  assert.ok(!renderBoard(board).includes('Read plan.md'));
-  assert.equal(nextStrike(board).text, 'Planned? needs you. Read plan.md.');
 });
 
 test('a local ticket shows on the board like each other ticket', (t) => {

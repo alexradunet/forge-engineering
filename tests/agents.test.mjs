@@ -144,17 +144,17 @@ test('each review gate has a cold read by a reader without the session history',
   assert.doesNotMatch(ticketCore.split('\n', 4).join('\n'), /canvas/i, 'the description of the ticket skill has no canvas');
 });
 
-test('each host table has the part for the pages, and the live server stays on this machine', () => {
+test('the host tables have no part for pages, a live server, or Resume, and the gate step still opens documents', () => {
   assert.match(phase('gates'), /Give the link to the document with `host\.open`/);
   for (const host of ['claude', 'copilot-cli']) {
     const table = readFileSync(new URL(`../plugins/forge/hosts/${host}.md`, import.meta.url), 'utf8');
-    assert.match(table, /`forge\.mjs open --no-browser`/, host);
-    assert.match(table, /^## Pages$/m, host);
-    assert.doesNotMatch(table, /canvas-comments|Send to agent|`sent`/, host);
-    assert.match(table, /`http:\/\/127\.0\.0\.1`/, host);
-    assert.match(table, /Never use another address than `127\.0\.0\.1`/, host);
+    assert.doesNotMatch(table, /^## (Pages|Live view)$/m, host);
+    assert.doesNotMatch(table, /forge\.mjs (open|live)|127\.0\.0\.1|\*\*Resume\*\*|sessions\.jsonl|board\.html|wiki\.html/, host);
+    assert.match(table, /^\| `host\.open` \|/m, host);
   }
-  assert.match(readFileSync(new URL('../plugins/forge/hosts/claude.md', import.meta.url), 'utf8'), /`run_in_background: true`/);
+  const board = readFileSync(new URL('../plugins/forge/skills/board/SKILL.md', import.meta.url), 'utf8');
+  assert.match(board, /Answer in chat with a text table/);
+  assert.doesNotMatch(board, /board\.html|wiki\.html|live server|forge\.mjs (open|live)|<F> (open|live)/);
 });
 
 test('the plan has design options, a baseline run, and a plan review, and the gate steps use gate-open', () => {

@@ -76,31 +76,6 @@ export function buildBoard(wikiPath, { today = new Date().toISOString().slice(0,
   return { version: 1, generated: today, total: tickets.length, groups, errors };
 }
 
-/**
- * The one next step for the user, for the strip above the lanes of the board page. It is not part of the board model (board --json and board.md do not have it).
- * The order: a ticket that needs the user with a gate in review (kind "review", the oldest first), another ticket that needs the user ("needs-me"),
- * a blocked ticket ("blocked"), a ticket that can start ("go"). The oldest ticket of a kind comes first, and the key breaks a tie.
- * It returns null, or { key, folder, kind, text, doc }. `doc` is the document of the gate in review (for example review.md), or ''.
- */
-export function nextStrike(board) {
-  const items = board.groups.flatMap((group) => group.tickets);
-  const oldest = (list) => [...list].sort((a, b) => (b.days ?? -1) - (a.days ?? -1) || byKey(a.key, b.key))[0];
-  const pick = (kind, item, text, doc = '') => ({ key: item.key, folder: item.folder, kind, text, doc });
-  const needs = items.filter((item) => item.state === 'needs-me');
-  const review = oldest(needs.filter((item) => item.openGate?.status === 'in-review'));
-  if (review) {
-    const doc = review.gates.find((gate) => gate.name === review.openGate.name)?.doc ?? '';
-    return pick('review', review, `${review.openGate.name} needs you.${doc ? ` Read ${doc}.` : ''}`, doc);
-  }
-  const other = oldest(needs);
-  if (other) return pick('needs-me', other, other.next || 'This ticket needs you.');
-  const blocked = oldest(items.filter((item) => item.state === 'blocked'));
-  if (blocked) return pick('blocked', blocked, `Blocked: ${blocked.waitingOn || blocked.next || 'open the ticket.'}`);
-  const go = oldest(items.filter((item) => item.state === 'go'));
-  if (go) return pick('go', go, go.next ? `Can start: ${go.next}` : 'Can start.');
-  return null;
-}
-
 const cell = (value) => oneLine(value).replace(/\\/g, '\\\\').replace(/\|/g, '\\|') || ' ';
 const age = (days) => days === null ? '?' : days <= 0 ? 'today' : days === 1 ? '1 day' : `${days} days`;
 

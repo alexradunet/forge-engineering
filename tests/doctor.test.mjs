@@ -33,18 +33,10 @@ test('doctor runs no login check, no profile check, and no credential or MCP che
   assert.ok(!results.some((r) => /is not on PATH/.test(r.detail)));
 });
 
-test('hook check: warn without .plugin, warn for a gone folder, ok for a plugin folder', () => {
-  const missing = line(doctor({ cwd: app, env }), 'hook');
-  assert.equal(missing.status, 'warn');
-  assert.match(missing.detail, /^No session start seen\./);
-  const pointer = path.join(where.forge.path, '.plugin');
-  writeFileSync(pointer, path.join(root, 'gone') + '\n');
-  const gone = line(doctor({ cwd: app, env }), 'hook');
-  assert.equal(gone.status, 'warn');
-  assert.match(gone.detail, /The plugin folder in \.plugin is gone: /);
-  writeFileSync(pointer, realPlugin + '\n');
-  const ok = line(doctor({ cwd: app, env }), 'hook');
-  assert.deepEqual([ok.status, ok.detail], ['ok', realPlugin]);
+test('doctor has no hook check and no check of a server, a page, or Mermaid', () => {
+  const checks = doctor({ cwd: app, env }).map((item) => item.check);
+  assert.ok(!checks.includes('hook'));
+  assert.ok(!checks.some((check) => /live|page|mermaid|server/i.test(check)));
 });
 
 test('plugin version: behind warns, up to date is ok, a non-clone is ok', () => {

@@ -1,4 +1,4 @@
-// The Forge folder of a repository (Forge 9): the layout, the resolver, the launcher, and the pages.
+// The Forge folder of a repository (Forge 9): the layout, the layout and the resolver.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -7,7 +7,6 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildContext } from '../plugins/forge/scripts/lib/hook.mjs';
-import { LAUNCHER_SH, readPointer, writeLauncher, writePointer } from '../plugins/forge/scripts/lib/launcher.mjs';
 import { archiveDir, homeOf, isForgeLayout, rawDir } from '../plugins/forge/scripts/lib/layout.mjs';
 import { resolve } from '../plugins/forge/scripts/lib/repo.mjs';
 import { initWiki } from '../plugins/forge/scripts/lib/setup.mjs';
@@ -60,7 +59,7 @@ test('the resolver finds the Forge folder from the repository, a worktree, the w
 
   const both = resolve({ cwd: app, env: s.env });
   assert.deepEqual([both.wiki.path, both.forge.path, both.forge.layout, both.raw, both.archive], [wiki, home, 'forge', path.join(home, 'raw'), path.join(home, 'archive')]);
-  initWiki(resolve({ cwd: app, env: s.env }), { pluginDir: plugin });
+  initWiki(resolve({ cwd: app, env: s.env }));
 
   s.git(app, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'first');
   const tree = path.join(`${app}.worktrees`, 'APP-9-fix');
@@ -94,72 +93,15 @@ test('the resolver finds the Forge folder from the repository, a worktree, the w
   assert.deepEqual([given.wiki.source, given.forge.path, given.forge.layout], ['override', path.join(s.root, 'team', 'wiki'), 'wiki']);
 });
 
-test('the launcher runs forge.mjs of the plugin for its own Forge folder, from each folder', { skip: process.platform === 'win32' }, (t) => {
-  const s = space(t);
-  const app = s.repo('app');
-  const init = spawnSync(process.execPath, [cli, 'init', '--cwd', app], { encoding: 'utf8', env: s.env });
-  assert.equal(init.status, 0, init.stderr);
-  const home = `${app}.forge`;
-  assert.deepEqual(JSON.parse(init.stdout).created.filter((name) => name.startsWith('../')), ['../raw/', '../archive/', '../forge', '../forge.cmd', '../.plugin']);
-  assert.equal(readPointer(home), plugin, 'init gives the launcher the path of this plugin');
-  const launch = (cwd, ...args) => spawnSync(path.join(home, 'forge'), args, { cwd, encoding: 'utf8', env: s.env });
-  for (const cwd of [app, s.root, os.tmpdir()]) {
-    const where = launch(cwd, 'where');
-    assert.equal(where.status, 0, where.stderr);
-    assert.deepEqual([JSON.parse(where.stdout).repo.path, JSON.parse(where.stdout).wiki.source], [app, 'launcher'], cwd);
-  }
-  const board = launch(s.root, 'board');
-  assert.equal(board.status, 0, board.stderr);
-  assert.ok(existsSync(path.join(home, 'raw', 'board.html')) && existsSync(path.join(home, 'raw', 'wiki.html')));
-  // The exit code and the arguments go through.
-  assert.equal(launch(s.root, 'open', '--status').status, 1);
-  const gone = launch(s.root, 'canvas', 'X');
-  assert.equal(gone.status, 2, 'the canvas command is removed: the usage error');
-  assert.match(gone.stderr, /^Usage: node forge\.mjs <where\|/);
-  assert.doesNotMatch(gone.stderr, /canvas/);
-  // Without the path of the plugin, the launcher says what to do.
-  writeFileSync(path.join(home, '.plugin'), `${path.join(s.root, 'gone')}\n`);
-  const lost = launch(s.root, 'where');
-  assert.deepEqual([lost.status, lost.stdout], [1, '']);
-  assert.match(lost.stderr, /^forge: the path of the forge plugin is not known, or the plugin moved\.\nStart one agent session in the repository/);
-  rmSync(path.join(home, '.plugin'));
-  assert.equal(launch(s.root, 'where').status, 1);
-});
-
-test('the path of the plugin follows the last plugin that wrote it, also a lower version', (t) => {
-  const s = space(t);
-  const home = path.join(s.root, 'app.forge');
-  mkdirSync(home);
-  const make = (name, version) => {
-    const dir = path.join(s.root, name);
-    s.put(path.join(dir, 'plugin.json'), JSON.stringify({ version }));
-    s.put(path.join(dir, 'scripts', 'forge.mjs'), '');
-    return dir;
-  };
-  const [v90, v91, v92] = [make('p90', '9.0.0'), make('p91', '9.1.0'), make('p92', '9.10.0')];
-  assert.equal(readPointer(home), '');
-  assert.deepEqual([writePointer(home, v91), readPointer(home)], [true, v91]);
-  assert.deepEqual([writePointer(home, v91), writePointer(home, v90), readPointer(home)], [false, true, v90], 'the pointer follows the last writer, also to a lower version');
-  assert.deepEqual([writePointer(home, v92), writePointer(home, v92), readPointer(home)], [true, false, v92]);
-  rmSync(v92, { recursive: true });
-  assert.deepEqual([writePointer(home, v90), readPointer(home)], [true, v90], 'a plugin folder that is gone is replaced');
-  assert.deepEqual([writeLauncher(home), writeLauncher(home)], [['forge', 'forge.cmd'], []]);
-  assert.equal(readFileSync(path.join(home, 'forge'), 'utf8'), LAUNCHER_SH);
-  assert.ok(!LAUNCHER_SH.includes('\r'), 'the sh launcher has LF line ends on each machine');
-});
-
-test('the session context names the Forge folder, and the session start keeps the launcher current', (t) => {
+test('the session context names the Forge folder', (t) => {
   const s = space(t);
   const app = s.repo('app');
   initWiki(resolve({ cwd: app, env: s.env }));
   const home = `${app}.forge`;
-  rmSync(path.join(home, 'forge'));
-  assert.equal(readPointer(home), '', 'init without a plugin folder writes no path');
   const { body } = buildContext({ cwd: app, source: 'startup', prompt: '' }, { cli, env: s.env, host: 'claude' });
   const line = body.split('\n').find((text) => text.startsWith('`<plugin>`'));
   assert.equal(line, `\`<plugin>\` is \`${plugin}\`. \`<repo>\` is \`${app}\`. \`<forge>\` is \`${home}\`. \`<wiki>\` is \`${path.join(home, 'wiki')}\`. \`<config>\` is \`${path.join(home, 'wiki', 'forge', 'config')}\`.`);
-  assert.equal(readPointer(home), plugin);
-  assert.ok(existsSync(path.join(home, 'forge')), 'a launcher that is gone comes back');
+  assert.ok(!existsSync(path.join(home, 'forge')) && !existsSync(path.join(home, '.plugin')), 'the session start writes no launcher');
 });
 
 test('nextLocalKey counts up from the counter, the raw and archive folders, and the wiki pages', (t) => {

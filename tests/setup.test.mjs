@@ -4,7 +4,6 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { LAUNCHER_CMD, LAUNCHER_SH, readPointer } from '../plugins/forge/scripts/lib/launcher.mjs';
 import { readBinding, resolve } from '../plugins/forge/scripts/lib/repo.mjs';
 import { detect, hostKind, initWiki, bind, seed, keyHints, branchPatternHint, suggestValues } from '../plugins/forge/scripts/lib/setup.mjs';
 import { loadConfig, parseFile } from '../plugins/forge/scripts/lib/config.mjs';
@@ -45,38 +44,31 @@ test('detect runs no tool, and asks where the wiki lives for a GitHub remote', (
   assert.ok(!('host' in d.suggestion.values));
 });
 
-test('initWiki for a --wiki folder outside of a Forge folder ignores raw and archive inside the wiki, and adds no launcher', () => {
+test('initWiki for a --wiki folder outside of a Forge folder ignores raw and archive inside the wiki, and adds nothing outside it', () => {
   const other = path.join(root, 'old');
   const given = path.join(root, 'given-wiki');
   mkdirSync(other);
   execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: other });
   const where = resolve({ cwd: other, wiki: given, env });
   assert.deepEqual([where.wiki.path, where.forge.path, where.forge.layout, where.raw], [given, given, 'wiki', path.join(given, 'raw')]);
-  const r = initWiki(where, { pluginDir: path.join(root, 'plugin') });
+  const r = initWiki(where);
   assert.match(readFileSync(path.join(given, '.gitignore'), 'utf8'), /^raw\/\narchive\/$/m);
   assert.ok(!r.created.some((name) => name.startsWith('../')) && !existsSync(path.join(given, '.plugin')));
   assert.deepEqual(initWiki(resolve({ cwd: other, wiki: given, env })).created, []);
 });
 
-test('initWiki creates the Forge folder with its wiki, raw, archive, and launcher, binds it, and is idempotent', () => {
+test('initWiki creates the Forge folder with its wiki, raw, and archive, binds it, and is idempotent', () => {
   const where = resolve({ cwd: app, env });
   const home = path.join(root, 'app.forge');
   const wiki = path.join(home, 'wiki');
   assert.deepEqual([where.wiki.path, where.wiki.exists, where.forge.path, where.forge.layout, where.raw, where.archive], [wiki, false, home, 'forge', path.join(home, 'raw'), path.join(home, 'archive')]);
-  const plugin = path.join(root, 'plugin');
-  mkdirSync(path.join(plugin, 'scripts'), { recursive: true });
-  writeFileSync(path.join(plugin, 'plugin.json'), '{"version":"9.0.0"}');
-  writeFileSync(path.join(plugin, 'scripts', 'forge.mjs'), '');
-  const r = initWiki(where, { pluginDir: plugin });
+  const r = initWiki(where);
   assert.equal(r.wiki, wiki);
   assert.ok(existsSync(path.join(wiki, '.git')));
   // raw/ and archive/ are next to the wiki, so the wiki repository needs no .gitignore line for them.
   assert.ok(!existsSync(path.join(wiki, '.gitignore')) && existsSync(path.join(home, 'raw')) && existsSync(path.join(home, 'archive')));
-  assert.deepEqual(r.created.filter((name) => name.startsWith('../')), ['../raw/', '../archive/', '../forge', '../forge.cmd', '../.plugin']);
-  assert.equal(readFileSync(path.join(home, 'forge'), 'utf8'), LAUNCHER_SH);
-  assert.equal(readFileSync(path.join(home, 'forge.cmd'), 'utf8'), LAUNCHER_CMD);
-  if (process.platform !== 'win32') assert.equal(statSync(path.join(home, 'forge')).mode & 0o111, 0o111, 'a person can run the launcher');
-  assert.equal(readPointer(home), plugin);
+  assert.deepEqual(r.created.filter((name) => name.startsWith('../')), ['../raw/', '../archive/']);
+  assert.ok(!existsSync(path.join(home, 'forge')) && !existsSync(path.join(home, '.plugin')), 'Forge writes no launcher');
   const index = readFileSync(path.join(wiki, 'index.md'), 'utf8');
   assert.deepEqual(parseFile(index).data, { title: 'Wiki index', type: 'index' });
   assert.deepEqual(JSON.parse(readFileSync(path.join(wiki, 'forge', 'repo.json'), 'utf8')).repo, { path: app, remote: 'https://github.com/owner/app' });

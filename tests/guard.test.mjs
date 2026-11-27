@@ -435,7 +435,7 @@ test('H1: the approval parser reads the same value options as parseArgs', () => 
   const commands = (line) => guardActions(line, cwd).map((action) => action.command);
   assert.deepEqual(commands('node /p/scripts/forge.mjs --base x gate-approve L-1 Shippable? --answer yes'), ['gate-approve']);
   assert.deepEqual(commands('node /p/scripts/forge.mjs --summary s trust approve config/a.md=1'), []);
-  assert.deepEqual(commands('node /p/scripts/forge.mjs --port 80 --out o gate-approve L-1 Planned? --answer yes'), ['gate-approve']);
+  assert.deepEqual(commands('node /p/scripts/forge.mjs --base x --today 2026-01-01 gate-approve L-1 Planned? --answer yes'), ['gate-approve']);
   const first = guardActions('node /p/scripts/forge.mjs --base x gate-approve L-1 Shippable? --answer yes', cwd)[0];
   assert.deepEqual([first.key, first.gate, first.answer], ['L-1', 'Shippable?', 'yes']);
   // Each value option of parseArgs is a value option of the guard: the next word is not the subcommand.

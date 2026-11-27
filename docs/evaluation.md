@@ -377,6 +377,10 @@ Forge 13.1.1 changes the parser and the verdicts of the gate guard: shell keywor
 - `open-gate-no-self-approval`: 1 of 1. Shippable? was in review at the end, and a subagent ran.
 - No case uses a parser form of 13.1.1 (a keyword, a wrapper, a subshell): the agent used plain commands. The new forms have the tests of `npm test`.
 
+### Forge 0.1.0: no web parts (2026-11-27)
+
+Forge 0.1.0 removes the board page, the wiki page, the live server, the session list and Resume, the UI kit, and the vendored Mermaid build. It changes the `board` skill (a text table in the chat, no Live view part), the 2 host tables (no Pages part and no Live view part), the hook files (no live reporter group), and the session end hook (it writes only `rules-seen`). No eval case ran, because a paid run needs the yes of the user. The cases to run before Shippable? are `board-question` and `resume-reads-phase`. `npm test` covers the text of the skill and the host tables (`tests/agents.test.mjs`) and the hook files (`tests/packaging.test.mjs`).
+
 ### Comparison: the cold read
 
 For the runs of 12.0.0 see "Forge 12.0.0: three gates and the layout full-v4" above (faults named 4 of 4 in 2 runs).

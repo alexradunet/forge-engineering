@@ -31,8 +31,8 @@ resolved path in each command. All commands run on Windows, macOS, and Linux.
 |---|---|---|
 | `<F> where --json` | Repository, worktree, wiki, and config folder | nothing |
 | `<F> detect` | Host, default branch, key hints, your branch pattern, wiki state, and suggested values | nothing |
-| `<F> doctor [--fetch]` | Read-only check of the whole setup: placeholders, the session start hook, and the plugin version (`--fetch` runs `git fetch` in the plugin clone) | nothing |
-| `<F> init` | Create the Forge folder `../<repo>.forge`: the wiki (`git init`, `index.md`, the binding), `raw/`, `archive/`, and the launcher | the Forge folder |
+| `<F> doctor [--fetch]` | Read-only check of the whole setup: placeholders, the base branch, unused files, and the plugin version (`--fetch` runs `git fetch` in the plugin clone) | nothing |
+| `<F> init` | Create the Forge folder `../<repo>.forge`: the wiki (`git init`, `index.md`, the binding), `raw/` and `archive/` | the Forge folder |
 | `<F> bind` | Write `<wiki>/forge/repo.json` | the wiki folder |
 | `<F> seed [--force]` | Copy the config templates to `<wiki>/forge/config`, and the rule page to `<wiki>/rules` | the wiki folder |
 | `<F> config set <file>.<key>=<value> ...` | Set frontmatter values. Validates first; writes nothing on a problem | the wiki folder |
@@ -79,7 +79,7 @@ Run `detect` in the main checkout. Do not ask for anything that `detect` already
 ### Step 2. Wiki
 
 When `wiki.exists` is false, show the path and the remote, and ask for approval (see **📚 Wiki remote**).
-Clone the team wiki to that path (`../<repo>.forge/wiki`) when the team already shares one. Then run `init`: it adds `raw/`, `archive/`, and the launcher, and it changes no file of the clone. Without a team wiki, `init` also creates the wiki.
+Clone the team wiki to that path (`../<repo>.forge/wiki`) when the team already shares one. Then run `init`: it adds `raw/` and `archive/`, and it changes no file of the clone. Without a team wiki, `init` also creates the wiki.
 Run `bind` after a clone, or when an existing wiki is not bound.
 Add the remote with `git -C <wiki> remote add origin <url>` only after approval.
 A cloned wiki usually has its config already. Then skip to step 4, and set only your personal values.
@@ -195,10 +195,6 @@ Tell the user: say "show the board" in any session. The `board` skill shows the 
 
 The wiki is `../<repo>.forge/wiki`, and the Forge folder is next to `../<repo>.worktrees`. The wiki holds the forge config
 and knowledge pages. `raw/` and `archive/` are next to the wiki, so they stay local.
-
-The Forge folder has a launcher: the user runs `../<repo>.forge/forge open` in a terminal (`forge.cmd` on Windows).
-It starts the live server of the repository in the background and opens the board and the wiki in the browser.
-Tell the user this command at the end of the setup.
 
 | `suggestion.wikiRemote.type` | Meaning | Action |
 |---|---|---|
