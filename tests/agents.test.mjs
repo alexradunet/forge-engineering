@@ -173,7 +173,7 @@ test('the plan has design options, a baseline run, and a plan review, and the ga
   assert.match(gates, /Run \`<F> gate-open <key> <gate> \[extra files\]\`/);
   assert.match(gates, /Never write a manifest by hand/);
   assert.doesNotMatch(gates, /Get the form text: run/);
-  assert.match(gates, /needs no second "yes" when it is in the approved Shippable\? set/);
+  assert.match(gates, /is part of the approved Shippable\? set/);
   assert.ok(gates.includes('change-update.draft.md'));
   assert.ok(phase('evidence').includes('change-update.draft.md'));
   assert.match(phase('implement'), /Keep this order before the push/);
@@ -183,15 +183,12 @@ test('the plan has design options, a baseline run, and a plan review, and the ga
   assert.match(agents, /Write \`plan-sha256\` only after your last edit of \`plan\.md\` in this round, and never change it later/);
 });
 
-test('a ticket with no code change has steps, the write capability tracker.create is named, and story.md has no Need from you line', () => {
+test('a ticket with no code change has steps, and story.md has no Need from you line', () => {
   const implement = phase('implement');
   assert.match(implement, /### .*Ticket with no code change/);
   assert.match(implement, /Leave \`branch\` and \`worktree\` empty in the README/);
   assert.match(phase('evidence'), /A ticket with no code change has no push\. Its checks run before Shippable\? in each case/);
   assert.match(ticketCore, /A ticket with no code change has the same gates/);
-  for (const file of ['context/tools.md']) {
-    assert.ok(readFileSync(new URL(`../plugins/forge/${file}`, import.meta.url), 'utf8').includes('tracker.create'), file);
-  }
   assert.match(read('ticket/templates/_style.md'), /\`story\.md\` has no \`Need from you:\` line/);
   assert.doesNotMatch(read('ticket/templates/story.md'), /Need from you:/);
   assert.match(plan, /Need from you: GO on Planned\?/);
@@ -221,19 +218,16 @@ test('the team size values are the same in the setup skill, the policy template,
 
 test('the local ticket texts: Start, closing, and the session context name the local key', () => {
   const start = phase('start');
-  assert.match(start, /### 📝 Local ticket/);
+  assert.match(start, /### 📝 A ticket with no work item/);
   assert.match(start, /<F> local-key/);
   assert.match(start, /evidence\/<yyyy-mm-dd>-request\.md/);
   assert.match(phase('closing'), /A local ticket \(key \`L-<n>\`\)[\s\S]*another ticket[\s\S]*<F> local-key/);
   assert.match(ticketCore, /local key \`L-<n>\`/);
-  assert.match(readFileSync(new URL('../plugins/forge/context/forge.md', import.meta.url), 'utf8'), /ticket with no work item[^\n]*"Local ticket" of Start/);
-  assert.match(read('board/SKILL.md'), /local key \(\`L-<n>\`\), skip the tracker read/);
+  assert.match(readFileSync(new URL('../plugins/forge/context/forge.md', import.meta.url), 'utf8'), /ticket with no key[^\n]*Start gives it a key \`L-<n>\`/);
 });
 
-test('the setup skill and AGENTS.md describe the profile of the wiki', () => {
+test('the setup skill has no profile, tool, or credential step', () => {
   const setup = read('forge-setup/SKILL.md');
-  for (const text of ['profile.file', 'profile.suggested', 'profile.bound', 'profile.available', 'seed --profile', 'bind --profile', 'config set "repo.changeName=none"', 'Never answer for the user']) assert.ok(setup.includes(text), text);
-  const agents = readFileSync(new URL('../AGENTS.md', import.meta.url), 'utf8');
-  assert.ok(agents.includes('plugins/forge/profiles/<name>/'));
-  assert.doesNotMatch(agents, /One build has one profile/);
+  for (const text of ['repo.changeName=<value>', 'Never answer for the user', 'Forge calls no tracker, no change request host, and no CI tool']) assert.ok(setup.includes(text), text);
+  assert.doesNotMatch(setup, /profile\.md|seed --profile|bind --profile|cred\.mjs|Live read|Queries|MCP/);
 });

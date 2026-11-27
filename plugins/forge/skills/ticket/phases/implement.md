@@ -15,15 +15,15 @@ After a compaction of the session, read this file again before you use its steps
 - Before Shippable?, and so before any push or change request (draft too), run the adversarial review subagent (the `agents` skill, "Adversarial review"). The reviewer gets no story of the change. Save its report in `evidence/code-review-NNN.md`, and handle its findings. Record what you did in **Findings** of `review.md`. `gate-open <key> shippable` needs this file.
 - Find the end-to-end and regression tests that cover the changed code (search the test projects for the changed classes, jobs, and features). Add them to **Tests** of `map.md`.
 - Write `review.md` from [templates/review.md](../templates/review.md): the summary, **Changes** (area, files, why, user impact), **Before and after** when the behavior changes, **Tests run**, **Findings**, and **Not checked**. If no regression test covers the change, write that in **Not checked**.
-- Draft every external text (tracker comment, change request title and description, shared document) in `outbox/<target>.draft.md` from [templates/outbox.draft.md](../templates/outbox.draft.md). Run a full pass of the `writing` skill (outbound mode) on the text between the `send` markers. Send only that text. Run Sendable? before the write.
+- Draft every external text (comment, change request title and description, shared document) in `outbox/<target>.draft.md` from [templates/outbox.draft.md](../templates/outbox.draft.md). Run a full pass of the `writing` skill (outbound mode) on the text between the `send` markers. Give the user only that text to paste. Forge sends nothing.
 - Keep this order before the push:
   1. Run the adversarial review, save its report in `evidence/code-review-NNN.md`, and handle its findings. Shippable? cannot open without that file.
   2. When `policy.evidenceOnDeployedEnv` is `false`: do Evidence Testing and write `proof.md` ([evidence.md](evidence.md)).
   3. Write `review.md`.
   4. Write the change request draft `outbox/change.draft.md` from [templates/outbox.draft.md](../templates/outbox.draft.md), with `target: change`. Run a full pass of the `writing` skill on the text between the `send` markers.
   5. Open Shippable? with `<F> gate-open <key> shippable`. It adds the draft to the set. When `policy.evidenceOnDeployedEnv` is `false`, it also needs `proof.md` and adds it.
-  6. After GO, push.
-  7. Create the change request with `repo.open-change` and the text between the `send` markers. The approved Shippable? set is the "yes" for this write (see Sendable? in [gates.md](gates.md)). Add the change request to the README `changes` list.
+  6. After GO, push the ticket branch from the ticket worktree: `git push -u origin <branch>`. Never force-push.
+  7. Give the user the title and the body from the `send` markers of the draft, and the branch name. The user opens the change request in the web UI and pastes its URL. Add the URL to the README `changes` list. Forge calls no change request host.
 - When `repo.changeName` is `none`, the repository has no change requests. The push to the base branch replaces the change request:
   1. Do steps 1 to 3 of the order above. Write no change request draft.
   2. Open Shippable? with `<F> gate-open <key> shippable`. In the approval form, say that GO also approves the push to the base branch.
@@ -33,8 +33,8 @@ After a compaction of the session, read this file again before you use its steps
   6. Push from the ticket worktree with `git push origin HEAD:<base branch>`. Never force-push. Do not push the base branch from the main checkout: the gate guard checks only a push from the ticket worktree.
   7. Add a `log` entry with the pushed commit to `journal.md`. The README `changes` list stays empty.
   8. When `policy.evidenceOnDeployedEnv` is `true`, do Evidence Testing after this push.
-- When end-to-end or regression tests exist, run the relevant ones (and the whole suite when the risk is wide) on a deployed branch before you mark the change request ready. The `## Implement` policy section can make this stricter. Ask the user before each deploy or CI trigger (`ci.trigger`). Show the job and its parameters first.
-- Record test results, change request links, and CI results (`ci.status`) as `log` entries in `journal.md`. Record build and test problems as `problem` entries.
+- When end-to-end or regression tests exist, run the relevant ones (and the whole suite when the risk is wide) on a deployed branch before you mark the change request ready. The `## Implement` policy section can make this stricter. Ask the user before each deploy. Forge triggers no CI: the user starts the CI run and pastes the result.
+- Record test results, change request links, and the CI results that the user pastes as `log` entries in `journal.md`. Record build and test problems as `problem` entries.
 - Set the phase to `implement` and then to `review` in `README.md`. Set `review` when the implementation is done.
 - When `policy.evidenceOnDeployedEnv` is `true`, run the Evidence Testing step ([evidence.md](evidence.md)) after the change request. Do not report a change request as ready to merge before that step is done.
 

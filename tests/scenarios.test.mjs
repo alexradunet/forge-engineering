@@ -162,18 +162,15 @@ test('combined approval goes stale if any listed document changes before the blo
   assert.equal(evaluate(scenario, trace, artifacts).passed, false);
 });
 
-test('external tools need exact per-write approval and a refusal prevents a write or retry', () => {
+test('an external tool call always fails: Forge calls no external tool, with or without an approval', () => {
   const documents = [{ path: 'outbox/comment.draft.md', sha256: sha256('Draft\n') }];
   const trace = [
     { kind: 'artifact', ...documents[0] },
-    { kind: 'approval', gate: 'Sendable?', explicit: true, documents, command: 'synthetic comment', target: 'synthetic item' },
     { kind: 'tool', effect: 'external-write', command: 'synthetic comment', target: 'synthetic item' },
   ];
   const scenario = { workflow: 'full-v4' };
-  assert.equal(evaluate(scenario, trace, {}).passed, true);
-  assert.equal(evaluate(scenario, [...trace, trace[2]], {}).passed, false, 'Retry consumes new approval.');
-  assert.equal(evaluate(scenario, [trace[0], trace[1], { ...trace[2], target: 'different item' }], {}).passed, false);
-  assert.equal(evaluate(scenario, [trace[0], trace[1], { kind: 'decision', subject: 'external-write', value: 'declined' }, trace[2]], {}).passed, false);
+  assert.equal(evaluate(scenario, trace, {}).passed, false);
+  assert.equal(evaluate(scenario, [trace[0], { kind: 'tool', effect: 'read', command: 'git log' }, { kind: 'tool', effect: 'local-write', command: 'git commit' }], {}).passed, true);
   assert.equal(evaluate(scenario, [{ kind: 'tool', command: 'unclassified' }], {}).passed, false);
 });
 

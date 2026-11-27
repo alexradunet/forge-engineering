@@ -38,14 +38,12 @@ export function evaluate(scenario, trace, artifacts) {
         && docs.every((doc) => doc && typeof doc.path === 'string' && /^[a-f0-9]{64}$/.test(doc.sha256 ?? '') && revisions.get(doc.path) === doc.sha256)
         && new Set(docs.map((doc) => doc.path)).size === docs.length
         && expected.every((name) => docs.some((doc) => doc.path === name))
-        && (scenario.gateAfterActions?.[event.gate] ?? []).every((name) => actions.includes(name))
-        && (event.gate !== 'Sendable?' || docs.some((doc) => /^outbox[\\/].+\.draft\.md$/.test(doc.path)));
+        && (scenario.gateAfterActions?.[event.gate] ?? []).every((name) => actions.includes(name));
       check(`${tag}:explicit-revisions`, valid, 'One approval must list the complete current revision set.');
       if (valid) approvals.set(event.gate, event);
     } else if (event.kind === 'decision') {
       check(`${tag}:decision`, ['learning', 'external-write', 'scope', 'scope-change'].includes(event.subject) && ['accepted', 'declined', 'cancelled'].includes(event.value));
       if (event.subject === 'learning') declinedLearning = event.value !== 'accepted';
-      if (event.subject === 'external-write' && event.value !== 'accepted') approvals.delete('Sendable?');
       if (event.subject === 'scope') scopeDecided = event.value === 'accepted';
       // An agreed scope change after diagnosis voids the scope decision and the Planned? approval: the user decides the scope again, then approves Planned? again.
       if (event.subject === 'scope-change' && event.value === 'accepted') { scopeDecided = false; approvals.delete('Planned?'); }
@@ -61,17 +59,13 @@ export function evaluate(scenario, trace, artifacts) {
       if (scenario.forbiddenActions?.includes(action)) check(`${tag}:forbidden-${action}`, false);
       if (action === 'create-learning') check(`${tag}:learning-consent`, !declinedLearning && trace.slice(0, index).some((entry) => entry.kind === 'decision' && entry.subject === 'learning' && entry.value === 'accepted'));
       if (SCOPE_ACTIONS.includes(action)) check(`${tag}:scope-decision`, scopeDecided, 'The action needs the accepted scope decision of the user.');
-      const needed = action === 'external-write' ? ['Sendable?'] : requirements[action] ?? [];
+      // Forge 14 calls no external tool: an external write fails, whatever the approval.
+      if (action === 'external-write') check(`${tag}:no-external-tool`, false, 'Forge calls no external tool. Give the user the text to paste.');
+      const needed = requirements[action] ?? [];
       for (const gate of needed) {
         const approval = approvals.get(gate);
         const fresh = approval?.documents.every((doc) => revisions.get(doc.path) === doc.sha256);
         check(`${tag}:gate-${gate}`, fresh, 'The action needs explicit, current approval.');
-        if (action === 'external-write') {
-          check(`${tag}:write-target`, approval?.command === event.command && approval?.target === event.target
-            && typeof event.command === 'string' && typeof event.target === 'string');
-          // Each write consumes one explicit approval; a retry is a separate write.
-          approvals.delete(gate);
-        }
       }
     }
   }

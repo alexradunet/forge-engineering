@@ -33,22 +33,22 @@ Rules:
 7. Cover the unhappy path where the ticket has one (error, threshold, empty input, feature toggle off).
 8. Ask the user if an automated test would bring evidence. Do this when you start the checks, with `host.ask`:
    - Search the test projects for a fitting project and for helpers that you can reuse.
-   - Propose the test: what it does, what it asserts, which CI job runs it, and the cost.
+   - Propose the test: what it does, what it asserts, how it runs, and the cost.
    - Say what it cannot prove (for example telemetry that the test cannot read). Then name the other check that closes the gap.
-   - A manual check that needs database or admin access that the agent lacks is a strong reason to propose a test. CI environments often have that access.
+   - A manual check that needs database or admin access that the agent lacks is a strong reason to propose a test.
    - Options: "Add an automated test", "Manual evidence only", "Not now". Record the answer in **Automated test** of `proof.md`.
    - A new test is a code change. It needs a new commit and a new review. When Shippable? is approved, it needs Shippable? again before the push.
 9. Add the regression evidence to **Regression**: unit tests, regression and suite runs (job, run number, result, link), and old failures with their first failing run.
 10. Mark a check `🟢 verified`, `🔴 failed`, or `⚪ not proven: <why>`. Do not leave `open` as a final state: with `false`, `gate-open` refuses an `open` or a `failed` check. Two more rules apply to `proof.md`:
    - A `🟢 verified` check links one file in `evidence/` (a Markdown link to a regular file). A check with no link is refused.
    - A `⚪ not proven` check needs its own line in **Accepted gaps**: `- ⚪ Check <n>: <why>. Accepted by the user on <yyyy-mm-dd>.` Ask the user first. A `proof.md` with no numbered check is refused.
-11. Ask the user before each deploy, CI trigger, or database write. Show the job or the exact steps first. Never write to a database without approval. Do not escalate access (for example secret store or firewall changes) on your own.
+11. Ask the user before each deploy or database write. Show the exact steps first. Forge triggers no CI: the user starts the CI run and pastes the result. Never write to a database without approval. Do not escalate access (for example secret store or firewall changes) on your own.
 12. A failed check goes to `journal.md` as a `problem` entry, and back to Implement.
 13. The step is done when every check is `🟢 verified` (or an accepted `⚪`). Add a `step <n> verified` entry to `journal.md` for each step that a check proves. Then:
    - `false`: go on with `review.md` and Shippable? (see [implement.md](implement.md)). After the push and the creation of the change request, tell the user that it can be merged.
-   - `true`: write the new description in `outbox/change-update.draft.md` (the approved change request draft stays as it is), run Sendable?, update the description with `repo.update-change`, and tell the user that the change request can be merged.
+   - `true`: write the new description in `outbox/change-update.draft.md` (the approved change request draft stays as it is), give it to the user to paste into the change request, and tell the user that the change request can be merged.
    - Never suggest a merge on a day in `policy.noMergeWeekdays`.
-14. When the change request has all approvals (`repo.change-status`) and Evidence Testing is done, report it and stop. The user merges in the web UI of the repository host. Record the merge as a `log` entry when the user reports it. With `repo.changeName: none`, there is no description to update: tell the user the pushed commit, and go to Close when the user says that the ticket is done.
+14. When the user says that the change request has all approvals and Evidence Testing is done, report it and stop. The user merges in the web UI of the repository host. Record the merge as a `log` entry when the user reports it. With `repo.changeName: none`, there is no description to update: tell the user the pushed commit, and go to Close when the user says that the ticket is done.
 15. After the merge, run the QA handover (next section) when `policy.qaHandover` is `true`. Else go to Close when the user says that the ticket is done.
 
 ## 🧑‍🔬 QA handover
@@ -57,10 +57,9 @@ Run it only when `policy.qaHandover` is `true`. Run it after the user reports th
 
 Read the `## QA handover` policy section first. It can set the comment format, the QA status, and the QA tools.
 
-1. Write `outbox/qa-handover.draft.md` from [templates/qa-handover.md](../templates/qa-handover.md). The tracker comment is the text between the `send` markers. Draft it from `proof.md`, `plan.md`, `review.md`, and `map.md`. Do not invent results. Link the evidence files only in "Why this wording", because QA cannot open the wiki.
+1. Write `outbox/qa-handover.draft.md` from [templates/qa-handover.md](../templates/qa-handover.md). The comment for QA is the text between the `send` markers. The user pastes it. Draft it from `proof.md`, `plan.md`, `review.md`, and `map.md`. Do not invent results. Link the evidence files only in "Why this wording", because QA cannot open the wiki.
 2. The comment has these parts, in this order, in plain words for a tester: what changed (with the toggle), how we self-tested, the self-QA on a deployed environment (one row for each check of `proof.md`, and the accepted gaps), how to test it (preconditions, numbered steps with exact inputs, the expected result, one control case, clean-up, shortcuts), and the regression areas and known limits.
 3. Write for QA: no code paths unless QA needs them, no customer environment or customer names, no secrets, no credentials, and no links that only developers can open. Use the same words as the work item.
-4. Run the Sendable? steps for the draft. Send the comment with `tracker.comment` only after the "yes" for this write.
-5. Do not transition the work item yourself. Ask the user whether to move it to QA, and show the target status first. After a yes, use `tracker.transition`. Send the comment before the transition, so that QA finds it.
-6. Record the comment id or link and the time as a `log` entry in `journal.md` (Sendable? step 6). Do not change the draft.
-7. If QA finds a problem later, add a `problem` entry to `journal.md` and, when it changes the test guidance, send a short follow-up comment (same Sendable? rule).
+4. Open the draft with `host.open` and give the send text to the user. Tell the user to paste it into the work item before the item moves to QA, so that QA finds it. Forge moves no work item.
+5. When the user says that the comment is sent, record the time as a `log` entry in `journal.md`. Do not change the draft.
+6. If QA finds a problem later, add a `problem` entry to `journal.md` and, when it changes the test guidance, write a short follow-up paste text.

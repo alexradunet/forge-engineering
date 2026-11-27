@@ -1,6 +1,6 @@
 ---
 name: writing
-description: 'Single source of the forge writing rules: where ASD-STE100, the ADHD response shape, and the catalog of AI writing patterns apply, which rule wins, and how to check a text. Use before a Sendable? draft, a change request title or description, a wiki page, or a gate document. Also use when the user says "humanize", "humanize this", "remove AI tells", "does this sound like AI", "make this sound human", or "check the writing".'
+description: 'Single source of the forge writing rules: where ASD-STE100, the ADHD response shape, and the catalog of AI writing patterns apply, which rule wins, and how to check a text. Use before a paste text draft, a change request title or description, a wiki page, or a gate document. Also use when the user says "humanize", "humanize this", "remove AI tells", "does this sound like AI", "make this sound human", or "check the writing".'
 ---
 
 # ✍️ Writing

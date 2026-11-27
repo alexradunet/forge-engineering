@@ -16,7 +16,7 @@ Each fact has one home. Another document gives a link to it, not a copy.
 | `journal.md` | The dated log: work, decisions, and problems | None |
 | `map.md` | The code map: components, flow, data, tests, and terms | None |
 | `close.md` | What you now know, and the wiki changes | Learned? |
-| `outbox/*.draft.md` | The exact text of one external write | Sendable? |
+| `outbox/*.draft.md` | The exact text of one paste text | None |
 
 A file starts to exist when its phase starts. Do not create an empty file.
 

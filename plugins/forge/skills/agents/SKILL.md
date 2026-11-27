@@ -51,7 +51,7 @@ flowchart LR
    - the scope, and what is out of scope
    - the stop condition: "Stop after the tests pass and report. Do not push or create a change request."
    - the report: changed files and the tests run, in a form that the lead session can copy into `map.md` and `review.md`
-   - the rules: ask before CI triggers and tracker writes; never merge; plus the rules of the `## Implement` section of `<config>/policy.md`
+   - the rules: never call a tracker, a change request host, or a CI tool; never merge; plus the rules of the `## Implement` section of `<config>/policy.md`
    - the main session rules, in short form. A session that `host.spawn` starts runs the Forge `sessionStart` hook, which gives the `forge`, `style`, and company rules. When a capability row names an MCP server and its tools are not in the session, it asks the ticket session to do that step. When the hook fails, the prompt is its only source of the rules. Include the response style with the "No AI tells" list of the `style` rule, the paths `<wiki>` and the ticket folder as resolved absolute paths, and the safety rules above.
 5. Give the user the command of `host.spawn` only when a new session was needed.
 6. Record the session title, worktree path, branch, baseline SHA, and selection reason in the ticket `README.md` and as a `log` entry in `journal.md` (`log.md` in an older ticket). Keep approval records outside hashed documents.

@@ -1,7 +1,7 @@
 # Review gates: procedure, approvals, and the approval form
 
 This file is a part of the `ticket` skill: [SKILL.md](../SKILL.md) has the words (`<F>`, `<KEY>`, `<key>`), the data rules, the gate rules, and the list of the other parts.
-It has the cold read, the steps of each gate, the approval manifests, the Sendable? steps for each write, and the approval form.
+It has the cold read, the steps of each gate, the approval manifests, the paste texts, and the approval form.
 After a compaction of the session, read this file again before you use its steps.
 
 ### 🐟 Cold read
@@ -19,8 +19,6 @@ Run it one time for each review revision. Run a second cold read only after you 
 
 ### Procedure for each gate
 
-Sendable? does not use this procedure. It has its own steps (see Sendable? for each write).
-
 1. Write or update the gate document from its template. Run the cold read. Run `<F> lint` and remove its warnings for this document.
 2. Run `<F> gate-open <key> <gate> [extra files]`. It builds the document set and writes the manifest in `approvals/` with the SHA-256 of each file. It saves the snapshot, sets the gate to `in-review`, and sets `state: needs-me`. For Planned?, it runs the plan checks first. It prints the form text. You still set `next` and the other lines of the Now card in the same edit. When it refuses, correct what the message names, then run it again. Never write a manifest by hand.
 3. Set the 🟡 title (`host.title`, see Session title) before the form.
@@ -37,7 +35,7 @@ Sendable? does not use this procedure. It has its own steps (see Sendable? for e
    - When a comment is not clear, ask the user. Do not guess.
    - Resolve each handled correction thread.
    - Summarize what changed in 5 lines or less before you show the form again.
-8. Record the approval. For each gate except Sendable?, run `<F> gate-approve <key> <gate> --answer "<the exact answer of the user>" --method form|chat`. The option `--hash <the manifest SHA-256 that you showed>` is optional: the README record has the digest. It checks the answer, the manifest, and each document hash, then writes the README and `approvals/history.md`. It writes nothing when a check fails. Run it only after an explicit answer of the user, never in auto mode. Then update `state`, `next`, `updated`, and the Now card, and set the title with the new state emoji (`host.title`).
+8. Record the approval. For each gate, run `<F> gate-approve <key> <gate> --answer "<the exact answer of the user>" --method form|chat`. The option `--hash <the manifest SHA-256 that you showed>` is optional: the README record has the digest. It checks the answer, the manifest, and each document hash, then writes the README and `approvals/history.md`. It writes nothing when a check fails. Run it only after an explicit answer of the user, never in auto mode. Then update `state`, `next`, `updated`, and the Now card, and set the title with the new state emoji (`host.title`).
 
 ### Approval revisions
 
@@ -49,31 +47,21 @@ Sendable? does not use this procedure. It has its own steps (see Sendable? for e
 - A change to a covered file makes the gate stale. `story.md` and `plan.md` have no second copy: after approval, do not edit them. To change one, edit it, set Planned? to `in-review`, and stop the implementation until the new GO. `approvals/snapshots/` keeps the revision of each review.
 - Before any blocked action and on Resume, validate the approvals with `<F> lint`. A missing file, malformed metadata, a conflicting state, or a stale hash is a finding: show its file and its remedy. Block only the affected action. Read-only work stays possible.
 
-### Sendable? for each write
+### Paste texts and the change request draft
 
-Each external write has its own draft and its own "yes". The "yes" is the answer of the user to the prompt of the host, not a record in the ticket. One exception follows the steps.
+Forge sends no text. A text for a person or a tool is a paste text: the user copies it and sends it.
 
-1. Write the draft `outbox/<target>.draft.md` from [templates/outbox.draft.md](../templates/outbox.draft.md). Do this in each phase, also for a write that the user asks for directly. Run a full pass of the `writing` skill (outbound mode) on the text between the `send` markers.
-2. In the README, set Sendable? to `status: in-review`, and set its `doc` to the draft. Set `state: needs-me`. `<F> lint` accepts no other name for the `doc` of Sendable?.
-3. Open the draft with `host.open`. In chat, show the send text, the draft link, the target, and the exact command.
-4. Get the "yes" as the `host.write` row of the host says:
-   - With the gate guard, run the command. The guard makes the host ask the user, and the answer of the user is the "yes".
-   - When the row says so, and for a write through an MCP tool or a script, ask with `host.ask` first. Run the command only after an explicit "yes" for this one write.
-5. When the guard or the host denies the command (for example a mode with no prompt), do not run it in another form. Give the user the exact command, and ask the user to tell you when it ran.
-6. After the write, add a `log` entry to `journal.md`: the command, the target, the draft, and the returned id or link. Set Sendable? to `status: todo`, and set `state` for the next step. After the write, set `status: sent` in the frontmatter of the draft, and change nothing else in it. Do not do this for a change request draft of the approved Shippable? set: that draft never changes.
-7. A second write needs its own "yes", also for the same text. A retry after a failure is a second write.
+1. Write the draft `outbox/<target>.draft.md` from [templates/outbox.draft.md](../templates/outbox.draft.md). Run a full pass of the `writing` skill (outbound mode) on the text between the `send` markers.
+2. Open the draft with `host.open`. In chat, give the send text and the draft link. Tell the user where to paste it (the `target`).
+3. A paste text has no gate, no manifest, and no approval record. `<F> gate-approve` refuses it.
+4. When the user says that the text is sent, set `status: sent` in the frontmatter of the draft, and change nothing else in it. Add a `log` entry to `journal.md` when the answer matters.
 
-Exception: the draft of a new change request (`target: change` in its frontmatter) needs no second "yes" when it is in the approved Shippable? set.
+The draft of a new change request (`target: change` in its frontmatter) is part of the approved Shippable? set.
 
 - Write that draft before you open Shippable?. `gate-open` adds it when it is the only change draft.
-- GO then approves the push and the creation of the change request with exactly that text.
-- Record the change request in the README `changes` list directly after the creation.
 - Never edit the approved draft. An edit makes Shippable? stale and stops each later push.
-- A later update of the description uses a new draft `outbox/change-update.draft.md` and its own "yes".
-- The host can still ask by its own permission rules.
-
-- A write has no manifest and no approval record. `<F> gate-approve` refuses Sendable?.
-- Send only the text between the `send` markers. Pass long text through a file in the system temp folder (see [tools.md](../../../context/tools.md)).
+- After the push, give the user the title and the body from the draft to paste in the web UI. Ask for the URL of the change request and record it in the README `changes` list.
+- A later update of the description uses a new draft `outbox/change-update.draft.md`. The user pastes it.
 
 ### ✅ Approval form
 

@@ -36,16 +36,12 @@ test('the session context is a short form: the rules and the verb table of the h
   }
 });
 
-test('the text that left the session context is in context/tools.md, and the short form names that file', () => {
+test('context/tools.md is gone: the short form holds the no-external-tools rules', () => {
   const rule = text('context', 'forge.md');
-  const tools = text('context', 'tools.md');
-  assert.match(rule, /read `<plugin>\/context\/tools\.md`/);
-  for (const heading of ['## Config and capabilities', '## 🛠️ Tool choice: CLI first', '## External writes', '## 🛡️ Gate guard', '## Manual step']) {
-    assert.ok(tools.includes(`\n${heading}\n`), `tools.md: ${heading}`);
-    assert.ok(!rule.includes(`\n${heading}\n`), `forge.md has no copy of ${heading}`);
-  }
+  assert.equal(existsSync(path.join(plugin, 'context', 'tools.md')), false, 'Forge 14 calls no external tool, so there is no tools.md.');
+  assert.ok(rule.includes('\n## 🛠️ No external tools\n'));
   // The rules that apply before a skill loads stay in the short form.
-  for (const line of ['Never, with any tool:', 'Merge a change request, or turn on auto-merge', 'Never call a tracker, repository host, or CI tool that the config does not name', 'Get an explicit "yes" for this one write', 'Do not run the command in another form']) {
+  for (const line of ['Never:', 'Call a tracker, a change request host, or a CI tool', 'Merge a change request, or turn on auto-merge', 'Do not run the command in another form', 'A step that needs a tool that you do not have is a manual step']) {
     assert.ok(rule.includes(line), `forge.md: ${line}`);
   }
 });
@@ -83,7 +79,7 @@ test('each heading that another file names is in one part of the ticket skill', 
     'start.md': ['## 🚀 Start', '### 🧭 Research', '### 🧪 Spikes', '### 🎤 Interview', '### 🎯 Scope check'],
     'state.md': ['### 🏷️ Frontmatter', '### 👥 People', '### 🏷️ Session title (info bar)', '### 📌 Session links', '### 📋 Ticket overview'],
     'worktrees.md': ['### 🌳 Worktrees'],
-    'gates.md': ['### 🐟 Cold read', '### Procedure for each gate', '### Approval revisions', '### Sendable? for each write', '### ✅ Approval form'],
+    'gates.md': ['### 🐟 Cold read', '### Procedure for each gate', '### Approval revisions', '### Paste texts and the change request draft', '### ✅ Approval form'],
     'investigate-plan.md': ['## 🔎 Investigate', '### 🛑 Diagnosis stop', '## 📝 Plan'],
     'implement.md': ['## 🛠️ Implement'],
     'evidence.md': ['## 🔬 Evidence Testing', '## 🧑‍🔬 QA handover'],

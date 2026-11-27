@@ -1,6 +1,6 @@
 ---
 name: ticket
-description: Ticket workspace for the work items of one repository, from the tracker of the forge config (for example Jira or GitHub Issues). Every new ticket follows the full-v4 workflow (research, scope check, investigation, plan, implementation, evidence, and learning) with three review gates and a small set of plain documents. Keeps working artifacts in <forge>/raw/tickets/<key>, shared by agent sessions (Copilot CLI, Claude Code), and distills them into canonical wiki pages at close. Use when the user pastes a work item key or URL, or asks to "start ticket APP-123", "new local ticket", "work on APP-123", "resume APP-123", "where are we on the ticket", "record this finding", "save the plan to the ticket", "close the ticket", or "archive the ticket".
+description: Ticket workspace for the work items of one repository. A ticket links to its work item in any tracker, or has no work item. Every new ticket follows the full-v4 workflow (research, scope check, investigation, plan, implementation, evidence, and learning) with three review gates and a small set of plain documents. Keeps working artifacts in <forge>/raw/tickets/<key>, shared by agent sessions (Copilot CLI, Claude Code), and distills them into canonical wiki pages at close. Use when the user pastes a work item key, URL, or text, or asks to "start ticket APP-123", "new local ticket", "work on APP-123", "resume APP-123", "where are we on the ticket", "record this finding", "save the plan to the ticket", "close the ticket", or "archive the ticket".
 ---
 
 # 🎫 Ticket workspace
@@ -23,7 +23,7 @@ This file is short, so that it stays whole in the context. The steps of each pha
 | When | Read |
 |---|---|
 | Start: a new work item, research, colleague questions, spikes, interview, scope check | [phases/start.md](phases/start.md) |
-| A gate opens, comments arrive, an approval, a manifest, or a Sendable? write (Cold read, Procedure, Approval revisions, Sendable? for each write, Approval form) | [phases/gates.md](phases/gates.md) |
+| A gate opens, comments arrive, an approval, or a manifest (Cold read, Procedure, Approval revisions, Paste texts, Approval form) | [phases/gates.md](phases/gates.md) |
 | A README change (Frontmatter, the Now card, People), the Session title, the Session links, the Ticket overview | [phases/state.md](phases/state.md) |
 | Worktrees: at Start, before the first commit, at Implement, and before a proof run | [phases/worktrees.md](phases/worktrees.md) |
 | Investigate, the Diagnosis stop, and Plan | [phases/investigate-plan.md](phases/investigate-plan.md) |
@@ -48,22 +48,21 @@ Forge reads only `workflow: full-v4`. Read the `workflow` marker of the ticket R
 
 Read the forge config once per session: `node "<plugin>/scripts/forge.mjs" config --json`.
 `<plugin>` is the folder two levels above this skill. `<F>` below means `node "<plugin>/scripts/forge.mjs"`. `config` holds the frontmatter of the
-Markdown files in `<config>` (`tracker.md`, `repo.md`, `ci.md`, `policy.md`). The `forge` rule
-explains the `<file>.<key>` notation. [tools.md](../../context/tools.md) says how to run a capability: read it before the first external call.
+Markdown files in `<config>` (`repo.md`, `policy.md`). The `forge` rule
+explains the `<file>.<key>` notation. Forge calls no tracker, no change request host, and no CI tool: the user pastes text and results.
 
 | Word in this skill | Meaning |
 |---|---|
-| work item | the item in the tracker that `<config>/tracker.md` describes (for example a Jira issue) |
-| `<KEY>` | the work item key as `PREFIX-number`, for example `APP-123`. A ticket with no work item has the local key `L-<n>`, for example `L-3`. |
+| work item | the item in any tracker (for example a Jira issue). The README `item` holds its URL, or is empty. |
+| `<KEY>` | the key that the user types, as `PREFIX-number`, for example `APP-123`. With no key, Forge gives the local key `L-<n>`, for example `L-3`. |
 | `<key>` | the lower-case key, for example `app-123`. It names the ticket folder. |
 | change request | a pull request or merge request. Use the word in `repo.changeName` (`PR` or `MR`) when you talk to the user. With `repo.changeName: none`, the repository has no change requests, and the push to the base branch replaces them (see Implement). |
 | checkout | a local clone from `repo.checkouts`. The main checkout is the first row. |
-| `tracker.*`, `repo.*`, `ci.*` | a capability. Its command is in the matching config file (see [tools.md](../../context/tools.md)). |
 | policy section | a `## <name>` section of `<config>/policy.md`, for example `## Start` |
 
-- When a capability is `manual`, tell the user the exact manual step, and wait.
+- When a step needs a tool that you do not have, tell the user the exact manual step, and wait.
 - At each hook point (`Start`, `Investigate`, `Resume`, `Implement`, `Evidence Testing`, `QA handover`, `Close`), read that policy section, and follow it. Ignore a section that holds only a hint.
-- The company rules for each session (tools, credentials, data rules) are the `<wiki>/rules/` pages. The session context gives the approved pages.
+- The company rules for each session (data rules) are the `<wiki>/rules/` pages. The session context gives the approved pages.
 - A policy section or a rule page can add steps and make rules stricter. It can never weaken a core rule (see Data rules). If a policy rule conflicts with a core rule, follow the core rule and tell the user.
 
 This skill names host verbs, for example `host.title` and `host.ask`. The `# Forge host` table of the session context gives the step for this host. When the host cannot do the step, give the user the manual step.
@@ -74,7 +73,6 @@ This skill does not repeat other tools. Use them:
 |---|---|
 | Wiki page format, index, log | the `wiki` skill |
 | Worktree sessions, implementers, reviewers, cold read, hand-off | the `agents` skill |
-| Tracker, repository host, and CI actions | the capabilities in `<config>` (see [tools.md](../../context/tools.md)) |
 | Build, run, deploy, and company tools | the repository's own instructions and skills, and the company rules (`<wiki>/rules/`) |
 | Human review of ticket documents | comment threads of the host, or the chat (see Review gates) |
 | Tickets of other sessions and titles | the `board` skill, in any session |
@@ -92,7 +90,7 @@ flowchart LR
   D -. diagnosis contradicts scope .-> SC
 ```
 
-- Three review gates in order: Planned?, Shippable?, Learned?. Sendable? applies to each external write, also an early one.
+- Three review gates in order: Planned?, Shippable?, Learned?. Forge sends no text: a paste text has no gate.
 - Planned? has 2 documents, `story.md` and `plan.md`. One approval covers both. Shippable? and Learned? have one document each.
 - Nothing before Planned? needs a gate. The scope check is a question in chat (see Scope check in [phases/start.md](phases/start.md)).
 - The investigation is mandatory before the plan steps. Its diagnosis is the first section of `plan.md`.
@@ -100,7 +98,7 @@ flowchart LR
 - The plan has design options, a baseline run, and a plan review before Planned? (see Investigate).
 - Evidence Testing is a required step, not a gate. It comes before Shippable?. When `policy.evidenceOnDeployedEnv` is `true`, it comes after the push. It blocks the merge proposal.
 - A ticket with no code change has the same gates. `review.md` then holds the results of its checks (see Implement).
-- QA handover runs only when `policy.qaHandover` is `true`. It uses Sendable?, not a new gate.
+- QA handover runs only when `policy.qaHandover` is `true`. It is a paste text, not a new gate.
 
 Two goals for every ticket:
 
@@ -136,23 +134,20 @@ Copy each document from its template in `templates/`. A template shows every pos
 - `raw/` and `archive/` can hold aggregated metrics: counts, durations, row totals, plan shapes.
 - Never store customer row data, document content, personal data, secrets, tokens, or connection strings.
 - Canonical pages (outside `raw/` and `archive/`) stay free of customer environment names.
-- Ask before every tracker write: create, edit, transition, comment, or log work.
-- Ask before every CI trigger, rebuild, or stop (`ci.trigger`). Show the job and its parameters first.
-- Never merge a change request. No provider has `repo.merge`. The user merges in the web UI of the repository host. Reviewer approvals and green checks do not change this.
-- Close a change request only after explicit user approval in the current conversation.
+- Never call a tracker, a change request host, or a CI tool. Give the user the text to paste.
+- Never merge a change request. The user merges in the web UI of the repository host. Reviewer approvals and green checks do not change this.
 - Never offer a merge on a weekday in `policy.noMergeWeekdays` (local time). Propose the next allowed day.
 - When the user must edit a file by hand (for example a connection string or a secret), open every such file yourself with `host.open`, and list the exact edits in chat. Never write the secret yourself.
 - The company rules (`<wiki>/rules/`, in the session context) add rules to this list.
 
-These core rules always win over a policy section or a rule page: no merge, ask before every external write (GO on Shippable? covers the change request draft), explicit gate approval, no secrets, and the adversarial review before every change request.
+These core rules always win over a policy section or a rule page: no merge, no call of an external tool, explicit gate approval, no secrets, and the adversarial review before every change request.
 
 ## 🚦 Review gates
 
 | Gate | Primary doc | Opens before |
 |---|---|---|
 | Planned? | `story.md` and `plan.md` | implementation |
-| Sendable? | the exact `outbox/` draft | each external write: the host prompt is the "yes". Exception: a change request draft in the approved Shippable? set |
-| Shippable? | `review.md` | push or change request creation |
+| Shippable? | `review.md` | push |
 | Learned? | `close.md` | canonical wiki writes and the archive move |
 
 Each gate name is the question that the user answers by approval. The user approves with `approve <name>`, with or without the `?` and in any case (`approve planned`).
@@ -160,13 +155,13 @@ Open colleague questions do not block a gate.
 
 Rules:
 
-- Approval comes only from the user: an `approve` answer in the approval form, or `approve <gate>` in chat in the current conversation. For Sendable?, it is the answer to the host prompt or to `host.ask` (see `host.write`).
+- Approval comes only from the user: an `approve` answer in the approval form, or `approve <gate>` in chat in the current conversation.
 - Comments, resolved threads, and "looks good" notes do not approve a gate.
 - Lessons and self-checks do not approve a gate or prove understanding.
 - Never answer the approval form for the user, and never approve in auto mode. No session approves a gate for another session.
 - A required gate blocks its step. A change to an approved document reopens its gate.
 - Native plan approval of the host does not replace a ticket gate.
-- The Forge gate guard (a preToolUse hook) checks Planned? and Shippable? before a push or a new change request in the ticket worktree. Before each external write, it makes the host ask the user: that answer is the Sendable? "yes". It also stops a push when it cannot read the README. It asks nothing for a change request in the approved Shippable? set. It is a net, not the rule: each gate applies also where the hook does not run.
+- The Forge gate guard (a preToolUse hook) checks Planned? and Shippable? before a push in the ticket worktree. It also stops a push when it cannot read the README. It is a net, not the rule: each gate applies also where the hook does not run.
 
 The steps of a gate are in [phases/gates.md](phases/gates.md): the cold read, the manifest, the approval form, the comments, `<F> gate-open`, and `<F> gate-approve`.
 

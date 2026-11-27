@@ -3,7 +3,7 @@ type: ticket
 key: <KEY>
 title: <work item summary>
 short: <3 to 6 words for the session title>
-item: <work item URL>
+item: <work item URL, or empty>
 workflow: full-v4
 phase: start        # start | investigate | plan | implement | review | closed
 state: active       # needs-me 🟡 | go 🟢 | active ▶️ | waiting ⏳ | blocked 🔴 | done ✅
@@ -12,11 +12,10 @@ waiting_on: ""      # "you: <gate>" | "colleague: <name> (<what>)" | "outside: <
 branch: ""          # set from `forge.mjs worktree` (repo.branchPattern)
 worktree: ""        # the absolute worktree path, only the path
 changes: []         # - { url: <change request URL>, label: "#<n>", state: draft }
-people: []          # - { name: <name or handle>, role: reviewer, status: to-contact, since: <yyyy-mm-dd>, ask: "<what>", via: tracker, draft: outbox/<name>.md }
+people: []          # - { name: <name or handle>, role: reviewer, status: to-contact, since: <yyyy-mm-dd>, ask: "<what>", via: chat, draft: outbox/<name>.md }
                     #   status: to-contact | drafted | waiting | follow-up | reply-in | done
 gates:              # approved needs date, manifest, and the full SHA-256 of the raw manifest bytes
   - { name: Planned?, doc: plan.md, need: required, status: todo }
-  - { name: Sendable?, doc: outbox/, need: required, status: todo }
   - { name: Shippable?, doc: review.md, need: required, status: todo }
   - { name: Learned?, doc: close.md, need: required, status: todo }
 updated: <yyyy-mm-dd>

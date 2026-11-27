@@ -23,7 +23,7 @@ The ticket README starts with YAML frontmatter (`type: ticket`), see [templates/
 
 - The README body starts with the **Now** card: State, Phase, Open gate, Next, Waiting on, Done so far, and Updated. Update it with each frontmatter change. `<F> lint` warns when State, Phase, or Next does not match the frontmatter. The hook shows the card when a session opens.
 - Every other document has `type`, `ticket`, and `updated`. A gate document also has `gate`. The gate status lives only in the README `gates` list.
-- `outbox/` drafts have authoring `status` and optional `target` (`tracker-comment`, `tracker-item`, `change`, `email`, `chat`, `other`). `evidence/` files have `date`.
+- `outbox/` drafts have authoring `status` and optional `target` (`comment`, `change`, `email`, `chat`, `other`). `evidence/` files have `date`.
 - Quote a value that contains `: `, or the YAML does not parse.
 
 ### 👥 People
@@ -55,7 +55,7 @@ Map the status of an **Open questions** line to the person status:
 | `no reply` | `follow-up` |
 | `answered` | `reply-in` until the answer is recorded, then `done` when no other ask is open |
 
-- When the user confirms a sent message (or a Sendable? write to a person is `sent`), set `waiting`.
+- When the user confirms a sent message (or a paste text to a person is `sent`), set `waiting`.
 - Suggest `follow-up` when a person is `waiting` for more than 3 working days. Change the status only after the user agrees.
 - When a person blocks the next step, set `waiting_on: "colleague: <name> (<what>)"`.
 - Ask the user before you add a person that no ticket source names.
@@ -74,7 +74,7 @@ The user asked for these titles. The ticket skill owns the title of a ticket ses
 | 🟢 | the last gate is approved, and no gate is open |
 | ▶️ | no gate is open and nothing blocks; the work continues |
 | ⏳ | the work waits for an outside event, for example a change request review or a build |
-| 🔴 | a failure stops the work, for example CI or an expired credential |
+| 🔴 | a failure stops the work, for example a failed build |
 | ✅ | the ticket is closed |
 
 - `<short>` is the README `short`: a phrase in sentence case that says what the ticket tries to achieve, for example `Fix outbox retry on timeout`. Do not repeat the key, the phase, or the gate name. Keep it stable.

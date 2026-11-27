@@ -7,11 +7,11 @@ After a compaction of the session, read this file again before you use its steps
 ## 🚀 Start
 
 1. Set the title (`host.title`) first, before any other tool call or question: `<KEY> - ▶️ - <summary>`. When the prompt has only the key, use `<KEY> - ▶️ - Start ticket`, and rename again after step 2 (see Session title).
-2. Fetch the work item with `tracker.fetch`, with its comments. Normalize the key to `<KEY>`. Choose `short`: 3 to 6 words from the work item summary.
+2. Get the key and the work. The user gives a key (for example `GH-12` or `AB-4411`), the URL of the work item, or both, and pastes the text of the item with its comments, or describes the work. Ask for what is missing. Forge calls no tracker. When the user gives no key, run `<F> local-key`: the result is `<KEY>`, for example `L-3`. Normalize the key to `<KEY>`. Choose `short`: 3 to 6 words from the summary of the work.
 3. Read the `## Start` policy section.
 4. Create the folder. If it exists, run Resume instead.
-5. Save the work item snapshot as `evidence/<yyyy-mm-dd>-work-item.md`: summary, type, status, priority, reporter, assignee, description, comments, the item URL, and the snapshot date.
-6. Write `README.md` from [templates/README.md](../templates/README.md): `workflow: full-v4`, `phase: start`, `state: active`, `short`, `next`, `item`, and all gates. Fill the Now card from the frontmatter.
+5. Save the request as `evidence/<yyyy-mm-dd>-request.md`: the text that the user pasted or wrote, in the words of the user, the item URL when there is one, and the date.
+6. Write `README.md` from [templates/README.md](../templates/README.md): `workflow: full-v4`, `phase: start`, `state: active`, `short`, `next`, `item` (the URL of the work item in any tracker, or empty), and all gates. Fill the Now card from the frontmatter.
 7. Place the session (see Worktrees). Preserve an existing session worktree. Run `<F> worktree <KEY> --summary "<short>"` and follow its `action`. Record `branch` and `worktree` (the absolute path) in the README.
 8. Seed `map.md` from [templates/map.md](../templates/map.md): the purpose, the terms, and a first guess of the components. Mark each guess `(unverified)`.
 9. Start `journal.md` from [templates/journal.md](../templates/journal.md) with one `log` entry.
@@ -25,11 +25,11 @@ The user possibly does not know the problem, its history, or the people around i
 Do this automatically. It is read-only, so it needs no approval. Research depth follows the evidence, not a word count or a duration.
 
 1. Read the wiki: `<wiki>/index.md`, matching canonical pages, and related archived tickets.
-2. Read the sources that the work item links: documents, postmortems, linked items, sibling and follow-up items (`tracker.search` on the same reporter, labels, and dates).
-3. Trace the history in the code (read-only): `git log --all --grep <keys>` in each checkout, and related change requests (`repo.history`). Review threads show who reviewed and what they said. The `## Investigate` policy section can name older sources.
+2. Read the sources that the request names: documents, postmortems, linked items, sibling and follow-up items. Ask the user to paste what you cannot read.
+3. Trace the history in the code (read-only): `git log --all --grep <keys>` in each checkout, and related change requests. Ask the user to paste a review thread when it matters: it shows who reviewed and what they said. The `## Investigate` policy section can name older sources.
 4. Survey the code in the checkouts of `repo.checkouts`: affected areas, existing patterns, related docs, skills, and instructions. Identify existing tests, missing coverage, behavior to preserve, and regression risks.
 5. If the work item names a customer environment or a production symptom, take a small read-only sample with the tools that the `## Investigate` policy section allows. Ask first before any tool that needs approval.
-6. If a source is not available (VPN off, tool not authenticated, capability `manual`), write it in **Sources not available** of the story, and continue. Absence of evidence is not proof of safety.
+6. If a source is not available (VPN off, a tool that you do not have), write it in **Sources not available** of the story, and continue. Absence of evidence is not proof of safety.
 7. Write `story.md` from [templates/story.md](../templates/story.md), without the summary and the Scope section for now: Problem, History, Related work, Facts, Preserve, and Open questions. Put tool outputs in `evidence/`. Add what you learned about the code to `map.md`.
 8. List the colleagues who know the area: reporter, authors and reviewers of related change requests, owners of sibling items and related documents. Add each one to the README `people` list with `status: to-contact`, with why and what to ask (see People).
 9. Write draft messages to them in `outbox/colleague-questions.md`. The user sends them. Never contact people yourself. Set each drafted person to `status: drafted` with `draft: outbox/colleague-questions.md`.
@@ -50,8 +50,8 @@ A spike is a short read-only check that answers one fact before a scope question
 
 - Run a spike when a question depends on a fact that a tool can check. Do not ask the user a question that a tool can answer.
 - Time box: 15 minutes. If the spike needs more, stop, write what you found, and add the rest to the investigation.
-- Allowed: code search, `git log`, change request threads, tracker reads, CI reads, and the read-only tools that the `## Investigate` policy section allows (check their credentials first).
-- Not allowed: code edits, builds that change the main checkout, CI triggers, external writes.
+- Allowed: code search, `git log`, and the read-only local tools that the `## Investigate` policy section allows.
+- Not allowed: code edits, builds that change the main checkout, and a call of a tracker, a change request host, or a CI tool.
 - Save the result as `evidence/<yyyy-mm-dd>-spike-<topic>.md`. Link it from the question. Add new code facts to `map.md`. Add one `log` entry to `journal.md`.
 
 ### 🎤 Interview
@@ -82,25 +82,17 @@ The scope check is a question in chat. It is not a gate.
 4. `correct`: add a `decision` entry with the title `scope` to `journal.md` (the 8 lines and the answer). Set `phase: investigate`. Start Investigate.
 5. `change`: update `story.md`, then show the scope again.
 6. `reporter`: write the scope and the open questions as a message for the reporter.
-   - When `policy.scopeComment` is `true`, write it as `outbox/scope-question.draft.md` (`target: tracker-comment`), and run the Sendable? steps.
+   - When `policy.scopeComment` is `true`, write it as `outbox/scope-question.draft.md` (`target: comment`). The user pastes it.
    - Else add it to `outbox/colleague-questions.md`. The user sends it.
    - Then ask the user to select: wait for the answer, or continue with an assumption in **Open questions**.
 7. `later`: stop. Tell the user how to resume.
-8. When `policy.scopeComment` is `true`, also draft the scope comment for the reporter after `correct`, and run Sendable?. It does not block the investigation.
+8. When `policy.scopeComment` is `true`, also draft the scope comment for the reporter after `correct`, as a paste text. It does not block the investigation.
 9. The scope check has no manifest, no cold read, and no `gate-open`. The user approves `story.md` together with `plan.md` at Planned?.
 
-### 📝 Local ticket
+### 📝 A ticket with no work item
 
-Use this section when the user asks for a ticket with no work item. It also works when the tracker config has a provider.
+A ticket with no key is a normal ticket. Its key is `L-<n>` and its `item` is empty.
 
-1. Run `<F> local-key`. The result is the `<KEY>`, for example `L-3`.
-2. Follow the Start steps with these changes:
-   - Do not run `tracker.fetch`.
-   - Save the request of the user, in the words of the user, as `evidence/<yyyy-mm-dd>-request.md`. Use it in place of the work item snapshot.
-   - Write `item: ""` in the README.
-   - Choose `short` from the request.
-3. In each later phase, skip each `tracker.*` step for this ticket: search, comment, transition, and link.
-4. The QA handover has no tracker comment. Give the text to the user.
-5. The reporter is the user. The scope check has no `reporter` option, and `policy.scopeComment` does not apply.
-6. The description of the change request has no `Closes #<n>` line.
-7. A local key never becomes a work item key. When the user makes a work item for the same work, record its URL in `item`. Keep the folder name.
+- A local key never becomes a work item key. When the user makes a work item for the same work, record its URL in `item`. Keep the folder name.
+- The reporter is the user. The scope check has no `reporter` option, and `policy.scopeComment` does not apply.
+- Forge writes no closing words in the text of the change request. The user adds the closing words of the tracker to the text when needed.

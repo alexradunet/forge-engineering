@@ -17,7 +17,6 @@ A Forge skill names a host verb, for example `host.title`. Do the step of the ve
 | `host.artifact` | Give a Markdown link with the absolute path of the file. Never use the `Artifact` tool: it sends the file to claude.ai. |
 | `host.open` | Give a Markdown link with the absolute path of each file. |
 | `host.comments` | There are no document comments. Ask the user to paste the comments into the chat. |
-| `host.write` | Run the write command. The Forge gate guard makes Claude Code ask the user in the permission prompt, and the answer is the "yes". In `bypassPermissions` mode and in a `claude -p` run, the command is denied: give the user the exact command. For a write through an MCP tool or a script, ask with `host.ask` first. |
 
 ## Pages
 

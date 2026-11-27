@@ -48,7 +48,7 @@ test('the board skill replaces the Forge Master agent and keeps its limits', () 
     'Never approve a gate for the user.',
     "Never answer a session's question",
     'Never archive, delete, or mark a session as done.',
-    'No external writes.',
+    'Never call a tracker, a change request host, or a CI tool.',
   ]) assert.ok(skill.body.includes(text), `skill: ${text}`);
   const rule = readFileSync(path.join(plugin, 'context', 'forge.md'), 'utf8');
   assert.ok(rule.includes('A board request is the exception'), 'the forge rule names the board exception');
@@ -90,7 +90,7 @@ test('each host table has one row for each host verb, and the skills name only k
   // 7.3.0: the session context is short, so forge.md has no verb list. The Claude Code table is the reference list.
   const rows = (text) => [...text.matchAll(/^\| `(host\.[a-z]+)` \|/gm)].map((m) => m[1]);
   const verbs = rows(readFileSync(path.join(plugin, 'hosts', 'claude.md'), 'utf8'));
-  assert.ok(verbs.length >= 10, `hosts/claude.md lists ${verbs.length} verbs`);
+  assert.ok(verbs.length >= 9, `hosts/claude.md lists ${verbs.length} verbs`);
   assert.deepEqual(rows(readFileSync(path.join(plugin, 'context', 'forge.md'), 'utf8')), [], 'The verb rows are in the host tables only.');
   for (const host of ['copilot-cli', 'claude']) {
     const table = readFileSync(path.join(plugin, 'hosts', `${host}.md`), 'utf8');

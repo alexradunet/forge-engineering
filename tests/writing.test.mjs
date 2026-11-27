@@ -41,7 +41,7 @@ test('writing skill has discoverable frontmatter and a matching folder name', ()
   const { data } = parseFile(readFileSync(skillFile, 'utf8'), skillFile);
   assert.equal(data.name, path.basename(skillDir));
   assert.equal(typeof data.description, 'string');
-  for (const phrase of ['humanize', 'remove AI tells', 'check the writing', 'Sendable?', 'wiki page']) {
+  for (const phrase of ['humanize', 'remove AI tells', 'check the writing', 'paste text', 'wiki page']) {
     assert.ok(data.description.includes(phrase), `missing discovery phrase: ${phrase}`);
   }
 });

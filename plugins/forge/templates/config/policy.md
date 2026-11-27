@@ -26,8 +26,8 @@ gateGuard: deny
 | `maxImplementers` | Maximum implementer sessions at the same time | `6` |
 | `planReview` | Review of the plan before Planned?: `off`, `attacker` (one reviewer subagent), or `panel` (3 reviewer subagents). A missing key means `off`. This template sets `attacker`. | `off` |
 | `styleRules` | Add the response style rules of the plugin (Simplified Technical English, no AI tells, the ADHD response shape) to each session. A missing key means `true`. This template sets `false`. | `true` |
-| `scopeComment` | After the scope check, draft a tracker comment for the reporter with the scope and the open questions (it needs your yes as each write) | `false` |
-| `gateGuard` | The gate guard (a preToolUse hook) for a push or a new change request of a ticket without the valid approvals of Planned? and Shippable?: `deny`, `ask` (the host asks you), or `off` | `deny` |
+| `scopeComment` | After the scope check, draft a comment for the reporter with the scope and the open questions, as a paste text for you | `false` |
+| `gateGuard` | The gate guard (a preToolUse hook) for a push of a ticket without the valid approvals of Planned? and Shippable?: `deny`, `ask` (the host asks you), or `off` | `deny` |
 
 Small team: `planReview=attacker`, `scopeComment=false`, `evidenceOnDeployedEnv=false`, `qaHandover=false`.
 Large team: `planReview=attacker`, `scopeComment=true`, `evidenceOnDeployedEnv=true`, `qaHandover=true`.
@@ -36,20 +36,20 @@ Large team: `planReview=attacker`, `scopeComment=true`, `evidenceOnDeployedEnv=t
 ## 🪝 Hook sections
 
 The `ticket` and `agents` skills read one section below at each step, and follow it.
-Rules for each session (tools, credentials, data rules) go in the `<wiki>/rules/` pages, not here.
+Rules for each session (data rules) go in the `<wiki>/rules/` pages, not here.
 A section can add steps and make rules stricter. It can never weaken a core rule
-(no merge, ask before every external write, explicit gate approval, no secrets,
+(no merge, no call of an external tool, explicit gate approval, no secrets,
 and the adversarial review before every change request). When a rule here conflicts
 with a core rule, the agent follows the core rule and tells the user.
 
 ## Start
 
-1. Read the work item (`tracker.fetch`) and its comments.
-2. Read the linked issues and pull requests.
+1. Ask the user for the text of the work item and its comments, when the user did not paste them.
+2. Ask the user for the linked issues and pull requests that matter.
 
 ## Investigate
 
-- Read the old pull requests that changed the same files (`repo.history`).
+- Read the history of the same files with `git log`. Ask the user to paste an old pull request thread when it matters.
 - The main checkout is the first row of `repo.checkouts`.
 
 ## Resume
@@ -60,17 +60,17 @@ with a core rule, the agent follows the core rule and tells the user.
 
 - Before the first edit, read the root `AGENTS.md` and the `AGENTS.md` of each folder that you change. For code rules, they win over forge.
 - Each commit subject and the pull request title start with the key, for example `GH-123 Add retry backoff to the queue`.
-- The pull request description has `Closes #<n>`, so that the repository host closes the issue at the merge.
+- Forge writes no closing words in the pull request description. Add the closing words of your tracker to the text yourself.
 - Keep review fixes as separate commits.
 
 ## Evidence Testing
 
 - Unit tests alone are not evidence. Check the baseline and add a control.
-- Name the workflow run that ran the tests (`ci.status`).
+- Name the CI run that ran the tests. The user pastes its link or result.
 
 ## QA handover
 
-- The comment goes to the work item (`tracker.comment`). Send it only after Sendable?.
+- The comment is a paste text for the work item. The user pastes it.
 
 ## Close
 
