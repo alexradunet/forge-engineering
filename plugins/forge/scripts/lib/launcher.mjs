@@ -59,35 +59,19 @@ export function writeLauncher(home) {
   return written;
 }
 
-function version(pluginDir) {
-  try { return String(JSON.parse(readFileSync(path.join(pluginDir, 'plugin.json'), 'utf8')).version ?? ''); } catch { return ''; }
-}
-
-/** 1 when version a is newer than b, -1 when it is older, and 0 when they are the same or have no numbers. */
-export function compareVersions(a, b) {
-  const parts = (value) => String(value).split('.').map((part) => Number.parseInt(part, 10) || 0);
-  const [x, y] = [parts(a), parts(b)];
-  for (let i = 0; i < Math.max(x.length, y.length); i++) {
-    if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) > (y[i] ?? 0) ? 1 : -1;
-  }
-  return 0;
-}
-
 /** The plugin folder that .plugin names, or '' when the file is not there. */
 export function readPointer(home) {
   try { return readFileSync(path.join(home, POINTER_FILE), 'utf8').split(/\r?\n/)[0].trim(); } catch { return ''; }
 }
 
 /**
- * Writes the path of a plugin folder into .plugin. An older plugin version does not replace a newer one that is still there:
- * two hosts can have two versions of the plugin, and the launcher must not go back.
+ * Writes the path of a plugin folder into .plugin. The pointer names the plugin folder that wrote it last, also when its version is lower:
+ * the plugin folder of the host that ran the last session hook is the one that is current.
  * Gives true when it wrote the file.
  */
 export function writePointer(home, pluginDir) {
   const next = path.resolve(pluginDir);
-  const old = readPointer(home);
-  if (old === next) return false;
-  if (old && existsSync(path.join(old, 'scripts', 'forge.mjs')) && compareVersions(version(next), version(old)) < 0) return false;
+  if (readPointer(home) === next) return false;
   writeFileSync(path.join(home, POINTER_FILE), `${next}\n`);
   return true;
 }

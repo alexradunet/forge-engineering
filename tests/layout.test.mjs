@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildContext } from '../plugins/forge/scripts/lib/hook.mjs';
-import { LAUNCHER_SH, compareVersions, readPointer, writeLauncher, writePointer } from '../plugins/forge/scripts/lib/launcher.mjs';
+import { LAUNCHER_SH, readPointer, writeLauncher, writePointer } from '../plugins/forge/scripts/lib/launcher.mjs';
 import { archiveDir, homeOf, isForgeLayout, rawDir } from '../plugins/forge/scripts/lib/layout.mjs';
 import { resolve } from '../plugins/forge/scripts/lib/repo.mjs';
 import { initWiki } from '../plugins/forge/scripts/lib/setup.mjs';
@@ -126,7 +126,7 @@ test('the launcher runs forge.mjs of the plugin for its own Forge folder, from e
   assert.equal(launch(s.root, 'where').status, 1);
 });
 
-test('the path of the plugin goes to a newer plugin, and not back to an older one that is still there', (t) => {
+test('the path of the plugin follows the last plugin that wrote it, also a lower version', (t) => {
   const s = space(t);
   const home = path.join(s.root, 'app.forge');
   mkdirSync(home);
@@ -139,11 +139,10 @@ test('the path of the plugin goes to a newer plugin, and not back to an older on
   const [v90, v91, v92] = [make('p90', '9.0.0'), make('p91', '9.1.0'), make('p92', '9.10.0')];
   assert.equal(readPointer(home), '');
   assert.deepEqual([writePointer(home, v91), readPointer(home)], [true, v91]);
-  assert.deepEqual([writePointer(home, v91), writePointer(home, v90), readPointer(home)], [false, false, v91], 'an older plugin of another host does not take the launcher back');
-  assert.deepEqual([writePointer(home, v92), readPointer(home)], [true, v92], '9.10 is newer than 9.1');
+  assert.deepEqual([writePointer(home, v91), writePointer(home, v90), readPointer(home)], [false, true, v90], 'the pointer follows the last writer, also to a lower version');
+  assert.deepEqual([writePointer(home, v92), writePointer(home, v92), readPointer(home)], [true, false, v92]);
   rmSync(v92, { recursive: true });
   assert.deepEqual([writePointer(home, v90), readPointer(home)], [true, v90], 'a plugin folder that is gone is replaced');
-  assert.deepEqual([compareVersions('9.10.0', '9.2.0'), compareVersions('9.0.0', '9.0'), compareVersions('8.4.0', '9.0.0'), compareVersions('', '')], [1, 0, -1, 0]);
   assert.deepEqual([writeLauncher(home), writeLauncher(home)], [['forge', 'forge.cmd'], []]);
   assert.equal(readFileSync(path.join(home, 'forge'), 'utf8'), LAUNCHER_SH);
   assert.ok(!LAUNCHER_SH.includes('\r'), 'the sh launcher has LF line ends on each machine');
