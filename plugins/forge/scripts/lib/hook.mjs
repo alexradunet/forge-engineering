@@ -305,13 +305,13 @@ function closedFile(wikiPath, key) {
 
 /** Step 1 of the ticket part: the session title of a known ticket. */
 function titleLine(host, title) {
-  if (host === 'claude') return `1. The Forge hook set the session title to "${title}", unless the session already had a custom title. You cannot see the title, so do not ask the user to rename the session now. At a later state change, tell the user to run \`/rename <new title>\`.`;
+  if (host === 'claude') return `1. The Forge hook set the session title to "${title}", unless the session already had a custom title. You cannot see the title, so do not ask the user to rename the session now. In a ticket worktree, the hook corrects the title at the next prompt of the user. At a state change that must show before the next prompt (a 🟡 gate), tell the user to run \`/rename <new title>\`. In the main checkout, always tell the user to run \`/rename <new title>\`.`;
   return `1. In your first answer, tell the user to run \`/rename ${title}\`. The Copilot CLI has no title tool. At a later state change, give the new \`/rename\` command.`;
 }
 
 /** Step 1 of the ticket part: the session title of a new ticket. */
 function freshTitleLine(host, key, title) {
-  if (host === 'claude') return `1. The Forge hook set the session title to "${title}". After the Start interview, tell the user to run \`/rename ${key} - ▶️ - <summary>\`.`;
+  if (host === 'claude') return `1. The Forge hook set the session title to "${title}". After the Start interview, tell the user to run \`/rename ${key} - ▶️ - <summary>\`. This \`/rename\` is needed only until the session moves into the ticket worktree.`;
   return `1. After the Start interview, tell the user to run \`/rename ${key} - ▶️ - <summary>\`. The Copilot CLI has no title tool.`;
 }
 
@@ -526,14 +526,23 @@ export function promptSubmit(event, { cli, env = process.env } = {}) {
   if (!where?.wiki.exists) return {};
   const forge = `node "${cli}"`;
   const parts = [];
-  let sessionTitle = '';
+  let titleOut = '';
+  // In a linked worktree of an open ticket, the folder decides: the key path does not run.
+  if (where.repo.worktree && where.top) {
+    const own = listTickets(where.wiki.path).find((entry) => entry.ticket && entry.ticket.state !== 'done' && entry.ticket.worktree && samePath(entry.ticket.worktree, where.top));
+    if (own) {
+      const title = sessionTitle(own.ticket);
+      if (title !== event.title && forgeOwnsTitle(event.title, title)) return { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', sessionTitle: title } };
+      return {};
+    }
+  }
   const head = { ...event, prompt: String(event.prompt).slice(0, PROMPT_HEAD) };
   if (!event.title && tokens(head.prompt).length) {
     try {
       const found = ticketPart(head, where, forge, env, { host: 'claude', promptOnly: true });
-      if (found.lines.length && !found.closed) { parts.push(`# Forge ticket context\n\n${ticketText(found.lines, forge)}`); sessionTitle = found.title; }
+      if (found.lines.length && !found.closed) { parts.push(`# Forge ticket context\n\n${ticketText(found.lines, forge)}`); titleOut = found.title; }
     } catch { /* No ticket part. */ }
   }
   if (!parts.length) return {};
-  return { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: parts.join('\n\n'), ...(sessionTitle ? { sessionTitle } : {}) } };
+  return { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: parts.join('\n\n'), ...(titleOut ? { sessionTitle: titleOut } : {}) } };
 }

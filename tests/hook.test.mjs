@@ -635,3 +635,25 @@ test('the Claude Code session start hook refreshes an old status line shim, and 
   claude({ CLAUDE_PLUGIN_DATA: data });
   assert.equal(readFileSync(shim, 'utf8'), text, 'the same root: no change');
 });
+
+test('the prompt hook keeps the ticket title in a ticket worktree, and the key path does not run there', (t) => {
+  const s = setup(t);
+  const folder = path.join(`${s.app}.worktrees`, 'app-7-doc-import');
+  git(s.app, 'worktree', 'add', '-q', '-b', 'APP-7-doc-import', folder);
+  const original = readFileSync(s.readme, 'utf8');
+  writeFileSync(s.readme, original.replace('worktree: ""', `worktree: "${folder.replaceAll('\\', '/')}"`));
+  const TITLE = 'APP-7 - 🟡 - Doc import error telemetry';
+  const call = (prompt, title = '', cwd = folder) => promptSubmit({ cwd, prompt, title }, { cli, env });
+  assert.deepEqual(call('no key in this prompt'), { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', sessionTitle: TITLE } }, 'No custom title: the title with the key and the state emoji, and no additionalContext.');
+  assert.deepEqual(call('go on', 'APP-7 - ▶️ - Old words').hookSpecificOutput, { hookEventName: 'UserPromptSubmit', sessionTitle: TITLE }, 'A Forge title of the same ticket with another emoji is corrected.');
+  assert.deepEqual(call('go on', TITLE), {}, 'The same title gives {}.');
+  assert.deepEqual(call('go on', 'My own name'), {}, 'A custom title stays.');
+  assert.equal(call('Start APP-99 now').hookSpecificOutput.sessionTitle, TITLE, 'A prompt that names another key gives the title of the worktree ticket.');
+  assert.equal(call('Start APP-99 now').hookSpecificOutput.additionalContext, undefined);
+  assert.deepEqual(call('Start APP-99 now', TITLE), {}, 'A prompt that names another key starts no other ticket.');
+  // The main checkout on a ticket branch: no title from the folder path.
+  assert.deepEqual(call('no key in this prompt', '', s.app), {});
+  // A closed ticket gives no title.
+  writeFileSync(s.readme, readFileSync(s.readme, 'utf8').replace('state: needs-me', 'state: done'));
+  assert.deepEqual(call('no key in this prompt'), {}, 'A ticket with state done gives no title.');
+});
