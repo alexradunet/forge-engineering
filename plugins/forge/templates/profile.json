@@ -12,5 +12,14 @@
   ],
   "mainCheckout": null,
   "mcpServers": [],
-  "mcpRetired": []
+  "mcpRetired": [],
+  "never": [
+    { "words": ["gh", "pr", "merge"], "verdict": "deny" },
+    { "words": ["gh", "pr", "review"], "with": ["--approve", "-a"], "verdict": "deny" },
+    { "words": ["gh", "pr", "close"], "verdict": "ask" }
+  ],
+  "bodyOptions": [
+    "-F",
+    "--body-file"
+  ]
 }

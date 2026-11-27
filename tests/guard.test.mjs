@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -160,7 +160,7 @@ test('shipActions finds each push and each change request command, with its fold
   assert.deepEqual(shipActions('gh pr create -t T', base, []), [], 'Without a trusted config there is no change command.');
   assert.deepEqual(shipActions('git -C ../wt push', base, []), [{ kind: 'push', cwd: path.resolve(base, '../wt'), refs: [], all: false, sources: ['HEAD'], deletes: false }]);
   assert.deepEqual(shipActions('cd sub/dir && git push; cd .. && gh pr create', base, changes), [
-    { kind: 'push', cwd: path.resolve(base, 'sub/dir'), refs: [], all: false, sources: ['HEAD'], deletes: false }, { kind: 'change', cwd: path.resolve(base, 'sub') },
+    { kind: 'push', cwd: path.resolve(base, 'sub/dir'), refs: [], all: false, sources: ['HEAD'], deletes: false }, { kind: 'change', cwd: path.resolve(base, 'sub'), words: ['gh', 'pr', 'create'] },
   ]);
   // A push names its branches: the first plain word is the remote, and each other word is a refspec.
   const targets = (line) => shipActions(line, base, []).map(({ refs, all }) => ({ refs, all }));
@@ -237,7 +237,7 @@ test('the guard finds the ticket from the folder of the command, and it ignores 
   assert.equal(run(s.app, 'git push'), null, 'The main checkout on the base branch has no ticket.');
   assert.equal(run(s.wiki, 'git push'), null, 'The wiki is not a ticket worktree.');
   assert.equal(run(os.tmpdir(), 'git push'), null, 'A folder outside a repository.');
-  assert.equal(run(s.worktree, 'gh pr create -t T'), null, 'Without a trusted config, only git push is a ship action.');
+  assert.equal(run(s.worktree, 'gh pr create -t T')?.decision, 'deny', 'Without a trusted config, the shipped profile config still names the change command (L-2).');
   assert.equal(preTool(null, { env }), null);
   rmSync(path.join(s.root, 'app.forge'), { recursive: true, force: true });
   assert.equal(run(s.worktree, 'git push'), null, 'No wiki, no ticket.');
@@ -383,7 +383,7 @@ test('a write in a ticket worktree gets ask, and the reason names the ticket, th
   }
   assert.equal(run(s.app, `cd "${s.worktree}" && ${comment}`).decision, 'ask', 'A cd into the ticket worktree also asks.');
   const plain = setup(t);
-  assert.equal(run(plain.worktree, comment), null, 'Without a trusted config there is no write command.');
+  assert.equal(run(plain.worktree, comment)?.decision, 'ask', 'Without a trusted config the shipped profile config still names the write command (L-2).');
 });
 
 test('a new change request asks after its gates pass, and a deny wins over an ask', (t) => {
@@ -416,7 +416,8 @@ function approveDrafts(s, drafts, { listed = Object.keys(drafts) } = {}) {
 }
 
 test('the approval of the Shippable? set that holds the one change draft is the yes for a new change request', (t) => {
-  const create = 'gh pr create -R a/b -t "APP-7 T" -F outbox/pr.draft.md';
+  // The body option names the approved draft by its path (L-2: a relative path would resolve from the folder of the command).
+  const create = (s) => `gh pr create -R a/b -t "APP-7 T" -F ${path.join(s.dir, 'outbox', 'pr.draft.md')}`;
   const ready = () => {
     const s = setup(t, { approved: ['Planned?', 'Shippable?'] });
     trustConfig(s);
@@ -424,35 +425,35 @@ test('the approval of the Shippable? set that holds the one change draft is the 
   };
   const s = ready();
   approveDrafts(s, { 'pr.draft.md': 'change' });
-  assert.equal(run(s.worktree, create), null);
-  assert.equal(preTool({ cwd: s.worktree, command: create, mode: 'bypassPermissions' }, { env }), null, 'No verdict, also with no prompt.');
+  assert.equal(run(s.worktree, create(s)), null);
+  assert.equal(preTool({ cwd: s.worktree, command: create(s), mode: 'bypassPermissions' }, { env }), null, 'No verdict, also with no prompt.');
   assert.equal(run(s.worktree, 'git push -u origin users/a/APP-7-doc-import'), null);
   for (const command of ['gh issue comment 7 -R a/b -F b.md', 'gh issue close 7', 'gh workflow run ci.yml', 'gh api -X POST repos/a/b/pulls/1/comments/2/replies -F body=@b.md']) {
     assert.equal(run(s.worktree, command).decision, 'ask', `Another write keeps its ask: ${command}`);
   }
   // The draft changes after the approval: the gate is stale.
   writeFileSync(path.join(s.dir, 'outbox', 'pr.draft.md'), '---\nstatus: draft\ntarget: change\n---\n# Title\n\nOther text\n');
-  assert.equal(run(s.worktree, create).decision, 'deny');
+  assert.equal(run(s.worktree, create(s)).decision, 'deny');
   // A draft that is not in the manifest is no approval.
   const none = ready();
-  assert.equal(run(none.worktree, create).decision, 'ask');
-  assert.equal(preTool({ cwd: none.worktree, command: create, mode: 'bypassPermissions' }, { env }).decision, 'deny');
+  assert.equal(run(none.worktree, create(none)).decision, 'ask');
+  assert.equal(preTool({ cwd: none.worktree, command: create(none), mode: 'bypassPermissions' }, { env }).decision, 'deny');
   const unlisted = ready();
   approveDrafts(unlisted, { 'pr.draft.md': 'change' }, { listed: [] });
-  assert.equal(run(unlisted.worktree, create).decision, 'ask');
+  assert.equal(run(unlisted.worktree, create(unlisted)).decision, 'ask');
   // Two change drafts, a draft of another target, and an existing change request all keep the ask.
   const two = ready();
   approveDrafts(two, { 'pr.draft.md': 'change', 'pr-2.draft.md': 'change' });
-  assert.equal(run(two.worktree, create).decision, 'ask');
+  assert.equal(run(two.worktree, create(two)).decision, 'ask');
   const other = ready();
   approveDrafts(other, { 'item-comment.draft.md': 'tracker-comment' });
-  assert.equal(run(other.worktree, create).decision, 'ask');
+  assert.equal(run(other.worktree, create(other)).decision, 'ask');
   const open = ready();
   approveDrafts(open, { 'pr.draft.md': 'change' });
   writeFileSync(open.readme, readFileSync(open.readme, 'utf8').replace('changes: []', 'changes:\n  - { url: "https://github.com/a/b/pull/9", state: open }'));
-  assert.equal(run(open.worktree, create).decision, 'ask');
+  assert.equal(run(open.worktree, create(open)).decision, 'ask');
   writeFileSync(open.readme, readFileSync(open.readme, 'utf8').replace('state: open }', 'state: merged }'));
-  assert.equal(run(open.worktree, create), null, 'A merged change request does not count.');
+  assert.equal(run(open.worktree, create(open)), null, 'A merged change request does not count.');
 });
 
 test('in bypassPermissions the host shows no prompt, so each ask becomes a deny', (t) => {
@@ -883,4 +884,161 @@ test('L-2: G3a, G3b: a push after a cd to a folder that cannot be a ticket folde
   git(path.join(home, 'x'), 'init', '-q', '-b', 'main');
   assert.equal(preTool({ cwd: s.worktree, command: 'git -C ~/x push' }, { env: { ...env, HOME: home } }), null);
   assert.equal(preTool({ cwd: s.worktree, command: 'cd ~/x && git push' }, { env: { ...env, HOME: home } }), null);
+});
+
+// L-2, step 2: the verdicts of the guard that hold in a fixture (the probes of the ticket: G4, G6, U5, and G1).
+const plant = (dir, repoPath) => {
+  mkdirSync(path.join(dir, 'forge'), { recursive: true });
+  writeFileSync(path.join(dir, 'forge', 'repo.json'), JSON.stringify({ repo: { path: repoPath } }));
+};
+
+test('L-2: G4a, G4b, G4c: a planted forge/repo.json is no wiki binding, and a push is denied', (t) => {
+  const a = setup(t);
+  plant(a.worktree, path.join(a.root, 'elsewhere'));
+  assert.equal(run(a.worktree, 'git push')?.decision, 'deny', 'G4a: the file names another folder.');
+  const b = setup(t);
+  plant(b.worktree, b.app);
+  assert.equal(run(b.worktree, 'git push')?.decision, 'deny', 'G4b: the file names the repository itself.');
+  const c = setup(t);
+  plant(c.app, path.join(c.root, 'elsewhere'));
+  assert.equal(run(c.worktree, 'git push')?.decision, 'deny', 'G4c: the file is in the main checkout.');
+});
+
+test('L-2: resolve takes an own binding only in a Forge layout or with --wiki', (t) => {
+  const s = setup(t);
+  const elsewhere = path.join(s.root, 'elsewhere');
+  mkdirSync(elsewhere);
+  plant(s.worktree, elsewhere);
+  const planted = resolve({ cwd: s.worktree, env });
+  assert.equal(planted.wiki.path, path.join(s.root, 'app.forge', 'wiki'), 'The planted file is ignored.');
+  assert.equal(planted.repo.path, s.app);
+  const named = resolve({ cwd: s.worktree, wiki: s.worktree, env });
+  assert.equal(named.wiki.path, s.worktree, '--wiki names the folder, so its binding counts.');
+  assert.equal(named.repo.path, elsewhere);
+});
+
+test('L-2: a push in a work tree that Forge cannot resolve is denied, and a wiki-mismatch keeps its own text', (t) => {
+  const s = setup(t);
+  git(s.app, 'remote', 'add', 'origin', 'https://example.test/a/app.git');
+  mkdirSync(path.join(s.wiki, 'forge'), { recursive: true });
+  writeFileSync(path.join(s.wiki, 'forge', 'repo.json'), JSON.stringify({ repo: { path: s.app, remote: 'https://example.test/other/app' } }));
+  const verdict = run(s.worktree, 'git push');
+  assert.equal(verdict?.decision, 'deny');
+  assert.match(verdict.reason, /belongs to https:\/\/example\.test\/other\/app/, 'The error of resolve is the text.');
+  assert.equal(run(s.worktree, 'git status'), null, 'Only a push is stopped.');
+  // A folder that is not a Git work tree gets no verdict.
+  assert.equal(run(s.root, 'git push'), null);
+});
+
+/** A repository where Shippable? is approved with one `target: change` draft, and the config is trusted. `draft` is the absolute path of the draft. */
+function readyToOpen(t, profile) {
+  const s = setup(t, { approved: ['Planned?', 'Shippable?'] });
+  if (profile) {
+    const where = resolve({ cwd: s.app, env });
+    const { configDir } = seed(where, templates, { profile, force: true });
+    setValues(configDir, ['repo.baseBranch=main']);
+    approve(where, trustStatus(where, { env }).files.filter((f) => f.rel.startsWith('config/')).map((f) => `${f.rel}=${f.sha.slice(0, 12)}`), { env });
+  } else trustConfig(s);
+  approveDrafts(s, { 'pr.draft.md': 'change' });
+  return { ...s, draft: path.join(s.dir, 'outbox', 'pr.draft.md') };
+}
+
+test('L-2: G6a, G6b, G6c, G6d: a new change request is no question only when its body option names the approved draft', (t) => {
+  const s = readyToOpen(t);
+  const open = (body) => run(s.worktree, `gh pr create -R a/b -t "APP-7 T" ${body}`);
+  assert.equal(open('-b "other text"')?.decision, 'ask', 'G6a: another body, inline.');
+  assert.equal(open('--body-file /tmp/other.md')?.decision, 'ask', 'G6b: another file.');
+  assert.equal(open(`-F ${s.draft}`), null, 'G6c: the approved draft, by its absolute path.');
+  assert.equal(open('--fill')?.decision, 'ask', 'G6d: no body option.');
+  assert.equal(open(`--body-file ${s.draft}`), null);
+  assert.equal(open(`--body-file=${s.draft}`), null);
+  assert.equal(open(`-F "$(cat ${s.draft})"`), null, 'The form $(cat <path>) of the draft.');
+  assert.equal(open(`-F ${s.draft} -b "other text"`)?.decision, 'ask', 'One more body option that is not the draft.');
+  assert.equal(open('-F -')?.decision, 'ask', 'A body from stdin.');
+  assert.equal(open(`-F ${s.draft}.other`)?.decision, 'ask');
+  assert.equal(open(`-F "$(cat ${s.draft}; echo more)"`)?.decision, 'ask');
+  assert.equal(open('')?.decision, 'ask', 'No body option at all.');
+  // A relative path resolves from the folder of the command, and a link to the draft counts as the draft (a real path compare).
+  assert.equal(run(s.worktree, 'gh pr create -R a/b -t T -F outbox/pr.draft.md')?.decision, 'ask', 'The worktree has no such file.');
+  assert.equal(run(s.worktree, `cd ${s.dir} && gh pr create -R a/b -t T -F outbox/pr.draft.md`), null);
+  const link = path.join(s.root, 'link.md');
+  symlinkSync(s.draft, link);
+  assert.equal(open(`-F ${link}`), null);
+  assert.equal(preTool({ cwd: s.worktree, command: `gh pr create -R a/b -t T -F ${s.draft}`, mode: 'bypassPermissions' }, { env }), null, 'No verdict, also with no prompt.');
+});
+
+test('L-2: the shipped Forgejo repo.open-change command with the approved draft gets no question, and another body asks', (t) => {
+  const s = readyToOpen(t, 'forgejo');
+  const open = (body) => run(s.worktree, `tea pulls create --base main --head users/a/APP-7-doc-import --title "APP-7 T" ${body}`);
+  assert.equal(open(`--description "$(cat ${s.draft})"`), null);
+  assert.equal(open(`--description ${s.draft}`), null);
+  assert.equal(open('--description "other text"')?.decision, 'ask');
+  assert.equal(open(`--description "$(cat /tmp/other.md)"`)?.decision, 'ask');
+  assert.equal(open('')?.decision, 'ask');
+});
+
+test('L-2: U5a, U5b: an untrusted config still gives the write ask of the shipped profile', (t) => {
+  const s = setup(t);
+  assert.equal(run(s.worktree, 'gh issue comment 7 --body x')?.decision, 'ask', 'U5a');
+  assert.equal(run(s.worktree, 'gh pr comment 7 --body x')?.decision, 'ask', 'U5b');
+  assert.equal(run(s.worktree, 'gh issue view 7'), null, 'A read gets no verdict.');
+  // The untrusted wiki text adds commands to the union.
+  const where = resolve({ cwd: s.app, env });
+  const { configDir } = seed(where, templates);
+  writeFileSync(path.join(configDir, 'tracker.md'), readFileSync(path.join(configDir, 'tracker.md'), 'utf8').replace('gh issue comment', 'zz issue comment'));
+  assert.equal(run(s.worktree, 'zz issue comment 7 --body x')?.decision, 'ask');
+  assert.equal(run(s.worktree, 'gh issue comment 7 --body x')?.decision, 'ask', 'The shipped command stays.');
+});
+
+test('L-2: guardActions gives the action kind never, with its verdict, before a write', () => {
+  const never = [{ words: ['gh', 'pr', 'merge'], verdict: 'deny' }, { words: ['gh', 'pr', 'review'], with: ['--approve', '-a'], verdict: 'deny' }, { words: ['tea', ['pulls', 'pr'], ['merge', 'm']], verdict: 'deny' }];
+  const kinds = (line) => guardActions(line, '/x', { never }).map((a) => [a.kind, a.verdict]);
+  assert.deepEqual(kinds('gh pr merge 5 --squash'), [['never', 'deny']]);
+  assert.deepEqual(kinds('timeout 5 gh pr -R a/b merge 5'), [['never', 'deny']]);
+  assert.deepEqual(kinds('gh pr review 5 --approve'), [['never', 'deny']]);
+  assert.deepEqual(kinds('gh pr review 5 --comment'), []);
+  assert.deepEqual(kinds('tea pr m 5'), [['never', 'deny']]);
+  assert.deepEqual(kinds('gh pr merge --help'), []);
+  assert.deepEqual(kinds('gh pr view 5'), []);
+});
+
+test('L-2: the never words: merge and approve are denied, close asks, in a ticket folder, with gateGuard off, and after a cd', (t) => {
+  const s = setup(t);
+  trustConfig(s);
+  for (const command of ['gh pr merge 5 --squash', 'gh pr review 5 --approve', 'gh pr review 5 -a', 'gh pr -R a/b merge 5', 'timeout 5 gh pr merge 5', 'if true; then gh pr merge 5; fi']) {
+    const verdict = run(s.worktree, command);
+    assert.equal(verdict?.decision, 'deny', command);
+    assert.match(verdict.reason, /web page/, 'The reason says that the user does it in the web page.');
+  }
+  for (const command of ['tea pulls merge 5', 'tea pull m 5', 'tea pr merge 5', 'tea pulls approve 5', 'tea pr lgtm 5', 'tea pull a 5']) {
+    assert.equal(run(s.worktree, command)?.decision, 'deny', command);
+  }
+  assert.equal(run(s.worktree, 'gh pr close 5')?.decision, 'ask');
+  assert.equal(run(s.worktree, 'tea pulls close 5')?.decision, 'ask');
+  assert.equal(preTool({ cwd: s.worktree, command: 'gh pr close 5', mode: 'bypassPermissions' }, { env })?.decision, 'deny', 'No prompt: the ask is a deny.');
+  for (const command of ['gh pr view 5', 'gh pr review 5 --comment', 'gh pr list', 'tea pulls list', 'gh pr merge --help']) assert.equal(run(s.worktree, command), null, command);
+  assert.equal(run(s.worktree, 'cd / && gh pr merge 5')?.decision, 'deny', 'A cd out of the ticket folder does not help.');
+  assert.equal(run(s.app, 'gh pr merge 5'), null, 'The main checkout is no ticket folder.');
+  // A wiki that names another profile or an unknown one does not remove the list.
+  for (const profile of ['forgejo', 'nope']) {
+    const named = setup(t);
+    trustConfig(named);
+    writeFileSync(path.join(named.wiki, 'forge', 'repo.json'), JSON.stringify({ repo: { path: named.app }, profile }));
+    assert.equal(run(named.worktree, 'gh pr merge 5')?.decision, 'deny', profile);
+  }
+  // The verdict holds with gateGuard off, and with an untrusted config.
+  const off = setup(t);
+  trustConfig(off, ['policy.gateGuard=off']);
+  assert.equal(run(off.worktree, 'git push'), null, 'The guard is off for a push.');
+  assert.equal(run(off.worktree, 'gh pr merge 5')?.decision, 'deny');
+  const untrusted = setup(t);
+  assert.equal(run(untrusted.worktree, 'gh pr merge 5')?.decision, 'deny');
+});
+test('L-2: G1b, G1c: a gateGuard value that is not re-trusted keeps the push denied, and trust approve asks', (t) => {
+  const s = setup(t);
+  trustConfig(s);
+  const where = resolve({ cwd: s.app, env });
+  setValues(seed(where, templates).configDir, ['policy.gateGuard=off']);
+  assert.equal(run(s.worktree, 'git push')?.decision, 'deny', 'G1b');
+  assert.equal(run(s.worktree, `node ${cli} trust approve config/policy.md=abcdef123456`)?.decision, 'ask', 'G1c');
 });

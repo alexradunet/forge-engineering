@@ -8,14 +8,19 @@
 // The 2 approval commands (`forge.mjs gate-approve` and `forge.mjs trust approve`) get `ask` in each folder and each policy,
 // also with `policy.gateGuard: off`: an approval is the yes of the user, so the agent must not give it alone.
 // In a mode with no prompt, they are denied, and the user runs them in a terminal.
+// A never word (merge, approve, or close of a change request) is the step of the user in the web page: the profile lists the words,
+// and the guard gives deny or ask in a ticket folder, also with `policy.gateGuard: off`. The list is the union of each shipped profile.
+// A new change request gets no question only when its body option names the one approved draft (the profile lists the body options).
 // It reads the words of the command, so it is a net and not a wall: a script that pushes is not seen.
 // A ticket whose README cannot be read stops a push and a new change request too: the gates are unknown (policy.gateGuard sets deny or ask).
 // It never stops other work: a folder with no ticket, no wiki, or a config that cannot be read lets the command run.
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { resolve, samePath } from './repo.mjs';
+import { isForgeLayout } from './layout.mjs';
+import { listProfiles, pluginRoot, profileFile } from './profile.mjs';
 import { listTickets } from './tickets.mjs';
 import { approvedDrafts, checkAction, isChangeDraft, regular, within } from './validation.mjs';
 import { baseBranchOf, codeBinding, resolveCommit } from './code-bind.mjs';
@@ -52,6 +57,8 @@ const METHOD_OPTIONS = new Set(['-X', '--method']);
 // The shells that run the text of a heredoc or a pipe as commands.
 const SHELLS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'fish', 'pwsh', 'powershell']);
 const HELP = new Set(['--help', '-h']);
+// An option that gives a body in another way (inline text, a generated body, a template, an editor). It is no approved draft.
+const OTHER_BODY = /^(?:-[bTew]|--(?:body|fill|template|editor|web|description|message))/;
 // The time budget of one preTool call (the hook limit is 30 s).
 const DEADLINE_MS = 20000;
 // The capabilities that change something outside the workspace. The core holds the names; the trusted config gives the commands.
@@ -464,19 +471,20 @@ export function writeCommands(texts = {}) {
 /**
  * True when the words of a command (from index `from`) have the words `rest` in order, with options between them.
  * An option can have a value or not, so both readings are tried: a match in one of them is a match.
+ * A word of `rest` can be a list of words: any one of them matches (the aliases of a never command).
  */
 function wordsInOrder(words, rest, from = 1) {
   if (!rest.length) return true;
   const word = words[from];
   if (word === undefined) return false;
-  if (word === rest[0]) return wordsInOrder(words, rest.slice(1), from + 1);
+  if (Array.isArray(rest[0]) ? rest[0].includes(word) : word === rest[0]) return wordsInOrder(words, rest.slice(1), from + 1);
   if (!word.startsWith('-')) return false;
   return wordsInOrder(words, rest, from + 1) || (!word.includes('=') && wordsInOrder(words, rest, from + 2));
 }
 
 /**
  * True when a command matches a config command: the same tool, then the config words in order, also with options
- * between them (`gh issue -R o/r comment`). A command with a method must name a method other than GET. A help call is no match.
+ * between them (`tool sub -R o/r word`). A command with a method must name a method other than GET. A help call is no match.
  */
 function matches(words, command) {
   if (toolName(words[0]) !== command.words[0] || !wordsInOrder(words, command.words.slice(1))) return false;
@@ -484,6 +492,45 @@ function matches(words, command) {
   if (!command.method) return true;
   const method = commandMethod(words);
   return Boolean(method) && method !== 'GET';
+}
+
+/**
+ * True when a command matches a never command of a profile: { words, with, verdict }. The same rules as `matches`, and when `with` is set,
+ * one of its options must be a word of the command.
+ */
+function matchesNever(words, entry) {
+  if (!Array.isArray(entry?.words) || toolName(words[0]) !== entry.words[0] || !wordsInOrder(words, entry.words.slice(1))) return false;
+  if (words.some((word) => HELP.has(word))) return false;
+  return !Array.isArray(entry.with) || entry.with.some((option) => words.includes(option));
+}
+
+/** The JSON of a file, or null when it cannot be read: a broken profile never removes the entries of the others. */
+function jsonOf(file) {
+  try { return JSON.parse(readFileSync(file, 'utf8')); } catch { return null; }
+}
+
+/**
+ * The lists that the shipped profiles give: { never, bodyOptions }. It is the union of the default profile and each profile of
+ * `listProfiles()`, and it does not depend on the profile that a wiki names: the agent can write `forge/repo.json`, and the tool words differ.
+ */
+export function shippedLists(plugin = pluginRoot) {
+  const files = [path.join(plugin, 'templates', 'profile.json')];
+  try { for (const name of listProfiles(plugin)) files.push(path.join(plugin, 'profiles', name, 'profile.json')); } catch { /* The default profile still counts. */ }
+  const never = [];
+  const bodyOptions = new Set();
+  for (const data of files.map(jsonOf)) {
+    if (Array.isArray(data?.never)) never.push(...data.never.filter((entry) => Array.isArray(entry?.words) && ['deny', 'ask'].includes(entry.verdict)));
+    if (Array.isArray(data?.bodyOptions)) for (const option of data.bodyOptions) if (typeof option === 'string') bodyOptions.add(option);
+  }
+  return { never, bodyOptions: [...bodyOptions] };
+}
+
+/** The text of the shipped config file of a kind (tracker, repo, ci) of a profile, else of the default profile, or ''. */
+function shippedConfig(plugin, profile, kind) {
+  for (const name of [profile ?? null, null]) {
+    try { return readFileSync(profileFile(plugin, name, `config/${kind}.md`), 'utf8'); } catch { /* Try the default profile. */ }
+  }
+  return '';
 }
 
 /**
@@ -522,14 +569,15 @@ function pushTargets(args) {
  *   `command`, and the `key`, `gate`, and `answer` (gate-approve) or the `files` (trust approve). A command that approveCall
  *   does not read, but that the text scan finds (approvalText), is an `approve` action with `scan: true`.
  * - `push`: each `git push` (not a dry run), with the branches that it names (`refs`, `all`).
- * - `change`: a command that starts with one of the change commands (word lists).
+ * - `never`: a command that matches one of the `never` commands of the profiles ({ words, with, verdict }), with its `verdict` and its `words`.
+ * - `change`: a command that starts with one of the change commands (word lists), with its `words`.
  * - `write`: a command that matches one of the write commands ({ capability, words, method }), with its
  *   `capabilities` and its first `words`. A change command is not also a write action: the change action asks.
  * A `cd` inside parentheses, `$( )`, or backticks does not change the folder after them. When a `cd` or `git -C` target cannot be known,
  * the action has `unknown: true` and the session folder `cwd`, so that preTool uses the ticket of the session folder.
  * `env` gives the home folder for `~` (HOME, USERPROFILE).
  */
-export function guardActions(line, cwd, { changes = [], writes = [], env = process.env } = {}) {
+export function guardActions(line, cwd, { changes = [], writes = [], never = [], env = process.env } = {}) {
   const actions = [];
   let folder = cwd; // null when the folder is unknown
   const saved = [];
@@ -554,7 +602,9 @@ export function guardActions(line, cwd, { changes = [], writes = [], env = proce
       if (call.sub === 'push' && !call.args.some((arg) => arg === '--dry-run' || arg === '-n')) actions.push({ kind: 'push', ...here(call.cwd), ...pushTargets(call.args) });
       continue;
     }
-    if (changes.some((first) => matches(words, { words: first }))) { actions.push({ kind: 'change', ...here() }); continue; }
+    const forbidden = never.find((entry) => matchesNever(words, entry));
+    if (forbidden) { actions.push({ kind: 'never', ...here(), verdict: forbidden.verdict, words: words.map((word, i) => (i === 0 ? tool : word)) }); continue; }
+    if (changes.some((first) => matches(words, { words: first }))) { actions.push({ kind: 'change', ...here(), words }); continue; }
     const hits = writes.filter((command) => matches(words, command));
     if (hits.length) {
       const longest = hits.reduce((a, b) => (b.words.length > a.words.length ? b : a));
@@ -590,8 +640,21 @@ function git(cwd, args) {
   return result.status === 0 ? (result.stdout ?? '').trim() : '';
 }
 
-function locate(cwd, env) {
-  try { return resolve({ cwd, env }); } catch { return null; /* not in a Git repository */ }
+/** The place of a folder: { where } or { error } (not in a Git repository, a wiki that does not match, a binding that cannot be read). */
+function tryLocate(cwd, env) {
+  try { return { where: resolve({ cwd, env }) }; } catch (error) { return { where: null, error }; }
+}
+
+/**
+ * The problem of a push that Forge cannot place: a Git work tree where resolve fails, or a folder that is its own wiki and not a Forge layout.
+ * It is '' when the push can go on. A wiki-mismatch keeps its own text.
+ */
+function unplaced(folder, { where, error }) {
+  if (where) {
+    return samePath(where.top, where.wiki.path) && !isForgeLayout(where.wiki.path) ? 'Forge cannot find the wiki of this work tree: the folder is its own wiki.' : '';
+  }
+  if (!error || git(folder, ['rev-parse', '--is-inside-work-tree']) !== 'true') return '';
+  return error.code === 'wiki-mismatch' ? error.message : `Forge cannot find the wiki of this work tree: ${error.message}`;
 }
 
 function configText(where, file) {
@@ -618,6 +681,55 @@ function changeApproved(match) {
   return drafts.length === 1 && !(match.ticket.changes ?? []).some((entry) => ['draft', 'open'].includes(entry.state));
 }
 
+/** The value of each body option (`-F x`, `-Fx`, `--body-file x`, `--body-file=x`) in the words of a command. */
+function bodyValues(words, options) {
+  const values = [];
+  for (let i = 1; i < words.length; i++) {
+    const word = words[i];
+    if (options.includes(word)) { values.push(words[i + 1] ?? ''); i++; continue; }
+    const joined = /^(--[^=]+)=(.*)$/s.exec(word);
+    if (joined && options.includes(joined[1])) { values.push(joined[2]); continue; }
+    const short = options.find((option) => /^-[A-Za-z]$/.test(option) && word.startsWith(option) && word.length > 2);
+    if (short) values.push(word.slice(2));
+  }
+  return values;
+}
+
+/** The path that a body value names: the value itself, or the file of `$(cat <path>)`. It is null for any other form (a variable, a second command). */
+function bodyPath(value) {
+  const sub = /^\$\(\s*cat\s+(.+?)\s*\)$/s.exec(value);
+  let file = sub ? sub[1] : value;
+  const quoted = /^(["'])(.*)\1$/s.exec(file);
+  if (quoted) file = quoted[2];
+  if (!file || /[$`]/.test(file) || file.startsWith('~')) return null;
+  if (sub && (/[;|&<>()*?]/.test(file) || (!quoted && /\s/.test(file)))) return null;
+  return file;
+}
+
+/** True when two paths name the same file (a real path compare). A path that cannot be read is no match. */
+function sameFile(a, b) {
+  try { return samePath(realpathSync(a), realpathSync(b)); } catch { return false; }
+}
+
+/**
+ * True when the body of a new change request is the one approved draft: the command has at least one body option, and the value of each
+ * body option is the path of the draft, or `$(cat <path>)` of it, resolved from the folder of the command. Each other form asks.
+ */
+function bodyIsDraft(match, action, bodyOptions) {
+  const dir = path.dirname(match.file);
+  const [relative, ...more] = approvedDrafts(match.ticket, match.file, 'Shippable?').filter((item) => isChangeDraft(dir, item));
+  const values = bodyValues(action.words ?? [], bodyOptions);
+  if (!relative || more.length || !values.length) return false;
+  // An option that gives a body in another way, next to the draft, is no approved draft.
+  const listed = (word) => bodyOptions.some((option) => word === option || word.startsWith(`${option}=`) || (/^-[A-Za-z]$/.test(option) && word.startsWith(option)));
+  if ((action.words ?? []).slice(1).some((word) => OTHER_BODY.test(word) && !listed(word))) return false;
+  const draft = path.join(dir, ...relative.split(/[\\/]/));
+  return values.every((value) => {
+    const file = bodyPath(value);
+    return file !== null && sameFile(path.resolve(action.cwd, file), draft);
+  });
+}
+
 /** The ask verdict for a write: the reason names the ticket, the command, and the draft. */
 function writeVerdict(match, action) {
   const key = match.ticket.key;
@@ -628,6 +740,20 @@ function writeVerdict(match, action) {
     decision: 'ask', key,
     question: `${key}: this command is an external write: ${what}. ${text}`,
     reason: `Forge gate guard: ${key}: this command is an external write: ${what}. ${text} Allow it only if you read the text and you want this one write now.`,
+  };
+}
+
+/** The verdict for a never word: deny, or ask. The user merges, approves, or closes in the web page. */
+function neverVerdict(match, action) {
+  const key = match.ticket.key;
+  const command = action.words.slice(0, 4).join(' ');
+  if (action.verdict === 'ask') {
+    const question = `${key}: \`${command}\` closes a change request.`;
+    return { decision: 'ask', key, question, reason: `Forge gate guard: ${question} Allow it only if you want this one close now.` };
+  }
+  return {
+    decision: 'deny', key,
+    reason: `Forge gate guard: ${key}: \`${command}\` merges or approves a change request. This is a step of the user, in the web page. Do not run the command in another form. Tell the user which change request is ready, and let the user merge or approve it in the web page.`,
   };
 }
 
@@ -713,10 +839,19 @@ export function preTool(event, { env = process.env, deadlineMs = DEADLINE_MS } =
   // One time budget for all git calls of the code checks of this call: the hook has a limit of 30 s.
   const deadline = Date.now() + deadlineMs;
   const base = event.cwd || process.cwd();
-  const home = locate(base, env);
+  const homeTry = tryLocate(base, env);
+  const home = homeTry.where;
   const homeConfig = home?.wiki.exists ? trustedConfig(home, env) : null;
-  const changes = homeConfig ? changeCommands(configText(home, 'repo.md')) : [];
-  const writes = homeConfig ? writeCommands({ tracker: configText(home, 'tracker.md'), repo: configText(home, 'repo.md'), ci: configText(home, 'ci.md') }) : [];
+  const { never, bodyOptions } = shippedLists();
+  const kinds = ['tracker', 'repo', 'ci'];
+  const textsOf = (read) => Object.fromEntries(kinds.map((kind) => [kind, read(kind)]));
+  // A trusted config with files gives the commands. An untrusted config, or no config file, adds the wiki text to the shipped profile config: the agent can write the wiki text,
+  // so it must not remove a command of the profile (the union of both lists).
+  const wikiTexts = home ? textsOf((kind) => configText(home, `${kind}.md`)) : textsOf(() => '');
+  const shipped = textsOf((kind) => shippedConfig(pluginRoot, home?.profile ?? null, kind));
+  const own = homeConfig && kinds.some((kind) => wikiTexts[kind]);
+  const changes = own ? changeCommands(wikiTexts.repo) : [...changeCommands(shipped.repo), ...changeCommands(wikiTexts.repo)];
+  const writes = own ? writeCommands(wikiTexts) : [...writeCommands(shipped), ...writeCommands(wikiTexts)];
   const verdicts = [];
   // The ticket of a folder, and each ticket whose branch a push names: a push of a ticket branch runs from each folder.
   const ticketsAt = (where, config, action, cwd) => {
@@ -731,23 +866,34 @@ export function preTool(event, { env = process.env, deadlineMs = DEADLINE_MS } =
       return [...new Set([here, ...named].filter(Boolean))];
     } catch { return []; }
   };
-  for (const action of guardActions(event.command, base, { changes, writes, env })) {
+  for (const action of guardActions(event.command, base, { changes, writes, never, env })) {
     // An approval needs no ticket, no wiki, and no trusted config, and no gateGuard mode turns it off.
     if (action.kind === 'approve') { verdicts.push(approveVerdict(action)); continue; }
-    let where = samePath(action.cwd, base) ? home : locate(action.cwd, env);
+    const placed = samePath(action.cwd, base) ? homeTry : tryLocate(action.cwd, env);
+    let where = placed.where;
+    if (action.kind === 'push') {
+      const problem = unplaced(action.cwd, placed);
+      if (problem) {
+        const text = placed.error?.code === 'wiki-mismatch' ? problem : `${problem} A forge/repo.json file in a code folder is not a wiki binding: a wiki is the folder wiki/ of a <name>.forge folder.`;
+        verdicts.push({ decision: 'deny', key: '', reason: `Forge gate guard: ${text} Do not run the command in another form. Tell the user what is wrong.` });
+        continue;
+      }
+    }
     let config = where === home ? homeConfig : (where?.wiki.exists ? trustedConfig(where, env) : null);
     let found = ticketsAt(where, config, action, action.cwd);
     // A write names its target (for example `-R owner/repo`), so a `cd` to another folder does not change it:
     // the ticket of the session folder is the ticket of the write (GH-2 review).
     // A push or a new change request in a folder that Forge cannot know (`cd $X`) or that is no Git work tree (`cd ~/nowhere`)
     // uses the ticket of the session folder too. A push in another real repository keeps its folder.
-    const lost = action.kind === 'write' || ((action.kind === 'push' || action.kind === 'change') && (action.unknown || !where));
+    const lost = action.kind === 'write' || action.kind === 'never' || ((action.kind === 'push' || action.kind === 'change') && (action.unknown || !where));
     if (!found.length && lost && where !== home) {
       where = home;
       config = homeConfig;
       found = ticketsAt(home, homeConfig, action, base);
     }
     if (!found.length) continue;
+    // A never word comes before the ship check, and no gateGuard mode turns it off.
+    if (action.kind === 'never') { for (const match of found) verdicts.push(neverVerdict(match, action)); continue; }
     const mode = GUARD_MODES.includes(config?.policy?.gateGuard) ? config.policy.gateGuard : 'deny';
     if (mode === 'off') continue;
     for (const match of found) {
@@ -785,7 +931,7 @@ export function preTool(event, { env = process.env, deadlineMs = DEADLINE_MS } =
             continue;
           }
         }
-        if (action.kind === 'push' || (action.kind === 'change' && changeApproved(match))) continue;
+        if (action.kind === 'push' || (action.kind === 'change' && changeApproved(match) && bodyIsDraft(match, action, bodyOptions))) continue;
       }
       verdicts.push(writeVerdict(match, action));
     }

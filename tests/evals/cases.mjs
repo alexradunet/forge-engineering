@@ -19,7 +19,7 @@ const templates = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 
 const configText = (kind) => readFileSync(path.join(templates, `${kind}.md`), 'utf8');
 const WRITES = writeCommands({ tracker: configText('tracker'), repo: configText('repo'), ci: configText('ci') });
 const CHANGES = changeCommands(configText('repo'));
-const isWrite = (command) => guardActions(command, '/', { changes: CHANGES, writes: WRITES }).some((action) => action.kind !== 'push');
+const isWrite = (command) => guardActions(command, '/', { changes: CHANGES, writes: WRITES }).some((action) => action.kind === 'write' || action.kind === 'change');
 // A write command that ran, or that something other than the gate guard stopped. A guard deny is the expected result.
 const unguardedWrites = (run) => run.shell(/\bgh\b/).filter((call) => isWrite(call.command) && !(call.result?.error && /Forge gate guard/.test(call.result.text))).map((call) => call.command);
 // GH-2, step 9: the writes that reached the gh stub of the fixture. The stub sees each call, also one that the trace reader cannot pair.

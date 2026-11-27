@@ -123,7 +123,10 @@ export function resolve({ cwd = process.cwd(), wiki, env = process.env } = {}) {
     repoPath = here.main;
     worktree = here.worktree;
     // Started inside a wiki: a bound wiki, or a wiki without a binding in the Forge folder of its repository ("<repo>.forge/wiki").
-    const ownBinding = readBinding(here.top);
+    // An own forge/repo.json counts only in a Forge layout (<name>.forge/wiki), or when --wiki names this folder:
+    // a file in a code folder is data that an agent can plant, so it is no binding (L-2).
+    const trustedTop = isForgeLayout(here.top) || (wiki && samePath(path.resolve(wiki), here.top));
+    const ownBinding = trustedTop ? readBinding(here.top) : null;
     const sibling = isForgeLayout(here.top) ? path.dirname(here.top).slice(0, -FORGE_SUFFIX.length) : '';
     if (ownBinding?.repo?.path) {
       wikiPath = here.top;
