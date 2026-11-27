@@ -657,3 +657,24 @@ test('the prompt hook keeps the ticket title in a ticket worktree, and the key p
   writeFileSync(s.readme, readFileSync(s.readme, 'utf8').replace('state: needs-me', 'state: done'));
   assert.deepEqual(call('no key in this prompt'), {}, 'A ticket with state done gives no title.');
 });
+
+test('the prompt hook corrects a Forge title of another key that is not an open ticket, in a ticket worktree', (t) => {
+  const s = setup(t);
+  const folder = path.join(`${s.app}.worktrees`, 'app-7-doc-import');
+  git(s.app, 'worktree', 'add', '-q', '-b', 'APP-7-doc-import', folder);
+  const original = readFileSync(s.readme, 'utf8');
+  writeFileSync(s.readme, original.replace('worktree: ""', `worktree: "${folder.replaceAll('\\', '/')}"`));
+  const TITLE = 'APP-7 - 🟡 - Doc import error telemetry';
+  const call = (title) => promptSubmit({ cwd: folder, prompt: 'go on', title }, { cli, env });
+  assert.equal(call('L-3 - ▶️ - ADHD switch kit').hookSpecificOutput.sessionTitle, TITLE, 'A Forge title of a key with no open ticket is corrected.');
+  assert.deepEqual(call('L-3 notes'), {}, 'A title with no Forge shape stays.');
+  assert.deepEqual(call('Review - 🟡 - Dana'), {}, 'A first segment that is no key stays.');
+  const other = path.join(s.home, 'raw', 'tickets', 'app-8');
+  mkdirSync(other, { recursive: true });
+  writeFileSync(path.join(other, 'README.md'), original.replaceAll('APP-7', 'APP-8'));
+  assert.deepEqual(call('APP-8 - ⏳ - Other work'), {}, 'A Forge title of another open ticket stays.');
+  assert.equal(call('app-9 - ▶️ - Old').hookSpecificOutput.sessionTitle, TITLE, 'The key compare ignores the case and the key has no open ticket.');
+  // Two open tickets with the same worktree: no title.
+  writeFileSync(path.join(other, 'README.md'), readFileSync(s.readme, 'utf8').replaceAll('APP-7', 'APP-8'));
+  assert.deepEqual(call(''), {}, 'Two open tickets with one worktree give {}.');
+});

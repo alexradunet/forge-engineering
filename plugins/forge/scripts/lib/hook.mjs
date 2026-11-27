@@ -57,6 +57,13 @@ function forgeOwnsTitle(current, title) {
   return key.toUpperCase() === title.split(' - ')[0].toUpperCase() && STATE_MARKS.includes(mark);
 }
 
+/** True when the title has the Forge shape of a key ("<KEY> - <state emoji> - ...") and no open ticket has that key. */
+function forgeKeyNotOpen(current, open) {
+  const [key, mark] = String(current).split(' - ');
+  if (!/^[A-Za-z][A-Za-z0-9]*-\d+$/.test(key) || !STATE_MARKS.includes(mark)) return false;
+  return !open.some((entry) => String(entry.ticket.key).toUpperCase() === key.toUpperCase());
+}
+
 function git(cwd, args) {
   const result = spawnSync('git', ['-C', cwd, ...args], { encoding: 'utf8', windowsHide: true, timeout: 3000 });
   return result.status === 0 ? (result.stdout ?? '').trim() : '';
@@ -529,10 +536,12 @@ export function promptSubmit(event, { cli, env = process.env } = {}) {
   let titleOut = '';
   // In a linked worktree of an open ticket, the folder decides: the key path does not run.
   if (where.repo.worktree && where.top) {
-    const own = listTickets(where.wiki.path).find((entry) => entry.ticket && entry.ticket.state !== 'done' && entry.ticket.worktree && samePath(entry.ticket.worktree, where.top));
-    if (own) {
-      const title = sessionTitle(own.ticket);
-      if (title !== event.title && forgeOwnsTitle(event.title, title)) return { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', sessionTitle: title } };
+    const all = listTickets(where.wiki.path).filter((entry) => entry.ticket && entry.ticket.state !== 'done');
+    const here = all.filter((entry) => entry.ticket.worktree && samePath(entry.ticket.worktree, where.top));
+    if (here.length > 1) return {};
+    if (here.length === 1) {
+      const title = sessionTitle(here[0].ticket);
+      if (title !== event.title && (forgeOwnsTitle(event.title, title) || forgeKeyNotOpen(event.title, all))) return { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', sessionTitle: title } };
       return {};
     }
   }
