@@ -833,6 +833,46 @@ test('L-2: a substitution in a heredoc with an unquoted delimiter gives commands
   assert.deepEqual(shellCommands('echo "$(git push)"'), [['echo', '$(git push)'], ['git', 'push']], 'The quoted word stays, and the substitution gives its command.');
 });
 
+test('L-2 review M6: the text scan of gate-approve reads the subcommand position of a known script', () => {
+  const cwd = path.resolve('/base');
+  const kinds = (line) => guardActions(line, cwd).map((action) => action.kind);
+  for (const line of ['node forge.mjs wiki search gate-approve', 'node --test --test-name-pattern "gate-approve" t.mjs', 'node x.mjs trust status approve', 'node x.mjs gate-approve', 'bun run gate-approve', 'npx forge wiki search gate-approve', 'npx -y x trust status approve']) {
+    assert.deepEqual(kinds(line), [], line);
+  }
+  for (const line of ['F=/x/forge.mjs; node $F gate-approve L-2 Planned?', 'node $F trust x approve', 'node `pwd`/forge.mjs gate-approve', 'npx forge gate-approve L-2 Planned?', 'npx forge trust approve x=1', 'node /p/scripts/forge.mjs --base x gate-approve L-2 Planned?']) {
+    assert.deepEqual(kinds(line), ['approve'], line);
+  }
+});
+
+test('L-2 review M3: a cd in a pipeline or before & does not move the folder, and a cd after && or || gives both folders', () => {
+  const base = path.resolve('/base');
+  const one = path.resolve('/one');
+  const two = path.resolve('/two');
+  const cwds = (line) => shipActions(line, base, []).map((action) => action.cwd);
+  assert.deepEqual(cwds('cd /one | git push'), [base]);
+  assert.deepEqual(cwds('echo x | cd /one; git push'), [base]);
+  assert.deepEqual(cwds('cd /one & git push'), [base]);
+  assert.deepEqual(cwds('cd /one; git push'), [one]);
+  assert.deepEqual(cwds('cd /one && git push'), [one]);
+  assert.deepEqual(cwds('cd /one 2>&1 && git push'), [one]);
+  assert.deepEqual(cwds('false && cd /one; git push'), [base, one]);
+  assert.deepEqual(cwds('false || cd /one; git push'), [base, one]);
+  assert.deepEqual(cwds('cd /one || git push'), [base, one]);
+  assert.deepEqual(cwds('cd /one && cd /two && git push'), [one, two]);
+  assert.deepEqual(cwds('(cd /one; git push); git push'), [one, base]);
+  assert.deepEqual(cwds('true && (cd /one; git push)'), [one]);
+  assert.deepEqual(cwds('false && cd /one; git push; cd /two; git push'), [base, one, two]);
+});
+
+test('L-2 review M3: a push after a cd in a pipeline is checked in the session folder', (t) => {
+  const s = setup(t);
+  trustConfig(s);
+  assert.equal(run(s.worktree, `cd ${s.app} | git push`)?.decision, 'deny');
+  assert.equal(run(s.worktree, `cd ${s.app} & git push`)?.decision, 'deny');
+  assert.equal(run(s.worktree, `false && cd ${s.app}; git push`)?.decision, 'deny');
+  assert.equal(run(s.worktree, `cd ${s.app} && git push`), null, 'The main checkout is no ticket folder.');
+});
+
 test('L-2: a cd inside parentheses does not leak after the closing parenthesis', () => {
   const base = path.resolve('/base');
   const cwds = (line) => shipActions(line, base, []).map((action) => action.cwd);

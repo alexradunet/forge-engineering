@@ -152,7 +152,8 @@ export function shellCommands(line) {
 }
 
 /**
- * The items of a shell line, in order: `{ words }` for a command (with `heredoc`, the body text of its heredocs, when it has them),
+ * The items of a shell line, in order: `{ words }` for a command (with `heredoc`, the body text of its heredocs, when it has them,
+ * and `prev` and `next`, the operators before and after it: `;`, `&&`, `||`, `|`, `&`, or null for a new line or a group),
  * and `{ open: true }` and `{ close: true }` for each parenthesis or backtick pair, so that a caller can scope a `cd`.
  */
 function scanShell(line) {
@@ -165,13 +166,16 @@ function scanShell(line) {
   let tick = false; // true between a pair of backticks
   let lineStart = 0; // the index in `text` of the start of the current line
   let lineFirst = 0; // the index in `items` of the first item of the current line
+  let lastOp = null; // the operator before the next command
+  let lastItem = null; // the command item that the last endCommand call made, to set its `next`
   const endWord = () => { if (word !== null) { words.push(word); word = null; } };
   const inside = (inner) => { items.push({ open: true }, ...scanShell(inner), { close: true }); };
   // The commands of substitutions in quotes wait until their own command is done, so that the command comes first.
   let pending = [];
   const endCommand = () => {
     endWord();
-    if (words.length) items.push({ words });
+    lastItem = null;
+    if (words.length) { lastItem = { words, prev: lastOp }; items.push(lastItem); lastOp = null; }
     words = [];
     for (const inner of pending) inside(inner);
     pending = [];
@@ -217,6 +221,7 @@ function scanShell(line) {
     }
     if (c === '\n') {
       endCommand();
+      lastOp = null;
       // A shell on this line runs the heredoc text (`bash <<EOF`, `cat <<EOF | sh`), so that text stays as commands.
       const runsText = items.slice(lineFirst).some((item) => item.words && SHELLS.has(toolName(toolWords(item.words)[0])));
       if (runsText) heredocs = [];
@@ -246,16 +251,27 @@ function scanShell(line) {
       continue;
     }
     if (/\s/.test(c)) { endWord(); continue; }
-    if (c === '(' || c === ')') { endCommand(); items.push(c === '(' ? { open: true } : { close: true }); continue; }
+    if (c === '(' || c === ')') { endCommand(); lastOp = null; items.push(c === '(' ? { open: true } : { close: true }); continue; }
     if (c === '`') {
       // An opening backtick stays in the word, as `$` does, so that `cd `pwd`` has a target that is not known.
       if (!tick) word = (word ?? '') + c;
       endCommand();
+      lastOp = null;
       items.push(tick ? { close: true } : { open: true });
       tick = !tick;
       continue;
     }
-    if (ENDS.includes(c)) { endCommand(); continue; }
+    if (ENDS.includes(c)) {
+      endCommand();
+      // The operator: `&&` and `||` are one operator, `|&` is a pipe, and `>&`, `<&`, and `&>` are redirections, not a background `&`.
+      let op = c;
+      if ((c === '&' || c === '|') && next === c) { op = c + c; i++; }
+      else if (c === '|' && next === '&') i++;
+      else if (c === '&' && (text[i - 1] === '>' || text[i - 1] === '<' || next === '>')) op = ';';
+      if (lastItem) lastItem.next = op;
+      lastOp = op;
+      continue;
+    }
     word = (word ?? '') + c;
   }
   endCommand();
@@ -342,7 +358,9 @@ function approveCall(words, cwd) {
 
 /**
  * True when a command can run an approval in a form that approveCall does not read (the text scan). It is true when:
- * (a) the tool is node, bun, deno, npx, or a forge launcher, and a word is `gate-approve`, or `trust` comes before `approve`;
+ * (a) the tool is node, bun, deno, or npx, and its script word (the first word that is no option) is not known (it has `$` or a backtick),
+ *     and a word is `gate-approve`, or `trust` comes before `approve`; or the script word is forge.mjs or a launcher of forge, and
+ *     `gate-approve` (or `trust`, then `approve`) is the subcommand of the call that approveCall reads. For npx the launcher can follow options;
  * (b) the tool is node, bun, or deno, and the value of `-e`, `--eval`, `-p`, `--print`, `--import`, or `-r` names `approve.mjs` or `approveGate`;
  * (c) the tool is a shell with `-c`, and its string names `gate-approve`, `trust approve`, or `approve.mjs`;
  * (d) the tool is node, bun, deno, or a shell, and the body of its heredoc names one of these.
@@ -354,10 +372,16 @@ function approvalText(words, heredoc) {
   const rest = words.slice(1);
   if (rest.includes('--dry-run') || rest.some((word) => HELP.has(word))) return false;
   const script = SCRIPT_TOOLS.has(tool);
-  if (script || LAUNCHERS.has(tool)) {
-    if (rest.includes('gate-approve')) return true;
-    const trust = rest.indexOf('trust');
-    if (trust !== -1 && rest.indexOf('approve', trust) !== -1) return true;
+  if (script || tool === 'npx') {
+    const first = rest.find((word) => !word.startsWith('-'));
+    if (first !== undefined && /[$`]/.test(first)) {
+      if (rest.includes('gate-approve')) return true;
+      const trust = rest.indexOf('trust');
+      if (trust !== -1 && rest.indexOf('approve', trust) !== -1) return true;
+    } else if (first !== undefined) {
+      const at = rest.findIndex((word) => LAUNCHERS.has(toolName(word)) || toolName(word) === 'forge.mjs');
+      if (at !== -1 && (tool === 'npx' || rest[at] === first) && approveCall(['forge', ...rest.slice(at + 1)], '')) return true;
+    }
   }
   if (script) {
     for (let i = 0; i < rest.length; i++) {
@@ -585,38 +609,46 @@ function pushTargets(args) {
  * - `change`: a command that starts with one of the change commands (word lists), with its `words`.
  * - `write`: a command that matches one of the write commands ({ capability, words, method }), with its
  *   `capabilities` and its first `words`. A change command is not also a write action: the change action asks.
- * A `cd` inside parentheses, `$( )`, or backticks does not change the folder after them. When a `cd` or `git -C` target cannot be known,
+ * A `cd` inside parentheses, `$( )`, or backticks does not change the folder after them. A `cd` in a pipeline (`cd x | cmd`) or before `&`
+ * runs in another shell and does not move the folder. A `cd` after `&&` or `||`, or before `||`, may not run: the next commands have two
+ * possible folders (before and after), and a push or a change request command gets an action for each. When a `cd` or `git -C` target cannot be known,
  * the action has `unknown: true` and the session folder `cwd`, so that preTool uses the ticket of the session folder.
  * `env` gives the home folder for `~` (HOME, USERPROFILE).
  */
 export function guardActions(line, cwd, { changes = [], writes = [], never = [], env = process.env } = {}) {
   const actions = [];
-  let folder = cwd; // null when the folder is unknown
+  let folders = [cwd]; // the possible folders of the next command (null when a folder is unknown)
   const saved = [];
-  const here = (known = folder) => ({ cwd: known ?? cwd, ...(known === null ? { unknown: true } : {}) });
+  const here = (known = folders[0]) => ({ cwd: known ?? cwd, ...(known === null ? { unknown: true } : {}) });
+  const unique = (list) => [...new Set(list)];
   for (const item of scanShell(line)) {
-    if (item.open) { saved.push(folder); continue; }
-    if (item.close) { if (saved.length) folder = saved.pop(); continue; }
+    if (item.open) { saved.push(folders); continue; }
+    if (item.close) { if (saved.length) folders = saved.pop(); continue; }
     const words = toolWords(item.words);
     if (!words.length) continue;
     const tool = toolName(words[0]);
     if (MOVES.has(tool)) {
+      // A cd in a pipeline or before `&` runs in another shell.
+      if (item.next === '|' || item.next === '&' || item.prev === '|') continue;
       const target = words.slice(1).find((word) => word === '-' || !word.startsWith('-'));
-      if (target) folder = moveTo(folder, target, env);
-      else if (tool === 'cd') folder = homeFolder(env);
+      const moved = folders.map((from) => (target ? moveTo(from, target, env) : tool === 'cd' ? homeFolder(env) : from));
+      const conditional = item.prev === '&&' || item.prev === '||' || item.next === '||';
+      folders = unique(conditional ? [...folders, ...moved] : moved);
       continue;
     }
-    const approval = approveCall(words, folder ?? cwd);
+    const approval = approveCall(words, folders[0] ?? cwd);
     if (approval) { actions.push({ ...approval, ...here() }); continue; }
     if (approvalText(words, item.heredoc)) { actions.push({ kind: 'approve', ...here(), command: 'approve text', scan: true, key: '', gate: '', answer: '', files: [] }); continue; }
     if (tool === 'git') {
-      const call = gitCall(words, folder, env);
-      if (call.sub === 'push' && !call.args.some((arg) => arg === '--dry-run' || arg === '-n')) actions.push({ kind: 'push', ...here(call.cwd), ...pushTargets(call.args) });
+      const calls = unique(folders.map((from) => gitCall(words, from, env)).map((call) => JSON.stringify(call))).map((text) => JSON.parse(text));
+      for (const call of calls) {
+        if (call.sub === 'push' && !call.args.some((arg) => arg === '--dry-run' || arg === '-n')) actions.push({ kind: 'push', ...here(call.cwd), ...pushTargets(call.args) });
+      }
       continue;
     }
     const forbidden = never.find((entry) => matchesNever(words, entry));
     if (forbidden) { actions.push({ kind: 'never', ...here(), verdict: forbidden.verdict, words: words.map((word, i) => (i === 0 ? tool : word)) }); continue; }
-    if (changes.some((first) => matches(words, { words: first }))) { actions.push({ kind: 'change', ...here(), words }); continue; }
+    if (changes.some((first) => matches(words, { words: first }))) { for (const from of folders) actions.push({ kind: 'change', ...here(from), words }); continue; }
     const hits = writes.filter((command) => matches(words, command));
     if (hits.length) {
       const longest = hits.reduce((a, b) => (b.words.length > a.words.length ? b : a));
