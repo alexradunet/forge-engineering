@@ -15,7 +15,7 @@
 // A ticket whose README cannot be read stops a push and a new change request too: the gates are unknown (policy.gateGuard sets deny or ask).
 // It never stops other work: a folder with no ticket, no wiki, or a config that cannot be read lets the command run.
 import { spawnSync } from 'node:child_process';
-import { readFileSync, realpathSync } from 'node:fs';
+import { readFileSync, realpathSync, statSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { resolve, samePath } from './repo.mjs';
@@ -718,28 +718,54 @@ function bodyPath(value) {
   return file;
 }
 
-/** True when two paths name the same file (a real path compare). A path that cannot be read is no match. */
-function sameFile(a, b) {
-  try { return samePath(realpathSync(a), realpathSync(b)); } catch { return false; }
+const SEND_START = '<!-- send: start -->';
+const SEND_END = '<!-- send: end -->';
+// The size cap of a file that the guard reads: the hook has a time limit, and a body is short text.
+const MAX_BODY_BYTES = 256 * 1024;
+
+/** The text with LF line ends, and with no blank line at the start or at the end. */
+function trimBlank(text) {
+  return text.replace(/\r\n/g, '\n').replace(/^(?:[ \t]*\n)+/, '').replace(/(?:\n[ \t]*)+$/, '');
+}
+
+/** The text of a file by its real path, or null when it is no regular file, is too big, or cannot be read. */
+function regularText(file) {
+  try {
+    const real = realpathSync(file);
+    const info = statSync(real);
+    return info.isFile() && info.size <= MAX_BODY_BYTES ? readFileSync(real, 'utf8') : null;
+  } catch { return null; }
+}
+
+/** The send text of a draft: the lines between the send markers, with no blank line at the ends. It is null when a marker is missing or the text is empty. */
+function sendText(text) {
+  const plain = text.replace(/\r\n/g, '\n');
+  const start = plain.indexOf(SEND_START);
+  const end = start === -1 ? -1 : plain.indexOf(SEND_END, start + SEND_START.length);
+  if (end === -1) return null;
+  const inner = trimBlank(plain.slice(start + SEND_START.length, end));
+  return inner || null;
 }
 
 /**
- * True when the body of a new change request is the one approved draft: the command has at least one body option, and the value of each
- * body option is the path of the draft, or `$(cat <path>)` of it, resolved from the folder of the command. Each other form asks.
+ * True when the body of a new change request is the send text of the one approved draft: the command has exactly one body option, and its
+ * value is the path of a regular file (or `$(cat <path>)` of it), resolved from the folder of the command, whose text is the send text.
+ * The approved draft file itself has the frontmatter, so it is no match. A file that cannot be read, a second body option, and each other form ask.
  */
 function bodyIsDraft(match, action, bodyOptions, otherBodyOptions) {
   const dir = path.dirname(match.file);
   const [relative, ...more] = approvedDrafts(match.ticket, match.file, 'Shippable?').filter((item) => isChangeDraft(dir, item));
   const values = bodyValues(action.words ?? [], bodyOptions);
-  if (!relative || more.length || !values.length) return false;
+  if (!relative || more.length || values.length !== 1) return false;
   // An option that gives a body in another way, next to the draft, is no approved draft.
   const listed = (word) => bodyOptions.some((option) => word === option || word.startsWith(`${option}=`) || (/^-[A-Za-z]$/.test(option) && word.startsWith(option)));
   if ((action.words ?? []).slice(1).some((word) => !listed(word) && otherBodyOptions.some((option) => hasOption(word, option)))) return false;
-  const draft = path.join(dir, ...relative.split(/[\\/]/));
-  return values.every((value) => {
-    const file = bodyPath(value);
-    return file !== null && sameFile(path.resolve(action.cwd, file), draft);
-  });
+  const file = bodyPath(values[0]);
+  if (file === null) return false;
+  const expected = sendText(regularText(path.join(dir, ...relative.split(/[\\/]/))) ?? '');
+  if (expected === null) return false;
+  const given = regularText(path.resolve(action.cwd, file));
+  return given !== null && trimBlank(given) === expected;
 }
 
 /** The ask verdict for a write: the reason names the ticket, the command, and the draft. */
@@ -839,8 +865,8 @@ function noPrompt(verdict, mode) {
  * - A push or a new change request needs the ship gates. Without them: `deny` or `ask`, from `policy.gateGuard`
  *   (default `deny`; `off` stops the guard).
  * - A write (one of WRITE_CAPABILITIES) gets `ask`: the prompt of the host is the "yes" for this one write.
- *   A new change request with valid gates gets `ask` too, unless its draft is the one `target: change` file of the approved
- *   Shippable? set and no draft or open change request exists: then it gets no verdict.
+ *   A new change request with valid gates gets `ask` too, unless the Shippable? set has the one `target: change` draft, no
+ *   draft or open change request exists, and the body option is a file with the send text of that draft: then it gets no verdict.
  *   In a mode with no prompt (NO_PROMPT_MODES), each `ask` becomes `deny`.
  * - An approval command (`gate-approve`, `trust approve`) gets `ask` in each folder, also with `gateGuard: off`,
  *   and `deny` in a mode with no prompt.

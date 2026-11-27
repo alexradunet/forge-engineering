@@ -405,10 +405,14 @@ test('a new change request asks after its gates pass, and a deny wins over an as
   assert.equal(run(asks.worktree, 'gh issue comment 7 -F b.md').decision, 'ask', 'The ask mode changes only the ship verdict.');
 });
 
+/** The send text of a draft of the tests, and the same text in a file outside the ticket folder (the body file of the command). */
+const SEND_TEXT = 'APP-7 T\n\nThe text that goes out.\n';
+
 /** Puts outbox drafts (name: target) into the Shippable? manifest, and records the new manifest hash in the README. */
 function approveDrafts(s, drafts, { listed = Object.keys(drafts) } = {}) {
   mkdirSync(path.join(s.dir, 'outbox'), { recursive: true });
-  for (const [name, target] of Object.entries(drafts)) writeFileSync(path.join(s.dir, 'outbox', name), `---\nstatus: draft\ntarget: ${target}\n---\n# Title\n\nText\n`);
+  for (const [name, target] of Object.entries(drafts)) writeFileSync(path.join(s.dir, 'outbox', name), `---\nstatus: draft\ntarget: ${target}\n---\n# Title\n\nWhy now: a reason\n\n<!-- send: start -->\n${SEND_TEXT}<!-- send: end -->\n\n## Why this wording\n\nBecause.\n`);
+  writeFileSync(path.join(s.root, 'send-body.md'), SEND_TEXT);
   const documents = ['review.md', ...listed.map((name) => `outbox/${name}`)].map((doc) => ({ path: doc, sha256: sha256(readFileSync(path.join(s.dir, ...doc.split('/')))) }));
   const bytes = JSON.stringify({ version: 1, gate: 'Shippable?', documents, ...(s.binding ? { code: s.binding } : {}) });
   writeFileSync(path.join(s.dir, 'approvals', 'shippable-001.json'), bytes);
@@ -417,7 +421,7 @@ function approveDrafts(s, drafts, { listed = Object.keys(drafts) } = {}) {
 
 test('the approval of the Shippable? set that holds the one change draft is the yes for a new change request', (t) => {
   // The body option names the approved draft by its path (L-2: a relative path would resolve from the folder of the command).
-  const create = (s) => `gh pr create -R a/b -t "APP-7 T" -F ${path.join(s.dir, 'outbox', 'pr.draft.md')}`;
+  const create = (s) => `gh pr create -R a/b -t "APP-7 T" -F ${path.join(s.root, 'send-body.md')}`;
   const ready = () => {
     const s = setup(t, { approved: ['Planned?', 'Shippable?'] });
     trustConfig(s);
@@ -940,50 +944,65 @@ function readyToOpen(t, profile) {
     approve(where, trustStatus(where, { env }).files.filter((f) => f.rel.startsWith('config/')).map((f) => `${f.rel}=${f.sha.slice(0, 12)}`), { env });
   } else trustConfig(s);
   approveDrafts(s, { 'pr.draft.md': 'change' });
-  return { ...s, draft: path.join(s.dir, 'outbox', 'pr.draft.md') };
+  return { ...s, draft: path.join(s.dir, 'outbox', 'pr.draft.md'), body: path.join(s.root, 'send-body.md') };
 }
 
-test('L-2: G6a, G6b, G6c, G6d: a new change request is no question only when its body option names the approved draft', (t) => {
+test('L-2: G6a, G6b, G6c, G6d: a new change request is no question only when its body option names a file with the send text of the approved draft', (t) => {
   const s = readyToOpen(t);
   const open = (body) => run(s.worktree, `gh pr create -R a/b -t "APP-7 T" ${body}`);
   assert.equal(open('-b "other text"')?.decision, 'ask', 'G6a: another body, inline.');
   assert.equal(open('--body-file /tmp/other.md')?.decision, 'ask', 'G6b: another file.');
-  assert.equal(open(`-F ${s.draft}`), null, 'G6c: the approved draft, by its absolute path.');
+  assert.equal(open(`-F ${s.body}`), null, 'G6c: a file with the send text, by its absolute path.');
   assert.equal(open('--fill')?.decision, 'ask', 'G6d: no body option.');
-  assert.equal(open(`--body-file ${s.draft}`), null);
-  assert.equal(open(`--body-file=${s.draft}`), null);
-  assert.equal(open(`-F "$(cat ${s.draft})"`), null, 'The form $(cat <path>) of the draft.');
-  assert.equal(open(`-F ${s.draft} -b "other text"`)?.decision, 'ask', 'One more body option that is not the draft.');
+  assert.equal(open(`--body-file ${s.body}`), null);
+  assert.equal(open(`--body-file=${s.body}`), null);
+  assert.equal(open(`-F${s.body}`), null);
+  assert.equal(open(`-F "$(cat ${s.body})"`), null, 'The form $(cat <path>) of the file.');
+  assert.equal(open(`-F ${s.draft}`)?.decision, 'ask', 'The approved draft file itself holds the frontmatter: no match.');
+  assert.equal(open(`-F ${s.body} -b "other text"`)?.decision, 'ask', 'One more body option that is not the file.');
+  assert.equal(open(`-F ${s.body} -F ${s.body}`)?.decision, 'ask', 'Two body options.');
+  assert.equal(open(`-F ${s.body} --body-file ${s.body}`)?.decision, 'ask', 'Two body options.');
   assert.equal(open('-F -')?.decision, 'ask', 'A body from stdin.');
-  assert.equal(open(`-F ${s.draft}.other`)?.decision, 'ask');
-  assert.equal(open(`-F "$(cat ${s.draft}; echo more)"`)?.decision, 'ask');
+  assert.equal(open(`-F ${s.body}.other`)?.decision, 'ask', 'A file that cannot be read.');
+  assert.equal(open(`-F "$(cat ${s.body}; echo more)"`)?.decision, 'ask');
   assert.equal(open('')?.decision, 'ask', 'No body option at all.');
-  // A relative path resolves from the folder of the command, and a link to the draft counts as the draft (a real path compare).
-  assert.equal(run(s.worktree, 'gh pr create -R a/b -t T -F outbox/pr.draft.md')?.decision, 'ask', 'The worktree has no such file.');
-  assert.equal(run(s.worktree, `cd ${s.dir} && gh pr create -R a/b -t T -F outbox/pr.draft.md`), null);
+  assert.equal(open(`-F ${s.root}`)?.decision, 'ask', 'A folder is no regular file.');
+  // A relative path resolves from the folder of the command, and a link to the file counts as the file (a real path compare).
+  assert.equal(run(s.worktree, 'gh pr create -R a/b -t T -F send-body.md')?.decision, 'ask', 'The worktree has no such file.');
+  assert.equal(run(s.worktree, `cd ${s.root} && gh pr create -R a/b -t T -F send-body.md`), null);
   const link = path.join(s.root, 'link.md');
-  symlinkSync(s.draft, link);
+  symlinkSync(s.body, link);
   assert.equal(open(`-F ${link}`), null);
-  assert.equal(preTool({ cwd: s.worktree, command: `gh pr create -R a/b -t T -F ${s.draft}`, mode: 'bypassPermissions' }, { env }), null, 'No verdict, also with no prompt.');
+  assert.equal(preTool({ cwd: s.worktree, command: `gh pr create -R a/b -t T -F ${s.body}`, mode: 'bypassPermissions' }, { env }), null, 'No verdict, also with no prompt.');
+  // The content is compared: the line ends and the blank lines at the ends do not count, any other change does.
+  writeFileSync(s.body, `\r\n${SEND_TEXT.replace(/\n/g, '\r\n')}\r\n\r\n`);
+  assert.equal(open(`-F ${s.body}`), null, 'CRLF and blank lines at the ends.');
+  writeFileSync(s.body, `${SEND_TEXT}Extra line\n`);
+  assert.equal(open(`-F ${s.body}`)?.decision, 'ask', 'One more line.');
+  writeFileSync(s.body, SEND_TEXT.replace('goes out', 'goes out now'));
+  assert.equal(open(`-F ${s.body}`)?.decision, 'ask', 'Another word.');
+  writeFileSync(s.body, 'x'.repeat(300 * 1024));
+  assert.equal(open(`-F ${s.body}`)?.decision, 'ask', 'A file over the size cap.');
 });
 
-test('L-2 review M4: a body option of the profile list next to the draft gives the ask', (t) => {
+test('L-2 review M4: a body option of the profile list next to the send text gives the ask', (t) => {
   const s = readyToOpen(t);
   const open = (body) => run(s.worktree, `gh pr create -R a/b -t "APP-7 T" ${body}`);
   for (const other of ['--recover x', '--recover=x', '-e', '--editor', '-w', '--fill', '--fill-first', '--fill-verbose', '-T x', '--template x', '--body x', '-b x']) {
-    assert.equal(open(`-F ${s.draft} ${other}`)?.decision, 'ask', other);
+    assert.equal(open(`-F ${s.body} ${other}`)?.decision, 'ask', other);
   }
   const forgejo = readyToOpen(t, 'forgejo');
   const tea = (body) => run(forgejo.worktree, `tea pulls create --base main --head users/a/APP-7-doc-import --title "APP-7 T" ${body}`);
-  assert.equal(tea(`--description "$(cat ${forgejo.draft})" -d other`)?.decision, 'ask');
-  assert.equal(tea(`--description "$(cat ${forgejo.draft})" -dother`)?.decision, 'ask');
+  assert.equal(tea(`--description "$(cat ${forgejo.body})" -d other`)?.decision, 'ask');
+  assert.equal(tea(`--description "$(cat ${forgejo.body})" -dother`)?.decision, 'ask');
 });
 
-test('L-2: the shipped Forgejo repo.open-change command with the approved draft gets no question, and another body asks', (t) => {
+test('L-2: the shipped Forgejo repo.open-change command with the send text gets no question, and another body asks', (t) => {
   const s = readyToOpen(t, 'forgejo');
   const open = (body) => run(s.worktree, `tea pulls create --base main --head users/a/APP-7-doc-import --title "APP-7 T" ${body}`);
-  assert.equal(open(`--description "$(cat ${s.draft})"`), null);
-  assert.equal(open(`--description ${s.draft}`), null);
+  assert.equal(open(`--description "$(cat ${s.body})"`), null);
+  assert.equal(open(`--description ${s.body}`), null);
+  assert.equal(open(`--description "$(cat ${s.draft})"`)?.decision, 'ask', 'The draft file itself is no match.');
   assert.equal(open('--description "other text"')?.decision, 'ask');
   assert.equal(open(`--description "$(cat /tmp/other.md)"`)?.decision, 'ask');
   assert.equal(open('')?.decision, 'ask');
