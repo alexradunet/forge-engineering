@@ -967,6 +967,18 @@ test('L-2: G6a, G6b, G6c, G6d: a new change request is no question only when its
   assert.equal(preTool({ cwd: s.worktree, command: `gh pr create -R a/b -t T -F ${s.draft}`, mode: 'bypassPermissions' }, { env }), null, 'No verdict, also with no prompt.');
 });
 
+test('L-2 review M4: a body option of the profile list next to the draft gives the ask', (t) => {
+  const s = readyToOpen(t);
+  const open = (body) => run(s.worktree, `gh pr create -R a/b -t "APP-7 T" ${body}`);
+  for (const other of ['--recover x', '--recover=x', '-e', '--editor', '-w', '--fill', '--fill-first', '--fill-verbose', '-T x', '--template x', '--body x', '-b x']) {
+    assert.equal(open(`-F ${s.draft} ${other}`)?.decision, 'ask', other);
+  }
+  const forgejo = readyToOpen(t, 'forgejo');
+  const tea = (body) => run(forgejo.worktree, `tea pulls create --base main --head users/a/APP-7-doc-import --title "APP-7 T" ${body}`);
+  assert.equal(tea(`--description "$(cat ${forgejo.draft})" -d other`)?.decision, 'ask');
+  assert.equal(tea(`--description "$(cat ${forgejo.draft})" -dother`)?.decision, 'ask');
+});
+
 test('L-2: the shipped Forgejo repo.open-change command with the approved draft gets no question, and another body asks', (t) => {
   const s = readyToOpen(t, 'forgejo');
   const open = (body) => run(s.worktree, `tea pulls create --base main --head users/a/APP-7-doc-import --title "APP-7 T" ${body}`);
@@ -1000,6 +1012,19 @@ test('L-2: guardActions gives the action kind never, with its verdict, before a 
   assert.deepEqual(kinds('tea pr m 5'), [['never', 'deny']]);
   assert.deepEqual(kinds('gh pr merge --help'), []);
   assert.deepEqual(kinds('gh pr view 5'), []);
+});
+
+test('L-2 review H1: a with option also matches the form with a value and a letter in a short cluster', () => {
+  const never = [{ words: ['gh', 'pr', 'review'], with: ['--approve', '-a'], verdict: 'deny' }];
+  const kinds = (line) => guardActions(line, '/x', { never }).map((a) => a.kind);
+  for (const line of ['gh pr review 5 -a', 'gh pr review 5 -ab x', 'gh pr review 5 -ba x', 'gh pr review 5 -ab=x', 'gh pr review 5 --approve=true', 'gh pr review 5 -b x --approve']) assert.deepEqual(kinds(line), ['never'], line);
+  for (const line of ['gh pr review 5 --comment -b x', 'gh pr review 5 -b x', 'gh pr review 5 --body x', 'gh pr review 5 --approved-by x', 'gh pr review 5 --comment']) assert.deepEqual(kinds(line), [], line);
+});
+
+test('L-2 review M5: the Forgejo never list denies tea pulls reject', (t) => {
+  const s = setup(t);
+  trustConfig(s);
+  for (const command of ['tea pulls reject 5 "no"', 'tea pr reject 5 x', 'tea pull reject 5 x']) assert.equal(run(s.worktree, command)?.decision, 'deny', command);
 });
 
 test('L-2: the never words: merge and approve are denied, close asks, in a ticket folder, with gateGuard off, and after a cd', (t) => {

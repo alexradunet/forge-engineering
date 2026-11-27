@@ -21,5 +21,19 @@
   "bodyOptions": [
     "-F",
     "--body-file"
+  ],
+  "otherBodyOptions": [
+    "-b",
+    "--body",
+    "-T",
+    "--template",
+    "-e",
+    "--editor",
+    "-w",
+    "--web",
+    "--fill",
+    "--fill-first",
+    "--fill-verbose",
+    "--recover"
   ]
 }

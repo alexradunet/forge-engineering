@@ -57,8 +57,6 @@ const METHOD_OPTIONS = new Set(['-X', '--method']);
 // The shells that run the text of a heredoc or a pipe as commands.
 const SHELLS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'fish', 'pwsh', 'powershell']);
 const HELP = new Set(['--help', '-h']);
-// An option that gives a body in another way (inline text, a generated body, a template, an editor). It is no approved draft.
-const OTHER_BODY = /^(?:-[bTew]|--(?:body|fill|template|editor|web|description|message))/;
 // The time budget of one preTool call (the hook limit is 30 s).
 const DEADLINE_MS = 20000;
 // The capabilities that change something outside the workspace. The core holds the names; the trusted config gives the commands.
@@ -495,13 +493,25 @@ function matches(words, command) {
 }
 
 /**
+ * True when a word of a command is the option `option`: the same word, the long option with a value (`--x=v`), or a short option letter
+ * in a cluster of short options (`-ab`, `-ab=v`, `-ba`), because a short option can join the others.
+ */
+function hasOption(word, option) {
+  if (word === option) return true;
+  if (option.startsWith('--')) return word.startsWith(`${option}=`);
+  if (!/^-[A-Za-z]$/.test(option)) return false;
+  const cluster = /^-([^-=][^=]*)/.exec(word);
+  return Boolean(cluster) && cluster[1].includes(option[1]);
+}
+
+/**
  * True when a command matches a never command of a profile: { words, with, verdict }. The same rules as `matches`, and when `with` is set,
- * one of its options must be a word of the command.
+ * one of its options must be in the command (see hasOption).
  */
 function matchesNever(words, entry) {
   if (!Array.isArray(entry?.words) || toolName(words[0]) !== entry.words[0] || !wordsInOrder(words, entry.words.slice(1))) return false;
   if (words.some((word) => HELP.has(word))) return false;
-  return !Array.isArray(entry.with) || entry.with.some((option) => words.includes(option));
+  return !Array.isArray(entry.with) || entry.with.some((option) => words.some((word) => hasOption(word, option)));
 }
 
 /** The JSON of a file, or null when it cannot be read: a broken profile never removes the entries of the others. */
@@ -510,7 +520,7 @@ function jsonOf(file) {
 }
 
 /**
- * The lists that the shipped profiles give: { never, bodyOptions }. It is the union of the default profile and each profile of
+ * The lists that the shipped profiles give: { never, bodyOptions, otherBodyOptions }. It is the union of the default profile and each profile of
  * `listProfiles()`, and it does not depend on the profile that a wiki names: the agent can write `forge/repo.json`, and the tool words differ.
  */
 export function shippedLists(plugin = pluginRoot) {
@@ -518,11 +528,13 @@ export function shippedLists(plugin = pluginRoot) {
   try { for (const name of listProfiles(plugin)) files.push(path.join(plugin, 'profiles', name, 'profile.json')); } catch { /* The default profile still counts. */ }
   const never = [];
   const bodyOptions = new Set();
+  const otherBodyOptions = new Set();
   for (const data of files.map(jsonOf)) {
     if (Array.isArray(data?.never)) never.push(...data.never.filter((entry) => Array.isArray(entry?.words) && ['deny', 'ask'].includes(entry.verdict)));
     if (Array.isArray(data?.bodyOptions)) for (const option of data.bodyOptions) if (typeof option === 'string') bodyOptions.add(option);
+    if (Array.isArray(data?.otherBodyOptions)) for (const option of data.otherBodyOptions) if (typeof option === 'string') otherBodyOptions.add(option);
   }
-  return { never, bodyOptions: [...bodyOptions] };
+  return { never, bodyOptions: [...bodyOptions], otherBodyOptions: [...otherBodyOptions] };
 }
 
 /** The text of the shipped config file of a kind (tracker, repo, ci) of a profile, else of the default profile, or ''. */
@@ -681,7 +693,7 @@ function changeApproved(match) {
   return drafts.length === 1 && !(match.ticket.changes ?? []).some((entry) => ['draft', 'open'].includes(entry.state));
 }
 
-/** The value of each body option (`-F x`, `-Fx`, `--body-file x`, `--body-file=x`) in the words of a command. */
+/** The value of each body option (a short option with a value, joined or not, and a long option with a value or with `=`) in the words of a command. */
 function bodyValues(words, options) {
   const values = [];
   for (let i = 1; i < words.length; i++) {
@@ -715,14 +727,14 @@ function sameFile(a, b) {
  * True when the body of a new change request is the one approved draft: the command has at least one body option, and the value of each
  * body option is the path of the draft, or `$(cat <path>)` of it, resolved from the folder of the command. Each other form asks.
  */
-function bodyIsDraft(match, action, bodyOptions) {
+function bodyIsDraft(match, action, bodyOptions, otherBodyOptions) {
   const dir = path.dirname(match.file);
   const [relative, ...more] = approvedDrafts(match.ticket, match.file, 'Shippable?').filter((item) => isChangeDraft(dir, item));
   const values = bodyValues(action.words ?? [], bodyOptions);
   if (!relative || more.length || !values.length) return false;
   // An option that gives a body in another way, next to the draft, is no approved draft.
   const listed = (word) => bodyOptions.some((option) => word === option || word.startsWith(`${option}=`) || (/^-[A-Za-z]$/.test(option) && word.startsWith(option)));
-  if ((action.words ?? []).slice(1).some((word) => OTHER_BODY.test(word) && !listed(word))) return false;
+  if ((action.words ?? []).slice(1).some((word) => !listed(word) && otherBodyOptions.some((option) => hasOption(word, option)))) return false;
   const draft = path.join(dir, ...relative.split(/[\\/]/));
   return values.every((value) => {
     const file = bodyPath(value);
@@ -842,7 +854,7 @@ export function preTool(event, { env = process.env, deadlineMs = DEADLINE_MS } =
   const homeTry = tryLocate(base, env);
   const home = homeTry.where;
   const homeConfig = home?.wiki.exists ? trustedConfig(home, env) : null;
-  const { never, bodyOptions } = shippedLists();
+  const { never, bodyOptions, otherBodyOptions } = shippedLists();
   const kinds = ['tracker', 'repo', 'ci'];
   const textsOf = (read) => Object.fromEntries(kinds.map((kind) => [kind, read(kind)]));
   // A trusted config with files gives the commands. An untrusted config, or no config file, adds the wiki text to the shipped profile config: the agent can write the wiki text,
@@ -931,7 +943,7 @@ export function preTool(event, { env = process.env, deadlineMs = DEADLINE_MS } =
             continue;
           }
         }
-        if (action.kind === 'push' || (action.kind === 'change' && changeApproved(match) && bodyIsDraft(match, action, bodyOptions))) continue;
+        if (action.kind === 'push' || (action.kind === 'change' && changeApproved(match) && bodyIsDraft(match, action, bodyOptions, otherBodyOptions))) continue;
       }
       verdicts.push(writeVerdict(match, action));
     }
