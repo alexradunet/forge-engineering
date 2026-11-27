@@ -125,6 +125,7 @@ export function openReview(dir, { gate, extra = [], policy = null, repoPath = ''
     }
   }
   const notes = [];
+  if (shippable?.code?.baseBranch) notes.push(`The diff is bound from ${shippable.code.baseBranch} (merge base ${shippable.code.base.slice(0, 12)}). Check that this is the branch that the change request targets.`);
   if (shippable?.later.length) notes.push(...shippable.later.map((item) => `Commit ${item.sha} ${item.subject}: not read by a reviewer (the code review is of an older head).`));
   const drafts = name === 'Shippable?' ? changeDrafts(dir) : [];
   if (drafts.length > 1) notes.push(`${drafts.length} change drafts exist: none is in the set.`);

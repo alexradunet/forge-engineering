@@ -330,6 +330,7 @@ test('Shippable? with a branch: the dry run prints the code values while the cod
   assert.deepEqual(listing(f.dir), withReview);
   const result = open(f, 'Shippable?', f.options);
   assert.deepEqual(JSON.parse(readFileSync(path.join(f.dir, result.manifest), 'utf8')).code, code);
+  assert.ok(result.notes.some((note) => note.startsWith('The diff is bound from main (merge base ')), 'The form text names the base branch.');
   assert.equal(approve(f, 'Shippable?').status, 'approved');
   assert.equal(checkAction(parseTicket(readFileSync(f.file, 'utf8')), f.file, 'ship').allowed, true);
 });

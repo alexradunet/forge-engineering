@@ -7,7 +7,7 @@
 // so the text goes in parts. Each host gets its verb table from <plugin>/hosts/<host>.md.
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { loadConfig } from './config.mjs';
 import { harness } from './harness.mjs';
@@ -94,7 +94,8 @@ export function safeConfig(where) {
 
 // A ticket can record a base branch (for example `branch: main`). A branch match on it
 // would select that ticket in every session on the base branch.
-// The names come from Git only, never from the config: the agent can edit the config, and a ticket branch named there would match no ticket.
+// The names are main, master, and the default branch of the remote (origin/HEAD). They do not come from the config.
+// A non-default base branch (for example develop) that is checked out in the main checkout can match a ticket that names it.
 function baseBranches(cwd) {
   const names = new Set(['main', 'master']);
   const head = git(cwd, ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']);
@@ -103,9 +104,9 @@ function baseBranches(cwd) {
 }
 
 /**
- * The ticket of a folder: by the recorded worktree, then by the recorded branch (not a base branch),
+ * The ticket of a folder: by the recorded worktree, then by the recorded branch (not main, master, or the remote default branch),
  * then by a key in the branch name or the folder name. The main checkout matches only by a ticket branch.
- * here is the top folder of the work tree,.
+ * here is the top folder of the work tree. The parameter getConfig is not used.
  */
 export function ticketOfFolder(tickets, { here, branch, inMain, getConfig }) {
   if (!here) return null;
@@ -231,17 +232,38 @@ export function ruleNotice(where) {
   } catch { return []; }
 }
 
-/** Writes the wiki HEAD to <forge>/raw/rules-seen (the session end hook). A wiki that is no git repository, or a failure, writes nothing. */
-export function recordRulesSeen(where) {
+/** Session end: writes the wiki HEAD of the session start (not the HEAD now) to <forge>/raw/rules-seen. No start record, no git repository, or a failure writes nothing. */
+export function recordRulesSeen(where, session) {
   try {
-    const wiki = where?.wiki?.path;
-    if (!wiki || !where.wiki.exists) return;
-    const head = wikiHead(wiki);
+    const start = startFile(where, session);
+    if (!start) return;
+    const head = readFileSync(start, 'utf8').trim();
+    if (/^[0-9a-f]{7,64}$/.test(head)) {
+      mkdirSync(path.dirname(start), { recursive: true });
+      writeFileSync(path.join(rawDir(where.wiki.path), SEEN_FILE), `${head}\n`);
+    }
+    rmSync(start, { force: true });
+  } catch { /* The notice of the next session is then missing or old. */ }
+}
+
+/** The file that holds the wiki HEAD that a session saw at its start, or '' when the session has no safe name or no such file. */
+function startFile(where, session, { create = false } = {}) {
+  const wiki = where?.wiki?.path;
+  if (!wiki || !where.wiki.exists || !/^[A-Za-z0-9._-]{1,100}$/.test(session ?? '')) return '';
+  const file = path.join(rawDir(wiki), 'rules-start', session);
+  return create || existsSync(file) ? file : '';
+}
+
+/** Session start: keeps the wiki HEAD that this session saw (the first write wins). The session end writes it to rules-seen. */
+export function recordRulesStart(where, session) {
+  try {
+    const file = startFile(where, session, { create: true });
+    if (!file || existsSync(file)) return;
+    const head = wikiHead(where.wiki.path);
     if (!head) return;
-    const file = path.join(rawDir(wiki), SEEN_FILE);
     mkdirSync(path.dirname(file), { recursive: true });
     writeFileSync(file, `${head}\n`);
-  } catch { /* The notice of the next session is then missing or old. */ }
+  } catch { /* No start record: the session end writes no seen file. */ }
 }
 
 function pathsLine(pluginDir, where) {
@@ -479,8 +501,8 @@ export function sessionEnd(event, { env = process.env, host = 'copilot-cli' } = 
   try {
     if (!event) return {};
     const where = locate(event, env);
-    // The rule pages that this session saw: the next session start compares them with the wiki HEAD.
-    if (where?.wiki.exists) recordRulesSeen(where);
+    // The rule pages that this session saw at its start: the next session start compares them with the wiki HEAD.
+    if (where?.wiki.exists) recordRulesSeen(where, event.session);
     if (!event.session || !harness(host)) return {};
     if (where?.wiki.exists) recordEnd(where.raw, { host, id: event.session, cwd: event.cwd || process.cwd(), reason: event.reason });
   } catch { /* The live server shows such a session with the state "open". */ }
@@ -496,6 +518,7 @@ export function sessionStart(event, { cli, env = process.env, host = 'copilot-cl
   const { body, title, where } = buildContext(event, { cli, env, host });
   // Claude Code runs one hook for each part: only part 1 writes the line of the session list.
   if (part === 1) noteStart(event, where, host, title);
+  if (where?.wiki.exists) recordRulesStart(where, event.session);
   if (!body) return {};
   if (host !== 'claude') return { additionalContext: `${body}\n\n${END_MARKER}` };
   const text = claudeParts(body, `node "${cli}"`)[part - 1];

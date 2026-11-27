@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { CLAUDE_PARTS, END_MARKER, HOSTS, PROMPT_HEAD, buildContext, detectHost, promptSubmit, readEvent, resolveHost, ruleBody, recordRulesSeen, ruleNotice, sessionEnd, sessionStart, splitParts } from '../plugins/forge/scripts/lib/hook.mjs';
+import { CLAUDE_PARTS, END_MARKER, HOSTS, PROMPT_HEAD, buildContext, detectHost, promptSubmit, readEvent, resolveHost, ruleBody, recordRulesSeen, recordRulesStart, ruleNotice, sessionEnd, sessionStart, splitParts } from '../plugins/forge/scripts/lib/hook.mjs';
 import { OWN_TURN_STARTS, ownTurn } from '../plugins/forge/scripts/lib/own-turn.mjs';
 import { readSessions } from '../plugins/forge/scripts/lib/sessions.mjs';
 import { resolve } from '../plugins/forge/scripts/lib/repo.mjs';
@@ -201,6 +201,11 @@ function ruleWiki(t) {
   const where = resolve({ cwd: s.app, env });
   return { ...s, where, seen: path.join(s.home, 'raw', 'rules-seen'), head: () => git(s.wiki, 'rev-parse', 'HEAD') };
 }
+/** A session that starts and ends at the current wiki HEAD. */
+function markSeen(where, id = 'mark') {
+  recordRulesStart(where, id);
+  recordRulesSeen(where, id);
+}
 const LINE = (name, how) => `Forge: the rule page rules/${name} ${how} since your last session. Tell the user, and show the change when the user asks.`;
 
 test('the rule change notice: session start never writes, the session end writes the HEAD, and no seen file gives no line', (t) => {
@@ -211,14 +216,19 @@ test('the rule change notice: session start never writes, the session end writes
   assert.equal(existsSync(w.seen), false, 'Session start only reads.');
   sessionEnd({ cwd: w.app, session: 's1', reason: 'other' }, { env, host: 'claude' });
   assert.equal(readFileSync(w.seen, 'utf8'), `${w.head()}\n`, 'One line: the seen HEAD.');
+  rmSync(w.seen);
+  sessionStart({ cwd: w.app, prompt: 'hello', session: 's2' }, { cli, env, host: 'copilot-cli' });
   sessionEnd({ cwd: w.app, session: 's2' }, { env, host: 'copilot-cli' });
   assert.equal(readFileSync(w.seen, 'utf8'), `${w.head()}\n`, 'Both hosts write it.');
+  rmSync(w.seen);
+  sessionEnd({ cwd: w.app, session: 's3' }, { env, host: 'claude' });
+  assert.equal(existsSync(w.seen), false, 'A session with no start record writes nothing.');
   assert.doesNotMatch(run({ cwd: w.app, prompt: 'hello' }).additionalContext, /since your last session/);
 });
 
 test('the rule change notice: a page changed by a commit gives one line with the short hash and the author, in each part', (t) => {
   const w = ruleWiki(t);
-  recordRulesSeen(w.where);
+  markSeen(w.where);
   writeFileSync(path.join(w.wiki, 'rules', 'data.md'), '# Data rules\n\n- Deploy any day.\n');
   writeFileSync(path.join(w.wiki, 'index.md'), '# Index changed\n');
   git(w.wiki, 'add', '.');
@@ -234,7 +244,7 @@ test('the rule change notice: a page changed by a commit gives one line with the
   const second = buildContext({ cwd: w.app, prompt: 'hello', session: 'abc' }, { cli, env, host: 'claude' }).body;
   assert.equal(first, second);
   assert.ok(first.includes(lines[0]));
-  recordRulesSeen(w.where);
+  markSeen(w.where);
   assert.deepEqual(ruleNotice(w.where), [], 'After a session end the page is seen.');
 });
 
@@ -245,7 +255,7 @@ test('the rule change notice: an uncommitted edit, a new page, a removed page, a
   writeFileSync(path.join(w.wiki, 'rules', 'old.md'), '# Old\n\n- Old rule.\n');
   git(w.wiki, 'add', '.');
   git(w.wiki, 'commit', '-q', '-m', 'more rules');
-  recordRulesSeen(w.where);
+  markSeen(w.where);
   writeFileSync(path.join(w.wiki, 'index.md'), '# Index changed\n');
   assert.deepEqual(ruleNotice(w.where), [], 'A page outside rules/ gives nothing.');
   writeFileSync(path.join(w.wiki, 'rules', 'data.md'), '# Data rules\n\n- Deploy any day.\n');
@@ -262,9 +272,20 @@ test('the rule change notice: an uncommitted edit, a new page, a removed page, a
   assert.match(text, /Use a script\./, 'A page in a folder is loaded.');
 });
 
+test('the rule change notice: a session that commits a rules change still gives the notice in the next session', (t) => {
+  const w = ruleWiki(t);
+  const before = w.head();
+  sessionStart({ cwd: w.app, prompt: 'hello', session: 'long' }, { cli, env, host: 'claude', part: 1 });
+  writeFileSync(path.join(w.wiki, 'rules', 'data.md'), '# Data rules\n\n- Deploy any day.\n');
+  git(w.wiki, 'commit', '-q', '-am', 'change during the session');
+  sessionEnd({ cwd: w.app, session: 'long', reason: 'other' }, { env, host: 'claude' });
+  assert.equal(readFileSync(w.seen, 'utf8'), `${before}\n`, 'The file holds the HEAD of the start, not the HEAD of the end.');
+  assert.match(run({ cwd: w.app, prompt: 'hello', session: 'next' }).additionalContext, /rules\/data\.md changed \(commit/);
+});
+
 test('the rule change notice: a page removed by a commit says it was removed', (t) => {
   const w = ruleWiki(t);
-  recordRulesSeen(w.where);
+  markSeen(w.where);
   git(w.wiki, 'rm', '-q', 'rules/data.md');
   git(w.wiki, 'commit', '-q', '-m', 'drop');
   assert.deepEqual(ruleNotice(w.where), [LINE('data.md', 'was removed')]);
@@ -276,7 +297,7 @@ test('the rule change notice: no git repository gives no line, and an unknown se
   writeFileSync(path.join(s.wiki, 'rules', 'data.md'), '# Data rules\n\n- A rule.\n');
   const where = resolve({ cwd: s.app, env });
   assert.deepEqual(ruleNotice(where), []);
-  recordRulesSeen(where);
+  markSeen(where);
   assert.equal(existsSync(path.join(s.home, 'raw', 'rules-seen')), false);
   const w = ruleWiki(t);
   mkdirSync(path.dirname(w.seen), { recursive: true });

@@ -423,7 +423,7 @@ See [validation and source limits](docs/wiki.md#local-validation-and-source-limi
 ## 📚 Shared wiki
 
 Edit config directly in `<wiki>/forge`. Git handles versioning and shared updates.
-The `git log` of the wiki is the review record. A change of a rule page shows as a notice at the next session start. See [wiki.md](docs/wiki.md).
+The `git log` of the wiki is the review record. A change of a rule page shows as a notice at the next session start. The notice is advice, not a control. See [wiki.md](docs/wiki.md).
 
 ## 🛠️ Develop
 

@@ -42,10 +42,10 @@ The Forge `sessionStart` hook gives the pages to each session of the bound repos
 `# forge plugin` and `# forge style` rules, in file name order. It removes the frontmatter and
 HTML comments, leaves out a page with only headings, and cuts the text after 8000 characters.
 The hook gives each page, with no approval step. The wiki is a Git repository, so its history is the review record.
-The hook reads the pages in `rules/` and in its folders. The session end hook writes the wiki HEAD to `<forge>/raw/rules-seen` (one line). The session start hook only reads it.
+The hook reads the pages in `rules/` and in its folders. The session end hook writes the wiki HEAD of the session start to `<forge>/raw/rules-seen` (one line). The session start hook only reads it.
 For each page that changed since that commit, it adds one line to the context: the page, the commit and its author, "has an uncommitted change", or "was removed".
 When that commit is not in the history any more, one line says that the wiki history changed.
-The agent tells you about the change, and shows it when you ask. The line informs and blocks nothing. A wiki that is not a Git repository gives no line.
+The agent tells you about the change, and shows it when you ask. The line is advice, not a control: it informs and blocks nothing. A wiki that is not a Git repository gives no line.
 Put step rules for tickets in the hook sections of `policy.md`, not in a rule page.
 
 ## Share through Git

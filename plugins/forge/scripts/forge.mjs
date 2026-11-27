@@ -85,6 +85,19 @@ export function completeness(configDir, config) {
   return found;
 }
 
+/**
+ * A warning when repo.baseBranch, or the baseBranch of a Checkouts row, is not the default branch of the remote (the local ref origin/HEAD).
+ * The code binding of Shippable? is bound from that branch. No warning when origin/HEAD is unknown or the config has no repo.md.
+ */
+export function baseBranchCheck(where, config, files = []) {
+  if (!files.some((file) => path.basename(file) === 'repo.md')) return [];
+  const head = spawnSync('git', ['-C', where.repo.path, 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD'], { encoding: 'utf8', timeout: 3000, windowsHide: true });
+  const fallback = head.status === 0 ? head.stdout.trim().replace(/^[^/]+\//, '') : '';
+  if (!fallback) return [];
+  const names = [...new Set([config.repo.baseBranch, ...(config.repo.checkouts ?? []).map((row) => row.baseBranch)].filter(Boolean))];
+  return names.filter((name) => name !== fallback).map((name) => ({ status: 'warn', check: 'config:baseBranch', detail: `The base branch ${name} is not the default branch of the remote (${fallback}). The code binding of Shippable? is bound from ${name}. Check repo.baseBranch and the baseBranch of the Checkouts rows.` }));
+}
+
 /** The files that Forge 14 does not read any more: { check, detail } for each one that exists. It deletes nothing. */
 export function unusedFiles(where) {
   const found = [];
@@ -218,12 +231,13 @@ export function doctor({ cwd, wiki, env = process.env, plugin = pluginRoot, fetc
   if (!where.wiki.exists) return results;
 
   try {
-    const { config } = loadConfig(where.configDir);
+    const { config, files } = loadConfig(where.configDir);
     for (const kind of KINDS) {
       const file = path.join(where.configDir, `${kind}.md`);
       add(`config:${kind}.md`, existsSync(file) ? 'ok' : 'warn', existsSync(file) ? '' : 'Missing. forge uses the defaults. Run "forge.mjs seed".');
     }
     results.push(...completeness(where.configDir, config));
+    results.push(...baseBranchCheck(where, config, files));
   } catch (err) {
     add('config', 'fail', err.message);
   }

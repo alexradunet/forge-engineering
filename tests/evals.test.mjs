@@ -408,5 +408,5 @@ test('review-ready opens Shippable? with its code review file and the binding of
   const result = openReview(f.dir, { gate: 'Shippable?', repoPath: f.app, baseBranch: 'main', dryRun: true, today: '2026-11-17' });
   assert.ok(result.documents.some((doc) => doc.path === 'evidence/code-review-001.md'));
   assert.equal(result.code.branch, BRANCH);
-  assert.deepEqual(result.notes, []);
+  assert.deepEqual(result.notes, [`The diff is bound from main (merge base ${result.code.base.slice(0, 12)}). Check that this is the branch that the change request targets.`]);
 });

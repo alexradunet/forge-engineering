@@ -141,3 +141,23 @@ test('doctor has no trust check, and it warns when policy.gateGuard is off since
     assert.ok(!doctor({ cwd: app, env }).some((r) => r.check === 'unused:policy.gateGuard'));
   } finally { rmSync(file, { force: true }); }
 });
+
+test('doctor warns when a base branch is not the default branch of the remote, and stays quiet when origin/HEAD is unknown', () => {
+  const file = path.join(where.configDir, 'repo.md');
+  const original = readFileSync(file, 'utf8');
+  try {
+    writeFileSync(file, original.replace(/^baseBranch:.*$/m, 'baseBranch: develop'));
+    assert.ok(!doctor({ cwd: app, env }).some((r) => r.check === 'config:baseBranch'), 'No origin/HEAD: no warning.');
+    git(app, '-c', 'user.name=T', '-c', 'user.email=t@example.test', 'commit', '-q', '--allow-empty', '-m', 'init');
+    git(app, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+    git(app, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main');
+    const hit = doctor({ cwd: app, env }).find((r) => r.check === 'config:baseBranch');
+    assert.equal(hit.status, 'warn');
+    assert.match(hit.detail, /The base branch develop is not the default branch of the remote \(main\)/);
+    writeFileSync(file, original.replace(/^baseBranch:.*$/m, 'baseBranch: main'));
+    assert.ok(!doctor({ cwd: app, env }).some((r) => r.check === 'config:baseBranch'));
+  } finally {
+    writeFileSync(file, original);
+    try { git(app, 'update-ref', '--no-deref', '-d', 'refs/remotes/origin/HEAD'); } catch { /* Not set. */ }
+  }
+});
