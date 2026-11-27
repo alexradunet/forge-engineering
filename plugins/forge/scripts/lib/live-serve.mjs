@@ -28,7 +28,7 @@ import { MERMAID_ROUTE, needsMermaid, readMermaid } from './mermaid.mjs';
 import { pastSessions, readSessions, recordEnd, recordLabel, recordStart, sessionsFile } from './sessions.mjs';
 import { openTerminal } from './terminal.mjs';
 import { ticketRoot } from './tickets.mjs';
-import { ERROR_POLICY, buildNav, errorPage } from './ui.mjs';
+import { ERROR_POLICY, buildNav, errorPage, policy } from './ui.mjs';
 import { WIKI_SCRIPT, renderWikiPage } from './wiki-page.mjs';
 import { buildWiki } from './wiki.mjs';
 
@@ -61,16 +61,15 @@ const TYPES = {
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp',
 };
 const BASE_HEADERS = { 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff' };
-// A page can run only its own script, and it can connect only to this server. It can show an image from a data address only: the icon of its tab.
+// The policy of a served page is policy() of the kit (ui/page.mjs): the page runs only its own script, and it connects only to this server.
 // With `self`, the page can also load a script file of this server: the Mermaid file of the wiki page.
-export const policy = (script, self = false) => `default-src 'none'; script-src 'sha256-${createHash('sha256').update(script).digest('base64')}'${self ? " 'self'" : ''}; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; base-uri 'none'; form-action 'none'`;
 /** The answer for the Mermaid file of forge: the bytes and the headers. The browser can keep the file for one run of the server. */
 function mermaidAnswer() {
   return { body: readMermaid(), headers: { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'private, max-age=86400' } };
 }
 const BOARD_POLICY = policy(BOARD_SCRIPT);
 const WIKI_POLICY = policy(WIKI_SCRIPT);
-const WIKI_POLICY_MERMAID = policy(WIKI_SCRIPT, true);
+const WIKI_POLICY_MERMAID = policy(WIKI_SCRIPT, { self: true });
 
 /** True for a GET that a browser makes for a page: its Accept header names text/html. A script, a hook reporter, or curl does not send that. */
 const wantsHtml = (req) => req.method === 'GET' && /text\/html/i.test(String(req.headers.accept ?? ''));

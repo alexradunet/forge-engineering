@@ -32,7 +32,7 @@ export { emptyHtml } from './empty.mjs';
 export { frameHtml } from './frame.mjs';
 export { gatesHtml } from './gates.mjs';
 export { faviconUri, iconHtml, pixelText, step } from './pixel.mjs';
-export { ERROR_POLICY, NOTICE_HTML, errorPage, pageHtml, pageScript } from './page.mjs';
+export { ERROR_POLICY, NOTICE_HTML, errorPage, pageHtml, pageScript, policy } from './page.mjs';
 export { chipHtml, countHtml, pillHtml, tagHtml } from './pill.mjs';
 export { proseHtml } from './prose.mjs';
 export { searchHtml } from './search.mjs';
