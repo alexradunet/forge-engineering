@@ -75,6 +75,13 @@ To update `forge`:
 
 "check forge" reports when the installed plugin is behind its remote.
 
+### ⬆️ Upgrade to 14.1.0
+
+Forge 14.1.0 removes the hash trust and `forge.mjs run`. There is nothing to approve: delete the old `trust` folder in the user data folder if you want, it is not read. Two changes can need your action:
+
+- A `policy.gateGuard: off` in a wiki acts as `deny` now, and `doctor` warns. To turn the guard off, set `FORGE_GATE_GUARD=off` in your environment (it also accepts `deny` and `ask`, and wins over the wiki value).
+- A rule page of the wiki (`rules/*.md`) goes into each session with no approval. When a page changes between two sessions, the agent tells you (the commit and its author, or "not committed"). Review a rule change in the `git log` of the wiki.
+
 ### ⬆️ Upgrade to 14.0.0
 
 Forge 14.0.0 removes the profiles, the tracker and CI config, the credentials, and every call to an external tool. To upgrade a wiki:
@@ -82,11 +89,10 @@ Forge 14.0.0 removes the profiles, the tracker and CI config, the credentials, a
 1. Run `forge.mjs doctor`. It names each file that Forge does not use any more: `tracker.md`, `ci.md`, `rules/toolkit.md`, and a `profile` key in `forge/repo.json`.
 2. Remove the files that it names, and the `profile` key.
 3. Strip `repo.md` to its 3 keys (`changeName`, `branchPattern`, `baseBranch`) and the **Checkouts** table.
-4. Run `forge.mjs trust approve`. You run this command, not the agent.
-5. If `doctor` says that `policy.md` names a removed part, edit its sections, or run `forge.mjs seed --force` for `policy.md` (it replaces your edits).
-6. Optional: add the native Claude Code deny rule `Bash(gh pr merge:*)` to your user settings.
+4. If `doctor` says that `policy.md` names a removed part, edit its sections, or run `forge.mjs seed --force` for `policy.md` (it replaces your edits).
+5. Optional: add the native Claude Code deny rule `Bash(gh pr merge:*)` to your user settings.
 
-The wiki holds only the config copy, your personal values, and the helper scripts. To share the wiki, commit and push it. See [wiki.md](docs/wiki.md).
+The wiki holds only the config copy and your personal values. To share the wiki, commit and push it. See [wiki.md](docs/wiki.md).
 
 ## 📦 Where things live
 
@@ -96,9 +102,8 @@ The wiki holds only the config copy, your personal values, and the helper script
 | `<forge>/wiki/` | The wiki (`<wiki>`): one Git repository for each code repository |
 | `<forge>/raw/`, `<forge>/archive/` | Local folders: the open tickets and the pages, and the closed ticket folders. They are not in the wiki repository |
 | `<forge>/forge`, `<forge>/forge.cmd` | The launcher: `../<repo>.forge/forge open` |
-| `<wiki>/rules/` | Rules for each session: data rules (approve with `forge.mjs trust`) |
+| `<wiki>/rules/` | Rules for each session: data rules. A change shows as a notice at the next session start |
 | `<wiki>/forge/config/` | Config: `repo.md`, `policy.md` |
-| `<wiki>/forge/scripts/` | Optional helper scripts |
 | `<forge>/raw/tickets/<key>/` | Ticket folders |
 
 Use a private wiki: a wiki can hold internal names and company rules.
@@ -116,7 +121,7 @@ Setup offers the native wiki of the private repository, a separate private `<rep
 | `plugins/forge/hooks/` | `hooks.json`: the same context for Claude Code (spike). `SessionStart` gives it in parts of at most 9,000 characters (2 parts for a session without company rules), `UserPromptSubmit` sets the ticket title, and `PreToolUse` is the gate guard. See `Claude Code host` in [baseline.md](docs/baseline.md). Forge 7.6 adds the live reporter (`scripts/live-hook.mjs`) as a background hook on the activity events of a session: see [Live view](#-live-view). Forge 9.1 adds the session list: part 1 of `SessionStart` writes the start of a session, and `forge.mjs hook session-end` at `SessionEnd` writes its end. |
 | `plugins/forge/skills/` | `ticket`, `agents`, `board`, `wiki`, `forge-setup`, `writing` |
 | `plugins/forge/templates/` | The config templates (`config/`) and the rule pages (`rules/`) |
-| `plugins/forge/scripts/` | `forge.mjs` (init, config, trust, lint, board, local-key, worktree, live, open, gate-open, gate-approve, hook, wiki scripts), `live-hook.mjs` (the reporter of the live view) |
+| `plugins/forge/scripts/` | `forge.mjs` (init, config, lint, board, local-key, worktree, live, open, gate-open, gate-approve, hook), `live-hook.mjs` (the reporter of the live view) |
 | `plugins/forge/vendor/mermaid/` | The only third-party program of the plugin: the small Mermaid build that draws the diagrams of the wiki page, with its license and a [notice](plugins/forge/vendor/mermaid/NOTICE.md) (version, hash, update steps) |
 | `docs/` | [config.md](docs/config.md) (config format), [wiki.md](docs/wiki.md) (sharing and scripts), [evaluation.md](docs/evaluation.md) (behavioral runs: `npm run eval` gives the cases of `tests/evals/` to a real agent session), and [baseline.md](docs/baseline.md) (the host features that forge uses) |
 | `AGENTS.md` | [Rules for agents that develop forge](AGENTS.md): docs-first checks, tests, and file format |
@@ -191,8 +196,8 @@ A manifest can also list `evidence/` files that you must see in an exact revisio
 Before a gate opens, a subagent without the session history reads the gate document (the cold read).
 It gives a paraphrase and the terms that it cannot resolve, and the session corrects the document before you see it.
 
-The gate guard is a `preToolUse` hook. Before a `git push` in a ticket worktree, it checks the approvals of Planned? and Shippable?. For a ticket with a branch, it also checks that the code of the push is the code of the Shippable? approval (the patch-id in the manifest). It always asks you before `forge.mjs gate-approve` and `forge.mjs trust approve`, also with `policy.gateGuard: off`.
-When one is missing or stale, it stops the command and names each finding. `policy.gateGuard` selects `deny` (default), `ask` (the host asks you), or `off`.
+The gate guard is a `preToolUse` hook. Before a `git push` in a ticket worktree, it checks the approvals of Planned? and Shippable?. For a ticket with a branch, it also checks that the code of the push is the code of the Shippable? approval (the patch-id in the manifest). It always asks you before `forge.mjs gate-approve`, also with the guard off.
+When one is missing or stale, it stops the command and names each finding. `policy.gateGuard` selects `deny` (default) or `ask` (the host asks you). The environment variable `FORGE_GATE_GUARD` (`deny`, `ask`, or `off`) wins over it, and it is the only way to turn the guard off.
 The guard reads the words of a shell command, so it is a net and not a wall: the written rules stay in force.
 When the README of the ticket cannot be read, the guard stops a push.
 
@@ -417,9 +422,8 @@ See [validation and source limits](docs/wiki.md#local-validation-and-source-limi
 
 ## 📚 Shared wiki
 
-Edit config and helper scripts directly in `<wiki>/forge`. Git handles versioning and shared updates.
-Each teammate reviews and approves the files by SHA-256 hash before forge uses them.
-Trust approvals stay outside the wiki. See [wiki.md](docs/wiki.md).
+Edit config directly in `<wiki>/forge`. Git handles versioning and shared updates.
+The `git log` of the wiki is the review record. A change of a rule page shows as a notice at the next session start. See [wiki.md](docs/wiki.md).
 
 ## 🛠️ Develop
 

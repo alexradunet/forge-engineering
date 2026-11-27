@@ -5,9 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { guardActions, preTool, preToolOutput, readToolEvent, shellCommands } from '../plugins/forge/scripts/lib/guard.mjs';
+import { guardActions, guardMode, preTool, preToolOutput, readToolEvent, shellCommands } from '../plugins/forge/scripts/lib/guard.mjs';
 import { sha256 } from '../plugins/forge/scripts/lib/validation.mjs';
-import { status as trustStatus, approve } from '../plugins/forge/scripts/lib/trust.mjs';
 import { resolve } from '../plugins/forge/scripts/lib/repo.mjs';
 import { seed } from '../plugins/forge/scripts/lib/setup.mjs';
 import { setValues } from '../plugins/forge/scripts/lib/config-write.mjs';
@@ -30,7 +29,7 @@ function git(cwd, ...args) {
 }
 
 /** A repository with a ticket worktree, and a wiki with one full-v4 ticket. `approved` lists the approved gates. */
-// With Shippable? approved, the branch has one commit and the manifest binds its code (`code: 'none'` leaves the binding out), and the config is trusted with the base branch main.
+// With Shippable? approved, the branch has one commit and the manifest binds its code (`code: 'none'` leaves the binding out), and the config sets the base branch main.
 function setup(t, { approved = [], workflow = 'full-v4', code = 'bound' } = {}) {
   const root = mkdtempSync(path.join(os.tmpdir(), 'forge-guard-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -71,18 +70,17 @@ function setup(t, { approved = [], workflow = 'full-v4', code = 'bound' } = {}) 
     '# APP-7', '', '## Now', '', '- State: ▶️ active', '',
   ].join('\n'));
   const made = { root, app, worktree, dir, readme, wiki: path.join(root, 'app.forge', 'wiki'), binding };
-  if (approved.includes('Shippable?')) trustConfig(made, ['repo.baseBranch=main']);
+  if (approved.includes('Shippable?')) seedConfig(made, ['repo.baseBranch=main']);
   return made;
 }
 
 const run = (cwd, command) => preTool({ cwd, command }, { env });
 
-/** Seeds the config, sets values, and approves the config files, as the user does in setup. */
-function trustConfig(s, values = []) {
+/** Seeds the config and sets values, as the user does in setup. */
+function seedConfig(s, values = []) {
   const where = resolve({ cwd: s.app, env });
   const { configDir } = seed(where, templates);
   if (values.length) setValues(configDir, values);
-  approve(where, trustStatus(where, { env }).files.filter((f) => f.rel.startsWith('config/')).map((f) => `${f.rel}=${f.sha.slice(0, 12)}`), { env });
 }
 
 test('shellCommands splits a line into commands and keeps quoted words and Windows paths', () => {
@@ -224,7 +222,7 @@ test('a ticket README that cannot be read stops the push, and the reason names t
   assert.match(run(s.worktree, 'git push').reason, /Error: README\.md is missing\./);
 });
 
-test('an unsupported workflow stops a push by policy.gateGuard, and a broken README of another ticket does not', (t) => {
+test('an unsupported workflow stops a push by the guard mode, and a broken README of another ticket does not', (t) => {
   const old = setup(t, { workflow: 'full-v2' });
   const deny = run(old.worktree, 'git push');
   assert.equal(deny.decision, 'deny');
@@ -234,13 +232,12 @@ test('an unsupported workflow stops a push by policy.gateGuard, and a broken REA
   assert.equal(v3deny.decision, 'deny');
   assert.match(v3deny.reason, /Unsupported ticket workflow: full-v3\. Forge 12 reads only workflow: full-v4\. Finish this ticket with Forge 10\.1\./);
   const asks = setup(t, { workflow: 'full-v2' });
-  trustConfig(asks, ['policy.gateGuard=ask']);
+  seedConfig(asks, ['policy.gateGuard=ask']);
   const ask = run(asks.worktree, 'git push');
   assert.equal(ask.decision, 'ask');
   assert.match(ask.reason, /Unsupported ticket workflow: full-v2/);
   const off = setup(t, { workflow: 'full-v2' });
-  trustConfig(off, ['policy.gateGuard=off']);
-  assert.equal(run(off.worktree, 'git push'), null);
+  assert.equal(preTool({ cwd: off.worktree, command: 'git push' }, { env: { ...env, FORGE_GATE_GUARD: 'off' } }), null);
   // A broken README of another folder: the push of the valid, approved ticket still runs.
   const done = setup(t, { approved: ['Planned?', 'Shippable?'] });
   const other = path.join(done.dir, '..', 'app-9');
@@ -252,12 +249,12 @@ test('an unsupported workflow stops a push by policy.gateGuard, and a broken REA
 
 test('with changeName none, a push of HEAD:main in the ticket worktree needs the gates', (t) => {
   const s = setup(t);
-  trustConfig(s, ['repo.changeName=none']);
+  seedConfig(s, ['repo.changeName=none']);
   const verdict = run(s.worktree, 'git push origin HEAD:main');
   assert.equal(verdict.decision, 'deny');
   assert.match(verdict.reason, /Shippable\? is not approved\./);
   const all = setup(t, { approved: ['Planned?', 'Shippable?'] });
-  trustConfig(all, ['repo.changeName=none']);
+  seedConfig(all, ['repo.changeName=none']);
   assert.equal(run(all.worktree, 'git push origin HEAD:main'), null);
 });
 
@@ -273,7 +270,7 @@ test('in bypassPermissions the host shows no prompt, so each ask becomes a deny'
   assert.match(deny.reason, /^Forge gate guard: this command is an approval: `forge\.mjs gate-approve`/);
   assert.match(deny.reason, /This session runs in bypassPermissions mode, so the host shows the user no prompt for it\. Do not run the command in another form\. Show the user the text and the exact command/);
   const asks = setup(t);
-  trustConfig(asks, ['policy.gateGuard=ask']);
+  seedConfig(asks, ['policy.gateGuard=ask']);
   const push = preTool({ cwd: asks.worktree, command: 'git push', mode: 'bypassPermissions' }, { env });
   assert.equal(push.decision, 'deny', 'The ask mode of a push also needs a prompt.');
   assert.match(push.reason, /APP-7 has no valid approval for a push\./);
@@ -313,30 +310,27 @@ test('forge.mjs hook pre-tool always exits 0 with JSON', (t) => {
 
 const APPROVE = () => `node ${cli} gate-approve app-7 planned --answer approve`;
 
-test('guardActions gives an approve action for gate-approve and trust approve, in each launcher form', () => {
+test('guardActions gives an approve action for gate-approve, in each launcher form, and none for trust', () => {
   const cwd = '/x';
   const kinds = (line) => guardActions(line, cwd).map((a) => a.kind);
   assert.deepEqual(guardActions('node /p/scripts/forge.mjs gate-approve app-7 planned --answer "approve planned" --method chat', cwd),
     [{ kind: 'approve', cwd, command: 'gate-approve', key: 'app-7', gate: 'planned', answer: 'approve planned' }]);
-  assert.deepEqual(guardActions('node /p/forge.mjs --wiki /w trust approve config/repo.md=abcdef123456', cwd),
-    [{ kind: 'approve', cwd, command: 'trust approve', files: ['config/repo.md=abcdef123456'] }]);
+  assert.deepEqual(kinds('node /p/forge.mjs --wiki /w trust approve config/repo.md=abcdef123456'), [], 'Forge 14.1.0 has no trust command.');
   assert.deepEqual(kinds('forge gate-approve app-7 planned --answer approve'), ['approve']);
   assert.deepEqual(kinds('/home/a/bin/forge.cmd gate-approve app-7 planned --answer approve'), ['approve']);
   assert.deepEqual(kinds('C:\\forge\\forge.mjs gate-approve app-7 planned --answer approve'), ['approve']);
-  assert.deepEqual(kinds('FORGE_X=1 sudo node /p/forge.mjs trust approve a=12345678'), ['approve']);
-  // No verdict for a dry run, a help call, the status call of trust, and a command that only names the words.
+  assert.deepEqual(kinds('FORGE_X=1 sudo node /p/forge.mjs gate-approve a b --answer x'), ['approve']);
+  // No verdict for a dry run, a help call, and a command that only names the words.
   assert.deepEqual(kinds('node /p/forge.mjs gate-approve app-7 planned --answer approve --dry-run'), []);
   assert.deepEqual(kinds('node /p/forge.mjs gate-approve --help'), []);
-  assert.deepEqual(kinds('forge trust approve -h'), []);
-  assert.deepEqual(kinds('node /p/forge.mjs trust'), []);
-  assert.deepEqual(kinds('node /p/forge.mjs trust --json'), []);
+  assert.deepEqual(kinds('forge gate-approve -h'), []);
   assert.deepEqual(kinds('grep gate-approve plugins/forge/scripts/forge.mjs'), []);
   assert.deepEqual(kinds('node /p/forge.mjs lint app-7'), []);
   // A quoted --answer that holds "--dry-run" is one word, so it is still an approval.
   assert.deepEqual(kinds('node /p/forge.mjs gate-approve app-7 planned --answer "approve --dry-run"'), ['approve']);
 });
 
-test('preTool asks for an approval command in a ticket worktree, in the main checkout, with an untrusted config, and with gateGuard off', (t) => {
+test('preTool asks for an approval command in a ticket worktree, in the main checkout, and with the guard off', (t) => {
   const s = setup(t);
   const check = (verdict, text) => {
     assert.equal(verdict?.decision, 'ask');
@@ -344,22 +338,20 @@ test('preTool asks for an approval command in a ticket worktree, in the main che
     assert.match(verdict.reason, text);
     assert.match(verdict.reason, /Allow it only if you gave this answer yourself\./);
   };
-  // The config is not trusted yet, and the folder is a ticket worktree or the main checkout.
+  // The folder is a ticket worktree or the main checkout.
   check(run(s.worktree, APPROVE()), /gate-approve.*planned.*app-7.*"approve"/);
   check(run(s.app, APPROVE()), /gate-approve/);
   check(run(s.worktree, 'forge gate-approve app-7 planned --answer approve'), /gate-approve/);
   check(run(s.worktree, 'forge.cmd gate-approve app-7 planned --answer approve'), /gate-approve/);
-  check(run(s.worktree, `node ${cli} trust approve config/repo.md=abcdef123456`), /trust approve.*config\/repo\.md=abcdef123456/);
   // A folder with no repository, no ticket, and no wiki.
   const bare = mkdtempSync(path.join(os.tmpdir(), 'forge-guard-bare-'));
   t.after(() => rmSync(bare, { recursive: true, force: true }));
   check(run(bare, APPROVE()), /gate-approve/);
-  // policy.gateGuard: off does not turn it off.
+  // FORGE_GATE_GUARD=off does not turn it off.
+  const offEnv = { ...env, FORGE_GATE_GUARD: 'off' };
   const off = setup(t);
-  trustConfig(off, ['policy.gateGuard=off']);
-  assert.equal(run(off.worktree, `git push origin users/a/APP-7-doc-import`), null, 'Control: the push guard is off.');
-  check(run(off.worktree, APPROVE()), /gate-approve/);
-  check(run(off.app, `node ${cli} trust approve config/repo.md=abcdef123456`), /trust approve/);
+  assert.equal(preTool({ cwd: off.worktree, command: `git push origin users/a/APP-7-doc-import` }, { env: offEnv }), null, 'Control: the push guard is off.');
+  check(preTool({ cwd: off.worktree, command: APPROVE() }, { env: offEnv }), /gate-approve/);
 });
 
 test('preTool denies an approval command in bypassPermissions and gives no verdict for the read forms', (t) => {
@@ -372,8 +364,6 @@ test('preTool denies an approval command in bypassPermissions and gives no verdi
   for (const command of [
     `node ${cli} gate-approve app-7 planned --answer approve --dry-run`,
     `node ${cli} gate-approve --help`,
-    `node ${cli} trust`,
-    `node ${cli} trust --json`,
     'grep gate-approve plugins/forge/scripts/forge.mjs',
   ]) assert.equal(run(s.worktree, command), null, command);
   assert.equal(run(s.worktree, `node ${cli} gate-approve app-7 planned --answer "approve --dry-run"`)?.decision, 'ask');
@@ -408,7 +398,7 @@ test('a push is denied with no code binding, with a read error (own message), an
   assert.match(noCode.reason, /approved before Forge 13\.1\.0 or without a code binding.*Open Shippable\? again/);
   // A base branch that does not exist: the binding cannot be read, which is not a mismatch.
   const gone = setup(t, { approved: ['Planned?', 'Shippable?'] });
-  trustConfig(gone, ['repo.baseBranch=nope']);
+  seedConfig(gone, ['repo.baseBranch=nope']);
   const error = run(gone.worktree, push);
   assert.equal(error.decision, 'deny');
   assert.match(error.reason, /base branch nope not found: set repo\.baseBranch/);
@@ -427,20 +417,19 @@ test('a push is denied with no code binding, with a read error (own message), an
   const branch = run(other.worktree, push);
   assert.equal(branch.decision, 'deny');
   assert.match(branch.reason, /is not the branch of the Shippable\? approval/);
-  // policy.gateGuard ask keeps its meaning, and off skips the check.
+  // policy.gateGuard ask keeps its meaning, and the environment off skips the check.
   const asks = setup(t, { approved: ['Planned?', 'Shippable?'], code: 'none' });
-  trustConfig(asks, ['policy.gateGuard=ask']);
+  seedConfig(asks, ['policy.gateGuard=ask']);
   assert.equal(run(asks.worktree, push).decision, 'ask');
   const off = setup(t, { approved: ['Planned?', 'Shippable?'], code: 'none' });
-  trustConfig(off, ['policy.gateGuard=off']);
-  assert.equal(run(off.worktree, push), null);
+  assert.equal(preTool({ cwd: off.worktree, command: push }, { env: { ...env, FORGE_GATE_GUARD: 'off' } }), null);
 });
 
 test('H1: the approval parser reads the same value options as parseArgs', () => {
   const cwd = path.resolve('/wt');
   const commands = (line) => guardActions(line, cwd).map((action) => action.command);
   assert.deepEqual(commands('node /p/scripts/forge.mjs --base x gate-approve L-1 Shippable? --answer yes'), ['gate-approve']);
-  assert.deepEqual(commands('node /p/scripts/forge.mjs --summary s trust approve config/a.md=1'), ['trust approve']);
+  assert.deepEqual(commands('node /p/scripts/forge.mjs --summary s trust approve config/a.md=1'), []);
   assert.deepEqual(commands('node /p/scripts/forge.mjs --port 80 --out o gate-approve L-1 Planned? --answer yes'), ['gate-approve']);
   const first = guardActions('node /p/scripts/forge.mjs --base x gate-approve L-1 Shippable? --answer yes', cwd)[0];
   assert.deepEqual([first.key, first.gate, first.answer], ['L-1', 'Shippable?', 'yes']);
@@ -489,16 +478,17 @@ test('H3: an empty README branch does not turn the code binding off', (t) => {
   assert.match(denied.reason, /the README branch is empty, but the Shippable\? approval binds the branch users\/a\/APP-7-doc-import/);
 });
 
-test('M2: an untrusted config and a missing base branch have their own message, a closed ticket and a delete get no binding check', (t) => {
+test('M2: a config that cannot be read and a missing base branch have their own message, a closed ticket and a delete get no binding check', (t) => {
   const push = 'git push -u origin users/a/APP-7-doc-import';
-  const untrusted = setup(t, { approved: ['Planned?', 'Shippable?'] });
-  setValues(resolveConfigDir(untrusted), ['repo.baseBranch=develop']);
-  const a = run(untrusted.worktree, push);
+  const broken = setup(t, { approved: ['Planned?', 'Shippable?'] });
+  seedConfig(broken, ['repo.baseBranch=main']);
+  writeFileSync(path.join(resolveConfigDir(broken), 'policy.md'), '---\ngateGuard: bogus\n---\n');
+  const a = run(broken.worktree, push);
   assert.equal(a.decision, 'deny');
-  assert.match(a.reason, /the Forge config is not trusted \(run \`forge\.mjs trust\`\)/);
+  assert.match(a.reason, /the Forge config cannot be read \(run \`forge\.mjs doctor\`\)/);
   assert.doesNotMatch(a.reason, /git fetch/);
   const gone = setup(t, { approved: ['Planned?', 'Shippable?'] });
-  trustConfig(gone, ['repo.baseBranch=nope']);
+  seedConfig(gone, ['repo.baseBranch=nope']);
   assert.match(run(gone.worktree, push).reason, /base branch nope not found: set repo\.baseBranch/);
   assert.equal(run(gone.worktree, 'git push origin --delete users/a/APP-7-doc-import'), null, 'A delete is not checked.');
   // A closed ticket: its work is merged, so the binding does not apply.
@@ -547,7 +537,6 @@ test('L-2: an approval command is found in the hidden forms, and a text scan fin
   }
   const asks = [
     'F=/x/forge.mjs; node $F gate-approve L-2 Planned? --answer approve',
-    'node "$F" trust approve config/repo.md=abcdef123456',
     'npx forge gate-approve L-2 Planned?',
     'bun $F gate-approve',
     `node -e "import('/x/plugins/forge/scripts/lib/approve.mjs').then((m) => m.approveGate())"`,
@@ -556,7 +545,6 @@ test('L-2: an approval command is found in the hidden forms, and a text scan fin
     'node --import /x/lib/approve.mjs a.js',
     'node -r /x/approve.mjs a.js',
     `bash -c 'node "$F" gate-approve L-2 Planned?'`,
-    `sh -c "node forge.mjs trust approve x=1"`,
     `bash -lc "node /x/approve.mjs"`,
     "node - <<'EOF'\nimport('/x/approve.mjs');\nEOF",
     "node <<EOF\nawait import('/x/approve.mjs')\nEOF",
@@ -614,7 +602,7 @@ test('L-2 review M6: the text scan of gate-approve reads the subcommand position
   for (const line of ['node forge.mjs wiki search gate-approve', 'node --test --test-name-pattern "gate-approve" t.mjs', 'node x.mjs trust status approve', 'node x.mjs gate-approve', 'bun run gate-approve', 'npx forge wiki search gate-approve', 'npx -y x trust status approve']) {
     assert.deepEqual(kinds(line), [], line);
   }
-  for (const line of ['F=/x/forge.mjs; node $F gate-approve L-2 Planned?', 'node $F trust x approve', 'node `pwd`/forge.mjs gate-approve', 'npx forge gate-approve L-2 Planned?', 'npx forge trust approve x=1', 'node /p/scripts/forge.mjs --base x gate-approve L-2 Planned?']) {
+  for (const line of ['F=/x/forge.mjs; node $F gate-approve L-2 Planned?', 'node `pwd`/forge.mjs gate-approve', 'npx forge gate-approve L-2 Planned?', 'node /p/scripts/forge.mjs --base x gate-approve L-2 Planned?']) {
     assert.deepEqual(kinds(line), ['approve'], line);
   }
 });
@@ -641,7 +629,7 @@ test('L-2 review M3: a cd in a pipeline or before & does not move the folder, an
 
 test('L-2 review M3: a push after a cd in a pipeline is checked in the session folder', (t) => {
   const s = setup(t);
-  trustConfig(s);
+  seedConfig(s);
   assert.equal(run(s.worktree, `cd ${s.app} | git push`)?.decision, 'deny');
   assert.equal(run(s.worktree, `cd ${s.app} & git push`)?.decision, 'deny');
   assert.equal(run(s.worktree, `false && cd ${s.app}; git push`)?.decision, 'deny');
@@ -746,11 +734,21 @@ test('L-2: a push in a work tree that Forge cannot resolve is denied, and a wiki
   assert.equal(run(s.root, 'git push'), null);
 });
 
-test('L-2: G1b, G1c: a gateGuard value that is not re-trusted keeps the push denied, and trust approve asks', (t) => {
+test('L-2: G1b, G1c: a wiki gateGuard value off acts as deny, and FORGE_GATE_GUARD wins over the wiki value', (t) => {
   const s = setup(t);
-  trustConfig(s);
-  const where = resolve({ cwd: s.app, env });
-  setValues(seed(where, templates).configDir, ['policy.gateGuard=off']);
-  assert.equal(run(s.worktree, 'git push')?.decision, 'deny', 'G1b');
-  assert.equal(run(s.worktree, `node ${cli} trust approve config/policy.md=abcdef123456`)?.decision, 'ask', 'G1c');
+  seedConfig(s, ['policy.gateGuard=off']);
+  assert.equal(run(s.worktree, 'git push')?.decision, 'deny', 'A wiki off acts as deny.');
+  const withEnv = (mode) => preTool({ cwd: s.worktree, command: 'git push' }, { env: { ...env, FORGE_GATE_GUARD: mode } });
+  assert.equal(withEnv('off'), null, 'The environment off wins over the wiki value.');
+  assert.equal(withEnv('ask')?.decision, 'ask');
+  assert.equal(withEnv('deny')?.decision, 'deny');
+  assert.equal(withEnv('bogus')?.decision, 'deny', 'An unknown value is ignored.');
+  const asks = setup(t);
+  seedConfig(asks, ['policy.gateGuard=ask']);
+  assert.equal(run(asks.worktree, 'git push')?.decision, 'ask');
+  assert.equal(preTool({ cwd: asks.worktree, command: 'git push' }, { env: { ...env, FORGE_GATE_GUARD: 'deny' } })?.decision, 'deny', 'The environment deny wins over a wiki ask.');
+  assert.equal(guardMode(null, {}), 'deny');
+  assert.equal(guardMode({ policy: { gateGuard: 'off' } }, {}), 'deny');
+  assert.equal(guardMode({ policy: { gateGuard: 'ask' } }, {}), 'ask');
+  assert.equal(guardMode({ policy: { gateGuard: 'ask' } }, { FORGE_GATE_GUARD: ' OFF ' }), 'off');
 });

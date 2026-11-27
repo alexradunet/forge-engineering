@@ -13,7 +13,6 @@ The first lines of the Forge session context give the paths. When they are missi
 - `<config>`: `<wiki>/forge/config`. `<file>.<key>` means the frontmatter key `<key>` of `<config>/<file>.md`. A step rule for tickets goes into a section of `policy.md`.
 
 When `where` fails, or the wiki or config is missing, tell the user to say "set up forge".
-When `config` or `run` says `Not approved`, show the files and their changes. Run `<F> trust approve` only after the user says yes.
 
 ## 🎫 Ticket sessions
 

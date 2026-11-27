@@ -124,3 +124,18 @@ test('doctor warns when policy.md names a part removed in 14.0.0, and changes no
   } finally { rmSync(file, { force: true }); }
   assert.ok(!doctor({ cwd: app, env }).some((r) => r.check === 'unused:config/policy.md'));
 });
+
+test('doctor has no trust check, and it warns when policy.gateGuard is off since 14.1.0', () => {
+  assert.ok(!doctor({ cwd: app, env }).some((r) => r.check === 'trust'), 'Forge 14.1.0 has no trust check.');
+  const file = path.join(where.configDir, 'policy.md');
+  writeFileSync(file, '---\ngateGuard: off\n---\n');
+  try {
+    const results = doctor({ cwd: app, env });
+    const hit = results.find((r) => r.check === 'unused:policy.gateGuard');
+    assert.equal(hit.status, 'warn');
+    assert.equal(hit.detail, 'policy.gateGuard off is not used since 14.1.0: set FORGE_GATE_GUARD=off in your environment');
+    assert.ok(!results.some((r) => r.status === 'fail'), 'An off value is no config error.');
+    writeFileSync(file, '---\ngateGuard: ask\n---\n');
+    assert.ok(!doctor({ cwd: app, env }).some((r) => r.check === 'unused:policy.gateGuard'));
+  } finally { rmSync(file, { force: true }); }
+});

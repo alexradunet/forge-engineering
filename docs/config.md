@@ -19,8 +19,7 @@ Edit the files directly in the wiki. Clone or pull that wiki to share changes (s
 flowchart LR
   tpl["templates/config"] -- seed --> cfg["&lt;wiki&gt;/forge/config/*.md"]
   remote["wiki Git remote"] <-->|push / pull| cfg
-  cfg --> trust{"trust check<br/>SHA-256"}
-  trust --> skills["ticket and agents skills"]
+  cfg --> skills["ticket and agents skills"]
 ```
 
 ## 🧾 File format
@@ -60,7 +59,7 @@ node "<plugin>/scripts/forge.mjs" config row checkouts "old" --delete
 - `config set` replaces a key, or adds it at the end of the frontmatter. It adds quotes to a value that starts with `{`.
 - `config row` replaces the row with the same first cell, or appends a new row. Missing cells stay empty.
 - Both keep the Markdown body, the line endings, and a byte order mark.
-- Both print the changed files. Approve them with `forge.mjs trust` before forge uses them.
+- Both print the changed files. Review the change with `git diff` in the wiki.
 - `forge.mjs detect` prints the suggested personal values (`suggestion.values`): the base branch, the branch pattern of your local branches, and the main checkout.
 
 ## 🧱 Values
@@ -119,8 +118,7 @@ Evidence Testing or a required gate. Forge reads no other ticket layout: lint re
 ## ✅ Checks
 
 - `forge.mjs config --json` reads the config. It fails on a bad value: a bad `branchPattern`, an unknown day, or a policy value of the wrong type.
-- `forge.mjs config` fails closed when a file in `<wiki>/forge` is new or changed and you did not approve it (`forge.mjs trust`).
-- `forge.mjs doctor` reports the wiki, each config file, trust, the session start hook, and the plugin version.
+- `forge.mjs doctor` reports the wiki, each config file, the session start hook, and the plugin version.
 - `doctor` also warns on setup gaps:
   - `config:placeholder`: `repo.branchPattern` still holds `<user>`. `forge.mjs worktree` also refuses that pattern.
   - `config:checkouts`: no Checkouts row, or the main checkout path does not exist on this machine.

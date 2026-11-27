@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { copyFileSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseFile, parseScalar, parseTable, loadConfig, KINDS } from '../plugins/forge/scripts/lib/config.mjs';
+import { buildConfig, parseFile, parseScalar, parseTable, loadConfig, KINDS } from '../plugins/forge/scripts/lib/config.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const templates = path.join(here, '..', 'plugins', 'forge', 'templates', 'config');
@@ -153,4 +153,9 @@ test('KINDS are repo and policy, and an old tracker.md or ci.md is ignored witho
     assert.equal(config.tracker, undefined);
     assert.equal(config.ci, undefined);
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('policy.gateGuard accepts deny, ask, and off (off acts as deny in the guard), and refuses another value', () => {
+  for (const value of ['deny', 'ask', 'off']) assert.equal(buildConfig({ policy: `---\ngateGuard: ${value}\n---\n` }).policy.gateGuard, value);
+  assert.throws(() => buildConfig({ policy: '---\ngateGuard: maybe\n---\n' }), /gateGuard must be deny or ask/);
 });

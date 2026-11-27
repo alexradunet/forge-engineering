@@ -42,8 +42,6 @@
 //            in a ticket worktree without a valid Shippable? approval, print the deny (or ask) decision, else {}
 //   context [--cwd <dir>] [--host <host>]   print the Forge context (for a host without the hook)
 //     <host> is copilot-cli or claude (copilot is an old name). Without --host, forge.mjs finds the host from the environment.
-//   trust [approve <path>=<sha>...]   show or approve the files under <wiki>/forge
-//   run <script> [args...]   run <wiki>/forge/scripts/<script>.mjs after the trust check
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -53,7 +51,6 @@ import { resolve, ForgeError, readBinding } from './lib/repo.mjs';
 import { loadConfig, KINDS } from './lib/config.mjs';
 import { setValues, upsertRow } from './lib/config-write.mjs';
 import { detect, initWiki, bind, seed } from './lib/setup.mjs';
-import { approve, assertTrusted, status as trustStatus } from './lib/trust.mjs';
 import { lint } from './lib/validation.mjs';
 import { findTicket, nextLocalKey } from './lib/tickets.mjs';
 import { approveGate } from './lib/approve.mjs';
@@ -61,7 +58,7 @@ import { openReview } from './lib/gate-open.mjs';
 import { baseBranchOf } from './lib/code-bind.mjs';
 import { writeBoard } from './lib/board.mjs';
 import { createWorktree, planWorktree } from './lib/worktree.mjs';
-import { CLAUDE_PARTS, HOST_NAMES, contextText, promptSubmit, readEvent, resolveHost, sessionEnd, sessionStart, trustedConfig } from './lib/hook.mjs';
+import { CLAUDE_PARTS, HOST_NAMES, contextText, promptSubmit, readEvent, resolveHost, sessionEnd, sessionStart, safeConfig } from './lib/hook.mjs';
 import { preTool, preToolOutput, readToolEvent } from './lib/guard.mjs';
 import { gateName } from './lib/reading.mjs';
 import { writeViews } from './lib/views.mjs';
@@ -107,6 +104,11 @@ export function unusedFiles(where) {
     const words = ['tracker.', 'ci.status', 'ci.trigger', 'ci.logs', 'Sendable'].filter((word) => text.includes(word)); // legacy-14
     if (words.length) found.push({ status: 'warn', check: 'unused:config/policy.md', detail: `policy.md names a part removed in 14.0.0: ${words.join(', ')}; edit its sections or run seed --force for policy.md.` });
   }
+  try {
+    if (loadConfig(where.configDir).config.policy.gateGuard === 'off') {
+      found.push({ status: 'warn', check: 'unused:policy.gateGuard', detail: 'policy.gateGuard off is not used since 14.1.0: set FORGE_GATE_GUARD=off in your environment' });
+    }
+  } catch { /* config reports it */ }
   return found;
 }
 
@@ -225,29 +227,12 @@ export function doctor({ cwd, wiki, env = process.env, plugin = pluginRoot, fetc
     add('config', 'fail', err.message);
   }
   results.push(...unusedFiles(where));
-  const st = trustStatus(where, { env });
-  const bad = st.files.filter((f) => f.state !== 'ok');
-  add('trust', bad.length ? 'fail' : 'ok', bad.length ? `Not approved: ${bad.map((f) => `${f.rel} (${f.state})`).join(', ')}. Run "forge.mjs trust".` : `${st.files.length} files approved`);
   return results;
 }
 
 function print(results) {
   const w = Math.max(...results.map((r) => r.check.length));
   for (const r of results) console.log(`${r.status.padEnd(4)}  ${r.check.padEnd(w)}  ${r.detail}`);
-}
-
-export function runScript(name, rest, { cwd = process.cwd(), env = process.env } = {}) {
-  if (!/^[a-z0-9][a-z0-9-]*$/.test(name ?? '')) throw new ForgeError('Usage: forge.mjs run <script> [args...]. The name has lowercase letters, digits, and hyphens.', 'bad-args');
-  const where = resolve({ cwd, env });
-  const file = path.join(where.wiki.path, 'forge', 'scripts', `${name}.mjs`);
-  if (!existsSync(file)) throw new ForgeError(`No wiki script: ${file}`, 'no-script');
-  assertTrusted(where, ['scripts/', 'config/'], { env });
-  const r = spawnSync(process.execPath, [file, ...rest], {
-    cwd,
-    stdio: 'inherit',
-    env: { ...env, FORGE_CORE: path.join(pluginRoot, 'scripts'), FORGE_WIKI: where.wiki.path, FORGE_REPO: where.repo.path },
-  });
-  return r.status ?? 1;
 }
 
 export function configEdit(argv, { cwd = process.cwd() } = {}) {
@@ -264,7 +249,7 @@ export function configEdit(argv, { cwd = process.cwd() } = {}) {
   }
   const where = resolve(opts);
   const r = sub === 'set' ? setValues(where.configDir, pos) : upsertRow(where.configDir, pos[0], pos.slice(1), { remove });
-  return { configDir: r.configDir, changed: r.changed, next: r.changed.length ? 'Review the change, then approve it: forge.mjs trust' : 'No change.' };
+  return { configDir: r.configDir, changed: r.changed, next: r.changed.length ? 'Review the change.' : 'No change.' };
 }
 
 /**
@@ -336,14 +321,6 @@ export function main(argv = process.argv.slice(2)) {
       throw err;
     }
   }
-  if (argv[0] === 'run') {
-    try {
-      return runScript(argv[1], argv.slice(2));
-    } catch (err) {
-      if (err instanceof ForgeError) { console.error(`forge: ${err.message}`); return 1; }
-      throw err;
-    }
-  }
   let args;
   try { args = parseArgs(argv); }
   catch (err) {
@@ -357,7 +334,6 @@ export function main(argv = process.argv.slice(2)) {
       console.log(JSON.stringify(resolve(opts), null, 2));
     } else if (cmd === 'config') {
       const where = resolve(opts);
-      assertTrusted(where, ['config/']);
       console.log(JSON.stringify({ ...loadConfig(where.configDir), warnings: where.warnings }, null, 2));
     } else if (cmd === 'doctor') {
       const results = doctor({ ...opts, fetch: args.fetch });
@@ -371,8 +347,8 @@ export function main(argv = process.argv.slice(2)) {
         throw new ForgeError('Usage: forge.mjs lint [--wiki <dir>] [--cwd <dir>] [--json] [--fix].', 'bad-args');
       }
       const where = resolve(opts);
-      // Only a trusted config gives the policy and the checkouts. Without it the plan review rule does not run.
-      const config = trustedConfig(where, process.env);
+      // A config that cannot be read gives no policy and no checkouts. Then the plan review rule does not run.
+      const config = safeConfig(where, process.env);
       const report = lint({ wikiPath: where.wiki.path, repoPath: where.repo.path, fix: args.fix, policy: config?.policy ?? null, checkouts: config?.repo.checkouts ?? [], baseBranch: baseBranchOf(config, where.repo.path) });
       if (args.json) console.log(JSON.stringify(report, null, 2));
       else {
@@ -443,7 +419,6 @@ export function main(argv = process.argv.slice(2)) {
     } else if (cmd === 'worktree') {
       if (args._.length !== 2 || !args.summary) throw new ForgeError('Usage: forge.mjs worktree <KEY> --summary "<goal>" [--base <ref>] [--create] [--json].', 'bad-args');
       const where = resolve(opts);
-      assertTrusted(where, ['config/']);
       const { config } = loadConfig(where.configDir);
       let result;
       try {
@@ -508,8 +483,6 @@ export function main(argv = process.argv.slice(2)) {
     } else if (cmd === 'gate-open') {
       if (args._.length < 3) throw new ForgeError('Usage: forge.mjs gate-open <key> <gate> [extra files...] [--dry-run] [--json] [--today <yyyy-mm-dd>].', 'bad-args');
       const where = resolve(opts);
-      // An untrusted config must not turn the plan review off, so it stops the command as it stops `config`.
-      assertTrusted(where, ['config/']);
       const loaded = loadConfig(where.configDir);
       const config = loaded.files.length ? loaded.config : null;
       let result;
@@ -538,11 +511,8 @@ export function main(argv = process.argv.slice(2)) {
       } catch (err) { throw new ForgeError(err.message, 'gate-approve'); }
       if (args.json) console.log(JSON.stringify(result, null, 2));
       else console.log(` ${result.gate} ${result.status} (${result.date}, ${result.method}): ${result.manifest} sha256 ${result.hash}. ${args.dryRun ? 'Would write' : 'Wrote'}: ${result.writes.join(', ')}.`);
-    } else if (cmd === 'trust') {      const where = resolve(opts);
-      if (args._[1] === 'approve') console.log(JSON.stringify(approve(where, args._.slice(2)), null, 2));
-      else console.log(JSON.stringify(trustStatus(where), null, 2));
     } else {
-      console.error('Usage: node forge.mjs <where|config|doctor|lint|detect|init|bind|seed|board|styleguide|local-key|worktree|live|open|gate-open|gate-approve|hook|context|trust|run> [--wiki <dir>] [--cwd <dir>] [--json]');
+      console.error('Usage: node forge.mjs <where|config|doctor|lint|detect|init|bind|seed|board|styleguide|local-key|worktree|live|open|gate-open|gate-approve|hook|context> [--wiki <dir>] [--cwd <dir>] [--json]');
       return 2;
     }
     return 0;

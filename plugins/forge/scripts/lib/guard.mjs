@@ -1,11 +1,11 @@
 // The gate guard: the preToolUse hook of each host. Before a shell command pushes a ticket branch,
 // it checks the gates of the ticket with checkAction('ship'): the same check
 // as `forge.mjs lint`, so a missing or stale Shippable? approval stops the command, not only a written rule.
-// The 2 approval commands (`forge.mjs gate-approve` and `forge.mjs trust approve`) get `ask` in each folder and each policy,
-// also with `policy.gateGuard: off`: an approval is the yes of the user, so the agent must not give it alone.
+// The approval command `forge.mjs gate-approve` gets `ask` in each folder and each mode of the guard,
+// also with FORGE_GATE_GUARD=off: an approval is the yes of the user, so the agent must not give it alone.
 // In a mode with no prompt, they are denied, and the user runs them in a terminal.
 // It reads the words of the command, so it is a net and not a wall: a script that pushes is not seen.
-// A ticket whose README cannot be read stops a push too: the gates are unknown (policy.gateGuard sets deny or ask).
+// A ticket whose README cannot be read stops a push too: the gates are unknown (FORGE_GATE_GUARD and policy.gateGuard set deny or ask).
 // It never stops other work: a folder with no ticket, no wiki, or a config that cannot be read lets the command run.
 import { spawnSync } from 'node:child_process';
 import os from 'node:os';
@@ -16,9 +16,19 @@ import { listTickets } from './tickets.mjs';
 import { checkAction, regular, within } from './validation.mjs';
 import { baseBranchOf, codeBinding, resolveCommit } from './code-bind.mjs';
 import { FORGE_VALUE_OPTIONS } from './cli-options.mjs';
-import { ticketOfFolder, trustedConfig } from './hook.mjs';
+import { safeConfig, ticketOfFolder } from './hook.mjs';
 
 export const GUARD_MODES = ['deny', 'ask', 'off'];
+
+/**
+ * The mode of the guard. FORGE_GATE_GUARD (deny, ask, off) wins. Else the wiki value: only `ask` counts, and any other value
+ * (also `off` since 14.1.0) acts as `deny`.
+ */
+export function guardMode(config, env = process.env) {
+  const fromEnv = String(env.FORGE_GATE_GUARD ?? '').trim().toLowerCase();
+  if (GUARD_MODES.includes(fromEnv)) return fromEnv;
+  return config?.policy?.gateGuard === 'ask' ? 'ask' : 'deny';
+}
 const ENDS = ';|&()`';
 // The wrappers that start another command, with their options that take a value (the next word).
 const WRAPPERS = new Map([
@@ -39,7 +49,7 @@ const NO_TOOL = new Set(['for', 'select', 'case', 'fi', 'done', 'esac', '}']);
 const SCRIPT_TOOLS = new Set(['node', 'bun', 'deno']);
 const LAUNCHERS = new Set(['npx', 'forge', 'forge.cmd', 'forge.mjs']);
 const EVAL_OPTIONS = new Set(['-e', '--eval', '-p', '--print', '--import', '-r', '--require']);
-const APPROVAL_TEXT = /gate-approve|trust\s+approve|approve\.mjs|approveGate/;
+const APPROVAL_TEXT = /gate-approve|approve\.mjs|approveGate/;
 const MOVES = new Set(['cd', 'pushd', 'chdir', 'set-location', 'sl']);
 const GIT_VALUE_OPTIONS = new Set(['-c', '--git-dir', '--work-tree', '--namespace', '--super-prefix', '--config-env']);
 const PUSH_VALUE_OPTIONS = new Set(['-o', '--push-option', '--repo', '--receive-pack', '--exec']);
@@ -314,7 +324,7 @@ const toolName = (word) => String(word ?? '').split(/[\\/]/).pop().replace(/\.ex
 
 /**
  * The approval action of a forge call, or null. The call is `node <...>/forge.mjs` or a launcher (`forge`, `forge.cmd`).
- * `gate-approve` is an action, except with `--dry-run` or a help word. `trust approve` is an action; `trust` alone is not.
+ * `gate-approve` is an action, except with `--dry-run` or a help word.
  */
 function approveCall(words, cwd) {
   const tool = toolName(words[0]);
@@ -340,17 +350,16 @@ function approveCall(words, cwd) {
   }
   const [sub, first, second] = plain;
   if (sub === 'gate-approve' && !flags) return { kind: 'approve', cwd, command: 'gate-approve', key: first ?? '', gate: second ?? '', answer };
-  if (sub === 'trust' && first === 'approve' && !flags) return { kind: 'approve', cwd, command: 'trust approve', files: plain.slice(2) };
   return null;
 }
 
 /**
  * True when a command can run an approval in a form that approveCall does not read (the text scan). It is true when:
  * (a) the tool is node, bun, deno, or npx, and its script word (the first word that is no option) is not known (it has `$` or a backtick),
- *     and a word is `gate-approve`, or `trust` comes before `approve`; or the script word is forge.mjs or a launcher of forge, and
- *     `gate-approve` (or `trust`, then `approve`) is the subcommand of the call that approveCall reads. For npx the launcher can follow options;
+ *     and a word is `gate-approve`; or the script word is forge.mjs or a launcher of forge, and
+ *     `gate-approve` is the subcommand of the call that approveCall reads. For npx the launcher can follow options;
  * (b) the tool is node, bun, or deno, and the value of `-e`, `--eval`, `-p`, `--print`, `--import`, or `-r` names `approve.mjs` or `approveGate`;
- * (c) the tool is a shell with `-c`, and its string names `gate-approve`, `trust approve`, or `approve.mjs`;
+ * (c) the tool is a shell with `-c`, and its string names `gate-approve` or `approve.mjs`;
  * (d) the tool is node, bun, deno, or a shell, and the body of its heredoc names one of these.
  * A dry run or a help word is no approval. A plain `node --check .../approve.mjs` or `node --test` is none of these.
  * `grep` and `cat` are other tools, so they give no verdict.
@@ -364,8 +373,6 @@ function approvalText(words, heredoc) {
     const first = rest.find((word) => !word.startsWith('-'));
     if (first !== undefined && /[$`]/.test(first)) {
       if (rest.includes('gate-approve')) return true;
-      const trust = rest.indexOf('trust');
-      if (trust !== -1 && rest.indexOf('approve', trust) !== -1) return true;
     } else if (first !== undefined) {
       const at = rest.findIndex((word) => LAUNCHERS.has(toolName(word)) || toolName(word) === 'forge.mjs');
       if (at !== -1 && (tool === 'npx' || rest[at] === first) && approveCall(['forge', ...rest.slice(at + 1)], '')) return true;
@@ -447,8 +454,8 @@ function pushTargets(args) {
 
 /**
  * The guarded actions of a shell line. Each action has the folder where it runs: `cd` and `git -C` change it.
- * - `approve`: a `forge.mjs gate-approve` or `forge.mjs trust approve` call (not with `--dry-run` or a help word), with its
- *   `command`, and the `key`, `gate`, and `answer` (gate-approve) or the `files` (trust approve). A command that approveCall
+ * - `approve`: a `forge.mjs gate-approve` call (not with `--dry-run` or a help word), with its
+ *   `command`, and the `key`, `gate`, and `answer`. A command that approveCall
  *   does not read, but that the text scan finds (approvalText), is an `approve` action with `scan: true`.
  * - `push`: each `git push` (not a dry run), with the branches that it names (`refs`, `all`).
  * A `cd` inside parentheses, `$( )`, or backticks does not change the folder after them. A `cd` in a pipeline (`cd x | cmd`) or before `&`
@@ -535,12 +542,10 @@ const LABEL = { push: 'a push' };
 /** The ask verdict for an approval command: the reason names the command and what it approves. */
 function approveVerdict(action) {
   if (action.scan) {
-    const question = 'this command can run a Forge approval in a form that the guard cannot read: it names gate-approve, trust approve, or approve.mjs.';
+    const question = 'this command can run a Forge approval in a form that the guard cannot read: it names gate-approve or approve.mjs.';
     return { decision: 'ask', key: '', question, reason: `Forge gate guard: ${question} Allow it only if you gave this answer yourself.` };
   }
-  const what = action.command === 'gate-approve'
-    ? `\`forge.mjs gate-approve\` records the approval of ${action.gate || '(no gate)'} for ${action.key || '(no key)'} with the answer ${JSON.stringify(action.answer)}`
-    : `\`forge.mjs trust approve\` trusts the config and rule files ${action.files.length ? action.files.join(', ') : '(no file named)'}`;
+  const what = `\`forge.mjs gate-approve\` records the approval of ${action.gate || '(no gate)'} for ${action.key || '(no key)'} with the answer ${JSON.stringify(action.answer)}`;
   const key = action.key ?? '';
   const question = `this command is an approval: ${what}.`;
   return { decision: 'ask', key, question, reason: `Forge gate guard: ${question} Allow it only if you gave this answer yourself.` };
@@ -572,7 +577,7 @@ function codeMismatch(match, where, config, action, deadline) {
   }
   if (!ticket.branch) return `the README branch is empty, but the Shippable? approval binds the branch ${code.branch}. Open Shippable? again.`;
   if (code.branch !== ticket.branch) return `The README branch (${ticket.branch}) is not the branch of the Shippable? approval (${code.branch}). Open Shippable? again.`;
-  if (!config) return 'the Forge config is not trusted (run `forge.mjs trust`).';
+  if (!config) return 'the Forge config cannot be read (run `forge.mjs doctor`).';
   const baseBranch = baseBranchOf(config, where.repo.path);
   let now;
   try { now = codeBinding({ worktree: ticket.worktree || where.repo.path, branch: ticket.branch, baseBranch, deadline }); }
@@ -599,11 +604,11 @@ function noPrompt(verdict, mode) {
 
 /**
  * The verdict for one tool call: null to let it run, or { decision, key, reason }.
- * - A push needs the ship gates. Without them: `deny` or `ask`, from `policy.gateGuard`
- *   (default `deny`; `off` stops the guard).
- * - An approval command (`gate-approve`, `trust approve`) gets `ask` in each folder, also with `gateGuard: off`,
+ * - A push needs the ship gates. Without them: `deny` or `ask`, from guardMode (FORGE_GATE_GUARD, then `policy.gateGuard`;
+ *   default `deny`; only FORGE_GATE_GUARD=off stops the guard).
+ * - An approval command (`gate-approve`) gets `ask` in each folder, also with the guard off,
  *   and `deny` in a mode with no prompt.
- * - A `deny` wins over an `ask`. Only a trusted config can change the mode.
+ * - A `deny` wins over an `ask`.
  */
 export function preTool(event, { env = process.env, deadlineMs = DEADLINE_MS } = {}) {
   if (!event?.command) return null;
@@ -612,7 +617,7 @@ export function preTool(event, { env = process.env, deadlineMs = DEADLINE_MS } =
   const base = event.cwd || process.cwd();
   const homeTry = tryLocate(base, env);
   const home = homeTry.where;
-  const homeConfig = home?.wiki.exists ? trustedConfig(home, env) : null;
+  const homeConfig = home?.wiki.exists ? safeConfig(home, env) : null;
   const verdicts = [];
   // The ticket of a folder, and each ticket whose branch a push names: a push of a ticket branch runs from each folder.
   const ticketsAt = (where, config, action, cwd) => {
@@ -628,7 +633,7 @@ export function preTool(event, { env = process.env, deadlineMs = DEADLINE_MS } =
     } catch { return []; }
   };
   for (const action of guardActions(event.command, base, { env })) {
-    // An approval needs no ticket, no wiki, and no trusted config, and no gateGuard mode turns it off.
+    // An approval needs no ticket, no wiki, and no readable config, and no guard mode turns it off.
     if (action.kind === 'approve') { verdicts.push(approveVerdict(action)); continue; }
     const placed = samePath(action.cwd, base) ? homeTry : tryLocate(action.cwd, env);
     let where = placed.where;
@@ -640,7 +645,7 @@ export function preTool(event, { env = process.env, deadlineMs = DEADLINE_MS } =
         continue;
       }
     }
-    let config = where === home ? homeConfig : (where?.wiki.exists ? trustedConfig(where, env) : null);
+    let config = where === home ? homeConfig : (where?.wiki.exists ? safeConfig(where, env) : null);
     let found = ticketsAt(where, config, action, action.cwd);
     // A push in a folder that Forge cannot know (`cd $X`) or that is no Git work tree (`cd ~/nowhere`)
     // uses the ticket of the session folder too. A push in another real repository keeps its folder.
@@ -651,7 +656,7 @@ export function preTool(event, { env = process.env, deadlineMs = DEADLINE_MS } =
       found = ticketsAt(home, homeConfig, action, base);
     }
     if (!found.length) continue;
-    const mode = GUARD_MODES.includes(config?.policy?.gateGuard) ? config.policy.gateGuard : 'deny';
+    const mode = guardMode(config, env);
     if (mode === 'off') continue;
     for (const match of found) {
       if (match.broken) {

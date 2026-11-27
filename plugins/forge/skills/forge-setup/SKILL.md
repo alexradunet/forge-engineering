@@ -20,7 +20,6 @@ At the end of setup, each item below is true:
 - The wiki exists, is bound to the repository, and holds the two config files (`repo.md`, `policy.md`) and the rule page.
 - `repo.branchPattern` holds your name, not `<user>`. `doctor` shows no `config:placeholder` line.
 - The first **Checkouts** row is your main clone. `doctor` shows no `config:checkouts` line.
-- The user approved each config file and rule page by hash (`trust`).
 
 ## 📁 Commands
 
@@ -38,13 +37,12 @@ resolved path in each command. All commands run on Windows, macOS, and Linux.
 | `<F> seed [--force]` | Copy the config templates to `<wiki>/forge/config`, and the rule page to `<wiki>/rules` | the wiki folder |
 | `<F> config set <file>.<key>=<value> ...` | Set frontmatter values. Validates first; writes nothing on a problem | the wiki folder |
 | `<F> config row checkouts <name> [cells...] [--delete]` | Add, replace, or delete a row of the **Checkouts** table | the wiki folder |
-| `<F> config --json` | Read the approved config | nothing |
-| `<F> trust [approve <path>=<hash> ...]` | Show or approve the files under `<wiki>/forge` and `<wiki>/rules` | the user data folder |
+| `<F> config --json` | Read the config | nothing |
 
 - Add `--wiki <dir>` to a command to use another wiki for one call.
 - Put each `config set` assignment and each table cell in double quotes. This keeps `{KEY}`, spaces, and `@` safe in every shell.
 - `config set` adds quotes to a value that starts with `{`. A cell cannot hold `|`.
-- Every `config set` and `config row` changes a file hash. Run **Trust** after the last edit.
+- Show the user each change of `config set` and `config row`. The wiki is a Git repository, so `git diff` shows it.
 
 ## 🧭 Pick the flow
 
@@ -132,22 +130,14 @@ Tell the user what the 3 large-team values do:
 - `qaHandover`: after the merge, forge drafts a QA handover comment.
 
 The user can change each value. `planReview: panel` (3 reviewer subagents) also exists, and no team size sets it.
-The values are in `policy.md`, so **Trust** (step 7) covers them. Keep the values of a policy that a team already shares, unless the user asks to change them.
+The values are in `policy.md`, and the wiki commit is their record. Keep the values of a policy that a team already shares, unless the user asks to change them.
 
 ### Step 6. Check the values
 
 Run `doctor`. Fix each `config:placeholder` and `config:checkouts` line with step 4.
-Do not continue to **Trust** (step 7) while `<user>` remains in `repo.branchPattern`. `worktree` refuses that pattern.
+Do not continue to step 7 while `<user>` remains in `repo.branchPattern`. `worktree` refuses that pattern.
 
-### Step 7. Trust
-
-Run `git -C <wiki> status --short` and `git -C <wiki> diff -- forge rules`. Show what changed.
-Run `trust`. Show each `new` or `changed` file with the first 12 characters of its hash.
-After the user says yes, run `trust approve <path>=<hash> ...` for exactly those files.
-A rule page shows as `../rules/<name>.md`. The hook gives a rule page to each session only after approval.
-The gate guard asks before `trust approve`. In `bypassPermissions` mode it denies the command: the user runs `trust approve` in a terminal.
-
-### Step 8. Finish
+### Step 7. Finish
 
 1. Run `doctor`. It must show no `fail` line.
 2. Offer the 🧩 Optional extras.
@@ -159,12 +149,12 @@ The gate guard asks before `trust approve`. In `bypassPermissions` mode it denie
 
 Use this flow when a forge update changed `templates/config/`. Keep `policy.md` and the rule page.
 
-1. Run `config --json` and save your personal values: `repo.branchPattern`, `repo.changeName`, and the **Checkouts** rows. When trust fails, read the files directly.
+1. Run `config --json` and save your personal values: `repo.branchPattern`, `repo.changeName`, and the **Checkouts** rows. 
 2. Recommend a wiki commit first, so that `git diff` shows the refresh.
 3. Run `seed --force` after approval. It replaces `repo.md`.
 4. Re-apply the saved values with `config set` and `config row` (step 4).
 5. To refresh `policy.md` or the rule page, show the diff against `<plugin>/templates/`, and copy the file only after approval.
-6. Run steps 6 (check) and 7 (trust).
+6. Run step 6 (check).
 
 ## ⏯️ Resume
 
@@ -177,9 +167,8 @@ Do not repeat a step that is already done. Do not ask again for values that the 
 | `warn wiki:binding` | Step 2: run `bind` |
 | `warn config:<kind>.md Missing` | Step 3 (seed) |
 | `warn config:placeholder` or `warn config:checkouts` | Step 4 (your values) |
-| `fail trust` | Step 7 (trust) |
 | `fail config` | Show the error. Fix the value with `config set`. |
-| no `fail`, no `warn` | Step 8 |
+| no `fail`, no `warn` | Step 7 |
 
 ## 🧩 Optional extras
 
@@ -193,7 +182,7 @@ Show the current values, and change one only when the user asks. Step 5 does not
 - `noMergeWeekdays`: days with no merge, for example a release day.
 - `maxImplementers`: the maximum number of implementer sessions. The default is 6.
 - `adversarialReviewModel`: the reviewer model. Empty means a model family different from the author.
-- `gateGuard`: what the gate guard does with a push of a ticket that has no valid Shippable? approval: `deny` (default), `ask`, or `off`.
+- `gateGuard`: what the gate guard does with a push of a ticket that has no valid Shippable? approval: `deny` (default) or `ask`. To turn the guard off, the user sets `FORGE_GATE_GUARD=off` in the environment: a wiki value `off` acts as `deny`.
 
 Write a change with `config set`, for example `"policy.maxImplementers=4"`.
 A hook can add steps and make rules stricter. It can never weaken a core rule.
@@ -204,8 +193,8 @@ Tell the user: say "show the board" in any session. The `board` skill shows the 
 
 ## 📚 Wiki remote
 
-The wiki is `../<repo>.forge/wiki`, and the Forge folder is next to `../<repo>.worktrees`. The wiki holds the forge config,
-helper scripts, and knowledge pages. `raw/` and `archive/` are next to the wiki, so they stay local.
+The wiki is `../<repo>.forge/wiki`, and the Forge folder is next to `../<repo>.worktrees`. The wiki holds the forge config
+and knowledge pages. `raw/` and `archive/` are next to the wiki, so they stay local.
 
 The Forge folder has a launcher: the user runs `../<repo>.forge/forge open` in a terminal (`forge.cmd` on Windows).
 It starts the live server of the repository in the background and opens the board and the wiki in the browser.
@@ -229,5 +218,5 @@ Tell the user this command at the end of the setup.
 - Never put a secret in a config file or in the wiki.
 - Ask before each write to the wiki: show the command and the files that change.
 - A config value that all users share changes in the forge repository (`templates/`), not only in one wiki.
-  Then each user runs 🔄 Refresh the config. Helper scripts go into `<wiki>/forge/scripts`. See `docs/wiki.md` for sharing and trust.
-- Never approve trust for the user. Never call a tracker, a change request host, or a CI tool.
+  Then each user runs 🔄 Refresh the config. See `docs/wiki.md` for sharing.
+- Never call a tracker, a change request host, or a CI tool.

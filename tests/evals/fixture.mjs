@@ -4,7 +4,7 @@
 //   <base>/ws/app                  the main checkout (Git ignores it in the worktree)
 //   <base>/ws/app.forge            the Forge folder of the repository: wiki/ with the config, and raw/ with one ticket folder
 //   <base>/ws/origin.git           the remote, a bare repository on this machine
-//   <base>/data                    the Forge data folder (FORGE_DATA_DIR): the trust approvals
+//   <base>/data                    the Forge data folder (FORGE_DATA_DIR)
 //   <base>/bin                     the gh stub (gh-stub.mjs) that run.mjs puts first on the PATH
 //   <base>/gh-calls.jsonl          the calls that reached the gh stub
 // The main checkout is inside the worktree so that one folder holds each part of a run.
@@ -16,7 +16,6 @@ import { fileURLToPath } from 'node:url';
 import { resolve } from '../../plugins/forge/scripts/lib/repo.mjs';
 import { bind, seed } from '../../plugins/forge/scripts/lib/setup.mjs';
 import { setValues, upsertRow } from '../../plugins/forge/scripts/lib/config-write.mjs';
-import { approve, status } from '../../plugins/forge/scripts/lib/trust.mjs';
 import { sha256 } from '../../plugins/forge/scripts/lib/validation.mjs';
 import { GATE_DOCS } from '../../plugins/forge/scripts/lib/ticket.mjs';
 import { codeBinding } from '../../plugins/forge/scripts/lib/code-bind.mjs';
@@ -242,7 +241,7 @@ export function buildFixture(name, { env = process.env } = {}) {
   // The binding of the code that the Shippable? gate holds: a scenario with a code review file has it, and the file names it.
   const binding = scenario.codeReview ? codeBinding({ worktree: root, branch: BRANCH, baseBranch: 'main' }) : null;
 
-  // The wiki, the config, and the approval of its files, as the user gives it in setup.
+  // The wiki, the config, as the user gives it in setup.
   // Forge 9: the Forge folder, with the wiki in wiki/ and the ticket folders in raw/ next to it.
   const wiki = path.join(root, 'app.forge', 'wiki');
   mkdirSync(wiki, { recursive: true });
@@ -253,7 +252,6 @@ export function buildFixture(name, { env = process.env } = {}) {
   setValues(configDir, ['repo.branchPattern=users/a/{KEY}-{slug}', ...DEFAULT_CONFIG, ...(scenario.config ?? [])]);
   // No GitHub repository has this name: a gh command that runs by error reaches nothing.
   upsertRow(configDir, 'checkouts', ['app', app, 'forge-eval-synthetic/app']);
-  approve(where, status(where, { env: runEnv }).files.map((f) => `${f.rel}=${f.sha.slice(0, 12)}`), { env: runEnv });
 
   // The ticket folder.
   const dir = path.join(root, 'app.forge', 'raw', 'tickets', KEY.toLowerCase());

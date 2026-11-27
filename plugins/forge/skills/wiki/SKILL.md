@@ -16,14 +16,14 @@ sessions read and update it. It is the shared memory layer between sessions.
 
 The wiki is its own Git repository. Keep it private when it holds company knowledge.
 Use a public wiki only when all tracked files and Git history contain public data.
-The wiki shares configuration and helper scripts through Git. It needs no separate distribution layer.
+The wiki shares configuration through Git. It needs no separate distribution layer.
 `raw/` and `archive/` are next to the wiki in `<forge>`. They are not in the wiki repository, so they stay on this machine only.
 
 ```text
 <wiki>/
   index.md        catalog: one line per page, grouped by area
   log.md          append-only change log
-  forge/          repo.json (binding), config/ (forge config), scripts/ (helper scripts)
+  forge/          repo.json (binding), config/ (forge config)
   tooling/        MCP, build, and environment gotchas
   <area>/         architecture, flows, and code knowledge (one folder for each product or codebase)
   decisions/      decisions and their reasons
