@@ -13,6 +13,7 @@
 // It never stops other work: a folder with no ticket, no wiki, or a config that cannot be read lets the command run.
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { resolve, samePath } from './repo.mjs';
 import { listTickets } from './tickets.mjs';
@@ -23,7 +24,26 @@ import { ticketOfFolder, trustedConfig } from './hook.mjs';
 
 export const GUARD_MODES = ['deny', 'ask', 'off'];
 const ENDS = ';|&()`';
-const WRAPPERS = new Set(['sudo', 'command', 'env', 'time', 'nohup', 'exec']);
+// The wrappers that start another command, with their options that take a value (the next word).
+const WRAPPERS = new Map([
+  ['sudo', new Set(['-u', '-g', '-C', '-D', '--user', '--group', '--chdir'])],
+  ['env', new Set(['-u', '-C', '--unset', '--chdir'])],
+  ['nice', new Set(['-n', '--adjustment'])],
+  ['timeout', new Set(['-s', '-k', '--signal', '--kill-after'])],
+  ['stdbuf', new Set(['-i', '-o', '-e', '--input', '--output', '--error'])],
+  ['command', new Set()],
+  ['exec', new Set(['-a'])],
+  ['time', new Set(['-f', '-o', '--format', '--output'])],
+  ['nohup', new Set()],
+]);
+// A shell keyword before a command is not the tool. A command that starts with a word of NO_TOOL has no tool.
+const KEYWORDS = new Set(['if', 'then', 'elif', 'else', 'do', 'while', 'until', '{', '!']);
+const NO_TOOL = new Set(['for', 'select', 'case', 'fi', 'done', 'esac', '}']);
+// The tools that run JavaScript, and the launchers of forge.
+const SCRIPT_TOOLS = new Set(['node', 'bun', 'deno']);
+const LAUNCHERS = new Set(['npx', 'forge', 'forge.cmd', 'forge.mjs']);
+const EVAL_OPTIONS = new Set(['-e', '--eval', '-p', '--print', '--import', '-r', '--require']);
+const APPROVAL_TEXT = /gate-approve|trust\s+approve|approve\.mjs|approveGate/;
 const MOVES = new Set(['cd', 'pushd', 'chdir', 'set-location', 'sl']);
 const GIT_VALUE_OPTIONS = new Set(['-c', '--git-dir', '--work-tree', '--namespace', '--super-prefix', '--config-env']);
 const PUSH_VALUE_OPTIONS = new Set(['-o', '--push-option', '--repo', '--receive-pack', '--exec']);
@@ -40,24 +60,75 @@ export const WRITE_CAPABILITIES = ['tracker.comment', 'tracker.create', 'tracker
 const NO_PROMPT_MODES = new Set(['bypassPermissions']);
 
 /**
- * The delimiter of a heredoc that starts at `text[start]` (after `<<` or `<<-`): { delimiter, end }.
+ * The delimiter of a heredoc that starts at `text[start]` (after `<<` or `<<-`): { delimiter, end, quoted }.
  * Quotes in the delimiter word group it, and they are not part of it: `'EOF'` and `"EOF"` give `EOF`.
+ * `quoted` is true when a quote or a backslash is in the word: the shell expands nothing in that body.
  */
 function heredocDelimiter(text, start) {
   let i = start;
   while (text[i] === ' ' || text[i] === '\t') i++;
   let delimiter = '';
+  let quoted = false;
   while (i < text.length && !/\s/.test(text[i]) && !ENDS.includes(text[i]) && text[i] !== '<' && text[i] !== '>') {
     const c = text[i];
     if (c === "'" || c === '"') {
       const close = text.indexOf(c, i + 1);
       const stop = close === -1 ? text.length : close;
       delimiter += text.slice(i + 1, stop);
+      quoted = true;
       i = stop + 1;
-    } else if (c === '\\' && i + 1 < text.length) { delimiter += text[i + 1]; i += 2; }
+    } else if (c === '\\' && i + 1 < text.length) { delimiter += text[i + 1]; quoted = true; i += 2; }
     else { delimiter += c; i++; }
   }
-  return { delimiter, end: i };
+  return { delimiter, end: i, quoted };
+}
+
+/** The index of the `)` that closes the `(` at `text[open]`, or -1. Quotes and escapes inside are skipped. */
+function matchParen(text, open) {
+  let depth = 0;
+  let quote = '';
+  for (let i = open; i < text.length; i++) {
+    const c = text[i];
+    if (quote) {
+      if (c === '\\' && quote === '"') i++;
+      else if (c === quote) quote = '';
+    } else if (c === '\\') i++;
+    else if (c === "'" || c === '"') quote = c;
+    else if (c === '(') depth++;
+    else if (c === ')' && --depth === 0) return i;
+  }
+  return -1;
+}
+
+/**
+ * The substitution that starts at `text[i]`: `$( )` or a pair of backticks. It gives { inner, end } (the text inside, and the index of
+ * the last character), or null. A substitution with no end runs to the end of the text, as a shell reads it.
+ */
+function substitutionAt(text, i) {
+  if (text[i] === '$' && text[i + 1] === '(') {
+    const close = matchParen(text, i + 1);
+    return { inner: text.slice(i + 2, close === -1 ? text.length : close), end: close === -1 ? text.length - 1 : close };
+  }
+  if (text[i] === '`') {
+    let close = -1;
+    for (let j = i + 1; j < text.length && close === -1; j++) {
+      if (text[j] === '\\') j++;
+      else if (text[j] === '`') close = j;
+    }
+    return { inner: text.slice(i + 1, close === -1 ? text.length : close), end: close === -1 ? text.length - 1 : close };
+  }
+  return null;
+}
+
+/** The inner text of each `$( )` and backtick span of a heredoc body. A backslash before `$` or a backtick makes it text. */
+function bodySubstitutions(body) {
+  const found = [];
+  for (let i = 0; i < body.length; i++) {
+    if (body[i] === '\\') { i++; continue; }
+    const sub = substitutionAt(body, i);
+    if (sub) { found.push(sub.inner); i = sub.end; }
+  }
+  return found;
 }
 
 /**
@@ -68,24 +139,51 @@ function heredocDelimiter(text, start) {
  * There are 2 exceptions, so that the text that a shell runs stays visible: a line with a shell command (`bash <<EOF`,
  * `cat <<EOF | sh`) keeps the heredoc text as commands, and `<<` in arithmetic (`$((a<<b))`) starts no heredoc.
  * A `#` at the start of a word starts a comment up to the end of the line, as in a shell.
+ * `$( )` and backticks give commands, also inside double quotes. A heredoc with an unquoted delimiter gives the `$( )` and
+ * backtick spans of its body as commands, because the shell runs them. A quoted delimiter keeps the whole body as data.
  */
 export function shellCommands(line) {
+  return scanShell(line).filter((item) => item.words).map((item) => item.words);
+}
+
+/**
+ * The items of a shell line, in order: `{ words }` for a command (with `heredoc`, the body text of its heredocs, when it has them),
+ * and `{ open: true }` and `{ close: true }` for each parenthesis or backtick pair, so that a caller can scope a `cd`.
+ */
+function scanShell(line) {
   const text = String(line ?? '');
-  const commands = [];
+  const items = [];
   let words = [];
   let word = null;
   let quote = '';
   let heredocs = [];
+  let tick = false; // true between a pair of backticks
   let lineStart = 0; // the index in `text` of the start of the current line
-  let lineFirst = 0; // the index in `commands` of the first command of the current line
+  let lineFirst = 0; // the index in `items` of the first item of the current line
   const endWord = () => { if (word !== null) { words.push(word); word = null; } };
-  const endCommand = () => { endWord(); if (words.length) commands.push(words); words = []; };
+  const inside = (inner) => { items.push({ open: true }, ...scanShell(inner), { close: true }); };
+  // The commands of substitutions in quotes wait until their own command is done, so that the command comes first.
+  let pending = [];
+  const endCommand = () => {
+    endWord();
+    if (words.length) items.push({ words });
+    words = [];
+    for (const inner of pending) inside(inner);
+    pending = [];
+  };
   for (let i = 0; i < text.length; i++) {
     const c = text[i];
     const next = text[i + 1];
     if (quote) {
       if (c === quote) quote = '';
       else if (c === '\\' && quote === '"' && next !== undefined && '"\\$`'.includes(next)) { word += next; i++; }
+      else if (quote === '"' && (c === '$' || c === '`') && substitutionAt(text, i)) {
+        // The shell runs a substitution inside double quotes. The word keeps its text.
+        const sub = substitutionAt(text, i);
+        pending.push(sub.inner);
+        word += text.slice(i, sub.end + 1);
+        i = sub.end;
+      }
       else word += c;
       continue;
     }
@@ -106,47 +204,101 @@ export function shellCommands(line) {
       const before = text.slice(lineStart, i);
       const arithmetic = (before.match(/\(\(/g) ?? []).length > (before.match(/\)\)/g) ?? []).length;
       const strip = text[i + 2] === '-';
-      const { delimiter, end } = heredocDelimiter(text, i + (strip ? 3 : 2));
+      const { delimiter, end, quoted } = heredocDelimiter(text, i + (strip ? 3 : 2));
       // Only a name is a delimiter, and not in arithmetic. So `$((1<<2))` starts no heredoc, and it cannot hide the commands after it.
-      if (!arithmetic && /^[A-Za-z_][A-Za-z0-9_]*$/.test(delimiter)) { heredocs.push({ delimiter, strip }); i = end - 1; }
+      if (!arithmetic && /^[A-Za-z_][A-Za-z0-9_]*$/.test(delimiter)) { heredocs.push({ delimiter, strip, quoted, owner: words }); i = end - 1; }
       else i += 1;
       continue;
     }
     if (c === '\n') {
       endCommand();
       // A shell on this line runs the heredoc text (`bash <<EOF`, `cat <<EOF | sh`), so that text stays as commands.
-      const runsText = commands.slice(lineFirst).some((command) => SHELLS.has(toolName(toolWords(command)[0])));
+      const runsText = items.slice(lineFirst).some((item) => item.words && SHELLS.has(toolName(toolWords(item.words)[0])));
       if (runsText) heredocs = [];
       // Skip the text of each heredoc of this line, up to and with its end line.
       let pos = i + 1;
-      for (const { delimiter, strip } of heredocs) {
+      for (const { delimiter, strip, quoted, owner } of heredocs) {
+        const bodyStart = pos;
+        let bodyEnd = text.length;
         while (pos < text.length) {
           const stop = text.indexOf('\n', pos);
           const lineEnd = stop === -1 ? text.length : stop;
+          const lineBegin = pos;
           const body = text.slice(pos, lineEnd).replace(/\r$/, '');
           pos = lineEnd + 1;
-          if ((strip ? body.replace(/^\t+/, '') : body) === delimiter) break;
+          if ((strip ? body.replace(/^\t+/, '') : body) === delimiter) { bodyEnd = lineBegin; break; }
         }
+        const body = text.slice(bodyStart, bodyEnd);
+        // The command keeps the body text, for the scan of node and shells. An unquoted body gives its substitutions as commands.
+        const command = items.find((item) => item.words === owner);
+        if (command) command.heredoc = (command.heredoc ?? '') + body;
+        if (!quoted) for (const inner of bodySubstitutions(body)) inside(inner);
       }
       heredocs = [];
       i = pos - 1;
       lineStart = pos;
-      lineFirst = commands.length;
+      lineFirst = items.length;
       continue;
     }
     if (/\s/.test(c)) { endWord(); continue; }
+    if (c === '(' || c === ')') { endCommand(); items.push(c === '(' ? { open: true } : { close: true }); continue; }
+    if (c === '`') {
+      // An opening backtick stays in the word, as `$` does, so that `cd `pwd`` has a target that is not known.
+      if (!tick) word = (word ?? '') + c;
+      endCommand();
+      items.push(tick ? { close: true } : { open: true });
+      tick = !tick;
+      continue;
+    }
     if (ENDS.includes(c)) { endCommand(); continue; }
     word = (word ?? '') + c;
   }
   endCommand();
-  return commands;
+  return items;
 }
 
-/** The words of a command without the variable assignments and the wrappers (sudo, env, ...) before the tool. */
+/**
+ * The words of a command without the variable assignments, the shell keywords (`if`, `then`, `do`, `!`, ...), and the wrappers
+ * with their options (`sudo -u x`, `timeout -s KILL 30`, `nice -n 5`, ...) before the tool. A command that starts with `for`, `case`,
+ * `fi`, `done`, or `}` has no tool.
+ */
 function toolWords(words) {
   let i = 0;
-  while (i < words.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[i]) || WRAPPERS.has(words[i]))) i++;
-  return words.slice(i);
+  while (i < words.length) {
+    const word = words[i];
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(word) || KEYWORDS.has(word)) { i++; continue; }
+    const name = toolName(word);
+    if (!WRAPPERS.has(name)) break;
+    const step = skipWrapper(name, words, i);
+    if (step.words) return toolWords(step.words);
+    i = step.next;
+  }
+  return NO_TOOL.has(words[i]) ? [] : words.slice(i);
+}
+
+/**
+ * The end of a wrapper: { next } is the index of the first word after the wrapper and its options. The options of WRAPPERS take a value;
+ * any other option has no value. `--` ends the options, and `timeout` takes one duration word. `env -S <text>` splits its text into a
+ * command, so it gives { words }: the words of that text, then the words after it.
+ */
+function skipWrapper(name, words, from) {
+  const values = WRAPPERS.get(name);
+  let i = from + 1;
+  while (i < words.length) {
+    const word = words[i];
+    if (word === '--') { i++; break; }
+    if (name === 'env' && /^[A-Za-z_][A-Za-z0-9_]*=/.test(word)) { i++; continue; }
+    if (!word.startsWith('-') || word === '-') break;
+    if (name === 'env' && (word === '-S' || word === '--split-string')) {
+      return { words: [...(shellCommands(words[i + 1] ?? '')[0] ?? []), ...words.slice(i + 2)] };
+    }
+    if (name === 'env' && (word.startsWith('--split-string=') || /^-S./.test(word))) {
+      return { words: [...(shellCommands(word.startsWith('--') ? word.slice(15) : word.slice(2))[0] ?? []), ...words.slice(i + 1)] };
+    }
+    i += values.has(word) ? 2 : 1;
+  }
+  if (name === 'timeout' && i < words.length) i++;
+  return { next: i };
 }
 
 const toolName = (word) => String(word ?? '').split(/[\\/]/).pop().replace(/\.exe$/i, '').toLowerCase();
@@ -183,13 +335,62 @@ function approveCall(words, cwd) {
   return null;
 }
 
-/** The subcommand of a git call, its arguments, and the folder that `-C` selects. */
-function gitCall(words, cwd) {
+/**
+ * True when a command can run an approval in a form that approveCall does not read (the text scan). It is true when:
+ * (a) the tool is node, bun, deno, npx, or a forge launcher, and a word is `gate-approve`, or `trust` comes before `approve`;
+ * (b) the tool is node, bun, or deno, and the value of `-e`, `--eval`, `-p`, `--print`, `--import`, or `-r` names `approve.mjs` or `approveGate`;
+ * (c) the tool is a shell with `-c`, and its string names `gate-approve`, `trust approve`, or `approve.mjs`;
+ * (d) the tool is node, bun, deno, or a shell, and the body of its heredoc names one of these.
+ * A dry run or a help word is no approval. A plain `node --check .../approve.mjs` or `node --test` is none of these.
+ * `grep` and `cat` are other tools, so they give no verdict.
+ */
+function approvalText(words, heredoc) {
+  const tool = toolName(words[0]);
+  const rest = words.slice(1);
+  if (rest.includes('--dry-run') || rest.some((word) => HELP.has(word))) return false;
+  const script = SCRIPT_TOOLS.has(tool);
+  if (script || LAUNCHERS.has(tool)) {
+    if (rest.includes('gate-approve')) return true;
+    const trust = rest.indexOf('trust');
+    if (trust !== -1 && rest.indexOf('approve', trust) !== -1) return true;
+  }
+  if (script) {
+    for (let i = 0; i < rest.length; i++) {
+      const joined = /^(--[a-z-]+)=(.*)$/s.exec(rest[i]);
+      const value = joined && EVAL_OPTIONS.has(joined[1]) ? joined[2] : EVAL_OPTIONS.has(rest[i]) ? rest[i + 1] : null;
+      if (value !== null && value !== undefined && /approve\.mjs|approveGate/.test(value)) return true;
+    }
+  }
+  if (SHELLS.has(tool)) {
+    const at = rest.findIndex((word) => /^-[a-z]*c[a-z]*$/.test(word));
+    if (at !== -1 && rest.slice(at + 1).some((word) => APPROVAL_TEXT.test(word))) return true;
+  }
+  return (script || SHELLS.has(tool)) && typeof heredoc === 'string' && APPROVAL_TEXT.test(heredoc);
+}
+
+/** The home folder for `~`: HOME, else USERPROFILE, else the home of the user. */
+function homeFolder(env) {
+  return env?.HOME || env?.USERPROFILE || os.homedir();
+}
+
+/**
+ * The folder that a `cd` or `git -C` target selects from `base`, or null when it cannot be known: a target with `$` or a backtick,
+ * `~user`, or `-`. A relative target from an unknown folder is unknown. `~` and `~/x` use the home folder.
+ */
+function moveTo(base, target, env) {
+  if (/[$`]/.test(target) || target === '-' || /^~[^/\\]/.test(target)) return null;
+  if (target === '~' || target.startsWith('~/') || target.startsWith('~\\')) return path.resolve(homeFolder(env), target.slice(2));
+  if (base === null) return path.isAbsolute(target) ? path.resolve(target) : null;
+  return path.resolve(base, target);
+}
+
+/** The subcommand of a git call, its arguments, and the folder that `-C` selects (null when it is unknown). */
+function gitCall(words, cwd, env) {
   let folder = cwd;
   let i = 1;
   while (i < words.length) {
     const word = words[i];
-    if (word === '-C' && words[i + 1] !== undefined) { folder = path.resolve(folder, words[i + 1]); i += 2; }
+    if (word === '-C' && words[i + 1] !== undefined) { folder = moveTo(folder, words[i + 1], env); i += 2; }
     else if (GIT_VALUE_OPTIONS.has(word)) i += 2;
     else if (word.startsWith('-')) i += 1;
     else break;
@@ -318,36 +519,46 @@ function pushTargets(args) {
 /**
  * The guarded actions of a shell line. Each action has the folder where it runs: `cd` and `git -C` change it.
  * - `approve`: a `forge.mjs gate-approve` or `forge.mjs trust approve` call (not with `--dry-run` or a help word), with its
- *   `command`, and the `key`, `gate`, and `answer` (gate-approve) or the `files` (trust approve).
+ *   `command`, and the `key`, `gate`, and `answer` (gate-approve) or the `files` (trust approve). A command that approveCall
+ *   does not read, but that the text scan finds (approvalText), is an `approve` action with `scan: true`.
  * - `push`: each `git push` (not a dry run), with the branches that it names (`refs`, `all`).
  * - `change`: a command that starts with one of the change commands (word lists).
  * - `write`: a command that matches one of the write commands ({ capability, words, method }), with its
  *   `capabilities` and its first `words`. A change command is not also a write action: the change action asks.
+ * A `cd` inside parentheses, `$( )`, or backticks does not change the folder after them. When a `cd` or `git -C` target cannot be known,
+ * the action has `unknown: true` and the session folder `cwd`, so that preTool uses the ticket of the session folder.
+ * `env` gives the home folder for `~` (HOME, USERPROFILE).
  */
-export function guardActions(line, cwd, { changes = [], writes = [] } = {}) {
+export function guardActions(line, cwd, { changes = [], writes = [], env = process.env } = {}) {
   const actions = [];
-  let folder = cwd;
-  for (const raw of shellCommands(line)) {
-    const words = toolWords(raw);
+  let folder = cwd; // null when the folder is unknown
+  const saved = [];
+  const here = (known = folder) => ({ cwd: known ?? cwd, ...(known === null ? { unknown: true } : {}) });
+  for (const item of scanShell(line)) {
+    if (item.open) { saved.push(folder); continue; }
+    if (item.close) { if (saved.length) folder = saved.pop(); continue; }
+    const words = toolWords(item.words);
     if (!words.length) continue;
     const tool = toolName(words[0]);
     if (MOVES.has(tool)) {
-      const target = words.slice(1).find((word) => !word.startsWith('-'));
-      if (target) folder = path.resolve(folder, target);
+      const target = words.slice(1).find((word) => word === '-' || !word.startsWith('-'));
+      if (target) folder = moveTo(folder, target, env);
+      else if (tool === 'cd') folder = homeFolder(env);
       continue;
     }
-    const approval = approveCall(words, folder);
-    if (approval) { actions.push(approval); continue; }
+    const approval = approveCall(words, folder ?? cwd);
+    if (approval) { actions.push({ ...approval, ...here() }); continue; }
+    if (approvalText(words, item.heredoc)) { actions.push({ kind: 'approve', ...here(), command: 'approve text', scan: true, key: '', gate: '', answer: '', files: [] }); continue; }
     if (tool === 'git') {
-      const call = gitCall(words, folder);
-      if (call.sub === 'push' && !call.args.some((arg) => arg === '--dry-run' || arg === '-n')) actions.push({ kind: 'push', cwd: call.cwd, ...pushTargets(call.args) });
+      const call = gitCall(words, folder, env);
+      if (call.sub === 'push' && !call.args.some((arg) => arg === '--dry-run' || arg === '-n')) actions.push({ kind: 'push', ...here(call.cwd), ...pushTargets(call.args) });
       continue;
     }
-    if (changes.some((first) => matches(words, { words: first }))) { actions.push({ kind: 'change', cwd: folder }); continue; }
+    if (changes.some((first) => matches(words, { words: first }))) { actions.push({ kind: 'change', ...here() }); continue; }
     const hits = writes.filter((command) => matches(words, command));
     if (hits.length) {
       const longest = hits.reduce((a, b) => (b.words.length > a.words.length ? b : a));
-      actions.push({ kind: 'write', cwd: folder, capabilities: [...new Set(hits.map((hit) => hit.capability))], words: [tool, ...longest.words.slice(1)] });
+      actions.push({ kind: 'write', ...here(), capabilities: [...new Set(hits.map((hit) => hit.capability))], words: [tool, ...longest.words.slice(1)] });
     }
   }
   return actions;
@@ -422,6 +633,10 @@ function writeVerdict(match, action) {
 
 /** The ask verdict for an approval command: the reason names the command and what it approves. */
 function approveVerdict(action) {
+  if (action.scan) {
+    const question = 'this command can run a Forge approval in a form that the guard cannot read: it names gate-approve, trust approve, or approve.mjs.';
+    return { decision: 'ask', key: '', question, reason: `Forge gate guard: ${question} Allow it only if you gave this answer yourself.` };
+  }
   const what = action.command === 'gate-approve'
     ? `\`forge.mjs gate-approve\` records the approval of ${action.gate || '(no gate)'} for ${action.key || '(no key)'} with the answer ${JSON.stringify(action.answer)}`
     : `\`forge.mjs trust approve\` trusts the config and rule files ${action.files.length ? action.files.join(', ') : '(no file named)'}`;
@@ -516,7 +731,7 @@ export function preTool(event, { env = process.env, deadlineMs = DEADLINE_MS } =
       return [...new Set([here, ...named].filter(Boolean))];
     } catch { return []; }
   };
-  for (const action of guardActions(event.command, base, { changes, writes })) {
+  for (const action of guardActions(event.command, base, { changes, writes, env })) {
     // An approval needs no ticket, no wiki, and no trusted config, and no gateGuard mode turns it off.
     if (action.kind === 'approve') { verdicts.push(approveVerdict(action)); continue; }
     let where = samePath(action.cwd, base) ? home : locate(action.cwd, env);
@@ -524,7 +739,10 @@ export function preTool(event, { env = process.env, deadlineMs = DEADLINE_MS } =
     let found = ticketsAt(where, config, action, action.cwd);
     // A write names its target (for example `-R owner/repo`), so a `cd` to another folder does not change it:
     // the ticket of the session folder is the ticket of the write (GH-2 review).
-    if (!found.length && action.kind === 'write' && where !== home) {
+    // A push or a new change request in a folder that Forge cannot know (`cd $X`) or that is no Git work tree (`cd ~/nowhere`)
+    // uses the ticket of the session folder too. A push in another real repository keeps its folder.
+    const lost = action.kind === 'write' || ((action.kind === 'push' || action.kind === 'change') && (action.unknown || !where));
+    if (!found.length && lost && where !== home) {
       where = home;
       config = homeConfig;
       found = ticketsAt(home, homeConfig, action, base);

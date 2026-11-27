@@ -731,3 +731,156 @@ test('M3: one deadline for the whole call: an over deadline denies with a clear 
   assert.match(preTool({ cwd: s.worktree, command: push }, { env, deadlineMs: 0 }).reason, /ran out of time/);
   assert.equal(preTool({ cwd: s.worktree, command: push }, { env }), null, 'The default budget is enough.');
 });
+
+// L-2 step 1: the parser reads shell keywords, wrapper options, substitutions in quotes, folders, and hidden approval forms.
+const HIDDEN = [
+  'if true; then CMD; fi', 'while true; do CMD; break; done', 'for b in a; do CMD; done', '{ CMD || true; }', '! CMD', 'if ! CMD; then echo x; fi',
+  'timeout 120 CMD', 'timeout -s KILL 30 CMD', 'timeout --signal=KILL -k 5 30 CMD', 'nice -n 5 CMD', 'stdbuf -o0 CMD', 'stdbuf -o 0 -e L CMD',
+  'env -i CMD', 'env -i -u NAME CMD', 'env -u NAME -C /x CMD', 'sudo -u x CMD', 'sudo -u x -g y CMD', 'command -p CMD', 'exec -a name CMD', 'time -p CMD',
+  'nohup CMD', 'sudo -- CMD', 'sudo env -i timeout 5 nice -n 1 CMD', 'env -S "CMD"',
+  'out="$(CMD)"', 'echo "x $(CMD) y"', 'echo "`CMD`"', 'echo "a $(echo "$(CMD)")"',
+];
+
+test('L-2: a push is found behind shell keywords, wrapper options, and substitutions in double quotes', () => {
+  const base = path.resolve('/base');
+  for (const form of HIDDEN) {
+    const line = form.replace('CMD', 'git push');
+    assert.deepEqual(shipActions(line, base, []).map((action) => action.kind), ['push'], line);
+  }
+});
+
+test('L-2: a change command and a write command are found in the same hidden forms', () => {
+  const base = path.resolve('/base');
+  const texts = Object.fromEntries(['tracker', 'repo', 'ci'].map((kind) => [kind, readFileSync(path.join(templates, `${kind}.md`), 'utf8')]));
+  const options = { changes: changeCommands(texts.repo), writes: writeCommands(texts) };
+  for (const form of HIDDEN) {
+    assert.deepEqual(guardActions(form.replace('CMD', 'gh pr create -t T'), base, options).map((action) => action.kind), ['change'], form);
+    assert.deepEqual(guardActions(form.replace('CMD', 'gh issue comment 7 -F b.md'), base, options).map((action) => action.kind), ['write'], form);
+  }
+});
+
+test('L-2: an approval command is found in the hidden forms, and a text scan finds the forms that no word parser reads', () => {
+  const cwd = path.resolve('/base');
+  for (const form of HIDDEN) {
+    const line = form.replace('CMD', 'node /p/forge.mjs gate-approve L-2 Planned? --answer approve');
+    assert.deepEqual(guardActions(line, cwd).map((action) => action.kind), ['approve'], line);
+  }
+  const asks = [
+    'F=/x/forge.mjs; node $F gate-approve L-2 Planned? --answer approve',
+    'node "$F" trust approve config/repo.md=abcdef123456',
+    'npx forge gate-approve L-2 Planned?',
+    'bun $F gate-approve',
+    `node -e "import('/x/plugins/forge/scripts/lib/approve.mjs').then((m) => m.approveGate())"`,
+    `node --eval "import('/x/approve.mjs')"`,
+    `node -p "require('/x/approve.mjs')"`,
+    'node --import /x/lib/approve.mjs a.js',
+    'node -r /x/approve.mjs a.js',
+    `bash -c 'node "$F" gate-approve L-2 Planned?'`,
+    `sh -c "node forge.mjs trust approve x=1"`,
+    `bash -lc "node /x/approve.mjs"`,
+    "node - <<'EOF'\nimport('/x/approve.mjs');\nEOF",
+    "node <<EOF\nawait import('/x/approve.mjs')\nEOF",
+    "bash <<'EOF'\nF=/x/forge.mjs; node $F gate-approve L-2 Planned?\nEOF",
+    'timeout 5 node $F gate-approve',
+  ];
+  for (const line of asks) assert.deepEqual(guardActions(line, cwd).map((action) => action.kind), ['approve'], line);
+  const none = [
+    'grep gate-approve x', 'cat approve.mjs', 'echo "node forge.mjs gate-approve"', 'node --check plugins/forge/scripts/lib/approve.mjs',
+    'node --test', 'node --test tests/approve.test.mjs', 'node a.js', 'if true; then git log; fi', 'timeout 5 gh pr view 5',
+    'node /p/forge.mjs gate-approve L-2 Planned? --dry-run', 'node $F gate-approve --help', 'npx forge lint', 'bash -c "ls approve"',
+    'node -e "console.log(1)"', "cat <<EOF\nnode forge.mjs gate-approve\nEOF", 'sudo -u x ls', 'timeout 5 sleep 1', 'env -i ls', 'ls "$(pwd)"',
+  ];
+  for (const line of none) assert.deepEqual(guardActions(line, cwd).map((action) => action.kind), [], line);
+});
+
+test('L-2: a text scan hit has the verdict of an approval: ask, and deny in a mode with no prompt', (t) => {
+  const s = setup(t);
+  const line = 'F=/x/forge.mjs; node $F gate-approve L-2 Planned?';
+  assert.equal(run(s.worktree, line).decision, 'ask');
+  assert.equal(preTool({ cwd: s.worktree, command: line, mode: 'bypassPermissions' }, { env }).decision, 'deny');
+  assert.equal(run(os.tmpdir(), 'timeout 30 node /p/forge.mjs gate-approve L-2 Planned? --answer approve').decision, 'ask');
+  assert.equal(run(s.worktree, 'grep gate-approve x'), null);
+  assert.equal(run(s.worktree, 'node --check plugins/forge/scripts/lib/approve.mjs'), null);
+  assert.equal(run(s.worktree, 'if true; then git log; fi'), null);
+});
+
+test('L-2: a push in a hidden form is denied in a ticket worktree with no approvals', (t) => {
+  const s = setup(t);
+  for (const form of HIDDEN) {
+    const line = form.replace('CMD', 'git push');
+    assert.equal(run(s.worktree, line)?.decision, 'deny', line);
+  }
+});
+
+test('L-2: a substitution in a heredoc with an unquoted delimiter gives commands, and a quoted delimiter keeps the body as data', () => {
+  const base = path.resolve('/base');
+  const kinds = (line) => shipActions(line, base, []).map((action) => action.kind);
+  assert.deepEqual(kinds('cat <<EOF\nresult: $(git push)\nEOF'), ['push']);
+  assert.deepEqual(kinds('cat <<EOF\nresult: `git push`\nEOF'), ['push']);
+  assert.deepEqual(kinds('cat <<-EOF\n\t$(git push)\n\tEOF'), ['push']);
+  assert.deepEqual(kinds('cat > a.md <<EOF\nline $(echo $(git push))\nEOF\necho done'), ['push']);
+  assert.deepEqual(kinds("cat <<'EOF'\n$(git push)\nEOF"), []);
+  assert.deepEqual(kinds('cat <<"EOF"\n$(git push)\n`git push`\nEOF'), []);
+  assert.deepEqual(kinds('cat <<\\EOF\n$(git push)\nEOF'), []);
+  assert.deepEqual(kinds('cat <<EOF\nescaped \\$(git push) and \\`git push\\`\nEOF'), [], 'An escaped substitution is text.');
+  assert.deepEqual(kinds('cat <<EOF\nplain git push text\nEOF'), []);
+  assert.deepEqual(shellCommands("cat <<'EOF'\n$(git push)\nEOF\ngit status"), [['cat'], ['git', 'status']]);
+  assert.deepEqual(shellCommands('echo "$(git push)"'), [['echo', '$(git push)'], ['git', 'push']], 'The quoted word stays, and the substitution gives its command.');
+});
+
+test('L-2: a cd inside parentheses does not leak after the closing parenthesis', () => {
+  const base = path.resolve('/base');
+  const cwds = (line) => shipActions(line, base, []).map((action) => action.cwd);
+  assert.deepEqual(cwds('(cd /tmp/x && ls); git push'), [base]);
+  assert.deepEqual(cwds('(cd /tmp/x && git push); git push'), [path.resolve('/tmp/x'), base]);
+  assert.deepEqual(cwds('cd /one && (cd /two; ls) && git push'), [path.resolve('/one')]);
+  assert.deepEqual(cwds('echo $(cd /tmp/x; pwd); git push'), [base]);
+  assert.deepEqual(cwds('echo "$(cd /tmp/x; pwd)"; git push'), [base]);
+  assert.deepEqual(cwds('cd /one; git push'), [path.resolve('/one')]);
+  assert.deepEqual(cwds('cd /other/repo && git push'), [path.resolve('/other/repo')], 'A real folder keeps its own folder.');
+});
+
+test('L-2: cd and git -C expand ~ with HOME, then USERPROFILE, then the home of the user, and a target that cannot be known has no folder', () => {
+  const base = path.resolve('/base');
+  const home = path.resolve('/home/u');
+  const withEnv = (line, vars) => guardActions(line, base, { env: vars });
+  assert.deepEqual(withEnv('cd ~ && git push', { HOME: home }).map((a) => a.cwd), [home]);
+  assert.deepEqual(withEnv('cd ~/x && git push', { HOME: home }).map((a) => a.cwd), [path.join(home, 'x')]);
+  assert.deepEqual(withEnv('git -C ~/x push', { HOME: home }).map((a) => a.cwd), [path.join(home, 'x')]);
+  assert.deepEqual(withEnv('git -C ~ push', { HOME: home }).map((a) => a.cwd), [home]);
+  assert.deepEqual(withEnv('cd ~/x && git push', { USERPROFILE: home }).map((a) => a.cwd), [path.join(home, 'x')]);
+  assert.deepEqual(withEnv('cd ~/x && git push', { HOME: '', USERPROFILE: home }).map((a) => a.cwd), [path.join(home, 'x')]);
+  assert.deepEqual(withEnv('cd ~/x && git push', {}).map((a) => a.cwd), [path.join(os.homedir(), 'x')]);
+  assert.deepEqual(withEnv('cd && git push', { HOME: home }).map((a) => a.cwd), [home]);
+  assert.deepEqual(withEnv('cd /abs/dir && git push', { HOME: home }).map((a) => a.cwd), [path.resolve('/abs/dir')]);
+  for (const target of ['$HOME/x', '"$X"', '`pwd`', '$(pwd)', '~root/x', '-', '${HOME}']) {
+    const actions = withEnv(`cd ${target} && git push`, { HOME: home });
+    assert.deepEqual(actions.map((a) => [a.kind, a.cwd, a.unknown]), [['push', base, true]], target);
+  }
+  assert.deepEqual(withEnv('git -C $X push', { HOME: home }).map((a) => [a.cwd, a.unknown]), [[base, true]]);
+  assert.deepEqual(withEnv('cd $X; cd /abs && git push', { HOME: home }).map((a) => [a.cwd, a.unknown]), [[path.resolve('/abs'), undefined]], 'An absolute folder after an unknown one is known again.');
+  assert.deepEqual(withEnv('cd $X; cd sub && git push', { HOME: home }).map((a) => a.unknown), [true], 'A relative folder after an unknown one is unknown.');
+});
+
+test('L-2: G3a, G3b: a push after a cd to a folder that cannot be a ticket folder uses the ticket of the session folder', (t) => {
+  const s = setup(t);
+  assert.equal(run(s.worktree, 'cd ~/nowhere-forge-test && git push')?.decision, 'deny', 'G3a: the folder does not exist.');
+  assert.equal(run(s.worktree, 'cd $HOME/x && git push')?.decision, 'deny', 'G3b: the folder is unknown.');
+  assert.equal(run(s.worktree, 'cd "$(mktemp -d)" && git push')?.decision, 'deny');
+  assert.equal(run(s.worktree, 'git -C $X push')?.decision, 'deny');
+  // A change request command follows the same rule.
+  trustConfig(s);
+  assert.equal(run(s.worktree, 'cd $HOME/x && gh pr create -t T')?.decision, 'deny');
+  // A push in another real repository keeps its folder, so it is not a step of this ticket.
+  const other = path.join(s.root, 'other');
+  mkdirSync(other);
+  git(other, 'init', '-q', '-b', 'main');
+  assert.equal(run(s.worktree, `cd ${other} && git push`), null);
+  assert.equal(run(s.worktree, `(cd ${other}; ls); git push`)?.decision, 'deny', 'The cd in parentheses does not leak.');
+  // `~` uses the HOME of the event env.
+  const home = path.join(s.root, 'home');
+  mkdirSync(path.join(home, 'x'), { recursive: true });
+  git(path.join(home, 'x'), 'init', '-q', '-b', 'main');
+  assert.equal(preTool({ cwd: s.worktree, command: 'git -C ~/x push' }, { env: { ...env, HOME: home } }), null);
+  assert.equal(preTool({ cwd: s.worktree, command: 'cd ~/x && git push' }, { env: { ...env, HOME: home } }), null);
+});
