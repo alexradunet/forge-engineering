@@ -180,7 +180,7 @@ export const SCENARIOS = {
   implement: { approved: ['Planned?'], phase: 'implement', state: 'active', next: 'Write review.md and open Shippable?' },
   // The ticket waits for a colleague. A question about it is a board request.
   waiting: { approved: ['Planned?'], phase: 'implement', state: 'waiting', next: 'Record the answer of Dana', waitingOn: 'colleague: Dana (the retry limit)',
-    people: ['  - { name: Dana, role: domain owner, status: waiting, since: 2026-11-12, ask: "Is one retry correct for a failed import?", via: tracker }'] },
+    people: ['  - { name: Dana, role: domain owner, status: waiting, since: 2026-11-12, ask: "Is one retry correct for a failed import?", via: chat }'] },
   // review.md is written, and the gate is not open yet.
   'review-ready': { approved: ['Planned?'], phase: 'implement', state: 'active', next: 'Open Shippable?', codeReview: true, evidence: { 'evidence/2026-11-17-proof.md': PROOF_EVIDENCE }, texts: { 'review.md': REVIEW, 'proof.md': PROOF } },
   // plan.md is written and has 4 planted faults (see FAULTS). The code change is not made yet. For the cold read comparison.
@@ -242,7 +242,7 @@ export function buildFixture(name, { env = process.env } = {}) {
   // The binding of the code that the Shippable? gate holds: a scenario with a code review file has it, and the file names it.
   const binding = scenario.codeReview ? codeBinding({ worktree: root, branch: BRANCH, baseBranch: 'main' }) : null;
 
-  // The wiki, the config of the profile, and the approval of its files, as the user gives it in setup.
+  // The wiki, the config, and the approval of its files, as the user gives it in setup.
   // Forge 9: the Forge folder, with the wiki in wiki/ and the ticket folders in raw/ next to it.
   const wiki = path.join(root, 'app.forge', 'wiki');
   mkdirSync(wiki, { recursive: true });
@@ -251,7 +251,7 @@ export function buildFixture(name, { env = process.env } = {}) {
   bind(where);
   const { configDir } = seed(where, path.join(plugin, 'templates', 'config'));
   setValues(configDir, ['repo.branchPattern=users/a/{KEY}-{slug}', ...DEFAULT_CONFIG, ...(scenario.config ?? [])]);
-  // No GitHub repository has this name: a tracker command that runs by error reaches nothing.
+  // No GitHub repository has this name: a gh command that runs by error reaches nothing.
   upsertRow(configDir, 'checkouts', ['app', app, 'forge-eval-synthetic/app']);
   approve(where, status(where, { env: runEnv }).files.map((f) => `${f.rel}=${f.sha.slice(0, 12)}`), { env: runEnv });
 

@@ -2,7 +2,7 @@
 
 The repository wiki is the source for configuration, helper scripts, and knowledge pages.
 It is a separate Git repository at `../<repo>.forge/wiki`, in the Forge folder of the repository.
-The plugin holds the templates of its profile. `forge-setup` copies them to the wiki. There is no pack to install or update.
+The plugin holds the config templates. `forge-setup` copies them to the wiki. There is no pack to install or update.
 
 ```mermaid
 flowchart LR
@@ -17,19 +17,17 @@ flowchart LR
 ```text
 <repo>.forge/             the Forge folder (<forge>)
   forge, forge.cmd        the launcher: "../<repo>.forge/forge open" shows the board and the wiki
-  raw/                    local working material: tickets, pages, sync notes
+  raw/                    local working material: tickets, pages
   archive/                local archives of closed tickets
   wiki/                   the wiki (<wiki>): a git repository
     index.md              knowledge index
     forge/
-      repo.json           repository binding, and the optional key `profile`
+      repo.json           repository binding
       config/
-        tracker.md
         repo.md
-        ci.md
         policy.md
       scripts/            optional helper scripts
-    rules/                company rules for each session (toolkit.md, data.md, ...)
+    rules/                rules for each session (data.md, ...)
 ```
 
 Forge 10 does not read an older folder `../<repo>.wiki`. To keep such a wiki, make the folder `../<repo>.forge`, move the wiki into `wiki/`, and move `raw/` and `archive/` next to it.
@@ -39,9 +37,9 @@ Setup keeps existing configuration. See [config.md](config.md) for the file form
 
 ## Company rules
 
-The `<wiki>/rules/` pages hold the rules for AI agents: tools, credentials, and data rules.
+The `<wiki>/rules/` pages hold the rules for AI agents: data rules.
 Each page is a normal wiki page with frontmatter. When the folder is missing, setup writes
-`toolkit.md` and `data.md` from templates.
+`data.md` from the template.
 The Forge `sessionStart` hook gives the pages to each session of the bound repository, after the
 `# forge plugin` and `# forge style` rules, in file name order. It removes the frontmatter and
 HTML comments, leaves out a page with only headings, and cuts the text after 8000 characters.
@@ -154,8 +152,7 @@ lowercase raw-byte `sha256`. A gate lists its one document (`story.md`, `plan.md
 `review.md`, or `close.md`), the evidence files that the user must see, and no plan copy.
 One user GO approves the whole displayed revision set. Approval README/records and the manifest never hash themselves.
 
-A write has no manifest and no sidecar. Its "yes" is the answer of the user to the
-host prompt that the gate guard asks for, and a `log` entry in `journal.md` records the sent write.
+Forge makes no external write. A text for another system is a paste text in `outbox/`, and the user sends it.
 
 An approved gate without a manifest is a finding. Report missing evidence on Resume
 without blocking unrelated read-only work. See the [complete approval contract](../plugins/forge/skills/ticket/SKILL.md#approval-revisions).
@@ -193,8 +190,7 @@ Hashes cover exact bytes, including line endings.
 
 ## Helper scripts
 
-Prefer a CLI with its own login, such as `gh` or `az`.
-Use a script only for a credential or a guard that the CLI does not provide.
+Use a script only for a task that Forge does not do. A script must not call a tracker, a change request host, or a CI.
 Store it in `<wiki>/forge/scripts/<name>.mjs`.
 
 Run it from the code repository or its bound wiki:
@@ -212,12 +208,6 @@ Forge sets these environment variables:
 | `FORGE_REPO` | The main code checkout |
 
 Use Node.js built-ins. Forge does not install dependencies for wiki scripts.
-A profile can ship its own tool scripts in `<plugin>/scripts/`, for example a REST client for the CI. Run them directly from there. They need no wiki trust.
-
-Read credentials through `${FORGE_CORE}/lib/cred.mjs`.
-The user stores them with `node "<plugin>/scripts/cred.mjs" set <name>`.
-A script that accepts a secret uses `readSecret(prompt)` from `${FORGE_CORE}/cred.mjs`.
-Store that value with `createStore().set(name, value)` from `${FORGE_CORE}/lib/cred.mjs`.
 Never print secrets or pass them in child process arguments.
 
 ## Existing installations
@@ -226,7 +216,5 @@ A wiki from a forge 4 company pack keeps working. Its config already lives in th
 The old `.base/` and `pack.lock.json` metadata stays ignored by trust and has no runtime role.
 You can remove that metadata after review; no automatic deletion occurs.
 
-When a pack script `<wiki>/forge/scripts/<name>.mjs` is now a profile script in the plugin,
-use `node "<plugin>/scripts/<name>.mjs"` instead of `forge.mjs run <name>`. You can delete the wiki copy after review.
-The stored credentials stay valid.
-To get the new profile templates, say "refresh the forge config".
+Forge 14.0.0 does not use `tracker.md`, `ci.md`, `rules/toolkit.md`, or the `profile` key of `forge/repo.json`. `forge.mjs doctor` names them. Remove them.
+To get the new config templates, say "refresh the forge config".

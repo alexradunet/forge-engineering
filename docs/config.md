@@ -1,65 +1,51 @@
 # ⚙️ Configuration
 
-forge reads the config from four Markdown files in `<wiki>/forge/config/`.
+forge reads the config from two Markdown files in `<wiki>/forge/config/`.
 `<wiki>` is the wiki of the repository, by default `../<repo>.forge/wiki`.
 
 | File | Holds | Example |
 |---|---|---|
-| `tracker.md` | the work item tracker: key prefix, item URL, named queries, and one command for each `tracker.*` capability | Jira or GitHub Issues: the site, the project, and the tool (a CLI or an MCP server) |
-| `repo.md` | the repository host: change name, branch pattern, checkouts, and the `repo.*` commands | GitHub `owner/repo`, base `main`, with `gh` |
-| `ci.md` | the CI: the `ci.*` commands | GitHub Actions with `gh`, or Jenkins with a REST script |
+| `repo.md` | the change name, the branch pattern, the base branch, and the **Checkouts** table | `PR`, `users/alex/{KEY}-{slug}`, base `main` |
 | `policy.md` | policy values and the hook sections | Thursday no-merge, evidence on a deployed environment, QA handover |
 
+Forge calls no tracker, no change request host, and no CI, so it has no config for them.
 The config travels with the wiki repository. Every clone of the wiki uses the same values.
 `forge-setup` seeds missing files from [templates/config](../plugins/forge/templates/config),
 and fills the personal values with `forge.mjs config set` and `config row` (see **Edit values**).
-The templates hold the shared values of the profile. Change a shared value in the templates, so that each user gets it.
-The wiki has one profile, and `forge/repo.json` names it (`"profile": "<name>"`). `forge.mjs seed --profile <name>` copies the files of an extra profile (`plugins/forge/profiles/<name>/`) and records it. A later `seed` uses the recorded profile.
-A file that the extra profile does not have comes from the default profile (`templates/`). With no name in `repo.json`, the wiki has the default profile.
-Edit them directly in the wiki. Clone or pull that wiki to share changes (see [wiki.md](wiki.md)).
+Change a shared value in the templates, so that each user gets it.
+Edit the files directly in the wiki. Clone or pull that wiki to share changes (see [wiki.md](wiki.md)).
 
 ```mermaid
 flowchart LR
-  tpl["templates/config<br/>profile values"] -- seed --> cfg["&lt;wiki&gt;/forge/config/*.md"]
+  tpl["templates/config"] -- seed --> cfg["&lt;wiki&gt;/forge/config/*.md"]
   remote["wiki Git remote"] <-->|push / pull| cfg
   cfg --> trust{"trust check<br/>SHA-256"}
-  trust --> rule["context/tools.md<br/>capability to command"]
-  rule --> skills["ticket and agents skills"]
+  trust --> skills["ticket and agents skills"]
 ```
 
 ## 🧾 File format
 
-Each file has a flat YAML frontmatter for the values, and a Markdown body for the commands.
+Each file has a flat YAML frontmatter for the values, and a Markdown body.
 
 ```markdown
 ---
-provider: jira
-host: jira.example.com
-project: APP
-prefix: APP
-itemUrl: https://jira.example.com/browse/{KEY}
+changeName: PR
+branchPattern: "users/alex/{KEY}-{slug}"
+baseBranch: main
 ---
 
-# 🟦 Jira Cloud
+# Repository
 
-## 🔎 Queries
-| Name | Query |
-|---|---|
-| `mine` | `assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC` |
-
-## 🔐 Auth check
-## 🔑 Keys
-## 🧰 Capabilities
-| Capability | Command | Notes |
-## 🩺 Failures
+## 📁 Checkouts
+| Name | Path | Remote | baseBranch |
+|---|---|---|---|
 ```
 
 - The frontmatter is flat: `key: value`, with inline lists `[a, b]`. Quote a value that starts with `{`.
 - An opening `---` without a closing delimiter is malformed and fails; it is not a missing file or an absent optional setting.
 - In the skills, `<file>.<key>` means the frontmatter key `<key>` of `config/<file>.md`, for example `repo.changeName`.
-- `tracker.queries` is the **Queries** table. `repo.checkouts` is the **Checkouts** table.
+- `repo.checkouts` is the **Checkouts** table.
 - A table cell cannot hold a `|` character.
-- A team can add keys. A command can then use them as `<file>.<key>`.
 
 ## ✏️ Edit values
 
@@ -68,7 +54,6 @@ Edit a file directly, or use the validated commands. They parse and validate the
 ```sh
 node "<plugin>/scripts/forge.mjs" config set "repo.branchPattern=users/alex/{KEY}-{slug}"
 node "<plugin>/scripts/forge.mjs" config row checkouts "app" "C:\dev\app" "acme/app"
-node "<plugin>/scripts/forge.mjs" config row queries "team" "project = APP AND component = Payments"
 node "<plugin>/scripts/forge.mjs" config row checkouts "old" --delete
 ```
 
@@ -82,16 +67,9 @@ node "<plugin>/scripts/forge.mjs" config row checkouts "old" --delete
 
 | File | Key | Meaning | Default |
 |---|---|---|---|
-| `tracker.md` | `provider` | Name of the tool | `jira` |
-| | `prefix` | Upper-case key prefix (see Keys) | none |
-| | `itemUrl` | URL template with `{KEY}` or `{number}` | none |
-| | `host`, `project` | Site and project of the tracker | none |
-| `repo.md` | `provider` | Name of the host | `github` |
-| | `changeName` | The word for a change request: `PR`, `MR`, or `none` (no change requests: the agent pushes to the base branch after Shippable?) | `PR` |
+| `repo.md` | `changeName` | The word for a change request: `PR`, `MR`, or `none` (no change requests: the agent pushes to the base branch after Shippable?) | `PR` |
 | | `branchPattern` | Branch template with `{KEY}` or `{key}`, plus `{number}`, `{slug}`. A template value such as `users/<user>/{KEY}-{slug}` needs your name | `{KEY}-{slug}` |
 | | `baseBranch` | Default target branch | `master` |
-| `ci.md` | `provider` | Name of the CI | `jenkins` |
-| | `host` | CI server URL (Jenkins) | none |
 | `policy.md` | `noMergeWeekdays` | Days on which the agent never proposes a merge | `[]` |
 | | `evidenceOnDeployedEnv` | The proof of the changed behavior needs a deployed environment. `true`: Evidence Testing runs after the push. `false`: it runs before Shippable?, and `proof.md` is in the Shippable? manifest. | `false` |
 | | `qaHandover` | Run the QA handover step after the merge | `false` |
@@ -99,8 +77,8 @@ node "<plugin>/scripts/forge.mjs" config row checkouts "old" --delete
 | | `maxImplementers` | Maximum implementer sessions at the same time | `6` |
 | | `planReview` | Review of the plan before Planned?: `off`, `attacker` (one reviewer subagent), or `panel` (3 reviewer subagents) | `off` |
 | | `styleRules` | Add the response style rules of the plugin (Simplified Technical English, no AI tells, the ADHD response shape) to each session. A missing key means `true`. The template for a new wiki sets `false` | `true` |
-| | `scopeComment` | After the scope check, draft a tracker comment for the reporter with the scope and the open questions (it needs your yes as each write) | `false` |
-| | `gateGuard` | The gate guard for a push or a new change request of a ticket without the valid approvals of Planned? and Shippable?: `deny`, `ask` (the host asks you), or `off` | `deny` |
+| | `scopeComment` | After the scope check, draft a comment for the reporter with the scope and the open questions, as a paste text for you | `false` |
+| | `gateGuard` | The guard for a push of a ticket without the valid approvals of Planned? and Shippable?: `deny`, `ask` (the host asks you), or `off` | `deny` |
 
 `set up forge` asks for the team size and the response style, and writes one set of 4 values with `forge.mjs config set`, and `styleRules` as the user chooses. No code reads the team size. The template `policy.md` holds the small-team set.
 
@@ -111,87 +89,44 @@ node "<plugin>/scripts/forge.mjs" config row checkouts "old" --delete
 | `evidenceOnDeployedEnv` | `false` | `true` |
 | `qaHandover` | `false` | `true` |
 
-## 📜 Capabilities
+## 🚫 No external calls
 
-Skills never name a tool. They name a **capability**. The file `plugins/forge/context/tools.md` tells the agent how to find its row in the config file.
-A **write** changes something outside the workspace. The agent drafts the text in `outbox/`, runs the Sendable? steps, and asks before every write.
-The write capabilities are `tracker.comment`, `tracker.create`, `tracker.transition`, `tracker.link`, `repo.open-change`, `repo.update-change`, `repo.reply`, and `ci.trigger`. The gate guard reads the commands of these rows (the code spans of the Command and Notes cells, up to the first option or placeholder) and makes the host ask the user before each one. When a code span names an HTTP method option (`-X POST` or `--method POST`), only a command with a method other than GET is a write.
-A code span needs 2 words or more before the first option or placeholder (for example `gh issue comment`). A one-word span such as `curl -X POST <url>` gives no write command, so the guard does not ask for it: the written rule applies.
-`manual` in a row means that the agent tells the user the exact step, and waits.
-
-| Capability | Kind | Input | Output |
-|---|---|---|---|
-| `tracker.fetch` | read | key | summary, type, status, priority, reporter, assignee, description, comments, links, URL |
-| `tracker.search` | read | a named query or a native query | list of key, summary, status, updated |
-| `tracker.comment` | **write** | key, Markdown text | comment URL or id |
-| `tracker.create` | **write** | title, Markdown text, labels | issue URL |
-| `tracker.transition` | **write** | key, target status | new status |
-| `tracker.link` | **write** | key, other key or URL, relation | nothing |
-| `repo.open-change` | **write** | repo, branch, base, title, body, draft flag | change URL and number |
-| `repo.update-change` | **write** | change, new title or body | nothing |
-| `repo.change-status` | read | change | state, approvals, mergeability, checks summary |
-| `repo.review-comments` | read | change | open threads with file, line, author role, text |
-| `repo.reply` | **write** | change, thread, text | nothing |
-| `repo.history` | read | search text (keys, file paths) | old changes with reviewers and threads |
-| `ci.status` | read | change or branch | pipelines or jobs with result and URL |
-| `ci.logs` | read | job | log excerpt |
-| `ci.trigger` | **write** | job, parameters | run URL |
-
-Never available, with any tool: a merge (the user merges in the web UI), and closing a change without explicit approval.
+Forge calls no tool outside the workspace: no tracker, no change request host, and no CI. A ticket has a key and an `item:` link in its README, and you paste the text of the work item into the chat.
+The agent writes each text for another system (a comment, a change request description, a QA handover) as a paste text in `outbox/`, and you send it.
+After the Shippable? GO the agent pushes the branch. You open the pull request and paste its URL into the chat, and the agent records it in `changes` of the README.
+The agent never merges. The native permission prompt and the deny rules of your host cover a CLI call. A user setting `Bash(gh pr merge:*)` in Claude Code adds a hard stop for a merge.
 
 ## 🔑 Keys
 
-Every work item has a key in the form `PREFIX-number`. Folders use the lower-case key.
-
-| Tracker | Native id | Key | Folder |
-|---|---|---|---|
-| Jira | `APP-123` | `APP-123` (`prefix` = project key) | `app-123` |
-| GitHub Issues | `#123` | `GH-123` (`prefix` = `GH`, `{number}` = the issue number) | `gh-123` |
-
-The **Keys** section of `tracker.md` converts between the native id and the key.
+The key of a ticket is what you type, for example `APP-123` or `GH-7`. When you give none, `forge.mjs local-key` gives `L-<n>`. Folders use the lower-case key (`app-123`).
+The `item:` line of the README holds the link to the work item.
 
 ## 🪝 Policy sections
 
 `policy.md` has one section for each hook point of the `ticket` skill: `Start`,
 `Investigate`, `Resume`, `Implement`, `Evidence Testing`, `QA handover`, and `Close`.
-Write the step rules and traps there. Rules for each session (tools, credentials, data rules) go in the
+Write the step rules and traps there. Rules for each session (data rules) go in the
 `<wiki>/rules/` pages ([wiki.md](wiki.md#company-rules)). A section can add steps and make rules stricter.
-It can never weaken a core rule: no merge, ask before every external write, explicit gate approval,
+It can never weaken a core rule: no merge, no call of an external tool, explicit gate approval,
 no secrets, and the adversarial review before every change request.
 
 Every new ticket uses `workflow: full-v4` in its ticket README, not a policy sizing
 setting. All research, scope interview, investigation, and review phases
 apply even to small fixes. A small fix has shorter documents, not fewer phases. The scope check is a question in chat. The investigation comes before the plan steps, and
 Planned? approves `story.md` and `plan.md` together. `qaHandover: false` omits only QA handover, not
-Evidence Testing or a required gate. Sendable? applies to each external write in every
-phase. Forge reads no other ticket layout: lint reports a ticket without `workflow: full-v4` as a read error. See the [ticket skill](../plugins/forge/skills/ticket/SKILL.md).
-
-## ➕ Change a tool
-
-forge is **CLI first**. The file `plugins/forge/context/tools.md`, "Tool choice: CLI first", gives the order: official CLI, then REST, then MCP.
-
-1. Change the template in `plugins/forge/templates/config/<kind>.md` of this repository, so that each user gets it. Raise the plugin version.
-2. Fill in the frontmatter, the **Auth check**, and each capability row. Keep `manual` for a gap.
-3. Write the official CLI command (`gh`, `az`) in each row. Use JSON output flags when they exist. When the profile uses an MCP server for a tool, the template says why.
-4. When no CLI exists, write a small Node script for the REST API in `<wiki>/forge/scripts/<name>.mjs`. Call it with `forge.mjs run <name>`. Read the token with `cred.mjs`.
-5. Use an MCP server only when steps 3 and 4 cannot do a capability. Use a server from the repository `.mcp.json` or the forge plugin `mcp.json`. Forge never changes the repository: add a missing server to the forge `mcp.json`. Write the reason in the **Notes** column.
-6. Validate the integration with a synthetic or explicitly selected work item through the full workflow; do not invent a tracker ticket or make external writes without approval.
+Evidence Testing or a required gate. Forge reads no other ticket layout: lint reports a ticket without `workflow: full-v4` as a read error. See the [ticket skill](../plugins/forge/skills/ticket/SKILL.md).
 
 ## ✅ Checks
 
-- `forge.mjs config --json` reads the config. It fails on a bad value: a lower-case prefix, a bad `itemUrl` or `branchPattern`, an unknown day, or a policy value of the wrong type.
+- `forge.mjs config --json` reads the config. It fails on a bad value: a bad `branchPattern`, an unknown day, or a policy value of the wrong type.
 - `forge.mjs config` fails closed when a file in `<wiki>/forge` is new or changed and you did not approve it (`forge.mjs trust`).
-- `forge.mjs doctor` reports the wiki, each config file and its provider, a missing CLI, and trust.
+- `forge.mjs doctor` reports the wiki, each config file, trust, the session start hook, and the plugin version.
 - `doctor` also warns on setup gaps:
   - `config:placeholder`: `repo.branchPattern` still holds `<user>`. `forge.mjs worktree` also refuses that pattern.
   - `config:checkouts`: no Checkouts row, or the main checkout path does not exist on this machine.
-  - `cred:<name>`: a credential that the config names (`cred.mjs set <name>`, `--cred <name>`, or Jenkins) is not stored. `doctor` checks presence only and never reads the value.
-  - `mcp:<server>`: a server of the profile (`mcpServers` in `templates/profile.json`) is in no file, or it is in the forge `mcp.json` and also in the repository `.mcp.json` or the Copilot user `mcp-config.json`. Two entries load the same tools two times. `doctor` finds a server by its URL, not by its name. In a repository that is not the profile main checkout (`mainCheckout` in `templates/profile.json`), a server in no file is `ok`, because only the main checkout `.mcp.json` gives it.
-  - `mcp:retired`: a server uses a retired URL (`mcpRetired` in `templates/profile.json`). Remove that server from the file that names it.
-- A missing file gives the defaults. Every capability is then `manual`.
+  - `unused:<file>`: a file that Forge does not use since 14.0.0 (`tracker.md`, `ci.md`, `rules/toolkit.md`, or a `profile` key in `forge/repo.json`). Remove it.
+- A missing file gives the defaults. 
 
 ## 🔒 Rules
 
-- Never put secrets in a config file. Credentials stay in a CLI login, or in the OS credential store (`cred.mjs set <name>`).
-- Prefer a CLI login (`gh auth login`, `az login`) to an MCP server with a token. When a tracker has only an MCP server, use its OAuth sign-in.
-- Agent Plugins forbid `${ENV}` in an MCP URL or header. When you must add an MCP server, use OAuth or a stdio server that reads the credential store.
+- Never put secrets in a config file.

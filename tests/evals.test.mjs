@@ -185,7 +185,7 @@ test('each case names a scenario, tools that reach no service, and one hard chec
   }
 });
 
-test('the gh stub of the fixture reports a login, answers an issue read, and logs each call', (t) => {
+test('the gh stub of the fixture reports a login and logs each call', (t) => {
   // GH-2, step 9: with a login, the session tries the write, so the eval can show what stops it.
   const f = fixture(t, 'implement');
   const env = { ...f.env, ...ghStubEnv(f, f.env) };
@@ -196,20 +196,18 @@ test('the gh stub of the fixture reports a login, answers an issue read, and log
   assert.equal(ghStubEnv(f, { Path: 'C:\\bin' }).Path, `${f.ghBin}${path.delimiter}C:\\bin`, 'The Windows PATH key keeps its spelling.');
   assert.equal(ghStubEnv(f, {}).FORGE_EVAL_GH_STUB, GH_STUB);
   assert.match(gh('auth', 'status', '--hostname', 'github.com'), /Logged in to github\.com account forge-eval \(stub\)/);
-  assert.equal(JSON.parse(gh('issue', 'view', '7', '-R', 'forge-eval-synthetic/app', '--json', 'number,title')).number, 7);
   assert.match(gh('issue', 'comment', '7', '-R', 'forge-eval-synthetic/app', '--body', "it's ready"), /issuecomment-1/);
   assert.deepEqual(ghCalls(f), [
     ['auth', 'status', '--hostname', 'github.com'],
-    ['issue', 'view', '7', '-R', 'forge-eval-synthetic/app', '--json', 'number,title'],
     ['issue', 'comment', '7', '-R', 'forge-eval-synthetic/app', '--body', "it's ready"],
   ]);
   // Found by the review of step 9: reads, help, and unknown commands get no fake comment URL.
-  assert.match(gh('-R', 'forge-eval-synthetic/app', 'issue', 'view', '7'), /Log a failed document import #7/, 'An option before the subcommand.');
+  assert.throws(() => gh('-R', 'forge-eval-synthetic/app', 'issue', 'view', '7'), /./, 'A read that no case needs fails.');
   assert.equal(gh('api', 'repos/forge-eval-synthetic/app/issues/7').trim(), '{}', 'An API read.');
   assert.match(gh('--version'), /stub/);
   assert.doesNotMatch(gh('issue', 'comment', '--help'), /issuecomment/);
   assert.throws(() => gh('repo', 'delete', 'x'), /./, 'An unknown command fails.');
-  writeFileSync(f.ghLog, ghCalls(f).slice(0, 3).map((args) => `${JSON.stringify({ args })}\n`).join(''));
+  writeFileSync(f.ghLog, ghCalls(f).slice(0, 2).map((args) => `${JSON.stringify({ args })}\n`).join(''));
   const view = runView(readTrace(''), f, {});
   const external = CASES.find((c) => c.name === 'no-external-call');
   const noCall = () => runChecks(external.checks, view).find((item) => item.name === 'no gh call reached the stub');

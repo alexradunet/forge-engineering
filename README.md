@@ -5,21 +5,13 @@ One plugin folder runs in both.
 It gives every agent session a ticket workflow with review gates, a small set of plain ticket documents,
 a repository wiki, coordinated agent sessions, and a ticket board that any session can show.
 
-forge has a generic core and profiles (see Profile). The default profile is the GitHub profile:
-
-| Area | Tool | CLI |
-|---|---|---|
-| Tracker | GitHub Issues of the main checkout. The key of issue `#123` is `GH-123`. | `gh` |
-| Repository | GitHub pull requests, base branch `main` | `gh` |
-| CI | GitHub Actions | `gh` |
-
-**CLI first.** forge calls the tools through their official CLI (`gh`),
-then through their REST API. It uses an MCP server only when no CLI or API can do the job.
-CLI calls are visible, reproducible, and cost no context for tool lists.
+forge calls no external tool: no tracker, no change request host, and no CI.
+A ticket lives only in `<forge>/raw/tickets/<key>`. Its README has an `item:` line with the link to the work item in any tracker (GitHub, Azure DevOps, Jira, and others).
+You paste the text of the work item into the chat. The agent writes paste texts for you in `outbox/` of the ticket, and you send them yourself.
 
 ```mermaid
 flowchart LR
-  plugin["forge plugin<br/>rules, skills, scripts,<br/>profile config templates"] --> host["Claude Code<br/>or Copilot CLI"]
+  plugin["forge plugin<br/>rules, skills, scripts,<br/>config templates"] --> host["Claude Code<br/>or Copilot CLI"]
   repo["code checkout"] --> host
   wiki["../repo.forge<br/>wiki: config, rules, knowledge<br/>raw: tickets and pages"] --> host
   shared["wiki Git remote<br/>private"] <-->|push / pull| wiki
@@ -35,27 +27,26 @@ flowchart LR
 4. In the chat, say "set up forge".
 5. Answer the setup form: your branch pattern (`users/<your name>/{KEY}-{slug}`) and the path of your clone.
 
-Needs: Node.js 20 or later, Git, and the CLI of your profile (`gh` for GitHub, `tea` for Forgejo).
+Needs: Node.js 20 or later and Git.
 forge runs on Windows, macOS, and Linux.
 
 Setup reads the repository first, so most answers are prefilled:
 
 - the default branch and the branch pattern of your local branches, for example `users/alex/{KEY}-{slug}`,
-- the path and the remote of your clone,
-- each CLI that is missing or not logged in.
+- the path and the remote of your clone.
 
-Then it creates the Forge folder `../<repo>.forge` with its wiki, seeds the profile config and rule pages, writes your values with a validated command,
-asks you to store the credentials of the profile, asks you to approve the files by hash, and runs one live read for each tool.
+Then it creates the Forge folder `../<repo>.forge` with its wiki, seeds the config and rule pages, writes your values with a validated command,
+and asks you to approve the files by hash.
 It asks for the team size (small or large) and the response style, and writes the policy values for them. At the end, it offers the optional extras: the other policy values.
 
 | Say | Result |
 |---|---|
 | "set up forge" | First-time setup, or resume at the first open step |
 | "check forge" | `doctor`, plugin version, and the changelog of the current host |
-| "refresh the forge config" | Copy the new profile templates after an update, and keep your personal values |
+| "refresh the forge config" | Copy the new config templates after an update, and keep your personal values |
 | "finish forge setup" | Resume after a stop |
 
-`forge.mjs doctor` warns while `<user>` remains in `repo.branchPattern`, while the main checkout path is missing, or while a credential is missing. It also checks the login of `gh` (`tool:gh login`), whether a session start hook ran (`hook`), and whether the plugin clone is behind its remote (`plugin:version`). Each `warn` line gives one exact fix command. `forge.mjs doctor --fetch` runs `git fetch` in the plugin clone first.
+`forge.mjs doctor` warns while `<user>` remains in `repo.branchPattern` or while the main checkout path is missing. It also checks whether a session start hook ran (`hook`) and whether the plugin clone is behind its remote (`plugin:version`). It names each file that Forge 14.0.0 does not use. Each `warn` line gives one exact fix command. `forge.mjs doctor --fetch` runs `git fetch` in the plugin clone first.
 
 ### 🔌 Hosts
 
@@ -84,20 +75,17 @@ To update `forge`:
 
 "check forge" reports when the installed plugin is behind its remote.
 
-### 🏷️ Profile
+### ⬆️ Upgrade to 14.0.0
 
-The plugin has a generic core, a default profile, and extra profiles. The default profile is the GitHub profile. It holds the shared values in `plugins/forge/templates/config/`, the rule pages in `plugins/forge/templates/rules/`,
-the setup values in `plugins/forge/templates/profile.md`, and the machine values in `plugins/forge/templates/profile.json`.
-`profile.json` also lists the other profile files, the tools, and the company terms. `tests/profile.test.mjs` keeps the terms out of all other files.
-Setup copies the config to the wiki. Change a shared value here, so that each user gets it.
-An extra profile is a folder `plugins/forge/profiles/<name>/` with the same shape. It holds only the files that differ: a missing file comes from the default profile.
-This build has one extra profile: `forgejo` (Forgejo or Gitea, with `tea`).
-A wiki names its profile in `forge/repo.json`. Setup proposes the profile from the host of the remote, and it runs `forge.mjs seed --profile <name>`.
-The read commands of the `forgejo` profile ran on a real server. Its write commands for issues and for pull requests had no real run yet.
-The wiki holds only the copy, your personal values, and the helper scripts. To share the wiki, commit and push it. See [wiki.md](docs/wiki.md).
+Forge 14.0.0 removes the profiles, the tracker and CI config, the credentials, and every call to an external tool. To upgrade a wiki:
 
-To make a company profile, change the files in `plugins/forge/templates/`. Add each other company file (a script or an `mcp.json`) to `files`,
-each company test to `tests`, each CLI to `tools`, and each company name to `terms` in `profile.json`.
+1. Run `forge.mjs doctor`. It names each file that Forge does not use any more: `tracker.md`, `ci.md`, `rules/toolkit.md`, and a `profile` key in `forge/repo.json`.
+2. Remove the files that it names, and the `profile` key.
+3. Strip `repo.md` to its 3 keys (`changeName`, `branchPattern`, `baseBranch`) and the **Checkouts** table.
+4. Run `forge.mjs trust approve`. You run this command, not the agent.
+5. Optional: add the native Claude Code deny rule `Bash(gh pr merge:*)` to your user settings.
+
+The wiki holds only the config copy, your personal values, and the helper scripts. To share the wiki, commit and push it. See [wiki.md](docs/wiki.md).
 
 ## 📦 Where things live
 
@@ -107,13 +95,12 @@ each company test to `tests`, each CLI to `tools`, and each company name to `ter
 | `<forge>/wiki/` | The wiki (`<wiki>`): one Git repository for each code repository |
 | `<forge>/raw/`, `<forge>/archive/` | Local folders: the open tickets and the pages, and the closed ticket folders. They are not in the wiki repository |
 | `<forge>/forge`, `<forge>/forge.cmd` | The launcher: `../<repo>.forge/forge open` |
-| `<wiki>/rules/` | Company rules for each session: tools, credentials, data rules (approve with `forge.mjs trust`) |
-| `<wiki>/forge/config/` | Config: `tracker.md`, `repo.md`, `ci.md`, `policy.md` |
+| `<wiki>/rules/` | Rules for each session: data rules (approve with `forge.mjs trust`) |
+| `<wiki>/forge/config/` | Config: `repo.md`, `policy.md` |
 | `<wiki>/forge/scripts/` | Optional helper scripts |
 | `<forge>/raw/tickets/<key>/` | Ticket folders |
-| OS credential store | Secrets (`cred.mjs set <name>`). Never in a file. |
 
-Use a private wiki: a wiki can hold internal hosts, names, and company rules.
+Use a private wiki: a wiki can hold internal names and company rules.
 Setup offers the native wiki of the private repository, a separate private `<repo>-wiki` repository, or a local-only wiki.
 
 ## 🧩 Plugin layout
@@ -122,13 +109,13 @@ Setup offers the native wiki of the private repository, a separate private `<rep
 |---|---|
 | `plugins/forge/plugin.json` | Plugin manifest ([Agent Plugins 1.0](https://agent-plugins.org)) for both hosts. Claude Code takes the name from the folder and the version from its marketplace. |
 | `.github/plugin/marketplace.json`, `.claude-plugin/marketplace.json` | The marketplaces for Copilot CLI and for Claude Code. `tests/packaging.test.mjs` keeps the name, the version, and the source the same in each manifest, and runs each hook command. |
-| `plugins/forge/context/` | The session rules, in a short form: `forge` (paths, ticket sessions, host verbs, the rules for external writes, memory) and `style` (response style, "No AI tells", response shape). The `sessionStart` hook gives them to each session. `tools.md` holds the steps that the agent reads before the first external call: capabilities, tool choice, external writes, the gate guard, and the manual step. `tests/context-budget.test.mjs` keeps the sizes. |
+| `plugins/forge/context/` | The session rules, in a short form: `forge` (paths, ticket sessions, host verbs, the Never rules, memory) and `style` (response style, "No AI tells", response shape). The `sessionStart` hook gives them to each session. `tests/context-budget.test.mjs` keeps the sizes. |
 | `plugins/forge/hosts/` | One verb table for each host: `copilot-cli.md` and `claude.md`. The hook adds the verb table of the current host to the context. The other parts of the file (the pages, the feature documentation) stay in the file, and the agent reads them at the step. |
-| `plugins/forge/com.github.copilot/hooks/` | `hooks.json`: the `sessionStart` hook. It gives each session the paths, the ticket context, the `forge` and `style` rules, and the approved company rules of `<wiki>/rules/`. The `preToolUse` hook is the gate guard (`forge.mjs hook pre-tool`, see Review gates). Forge 9.1 adds the `sessionEnd` hook: with `sessionStart`, it writes the session list of a Copilot CLI session (see [Live view](#-live-view)). |
+| `plugins/forge/com.github.copilot/hooks/` | `hooks.json`: the `sessionStart` hook. It gives each session the paths, the ticket context, the `forge` and `style` rules, and the approved company rules of `<wiki>/rules/`. The `preToolUse` hook is the guard (`forge.mjs hook pre-tool`, see Review gates). Forge 9.1 adds the `sessionEnd` hook: with `sessionStart`, it writes the session list of a Copilot CLI session (see [Live view](#-live-view)). |
 | `plugins/forge/hooks/` | `hooks.json`: the same context for Claude Code (spike). `SessionStart` gives it in parts of at most 9,000 characters (2 parts for a session without company rules), `UserPromptSubmit` sets the ticket title, and `PreToolUse` is the gate guard. See `Claude Code host` in [baseline.md](docs/baseline.md). Forge 7.6 adds the live reporter (`scripts/live-hook.mjs`) as a background hook on the activity events of a session: see [Live view](#-live-view). Forge 9.1 adds the session list: part 1 of `SessionStart` writes the start of a session, and `forge.mjs hook session-end` at `SessionEnd` writes its end. |
 | `plugins/forge/skills/` | `ticket`, `agents`, `board`, `wiki`, `forge-setup`, `writing` |
-| `plugins/forge/templates/` | The default profile: config (`config/`), rule pages (`rules/`), setup values (`profile.md`), and machine values with the list of the other profile files (`profile.json`) |
-| `plugins/forge/scripts/` | `forge.mjs` (init, config, trust, lint, board, local-key, worktree, live, open, gate-open, gate-approve, hook, wiki scripts), `cred.mjs`, `live-hook.mjs` (the reporter of the live view) |
+| `plugins/forge/templates/` | The config templates (`config/`) and the rule pages (`rules/`) |
+| `plugins/forge/scripts/` | `forge.mjs` (init, config, trust, lint, board, local-key, worktree, live, open, gate-open, gate-approve, hook, wiki scripts), `live-hook.mjs` (the reporter of the live view) |
 | `plugins/forge/vendor/mermaid/` | The only third-party program of the plugin: the small Mermaid build that draws the diagrams of the wiki page, with its license and a [notice](plugins/forge/vendor/mermaid/NOTICE.md) (version, hash, update steps) |
 | `docs/` | [config.md](docs/config.md) (config format), [wiki.md](docs/wiki.md) (sharing and scripts), [evaluation.md](docs/evaluation.md) (behavioral runs: `npm run eval` gives the cases of `tests/evals/` to a real agent session), and [baseline.md](docs/baseline.md) (the host features that forge uses) |
 | `AGENTS.md` | [Rules for agents that develop forge](AGENTS.md): docs-first checks, tests, and file format |
@@ -137,9 +124,9 @@ Setup offers the native wiki of the private repository, a separate private `<rep
 
 | Skill | Use |
 |---|---|
-| `ticket` | One folder per work item in `<forge>/raw/tickets/<key>`, full research and investigation, review gates, code map, evidence, outbox. `SKILL.md` is short, and the steps of each phase are in `phases/`. |
+| `ticket` | One folder per work item in `<forge>/raw/tickets/<key>`, full research and investigation, review gates, code map, evidence, paste texts. `SKILL.md` is short, and the steps of each phase are in `phases/`. |
 | `agents` | Implementer sessions in worktrees, reviewer subagents, the cold read of gate documents, hand-off, session status |
-| `board` | "Show the board" in any session: ticket status, refresh, and session titles |
+| `board` | "Show the board" in any session: ticket status and session titles |
 | `wiki` | Query, record, and lint the repository wiki |
 | `forge-setup` | "set up forge", "check forge", "repair forge", "finish forge setup", "refresh the forge config" |
 | `writing` | One source for the writing rules: modes, precedence, and the AI writing pattern catalog. Say "humanize this" or "check the writing". |
@@ -159,15 +146,16 @@ The [`writing` skill](plugins/forge/skills/writing/SKILL.md) decides which rules
 | Chat replies | Short list in the `style` rule | Emoji headings |
 | Ticket documents, config | Strong tells | Plain ticket style: emoji only for a state, no bold labels |
 | Wiki pages and lessons | Full pass | Plain: no emoji, no bold labels |
-| Outbox drafts, change request text, tracker comments | Full pass, required before Sendable? | Target format, plain |
+| Paste texts, change request text, tracker comments | Full pass | Target format, plain |
 
 No mode allows em dashes or en dashes in prose. License texts are in [NOTICE.md](plugins/forge/skills/writing/NOTICE.md).
 
 ## 🎫 Ticket work
 
-1. Open a new session and paste the work item key or URL, for example "start APP-42" or "resume APP-42".
+1. Open a new session. Give a key and the link of the work item, with the pasted text, for example "start APP-42 https://example.com/APP-42" and the text of the item. Or say "resume APP-42".
    The session gets its title first (see Session titles below).
-   For work with no work item, say "new local ticket". `forge.mjs local-key` gives the key `L-<n>`.
+   The key is what you type. When you give none, say "new local ticket": `forge.mjs local-key` gives the key `L-<n>`.
+   The link goes to `item:` in the ticket README. Forge never opens it.
 2. Forge names the worktree and the branch. `forge.mjs worktree APP-42 --summary "<goal>"` gives the branch
    from `repo.branchPattern` and the folder `<repo>.worktrees/<key>-<slug>`:
    - Session on the main checkout: after one "yes", the agent creates the worktree and moves the session there (`EnterWorktree` in Claude Code, `/cwd` in Copilot CLI).
@@ -182,7 +170,7 @@ No mode allows em dashes or en dashes in prose. License texts are in [NOTICE.md]
    accepts only `approve` in the form or the whole text `approve <gate>` in chat, and refuses a changed document or manifest. It checks the manifest and the documents, then records the approval in the README and in `approvals/history.md`. When a write fails, it restores both files.
    Unavailable sources and test gaps are recorded, not treated as safety evidence.
 5. At Implement, the `agents` skill reuses a suitable current worktree. It starts another session only when needed.
-6. Approve **Sendable?** for each external write. QA handover runs only when configured.
+6. After the **Shippable?** GO, the agent pushes the branch. You open the pull request in your host and paste its URL into the chat. The agent records it in `changes` of the README. QA handover runs only when configured.
    Say "close APP-42"; **Learned?** approves distillation into wiki pages and archive.
 
 ```mermaid
@@ -196,17 +184,16 @@ flowchart LR
 |---|---|---|
 | **Planned?** | `story.md` and `plan.md` | The problem, the scope, the acceptance checks, your interview answers, the history, and the open questions; the diagnosis, the steps with their files, the tests, the deployed checks, the risks, and the decisions |
 | **Shippable?** | `review.md` | What changed, the tests that ran, and the findings of the adversarial review |
-| **Sendable?** | each `outbox/` draft, before it is sent | The exact text, command, and target of one external write |
 | **Learned?** | `close.md` | What you now know, and the wiki changes |
 
 A manifest can also list `evidence/` files that you must see in an exact revision.
 Before a gate opens, a subagent without the session history reads the gate document (the cold read).
 It gives a paraphrase and the terms that it cannot resolve, and the session corrects the document before you see it.
 
-The gate guard is a `preToolUse` hook. Before a `git push` or a new change request in a ticket worktree, it checks the approvals of Planned? and Shippable?. For a ticket with a branch, it also checks that the code of the push is the code of the Shippable? approval (the patch-id in the manifest). It always asks you before `forge.mjs gate-approve` and `forge.mjs trust approve`, also with `policy.gateGuard: off`.
+The gate guard is a `preToolUse` hook. Before a `git push` in a ticket worktree, it checks the approvals of Planned? and Shippable?. For a ticket with a branch, it also checks that the code of the push is the code of the Shippable? approval (the patch-id in the manifest). It always asks you before `forge.mjs gate-approve` and `forge.mjs trust approve`, also with `policy.gateGuard: off`.
 When one is missing or stale, it stops the command and names each finding. `policy.gateGuard` selects `deny` (default), `ask` (the host asks you), or `off`.
 The guard reads the words of a shell command, so it is a net and not a wall: the written rules stay in force.
-When the README of the ticket cannot be read, the guard stops a push. A new change request needs no second question when its draft is in the approved Shippable? set.
+When the README of the ticket cannot be read, the guard stops a push.
 
 Plan checks: `forge.mjs lint` checks the paths of a plan (`plan-path`), its Baseline and Control lines (`plan-baseline`), and the plan review (`plan-review`). `gate-open` runs them before Planned?.
 `policy.planReview` (`off`, `attacker`, or `panel`) sets the review of the plan by subagents before Planned?. `policy.styleRules` adds the response style rules to each session. A missing key means `true`.
@@ -225,7 +212,7 @@ Exact-commit proofs require HEAD equality. Resumed implementation can retain ver
 Forge never resets a branch or changes approved documents to repair a mismatch.
 See the [worktree selection checks](plugins/forge/skills/agents/SKILL.md#select-the-execution-worktree).
 
-The agent never merges. It asks before every write to the tracker, the repository host, or the CI.
+The agent never merges. It calls no tracker, no change request host, and no CI. It gives you paste texts, and you send them. A native Claude Code deny rule `Bash(gh pr merge:*)` in your user settings adds a hard stop for a merge.
 
 ### 📄 Ticket documents
 
@@ -265,7 +252,7 @@ The title has less than 60 characters. Keys of one project have the same width, 
 | State | Meaning |
 |---|---|
 | 🟡 | A gate or a question waits for you |
-| 🔴 | A failure stops the work, for example CI or an expired credential |
+| 🔴 | A failure stops the work |
 | 🟢 | The last gate is approved, and no gate is open |
 | ▶️ | The agent works |
 | ⏳ | The work waits for an outside event, for example a review or a build |
@@ -295,7 +282,6 @@ Say "show the board" or "my tickets". The agent reads the README frontmatter of 
 and groups the tickets by state: 🟡 Needs me, 🔴 Blocked, 🟢 Go, ▶️ Active, ⏳ Waiting, ✅ Done.
 `forge.mjs board` writes the same view to `<forge>/raw/board.md`.
 Each row shows the session title, the open gate, the next step, who the ticket waits on, and the days since the update.
-When `<forge>/raw/sync/<KEY>.md` exists, the row also shows the change request, CI, and tracker status.
 
 The same command writes the board page, `<forge>/raw/board.html`, and the wiki page. Open the page in a browser tab.
 
@@ -303,7 +289,7 @@ The same command writes the board page, `<forge>/raw/board.html`, and the wiki p
 - A strip at the top names the next step for you: the ticket with a gate in review first, then another ticket that needs you, a blocked ticket, or a ticket that can start. **Open** goes to its document.
 - The tab of the board says `(2) Forge board` when 2 tickets need you, and its icon has a hot spot. Each page has a pixel anvil as its tab icon.
 - The tickets that wait for you are first, in a lane with the full width. The other open states are side by side, and **Done** is a closed list.
-- A card shows the key, the title, the gates as steps, the next step, who the ticket waits on, and the change request, CI, and tracker status. A click on the card opens the document of the gate that is in review, or the `README.md` of the ticket. The link is a file link. On the live server, a link gives the file as text.
+- A card shows the key, the title, the gates as steps, the next step, who the ticket waits on, and the change request link. A click on the card opens the document of the gate that is in review, or the `README.md` of the ticket. The link is a file link. On the live server, a link gives the file as text.
 - The filter (key `/`) hides tickets by their words. A state chip or a number key shows one state. The keys `j` and `k` go from ticket to ticket, and `t` opens the list of all tickets.
 - An open ticket without an update for 7 days has a mark. Long waits for people and read errors have their own lists.
 - The page loads nothing from a network, and it is in `raw/`, so it is never committed. [design-system.md](docs/design-system.md) gives the tokens, the components, and the UX cases of the pages.
@@ -330,14 +316,13 @@ A question that names a key does not start or resume that ticket.
 | "Show the board" | The count for each state, then the tickets that need you |
 | "What did we do on APP-42?" | The Now card, the latest journal entries, and the session link |
 | "What must I approve on APP-42?" | The summary of the open gate document |
-| "Refresh" | Reads the tracker, the change requests, and CI (read-only), writes `raw/sync/`, then fixes titles |
 | "Fix the session titles" | Renames stale ticket session titles |
 
-The board does not edit code, ticket documents, or wiki pages. It writes only `raw/board.md`, `raw/sync/`, and the pages (`raw/board.html`, and `raw/wiki.html`).
+The board does not edit code, ticket documents, or wiki pages. It writes only `raw/board.md` and the pages (`raw/board.html`, and `raw/wiki.html`).
 It never approves a gate and never answers a question of a session for you,
 because an approval covers the exact revision that the ticket session shows.
-It never merges, pushes, or writes to the tracker.
-To start a ticket, send its key or URL in a new session. To tell a ticket session something, type it in that session.
+It never merges, pushes, or calls an external tool.
+To start a ticket, send its key and link in a new session. To tell a ticket session something, type it in that session.
 See the [board skill](plugins/forge/skills/board/SKILL.md).
 
 The board is a skill, not a custom agent: a skill is portable and runs in any session.
@@ -433,7 +418,7 @@ See [validation and source limits](docs/wiki.md#local-validation-and-source-limi
 
 Edit config and helper scripts directly in `<wiki>/forge`. Git handles versioning and shared updates.
 Each teammate reviews and approves the files by SHA-256 hash before forge uses them.
-Trust approvals and credentials stay outside the wiki. See [wiki.md](docs/wiki.md).
+Trust approvals stay outside the wiki. See [wiki.md](docs/wiki.md).
 
 ## 🛠️ Develop
 
