@@ -55,13 +55,14 @@ export function daysSince(updated, today) {
 
 const isFolder = (folder) => { try { return statSync(folder).isDirectory(); } catch { return false; } };
 
-/** The folder where a session of the ticket starts: the README worktree when it exists, else the repository of the binding, else <parent>/<name>. */
+/** The folder where a session of the ticket starts: the README worktree when it exists, else the repository of the binding, else (Forge folder only) <parent>/<name>, else null. */
 export function resumeFolderOf(wikiPath, ticket) {
   if (ticket.worktree && isFolder(ticket.worktree)) return path.resolve(ticket.worktree);
   try {
     const repo = readBinding(wikiPath)?.repo?.path;
     if (repo) return path.resolve(repo);
   } catch { /* An unreadable binding: use the name. */ }
+  if (homeOf(wikiPath) === wikiPath) return null; // The plain --wiki layout: <parent>/<name> is the wiki itself.
   return path.join(path.dirname(homeOf(wikiPath)), repoNameOf(wikiPath));
 }
 

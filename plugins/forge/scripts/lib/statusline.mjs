@@ -2,7 +2,7 @@
 // `forge.mjs statusline` reads the status line JSON on stdin and writes nothing. `statusline --install` writes the shim
 // <data>/statusline.mjs (a stable path in the plugin data folder) and the `statusLine` key of the user settings.
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -55,13 +55,20 @@ export function statusLine(raw, { cwd = process.cwd() } = {}) {
 /** The text of the shim: it runs the statusline command of the forge.mjs of `root`. */
 export function shimText(root) {
   const cli = pathToFileURL(path.join(root, 'scripts', 'forge.mjs')).href;
-  return `// The Forge status line. forge.mjs statusline --install and the Claude Code session start hook write this file.\n${ROOT_MARK}${root}\nimport { main } from ${JSON.stringify(cli)};\nprocess.exitCode = main(['statusline']);\n`;
+  return `// The Forge status line. forge.mjs statusline --install and the Claude Code session start hook write this file.\n${ROOT_MARK}${root}\nimport { main } from ${JSON.stringify(cli)};\nPromise.resolve(main(['statusline'])).then((code) => { process.exitCode = code; });\n`;
 }
 
 function writeAtomic(file, text) {
   mkdirSync(path.dirname(file), { recursive: true });
-  const temp = `${file}.${process.pid}.tmp`;
-  try { writeFileSync(temp, text); renameSync(temp, file); } catch (error) { rmSync(temp, { force: true }); throw error; }
+  // A link keeps its link: the temp file is written next to the target, and the target keeps its mode.
+  let target = file;
+  try { target = realpathSync(file); } catch { /* A new file. */ }
+  const temp = `${target}.${process.pid}.tmp`;
+  try {
+    writeFileSync(temp, text);
+    try { chmodSync(temp, statSync(target).mode & 0o7777); } catch { /* A new file: the default mode. */ }
+    renameSync(temp, target);
+  } catch (error) { rmSync(temp, { force: true }); throw error; }
 }
 
 /** Rewrites an existing shim that names another plugin root. It never creates the shim. Returns true when it wrote. */
@@ -80,10 +87,12 @@ export function refreshShim(data, root) {
 export const settingsFile = (env = process.env) => path.join(env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'settings.json');
 
 const readSettings = (file) => {
-  if (!existsSync(file)) return { exists: false, data: {} };
-  const data = JSON.parse(readFileSync(file, 'utf8').replace(/^﻿/, ''));
+  if (!existsSync(file)) return { exists: false, data: {}, indent: 2 };
+  const text = readFileSync(file, 'utf8').replace(/^﻿/, '');
+  const data = JSON.parse(text);
   if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('not a JSON object');
-  return { exists: true, data };
+  const lead = /^([ \t]+)\S/m.exec(text)?.[1];
+  return { exists: true, data, indent: lead ? (lead.includes('\t') ? '\t' : lead.length) : 2 };
 };
 
 /**
@@ -99,12 +108,12 @@ export function installStatusline({ data, settings, env = process.env, root }) {
   const shim = path.join(path.resolve(data), 'statusline.mjs');
   writeAtomic(shim, shimText(root));
   const command = `node "${shim.replace(/\\/g, '/')}"`;
-  writeAtomic(file, `${JSON.stringify({ ...current.data, statusLine: { type: 'command', command } }, null, 2)}\n`);
+  writeAtomic(file, `${JSON.stringify({ ...current.data, statusLine: { type: 'command', command } }, null, current.indent)}\n`);
   return { status: 'installed', settings: file, shim, root };
 }
 
 /** The doctor line `statusline`: { status, detail }. It follows the settings, the shim, and the plugin root of the shim. */
-export function statuslineCheck(env = process.env) {
+export function statuslineCheck(env = process.env, { gitVersion = () => spawnSync('git', ['--version'], { encoding: 'utf8', timeout: 2000, windowsHide: true }).stdout } = {}) {
   const file = settingsFile(env);
   let current;
   try { current = readSettings(file); } catch (error) { return { status: 'warn', detail: `${file} cannot be read as JSON (${error.message}).` }; }
@@ -117,5 +126,11 @@ export function statuslineCheck(env = process.env) {
   if (!existsSync(shim)) return { status: 'warn', detail: `The shim ${shim} is missing (an uninstall deletes the plugin data folder). ${key}` };
   const root = readFileSync(shim, 'utf8').split(/\r?\n/).find((line) => line.startsWith(ROOT_MARK))?.slice(ROOT_MARK.length);
   if (!root || !existsSync(path.join(root, 'scripts', 'forge.mjs'))) return { status: 'warn', detail: `The shim ${shim} names a plugin folder that is gone (${root ?? 'unknown'}). Start a Claude Code session of the installed plugin, or run the install again.` };
+  const warns = [];
+  if (path.basename(path.dirname(shim)).endsWith('-inline')) warns.push(`The shim ${shim} is in the data folder of a --plugin-dir session. The installed plugin hook does not refresh it. Install the status line from a normal session.`);
+  let version = null;
+  try { version = /(\d+)\.(\d+)/.exec(String(gitVersion() ?? '')); } catch { /* Git is checked by tool:git. */ }
+  if (version && (Number(version[1]) < 2 || (Number(version[1]) === 2 && Number(version[2]) < 31))) warns.push(`Git ${version[1]}.${version[2]} is older than 2.31: the status line uses git rev-parse --path-format=absolute and stays empty. Update Git.`);
+  if (warns.length) return { status: 'warn', detail: warns.join(' ') };
   return { status: 'ok', detail: `${shim} runs ${root}` };
 }

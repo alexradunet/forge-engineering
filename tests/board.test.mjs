@@ -223,6 +223,13 @@ test('each ticket has a resume folder: the worktree, else the bound repository, 
   assert.deepEqual(folders, { 'M-1': tree, 'M-2': path.resolve(repoPath), 'M-3': path.resolve(repoPath) });
   rmSync(path.join(mine.wiki, 'forge', 'repo.json'));
   assert.equal(buildBoard(mine.wiki, { today: '2026-10-05' }).groups.flatMap((group) => group.tickets).find((item) => item.key === 'M-2').resumeFolder, path.join(s.root, 'mine'));
+  // The plain --wiki layout: the binding repository, else null (never the wiki itself).
+  const plain = wiki(t);
+  plain.ticket('P-1');
+  const plainFolder = () => buildBoard(plain.root, { today: '2026-10-05' }).groups.flatMap((group) => group.tickets)[0].resumeFolder;
+  assert.equal(plainFolder(), null);
+  plain.put('forge/repo.json', JSON.stringify({ repo: { path: repoPath } }));
+  assert.equal(plainFolder(), path.resolve(repoPath));
   // The board file does not change: it has no resume folder.
   const written = writeBoard(mine.wiki, { today: '2026-10-05' });
   assert.equal(readFileSync(written.file, 'utf8'), renderBoard(buildBoard(mine.wiki, { today: '2026-10-05' })));

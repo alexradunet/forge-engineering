@@ -75,6 +75,8 @@ To update `forge`:
 
 Before you uninstall `forge` from Claude Code, delete the `statusLine` key in `~/.claude/settings.json` (or in `$CLAUDE_CONFIG_DIR/settings.json`) when the Forge setup added it. Claude Code deletes the plugin data folder at an uninstall, and the status line command then fails after each message. `forge.mjs doctor` has a `statusline` line that names the key.
 
+A status line that you installed from a `--plugin-dir` session names another data folder, and the installed plugin does not refresh it. Install the status line from a normal session.
+
 "check forge" reports when the installed plugin is behind its remote.
 
 ### ⬆️ Upgrade to 0.1.0

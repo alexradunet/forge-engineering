@@ -34,10 +34,11 @@ export function siblingWikis(wikiPath) {
   if (!isForgeLayout(wiki)) return [wiki];
   const home = path.dirname(wiki);
   const parent = path.dirname(home);
+  const sameFolder = (a, b) => (process.platform === 'win32' ? path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase() : path.resolve(a) === path.resolve(b));
   let names = [];
   try { names = readdirSync(parent); } catch { /* The parent cannot be read: only this wiki. */ }
   const others = names
-    .filter((name) => name.toLowerCase().endsWith(FORGE_SUFFIX) && path.join(parent, name) !== home && existsSync(path.join(parent, name, WIKI_NAME, 'forge', 'repo.json')))
+    .filter((name) => name.toLowerCase().endsWith(FORGE_SUFFIX) && !sameFolder(path.join(parent, name), home) && existsSync(path.join(parent, name, WIKI_NAME, 'forge', 'repo.json')))
     .sort((a, b) => a.localeCompare(b, 'en') || (a < b ? -1 : a > b ? 1 : 0));
   return [wiki, ...others.map((name) => path.join(parent, name, WIKI_NAME))];
 }

@@ -288,6 +288,21 @@ function printContext(argv, env = process.env) {
   return 0;
 }
 
+/** Reads all of stdin with events. After `ms` it returns what it has read (a pipe that never ends must not hang the status line). */
+function readStdin(ms = 1500) {
+  return new Promise((resolve) => {
+    if (process.stdin.isTTY) { resolve(''); return; }
+    let raw = '';
+    let done = false;
+    const finish = () => { if (done) return; done = true; clearTimeout(timer); process.stdin.pause(); resolve(raw); };
+    const timer = setTimeout(finish, ms);
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', (chunk) => { raw += chunk; });
+    process.stdin.on('end', finish);
+    process.stdin.on('error', finish);
+  });
+}
+
 export function main(argv = process.argv.slice(2)) {
   if (argv[0] === 'hook') {
     // A hook never blocks the session: it prints JSON and exits 0, also on errors.
@@ -313,14 +328,13 @@ export function main(argv = process.argv.slice(2)) {
   if (argv[0] === 'context') return printContext(argv);
   if (argv[0] === 'statusline' && !argv.includes('--install')) {
     // The status line never breaks the prompt: one line on stdout, empty on any error, exit 0.
-    let line = '';
-    try {
-      let raw = '';
-      try { if (!process.stdin.isTTY) raw = readFileSync(0, 'utf8'); } catch { /* no input */ }
-      line = statusLine(raw);
-    } catch { line = ''; }
-    console.log(line);
-    return 0;
+    // It returns a Promise: stdin is read with events, because a read of fd 0 fails with EAGAIN while the pipe is open.
+    return readStdin().then((raw) => {
+      let line = '';
+      try { line = statusLine(raw); } catch { line = ''; }
+      console.log(line);
+      return 0;
+    }, () => { console.log(''); return 0; });
   }
   if (argv[0] === 'config' && ['set', 'row'].includes(argv[1])) {
     try {
@@ -482,5 +496,5 @@ export function main(argv = process.argv.slice(2)) {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  process.exitCode = main();
+  Promise.resolve(main()).then((code) => { process.exitCode = code; });
 }

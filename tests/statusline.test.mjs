@@ -1,8 +1,8 @@
 // The Forge status line: the text, the install of the shim and the settings key, and the doctor check.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -182,4 +182,84 @@ test('the doctor check follows the settings, the shim, and the root of the shim'
   assert.match(statuslineCheck(env).detail, /names a plugin folder that is gone/);
   s.put(file, '{ "a": ');
   assert.equal(statuslineCheck(env).status, 'warn');
+});
+
+// An async spawn: the pipe is open when the child starts, and the data and the end come later.
+function spawnLate(args, json, { first = 300, end = 300 } = {}) {
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+    let stdout = '';
+    child.stdout.on('data', (chunk) => { stdout += chunk; });
+    child.on('close', (status) => resolve({ status, stdout }));
+    setTimeout(() => { child.stdin.write(json); setTimeout(() => child.stdin.end(), end); }, first);
+  });
+}
+
+test('the CLI reads stdin when the data and the end come late; a pipe that never ends does not hang it', async (t) => {
+  const s = space(t);
+  const dir = s.tree('L-4-late');
+  s.forge('app').ticket('L-4', { worktree: dir, state: 'active', phase: 'implement', gate: 'skipped' });
+  const late = await spawnLate([cli, 'statusline'], JSON.stringify({ workspace: { current_dir: dir } }));
+  assert.equal(late.status, 0);
+  assert.equal(late.stdout, 'L-4 ▶️ implement\n');
+  const never = await new Promise((resolve) => {
+    const child = spawn(process.execPath, [cli, 'statusline'], { stdio: ['pipe', 'pipe', 'pipe'] });
+    let stdout = '';
+    child.stdout.on('data', (chunk) => { stdout += chunk; });
+    child.on('close', (status) => resolve({ status, stdout }));
+    child.stdin.write(JSON.stringify({ workspace: { current_dir: dir } }));
+  });
+  assert.equal(never.status, 0, 'the fallback timer ends the read');
+  assert.equal(never.stdout, 'L-4 ▶️ implement\n', 'it uses what was read');
+});
+
+test('the shim prints the line when stdin comes late', async (t) => {
+  const s = space(t);
+  const dir = s.tree('L-4-shim');
+  s.forge('app').ticket('L-4', { worktree: dir, state: 'active', phase: 'implement', gate: 'skipped' });
+  const data = path.join(s.root, 'data');
+  installStatusline({ data, settings: path.join(s.root, 'cfg', 'settings.json'), root: pluginDir });
+  const late = await spawnLate([path.join(data, 'statusline.mjs')], JSON.stringify({ cwd: dir }));
+  assert.equal(late.status, 0);
+  assert.equal(late.stdout, 'L-4 ▶️ implement\n');
+});
+
+test('the install keeps a symlinked settings file, its mode, and its indent', (t) => {
+  const s = space(t);
+  const data = path.join(s.root, 'data');
+  const target = path.join(s.root, 'dotfiles', 'claude-settings.json');
+  s.put(target, '{\n    "model": "x"\n}\n');
+  chmodSync(target, 0o600);
+  const link = path.join(s.root, 'cfg', 'settings.json');
+  mkdirSync(path.dirname(link), { recursive: true });
+  try { symlinkSync(target, link); } catch { t.skip('no symlink here'); return; }
+  installStatusline({ data, settings: link, root: pluginDir });
+  assert.ok(lstatSync(link).isSymbolicLink(), 'the link stays a link');
+  const text = readFileSync(target, 'utf8');
+  assert.equal(JSON.parse(text).statusLine.type, 'command', 'the target has the key');
+  assert.match(text, /\n {4}"model"/, 'the indent of 4 spaces stays');
+  assert.equal(statSync(target).mode & 0o777, 0o600, 'the mode stays');
+  const plain = path.join(s.root, 'plain', 'settings.json');
+  s.put(plain, '{\n  "a": 1\n}\n');
+  chmodSync(plain, 0o600);
+  installStatusline({ data, settings: plain, root: pluginDir });
+  assert.equal(statSync(plain).mode & 0o777, 0o600);
+  assert.match(readFileSync(plain, 'utf8'), /\n {2}"a"/, 'the indent of 2 stays');
+});
+
+test('the doctor check warns for an old Git and for a shim of a --plugin-dir session', (t) => {
+  const s = space(t);
+  const env = { CLAUDE_CONFIG_DIR: path.join(s.root, 'cfg') };
+  const settings = path.join(s.root, 'cfg', 'settings.json');
+  installStatusline({ data: path.join(s.root, 'forge-forge'), settings, root: pluginDir });
+  assert.equal(statuslineCheck(env, { gitVersion: () => 'git version 2.31.0' }).status, 'ok');
+  const old = statuslineCheck(env, { gitVersion: () => 'git version 2.30.2' });
+  assert.equal(old.status, 'warn');
+  assert.match(old.detail, /older than 2\.31/);
+  assert.equal(statuslineCheck(env, { gitVersion: () => 'git version 1.9.0' }).status, 'warn');
+  rmSync(settings);
+  installStatusline({ data: path.join(s.root, 'forge-inline'), settings, root: pluginDir });
+  const inline = statuslineCheck(env, { gitVersion: () => 'git version 2.40.0' });
+  assert.equal(inline.status, 'warn');
+  assert.match(inline.detail, /--plugin-dir session/);
 });

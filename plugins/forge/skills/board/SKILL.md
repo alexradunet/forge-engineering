@@ -39,7 +39,7 @@ the folder two levels above the folder of this file.
 
 1. Run `<F> board --all --json`. It reads the Forge folders next to this one (`repos`), and it gives one `needsMe` list for all of them. It writes no file. A repository that it cannot read has an `error`: name it in one line and go on.
 2. Answer in chat. Start with the 🟡 tickets of all repositories (`needsMe`): repository, key, open gate, and next step. Then write one table for each repository, with the same columns as "Show the board". Put the current repository first.
-3. After each ticket, give one resume command (`host.resume`). Take the folder from `resumeFolder` of that ticket. When the folder is the main checkout of a ticket that had a worktree, add the Ctrl+W hint of the verb.
+3. After each ticket, give one resume command (`host.resume`). Take the folder from `resumeFolder` of that ticket. When it is null, there is no known folder: tell the user to run the command in the main checkout of the repository. When the folder is the main checkout of a ticket that had a worktree, add the Ctrl+W hint of the verb.
 4. Write no link to a file: `board --all` writes none.
 
 ## 📚 Questions

@@ -24,7 +24,7 @@ const template = () => loadConfig(templates).config;
 
 before(() => {
   root = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'forge-config-write-')));
-  env = { ...process.env, FORGE_DATA_DIR: path.join(root, 'data') };
+  env = { ...process.env, FORGE_DATA_DIR: path.join(root, 'data'), CLAUDE_CONFIG_DIR: path.join(root, 'claude-config') };
   app = path.join(root, 'app');
   mkdirSync(app);
   execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: app });
