@@ -38,7 +38,7 @@ function wiki(t) {
   put('app/deep/queue.md', '# Queue of the app\n\nNo frontmatter here. See [retry](../retry.md).\n');
   put('tickets/app-2.md', page('APP-2: Old fix', '- Knowledge: [build](../tooling/build.md).', { updated: '2026-11-12' }));
   put('tickets/app-1.md', page('First ticket', 'No link.', { updated: '2026-10-01' }));
-  put('forge/config/tracker.md', '---\ntype: tracker\n---\n# Tracker\n');
+  put('forge/config/policy.md', '---\ntype: policy\n---\n# Policy\n');
   put('archive/tickets/app-2/README.md', '# Old\n');
   put('raw/board.md', '# Board\n');
   put('.git/notes.md', '# Git\n');
@@ -96,7 +96,7 @@ test('a link target is a page only inside the wiki, and a page that the model ca
   assert.equal(pageOf(model, base, 'app/retry.md'), 'app/retry.md', 'a path from the top of the wiki');
   assert.equal(pageOf(model, base, '../log.md'), 'log.md');
   assert.equal(pageOf(model, base, 'log.md'), '', 'a name without a folder is a file next to the document, not a page at the top of the wiki');
-  for (const target of ['../raw/board.md', '../forge/config/tracker.md', '../../outside.md', 'https://example.com/a.md', 'file:///etc/a.md', '../app/retry', '%E0%A4%A.md', '', '#top']) {
+  for (const target of ['../raw/board.md', '../forge/config/policy.md', '../../outside.md', 'https://example.com/a.md', 'file:///etc/a.md', '../app/retry', '%E0%A4%A.md', '', '#top']) {
     assert.equal(pageOf(model, base, target), '', target);
   }
   assert.deepEqual(linkTargets('[a](x.md) and [b](<y z.md>)\n~~~\n[c](no.md)\n~~~\n[d](w.md)'), ['x.md', '<y z.md>', 'w.md']);

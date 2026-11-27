@@ -189,7 +189,7 @@ test('a ticket with no code change has steps, the write capability tracker.creat
   assert.match(implement, /Leave \`branch\` and \`worktree\` empty in the README/);
   assert.match(phase('evidence'), /A ticket with no code change has no push\. Its checks run before Shippable\? in each case/);
   assert.match(ticketCore, /A ticket with no code change has the same gates/);
-  for (const file of ['context/tools.md', 'profiles/forgejo/config/tracker.md', 'templates/config/tracker.md']) {
+  for (const file of ['context/tools.md']) {
     assert.ok(readFileSync(new URL(`../plugins/forge/${file}`, import.meta.url), 'utf8').includes('tracker.create'), file);
   }
   assert.match(read('ticket/templates/_style.md'), /\`story\.md\` has no \`Need from you:\` line/);

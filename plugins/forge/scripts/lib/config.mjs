@@ -1,11 +1,11 @@
-// Reads the forge config: tracker.md, repo.md, ci.md, and policy.md in
-// <wiki>/forge/config. Flat frontmatter "key: value" with inline lists [a, b],
-// plus the Queries table of tracker.md and the Checkouts table of repo.md.
+// Reads the forge config: repo.md and policy.md in <wiki>/forge/config.
+// Flat frontmatter "key: value" with inline lists [a, b], plus the Checkouts table of repo.md.
+// Older files (tracker.md, ci.md) are not read: Forge 14 ignores them.
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { ForgeError } from './repo.mjs';
 
-export const KINDS = ['tracker', 'repo', 'ci', 'policy'];
+export const KINDS = ['repo', 'policy'];
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 export function parseScalar(text) {
@@ -75,19 +75,14 @@ export function parseTable(body, title) {
 
 export function defaults() {
   return {
-    tracker: { provider: null, queries: {} },
-    repo: { provider: 'github', changeName: 'PR', branchPattern: '{KEY}-{slug}', baseBranch: 'master', checkouts: [] },
-    ci: { provider: null },
+    repo: { changeName: 'PR', branchPattern: '{KEY}-{slug}', baseBranch: 'master', checkouts: [] },
     policy: { noMergeWeekdays: [], evidenceOnDeployedEnv: false, qaHandover: false, adversarialReviewModel: null, maxImplementers: 6, gateGuard: 'deny', planReview: 'off', styleRules: true, scopeComment: false },
   };
 }
 
 export function validate(config) {
   const problems = [];
-  const { tracker: t, repo: r, policy: p } = config;
-  if (t.prefix && !/^[A-Z][A-Z0-9]*$/.test(String(t.prefix))) problems.push('tracker.md: prefix must be upper case, for example APP');
-  if (String(t.prefix) === 'L') problems.push('tracker.md: the prefix L is for local tickets, use another prefix');
-  if (t.itemUrl && !/^https?:\/\/.*\{(KEY|number)\}/.test(String(t.itemUrl))) problems.push('tracker.md: itemUrl must be http(s) and contain {KEY} or {number}');
+  const { repo: r, policy: p } = config;
   if (!r.changeName) r.changeName = 'PR';
   if (!['PR', 'MR', 'none'].includes(r.changeName)) problems.push('repo.md: changeName must be PR, MR, or none');
   if (!/\{(KEY|key)\}/.test(String(r.branchPattern))) problems.push('repo.md: branchPattern must contain {KEY} or {key}');
@@ -104,7 +99,7 @@ export function validate(config) {
 }
 
 /**
- * Builds and validates the config from file texts ({ tracker: text, ... }).
+ * Builds and validates the config from file texts ({ repo: text, ... }).
  * A missing text gives the defaults of that file. Invalid values throw.
  */
 export function buildConfig(texts, configDir = 'config') {
@@ -115,9 +110,6 @@ export function buildConfig(texts, configDir = 'config') {
     const file = path.join(configDir, `${kind}.md`);
     const { data, body } = parseFile(text, file);
     for (const [k, v] of Object.entries(data)) if (v !== null) config[kind][k] = v;
-    if (kind === 'tracker') {
-      for (const row of parseTable(body, 'Queries')) if (row.name) config.tracker.queries[row.name] = row.query;
-    }
     if (kind === 'repo') config.repo.checkouts = parseTable(body, 'Checkouts').filter((row) => row.path);
   }
   const problems = validate(config);

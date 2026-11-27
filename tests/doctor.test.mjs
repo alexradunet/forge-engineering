@@ -1,7 +1,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { cpSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,15 +14,6 @@ const realPlugin = path.join(here, '..', 'plugins', 'forge');
 let root, app, env, where;
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, stdio: 'pipe', encoding: 'utf8' });
 const line = (results, check) => results.find((r) => r.check === check);
-// A fake gh on PATH, so that the login check runs in each environment.
-const fakeBin = () => {
-  const bin = path.join(root, 'bin');
-  mkdirSync(bin, { recursive: true });
-  writeFileSync(path.join(bin, 'gh'), '');
-  writeFileSync(path.join(bin, 'gh.cmd'), '');
-  return { ...env, PATH: bin + path.delimiter + env.PATH };
-};
-
 before(() => {
   root = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'forge-doctor-')));
   env = { ...process.env, FORGE_DATA_DIR: path.join(root, 'data') };
@@ -36,15 +27,10 @@ before(() => {
 });
 after(() => rmSync(root, { recursive: true, force: true }));
 
-test('login check: ok and warn from the exit status, one run for each tool', () => {
-  const env2 = fakeBin();
-  const calls = [];
-  const ok = doctor({ cwd: app, env: env2, run: (cmd, args) => { calls.push([cmd, ...args]); return true; } });
-  assert.equal(line(ok, 'tool:gh login')?.status, 'ok');
-  assert.deepEqual(calls, [['gh', 'auth', 'status']]);
-  const bad = line(doctor({ cwd: app, env: env2, run: () => false }), 'tool:gh login');
-  assert.equal(bad.status, 'warn');
-  assert.match(bad.detail, /Run "gh auth login"\./);
+test('doctor runs no login check, no profile check, and no credential or MCP check', () => {
+  const results = doctor({ cwd: app, env });
+  assert.ok(!results.some((r) => /login|^profile$|^cred:|^mcp:/.test(r.check)), results.map((r) => r.check).join(', '));
+  assert.ok(!results.some((r) => /is not on PATH/.test(r.detail)));
 });
 
 test('hook check: warn without .plugin, warn for a gone folder, ok for a plugin folder', () => {
@@ -103,32 +89,27 @@ test('fix commands: the wiki, the binding, and the config files name an exact co
   mkdirSync(`${lone}.wiki`);
   assert.match(line(doctor({ cwd: lone, env }), 'wiki').detail, /^Forge 10 does not read \.\.\/<repo>\.wiki\. Make \.\.\/<repo>\.forge, move the wiki into wiki\/, and move raw\/ and archive\/ next to it\.$/);
   rmSync(`${lone}.wiki`, { recursive: true });
-  rmSync(path.join(where.configDir, 'ci.md'));
-  assert.match(line(doctor({ cwd: app, env }), 'config:ci.md').detail, /Run "forge\.mjs seed"\./);
+  rmSync(path.join(where.configDir, 'policy.md'));
+  assert.match(line(doctor({ cwd: app, env }), 'config:policy.md').detail, /Run "forge\.mjs seed"\./);
 });
 
-test('a wiki bound to a profile: the tools of the profile, the profile line, and the login hint', () => {
-  const dir = path.join(root, 'fj');
-  mkdirSync(dir);
-  git(dir, 'init', '-q', '-b', 'main');
-  git(dir, 'remote', 'add', 'origin', 'https://git.example.org/me/fj.git');
-  const w = resolve({ cwd: dir, env });
-  initWiki(w);
-  seed(w, path.join(realPlugin, 'templates', 'config'), { profile: 'forgejo' });
-  const bin = path.join(root, 'bin-tea');
-  mkdirSync(bin, { recursive: true });
-  writeFileSync(path.join(bin, 'tea'), '');
-  writeFileSync(path.join(bin, 'tea.cmd'), '');
-  const env2 = { ...env, PATH: bin + path.delimiter + env.PATH };
-  const none = doctor({ cwd: dir, env: { ...env, PATH: path.join(root, 'empty') }, read: () => ({ ok: false, stdout: '' }) });
-  assert.match(line(none, 'profile').detail, /^forgejo$/);
-  assert.ok(none.some((r) => r.check.startsWith('config:') && /^tea is not on PATH/.test(r.detail)), 'a missing tea is a warning');
-  assert.equal(none.some((r) => r.check.startsWith('tool:gh')), false);
-  const empty = doctor({ cwd: dir, env: env2, read: () => ({ ok: true, stdout: '[]' }) });
-  assert.equal(line(empty, 'tool:tea login').status, 'warn');
-  assert.match(line(empty, 'tool:tea login').detail, /Run "tea login add"\./);
-  const ok = doctor({ cwd: dir, env: env2, read: () => ({ ok: true, stdout: '[{"name":"x"}]' }) });
-  assert.equal(line(ok, 'tool:tea login').status, 'ok');
-  assert.equal(ok.some((r) => r.check.startsWith('tool:gh')), false);
-  assert.match(line(doctor({ cwd: app, env }), 'profile').detail, /^default \(github\)$/);
+test('doctor names the files that Forge 14 does not use, and deletes none', () => {
+  const clean = doctor({ cwd: app, env });
+  assert.ok(!clean.some((r) => r.check.startsWith('unused:')));
+  const old = [path.join(where.configDir, 'tracker.md'), path.join(where.configDir, 'ci.md'), path.join(where.wiki.path, 'rules', 'toolkit.md')];
+  for (const file of old) { mkdirSync(path.dirname(file), { recursive: true }); writeFileSync(file, '---\nprovider: github\n---\n'); }
+  const binding = path.join(where.wiki.path, 'forge', 'repo.json');
+  const bound = readFileSync(binding, 'utf8');
+  writeFileSync(binding, JSON.stringify({ ...JSON.parse(bound), profile: 'forgejo' }));
+  try {
+    const results = doctor({ cwd: app, env });
+    const unused = results.filter((r) => r.check.startsWith('unused:'));
+    assert.deepEqual(unused.map((r) => r.check), ['unused:config/tracker.md', 'unused:config/ci.md', 'unused:rules/toolkit.md', 'unused:forge/repo.json profile']);
+    assert.ok(unused.every((r) => r.status === 'warn' && /not used since 14\.0\.0, remove/.test(r.detail)));
+    assert.ok(!results.some((r) => r.status === 'fail' && r.check === 'config'), 'an old tracker.md does not break the config');
+    for (const file of old) assert.ok(existsSync(file), `${file} stays`);
+  } finally {
+    writeFileSync(binding, bound);
+    for (const file of old) rmSync(file, { force: true });
+  }
 });

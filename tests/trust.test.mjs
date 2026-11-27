@@ -16,7 +16,7 @@ let root, app, wiki, env;
 const where = () => resolve({ cwd: app, env });
 const write = (file, text) => { mkdirSync(path.dirname(file), { recursive: true }); writeFileSync(file, text); };
 const read = (file) => readFileSync(file, 'utf8');
-const trackerProvider = () => /^provider:\s*(\S+)/m.exec(read(path.join(scripts, '..', 'templates', 'config', 'tracker.md')))[1];
+const templateBranch = () => /^baseBranch:\s*(\S+)/m.exec(read(path.join(scripts, '..', 'templates', 'config', 'repo.md')))[1];
 const approveAll = () => approve(where(), status(where(), { env }).files.map((f) => `${f.rel}=${f.sha.slice(0, 12)}`), { env });
 
 before(() => {
@@ -43,10 +43,10 @@ test('wiki trust fails closed until each file is approved by hash', () => {
   const st = status(where(), { env });
   assert.equal(st.ok, false);
   assert.ok(st.files.every((f) => f.state === 'new'));
-  assert.deepEqual(st.files.map((f) => f.rel), ['config/ci.md', 'config/policy.md', 'config/repo.md', 'config/tracker.md', 'scripts/hello.mjs', '../rules/data.md', '../rules/toolkit.md']);
+  assert.deepEqual(st.files.map((f) => f.rel), ['config/policy.md', 'config/repo.md', 'scripts/hello.mjs', '../rules/data.md']);
   assert.throws(() => assertTrusted(where(), ['config/'], { env }), (e) => e.code === 'untrusted');
-  assert.throws(() => approve(where(), ['config/tracker.md=0000000000'], { env }), (e) => e.code === 'hash-mismatch');
-  assert.throws(() => approve(where(), ['config/tracker.md=ab'], { env }), (e) => e.code === 'hash-mismatch');
+  assert.throws(() => approve(where(), ['config/repo.md=0000000000'], { env }), (e) => e.code === 'hash-mismatch');
+  assert.throws(() => approve(where(), ['config/repo.md=ab'], { env }), (e) => e.code === 'hash-mismatch');
   const config = spawnSync(process.execPath, [cli, 'config'], { cwd: app, env, encoding: 'utf8' });
   assert.equal(config.status, 1);
   assert.match(config.stderr, /Not approved/);
@@ -55,7 +55,7 @@ test('wiki trust fails closed until each file is approved by hash', () => {
   assert.ok(existsSync(path.join(root, 'data', 'trust')));
   assert.ok(!existsSync(path.join(wiki, 'forge', 'trust')));
   const loaded = JSON.parse(execFileSync(process.execPath, [cli, 'config'], { cwd: app, env, encoding: 'utf8' }));
-  assert.equal(loaded.config.tracker.provider, trackerProvider());
+  assert.equal(loaded.config.repo.baseBranch, templateBranch());
 });
 
 test('run executes a trusted wiki script with its environment and arguments', () => {
@@ -119,19 +119,19 @@ test('a teammate can clone the wiki and approve its config and scripts locally',
   assert.ok(!existsSync(path.join(clonedWiki, 'raw')) && !existsSync(path.join(clonedWiki, 'archive')));
   assert.ok(!existsSync(path.join(`${teammate}.forge`, 'raw', 'local.md')), 'the local files of one user do not go to a teammate');
   assert.deepEqual([cloned.wiki.path, cloned.forge.layout], [clonedWiki, 'forge']);
-  assert.deepEqual(read(path.join(cloned.configDir, 'tracker.md')), read(path.join(wiki, 'forge', 'config', 'tracker.md')));
+  assert.deepEqual(read(path.join(cloned.configDir, 'repo.md')), read(path.join(wiki, 'forge', 'config', 'repo.md')));
   assert.ok(status(cloned, { env: teammateEnv }).files.every((f) => f.state === 'new'));
   assert.throws(() => runScript('hello', [], { cwd: teammate, env: teammateEnv }), (e) => e.code === 'untrusted');
   const files = status(cloned, { env: teammateEnv }).files;
   approve(cloned, files.map((f) => `${f.rel}=${f.sha.slice(0, 12)}`), { env: teammateEnv });
   const loaded = JSON.parse(execFileSync(process.execPath, [cli, 'config'], { cwd: teammate, env: teammateEnv, encoding: 'utf8' }));
-  assert.equal(loaded.config.tracker.provider, trackerProvider());
+  assert.equal(loaded.config.repo.baseBranch, templateBranch());
   assert.equal(runScript('hello', ['--flag', 'two words'], { cwd: teammate, env: teammateEnv }), 7);
 });
 
 test('legacy metadata is inert and existing wiki approvals remain valid', () => {
   write(path.join(wiki, 'forge', 'pack.lock.json'), 'not JSON');
-  write(path.join(wiki, 'forge', '.base', 'config', 'tracker.md'), 'old content');
+  write(path.join(wiki, 'forge', '.base', 'config', 'repo.md'), 'old content');
   assert.equal(status(where(), { env }).ok, true);
   const checks = doctor({ cwd: app, env });
   assert.ok(!checks.some((c) => c.status === 'fail'));

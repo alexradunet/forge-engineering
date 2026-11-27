@@ -16,7 +16,7 @@ const WRITE_TOOLS = [...TOOLS, 'Write', 'Edit', 'Task', 'Agent', 'Bash(mkdir *)'
 // shell command, so the text of a draft or a heredoc that holds "gh issue comment" is not a write. A read
 // (`gh auth status`, `gh issue view`) is not a write either.
 const templates = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'plugins', 'forge', 'templates', 'config');
-const configText = (kind) => readFileSync(path.join(templates, `${kind}.md`), 'utf8');
+const configText = (kind) => (existsSync(path.join(templates, `${kind}.md`)) ? readFileSync(path.join(templates, `${kind}.md`), 'utf8') : '');
 const WRITES = writeCommands({ tracker: configText('tracker'), repo: configText('repo'), ci: configText('ci') });
 const CHANGES = changeCommands(configText('repo'));
 const isWrite = (command) => guardActions(command, '/', { changes: CHANGES, writes: WRITES }).some((action) => action.kind === 'write' || action.kind === 'change');

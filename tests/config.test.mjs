@@ -85,8 +85,8 @@ test('every template loads as its kind', () => {
 test('loadConfig rejects incomplete files instead of silently using defaults', () => {
   const dir = mkdtempSync(path.join(here, '.forge-cfg-'));
   try {
-    const file = path.join(dir, 'tracker.md');
-    const text = '---\nprovider: github\n';
+    const file = path.join(dir, 'repo.md');
+    const text = '---\nbaseBranch: main\n';
     writeFileSync(file, text);
     assert.throws(() => loadConfig(dir), (e) => e.code === 'bad-config' && e.message.includes(file));
     assert.equal(readFileSync(file, 'utf8'), text);
@@ -140,12 +140,17 @@ test('policy.planReview defaults to off and accepts off, attacker, and panel onl
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('tracker.prefix L is refused: it is the prefix of the local tickets', () => {
+test('KINDS are repo and policy, and an old tracker.md or ci.md is ignored without an error', () => {
+  assert.deepEqual(KINDS, ['repo', 'policy']);
   const dir = mkdtempSync(path.join(here, '.forge-cfg-'));
   try {
-    writeFileSync(path.join(dir, 'tracker.md'), '---\nprefix: GH\n---\n');
-    assert.equal(loadConfig(dir).config.tracker.prefix, 'GH');
-    writeFileSync(path.join(dir, 'tracker.md'), '---\nprefix: L\n---\n');
-    assert.throws(() => loadConfig(dir), /prefix L is for local tickets/);
+    writeFileSync(path.join(dir, 'tracker.md'), '---\nprefix: L\nitemUrl: nope\nprovider: github\n---\n\n## Queries\n\n| Name | Query |\n|---|---|\n| mine | x |\n');
+    writeFileSync(path.join(dir, 'ci.md'), '---\nprovider: github\n');
+    writeFileSync(path.join(dir, 'repo.md'), '---\nbaseBranch: main\n---\n');
+    const { config, files } = loadConfig(dir);
+    assert.deepEqual(files.map((f) => path.basename(f)), ['repo.md']);
+    assert.equal(config.repo.baseBranch, 'main');
+    assert.equal(config.tracker, undefined);
+    assert.equal(config.ci, undefined);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

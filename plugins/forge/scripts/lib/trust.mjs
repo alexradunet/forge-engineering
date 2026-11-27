@@ -4,7 +4,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { dataDir } from './cred.mjs';
+import { dataDir } from './data-dir.mjs';
 import { ForgeError } from './repo.mjs';
 
 // Ignore legacy installation metadata so existing wikis keep their approvals.
@@ -62,7 +62,7 @@ export function status(where, { env = process.env } = {}) {
   return { trustFile: file, files, removed, ok: files.every((f) => f.state === 'ok') };
 }
 
-// items: ["config/tracker.md=<sha prefix>", ...]. Each prefix must match the
+// items: ["config/repo.md=<sha prefix>", ...]. Each prefix must match the
 // current content, so the user approves exactly the revision that they saw.
 export function approve(where, items, { env = process.env } = {}) {
   if (!items.length) throw new ForgeError('Name each file as <path>=<sha256 prefix> from "forge.mjs trust".', 'bad-args');

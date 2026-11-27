@@ -30,41 +30,19 @@ test('hostKind', () => {
   assert.equal(hostKind(null), 'none');
 });
 
-test('detect checks the profile tools and suggests a native wiki for a private repo', () => {
-  const probe = (cmd, args) => {
-    if (cmd === 'gh' && args[0] === 'repo') return { ok: true, stdout: '{"visibility":"PRIVATE","hasWikiEnabled":true}' };
-    return { ok: cmd === 'gh' || cmd === 'sqlcmd', stdout: '' };
-  };
-  const profile = { tools: ['gh', 'az', 'sqlcmd'] };
-  const d = detect(resolve({ cwd: app, env }), { platform: 'win32', probe, profile });
-  assert.throws(() => detect(resolve({ cwd: app, env }), { probe, profile: { tools: ['nope'] } }), (e) => e.code === 'bad-config');
+test('detect runs no tool, and asks where the wiki lives for a GitHub remote', () => {
+  const d = detect(resolve({ cwd: app, env }));
   assert.equal(d.repo.host, 'github');
-  assert.equal(d.repo.visibility, 'private');
-  assert.deepEqual(Object.keys(d.tools), ['gh', 'az', 'sqlcmd']);
-  assert.equal(d.tools.gh.auth, true);
-  assert.equal(d.tools.sqlcmd.installed, true);
-  assert.equal(d.tools.sqlcmd.auth, null);
-  assert.equal(d.tools.az.installed, false);
-  assert.equal(d.tools.az.install, 'winget install --id Microsoft.AzureCLI');
-  assert.deepEqual(d.suggestion.wikiRemote, { type: 'native', url: 'https://github.com/owner/app.wiki.git' });
+  assert.ok(!('tools' in d) && !('profile' in d), 'detect has no tools and no profile block');
+  assert.ok(!('visibility' in d.repo) && !('wikiEnabled' in d.repo));
+  assert.deepEqual(d.suggestion.wikiRemote, {
+    type: 'ask',
+    options: ['native', 'separate-private-repo', 'local-only'],
+    native: 'https://github.com/owner/app.wiki.git',
+    separate: 'https://github.com/owner/app-wiki',
+  });
   assert.deepEqual(d.suggestion.values.checkouts, [{ name: 'app', path: app, remote: 'owner/app', baseBranch: '' }]);
-});
-
-test('detect asks for a public repo', () => {
-  const probe = (cmd, args) => (cmd === 'gh' && args[0] === 'repo' ? { ok: true, stdout: '{"visibility":"PUBLIC"}' } : { ok: cmd === 'gh', stdout: '' });
-  const d = detect(resolve({ cwd: app, env }), { platform: 'linux', probe });
-  assert.equal(d.suggestion.wikiRemote.type, 'ask');
-  assert.deepEqual(d.suggestion.wikiRemote.options, ['native', 'separate-private-repo', 'local-only']);
-  assert.equal(d.suggestion.wikiRemote.native, 'https://github.com/owner/app.wiki.git');
-  assert.equal(d.suggestion.wikiRemote.separate, 'https://github.com/owner/app-wiki');
-});
-
-test('detect does not offer a disabled public wiki', () => {
-  const probe = (cmd, args) => (cmd === 'gh' && args[0] === 'repo'
-    ? { ok: true, stdout: '{"visibility":"PUBLIC","hasWikiEnabled":false}' }
-    : { ok: cmd === 'gh', stdout: '' });
-  const d = detect(resolve({ cwd: app, env }), { probe });
-  assert.deepEqual(d.suggestion.wikiRemote.options, ['separate-private-repo', 'local-only']);
+  assert.ok(!('host' in d.suggestion.values));
 });
 
 test('initWiki for a --wiki folder outside of a Forge folder ignores raw and archive inside the wiki, and adds no launcher', () => {
@@ -106,46 +84,13 @@ test('initWiki creates the Forge folder with its wiki, raw, archive, and launche
   assert.equal(resolve({ cwd: wiki, env }).wiki.source, 'binding');
 });
 
-test('detect respects wiki availability across visibility combinations', () => {
-  for (const visibility of ['private', 'internal', 'public', null]) {
-    for (const enabled of [true, false, null]) {
-      const where = {
-        repo: { remote: 'https://github.com/owner/app' },
-        wiki: { path: path.join(root, 'absent.wiki'), exists: false },
-      };
-      const probe = (cmd, args) => ({
-        ok: cmd === 'gh',
-        stdout: args[0] === 'repo' ? JSON.stringify({ visibility: visibility?.toUpperCase(), hasWikiEnabled: enabled }) : '',
-      });
-      const d = detect(where, { probe });
-      const label = `${visibility}/${enabled}`;
-      assert.equal(d.repo.visibility, visibility, label);
-      assert.equal(d.repo.wikiEnabled, enabled, label);
-      if (enabled !== false && ['private', 'internal'].includes(visibility)) {
-        assert.deepEqual(d.suggestion.wikiRemote, { type: 'native', url: `${where.repo.remote}.wiki.git` }, label);
-      } else {
-        assert.equal(d.suggestion.wikiRemote.type, 'ask', label);
-        assert.deepEqual(d.suggestion.wikiRemote.options, [
-          ...(enabled === false ? [] : ['native']), 'separate-private-repo', 'local-only',
-        ], label);
-      }
-    }
-  }
-});
-
-test('detect keeps an existing wiki remote even when the native wiki is disabled', () => {
+test('detect keeps an existing wiki remote', () => {
   const wiki = path.join(root, 'existing-wiki');
   mkdirSync(wiki);
   execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: wiki });
   execFileSync('git', ['remote', 'add', 'origin', 'https://github.com/owner/private-knowledge.git'], { cwd: wiki });
-  for (const visibility of ['PRIVATE', 'INTERNAL', 'PUBLIC', null]) {
-    const probe = (cmd, args) => ({
-      ok: cmd === 'gh',
-      stdout: args[0] === 'repo' ? JSON.stringify({ visibility, hasWikiEnabled: false }) : '',
-    });
-    const d = detect({ repo: { remote: 'https://github.com/owner/app' }, wiki: { path: wiki } }, { probe });
-    assert.deepEqual(d.suggestion.wikiRemote, { type: 'existing', url: 'https://github.com/owner/private-knowledge' });
-  }
+  const d = detect({ repo: { remote: 'https://github.com/owner/app' }, wiki: { path: wiki } });
+  assert.deepEqual(d.suggestion.wikiRemote, { type: 'existing', url: 'https://github.com/owner/private-knowledge' });
 });
 
 test('initWiki leaves an existing headerless index unchanged', () => {
@@ -165,21 +110,22 @@ test('bind refuses another remote', () => {
   assert.throws(() => bind({ ...where, repo: { ...where.repo, remote: 'https://github.com/x/y' } }), (e) => e.code === 'wiki-mismatch');
 });
 
-test('seed copies the profile templates, keeps existing files, and the result loads', () => {
+test('seed copies the templates, keeps existing files, and the result loads', () => {
   const where = resolve({ cwd: app, env });
   const first = seed(where, templates);
-  assert.deepEqual(first.written.sort(), ['ci.md', 'policy.md', 'repo.md', 'tracker.md']);
+  assert.deepEqual(first.written.sort(), ['policy.md', 'repo.md']);
+  assert.ok(!('profile' in first));
   const { config } = loadConfig(first.configDir);
   const expected = loadConfig(templates).config;
   assert.deepEqual(config, expected);
   assert.match(config.repo.branchPattern, /<user>/);
-  writeFileSync(path.join(first.configDir, 'tracker.md'), '---\nprovider: local\n---\n');
+  writeFileSync(path.join(first.configDir, 'repo.md'), '---\nbaseBranch: trunk\n---\n');
   const second = seed(where, templates);
-  assert.deepEqual(second.kept.sort(), ['ci.md', 'policy.md', 'repo.md', 'tracker.md']);
-  assert.equal(loadConfig(first.configDir).config.tracker.provider, 'local');
+  assert.deepEqual(second.kept.sort(), ['policy.md', 'repo.md']);
+  assert.equal(loadConfig(first.configDir).config.repo.baseBranch, 'trunk');
   const forced = seed(where, templates, { force: true });
-  assert.deepEqual(forced.written.sort(), ['ci.md', 'repo.md', 'tracker.md']);
-  assert.equal(loadConfig(first.configDir).config.tracker.provider, expected.tracker.provider);
+  assert.deepEqual(forced.written, ['repo.md']);
+  assert.equal(loadConfig(first.configDir).config.repo.baseBranch, expected.repo.baseBranch);
 });
 
 test('seed writes the rule pages only when <wiki>/rules is missing', () => {
@@ -187,7 +133,7 @@ test('seed writes the rule pages only when <wiki>/rules is missing', () => {
   const where = { wiki: { path: wiki } };
   const dir = path.join(wiki, 'rules');
   const pages = readdirSync(path.join(templates, '..', 'rules')).filter((f) => f.endsWith('.md')).sort();
-  assert.ok(pages.length > 0, 'the profile has no rule pages');
+  assert.deepEqual(pages, ['data.md']);
   const first = seed(where, templates);
   assert.deepEqual(first.rules, { dir, written: pages });
   for (const page of pages) {
@@ -255,7 +201,7 @@ test('detect infers the default branch, keys, and the personal branch pattern fr
   git('checkout', '-q', 'master');
   git('remote', 'add', 'origin', 'https://github.com/acme/shop.git');
   const where = resolve({ cwd: repoDir, env });
-  const d = detect(where, { probe: () => ({ ok: false, stdout: '' }) });
+  const d = detect(where);
   assert.equal(d.repo.defaultBranch, 'master');
   assert.equal(d.repo.keyHints[0].prefix, 'APP');
   assert.equal(d.repo.branchPattern, 'users/alex/{KEY}-{slug}');
@@ -264,73 +210,14 @@ test('detect infers the default branch, keys, and the personal branch pattern fr
   assert.equal(d.suggestion.values.checkouts[0].remote, 'acme/shop');
 });
 
-// A profile of the wiki: seed copies its files, and a file that it lacks comes from the default profile.
-const pluginDir = path.join(here, '..', 'plugins', 'forge');
-const read = (...parts) => readFileSync(path.join(...parts), 'utf8').replace(/^updated: .*$/m, '');
-
-test('seed with a profile copies its files, records it, and a later seed uses the recorded profile', () => {
-  const wiki = path.join(root, 'fj.wiki');
+test('bind drops a profile key of an older repo.json, and keeps the rest', () => {
+  const wiki = path.join(root, 'old-profile.wiki');
+  mkdirSync(path.join(wiki, 'forge'), { recursive: true });
   const where = { wiki: { path: wiki }, repo: { path: app, remote: 'https://github.com/owner/app' } };
-  mkdirSync(wiki, { recursive: true });
-  const first = seed(where, templates, { profile: 'forgejo' });
-  assert.equal(first.profile, 'forgejo');
-  assert.equal(readBinding(wiki).profile, 'forgejo');
-  assert.equal(readBinding(wiki).schemaVersion, 1);
-  for (const file of ['tracker.md', 'repo.md', 'ci.md']) {
-    assert.equal(read(first.configDir, file), read(pluginDir, 'profiles', 'forgejo', 'config', file));
-  }
-  assert.equal(read(first.configDir, 'policy.md'), read(templates, 'policy.md'));
-  assert.equal(read(wiki, 'rules', 'toolkit.md'), read(pluginDir, 'profiles', 'forgejo', 'rules', 'toolkit.md'));
-  assert.equal(read(wiki, 'rules', 'data.md'), read(pluginDir, 'templates', 'rules', 'data.md'));
-  writeFileSync(path.join(first.configDir, 'tracker.md'), '---\nprovider: local\n---\n');
-  const second = seed(where, templates);
-  assert.equal(second.profile, 'forgejo');
-  assert.deepEqual(second.kept.sort(), ['ci.md', 'policy.md', 'repo.md', 'tracker.md']);
-  const forced = seed(where, templates, { force: true });
-  assert.deepEqual(forced.written.sort(), ['ci.md', 'repo.md', 'tracker.md']);
-  assert.equal(loadConfig(first.configDir).config.tracker.provider, 'forgejo-issues');
-  const fresh = { ...where, wiki: { path: path.join(root, 'fj-fresh.wiki') } };
-  mkdirSync(fresh.wiki.path, { recursive: true });
-  assert.throws(() => seed(fresh, templates, { profile: 'nope' }), (e) => e.code === 'bad-profile');
-  assert.equal(readBinding(fresh.wiki.path), null, 'A bad profile writes nothing.');
-});
-
-test('bind keeps the profile of the wiki and refuses another one', () => {
-  const wiki = path.join(root, 'fj-bind.wiki');
-  mkdirSync(wiki, { recursive: true });
-  const where = { wiki: { path: wiki }, repo: { path: app, remote: 'https://github.com/owner/app' } };
-  assert.deepEqual(bind(where, { profile: 'forgejo' }).written, ['forge/repo.json']);
-  assert.deepEqual(bind(where, { profile: 'forgejo' }).written, []);
-  assert.deepEqual(bind(where).written, [], 'No option keeps the profile.');
-  assert.equal(readBinding(wiki).profile, 'forgejo');
-  assert.throws(() => bind(where, { profile: 'other' }), (e) => e.code === 'profile-mismatch');
-  const plain = path.join(root, 'plain.wiki');
-  mkdirSync(plain, { recursive: true });
-  bind({ ...where, wiki: { path: plain } });
-  assert.equal('profile' in readBinding(plain), false, 'A wiki with no profile stays with no key.');
-});
-
-test('detect suggests the profile whose rule matches the host of the remote, and uses the tools of the bound profile', () => {
-  const fj = path.join(root, 'fj-app');
-  mkdirSync(fj);
-  execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: fj });
-  execFileSync('git', ['remote', 'add', 'origin', 'https://git.example.org/me/app.git'], { cwd: fj });
-  const logins = (text) => (cmd, args) => (cmd === 'tea' && args[0] === 'logins' ? { ok: true, stdout: text } : { ok: cmd === 'tea', stdout: '' });
-  const where = resolve({ cwd: fj, env, wiki: path.join(root, 'fj-detect.wiki') });
-  const d = detect(where, { probe: logins('[{"name":"x","url":"https://git.example.org"}]') });
-  assert.equal(d.profile.suggested, 'forgejo');
-  assert.equal(d.profile.bound, null);
-  assert.deepEqual(d.profile.available, ['forgejo']);
-  assert.equal(d.profile.file, path.join(pluginDir, 'templates', 'profile.md'));
-  assert.equal(d.suggestion.values.host, 'git.example.org');
-  assert.equal(detect(where, { probe: logins('[{"url":"https://other.example"}]') }).profile.suggested, null);
-  assert.equal(detect(where, { probe: () => ({ ok: false, stdout: '' }) }).profile.suggested, null);
-  assert.equal(detect(resolve({ cwd: app, env }), { probe: logins('[{"url":"https://github.com"}]') }).profile.suggested, null, 'A GitHub remote suggests nothing.');
-  const bound = detect({ ...where, profile: 'forgejo' }, { probe: logins('[]') });
-  assert.deepEqual(Object.keys(bound.tools), ['tea']);
-  assert.equal(bound.tools.tea.auth, false, 'No login in the list.');
-  assert.equal(bound.profile.bound, 'forgejo');
-  assert.equal(bound.profile.suggested, null);
-  assert.equal(bound.profile.file, path.join(pluginDir, 'profiles', 'forgejo', 'profile.md'));
-  assert.equal(detect({ ...where, profile: 'forgejo' }, { probe: logins('[{"name":"x"}]') }).tools.tea.auth, true);
+  writeFileSync(path.join(wiki, 'forge', 'repo.json'), JSON.stringify({ schemaVersion: 1, repo: where.repo, profile: 'forgejo' }));
+  assert.equal(resolve({ cwd: app, wiki, env }).profile, undefined, 'resolve has no profile');
+  assert.deepEqual(bind(where).written, ['forge/repo.json']);
+  assert.equal('profile' in readBinding(wiki), false);
+  assert.deepEqual(bind(where).written, []);
+  assert.ok(!existsSync(path.join(wiki, 'rules')), 'bind writes no rules');
 });

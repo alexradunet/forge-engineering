@@ -20,7 +20,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { resolve, samePath } from './repo.mjs';
 import { isForgeLayout } from './layout.mjs';
-import { listProfiles, pluginRoot, profileFile } from './profile.mjs';
+import { pluginRoot } from './plugin-root.mjs';
 import { listTickets } from './tickets.mjs';
 import { approvedDrafts, checkAction, isChangeDraft, regular, within } from './validation.mjs';
 import { baseBranchOf, codeBinding, resolveCommit } from './code-bind.mjs';
@@ -538,34 +538,24 @@ function matchesNever(words, entry) {
   return !Array.isArray(entry.with) || entry.with.some((option) => words.some((word) => hasOption(word, option)));
 }
 
-/** The JSON of a file, or null when it cannot be read: a broken profile never removes the entries of the others. */
-function jsonOf(file) {
-  try { return JSON.parse(readFileSync(file, 'utf8')); } catch { return null; }
+// Interim (Forge 14 brief A): the lists of the removed GitHub profile. Brief B replaces this code.
+const SHIPPED = {
+  never: [
+    { words: ['gh', 'pr', 'merge'], verdict: 'deny' },
+    { words: ['gh', 'pr', 'review'], with: ['--approve', '-a'], verdict: 'deny' },
+    { words: ['gh', 'pr', 'close'], verdict: 'ask' },
+  ],
+  bodyOptions: ['-F', '--body-file'],
+  otherBodyOptions: ['-b', '--body', '-T', '--template', '-e', '--editor', '-w', '--web', '--fill', '--fill-first', '--fill-verbose', '--recover'],
+};
+
+/** The lists of the shipped never commands and body options: { never, bodyOptions, otherBodyOptions }. */
+export function shippedLists() {
+  return { never: [...SHIPPED.never], bodyOptions: [...SHIPPED.bodyOptions], otherBodyOptions: [...SHIPPED.otherBodyOptions] };
 }
 
-/**
- * The lists that the shipped profiles give: { never, bodyOptions, otherBodyOptions }. It is the union of the default profile and each profile of
- * `listProfiles()`, and it does not depend on the profile that a wiki names: the agent can write `forge/repo.json`, and the tool words differ.
- */
-export function shippedLists(plugin = pluginRoot) {
-  const files = [path.join(plugin, 'templates', 'profile.json')];
-  try { for (const name of listProfiles(plugin)) files.push(path.join(plugin, 'profiles', name, 'profile.json')); } catch { /* The default profile still counts. */ }
-  const never = [];
-  const bodyOptions = new Set();
-  const otherBodyOptions = new Set();
-  for (const data of files.map(jsonOf)) {
-    if (Array.isArray(data?.never)) never.push(...data.never.filter((entry) => Array.isArray(entry?.words) && ['deny', 'ask'].includes(entry.verdict)));
-    if (Array.isArray(data?.bodyOptions)) for (const option of data.bodyOptions) if (typeof option === 'string') bodyOptions.add(option);
-    if (Array.isArray(data?.otherBodyOptions)) for (const option of data.otherBodyOptions) if (typeof option === 'string') otherBodyOptions.add(option);
-  }
-  return { never, bodyOptions: [...bodyOptions], otherBodyOptions: [...otherBodyOptions] };
-}
-
-/** The text of the shipped config file of a kind (tracker, repo, ci) of a profile, else of the default profile, or ''. */
-function shippedConfig(plugin, profile, kind) {
-  for (const name of [profile ?? null, null]) {
-    try { return readFileSync(profileFile(plugin, name, `config/${kind}.md`), 'utf8'); } catch { /* Try the default profile. */ }
-  }
+/** The shipped config text of a kind: no shipped text holds commands since Forge 14. */
+function shippedConfig() {
   return '';
 }
 

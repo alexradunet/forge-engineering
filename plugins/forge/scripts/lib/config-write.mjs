@@ -1,5 +1,5 @@
 // Validated edits of the forge config: flat frontmatter keys and the rows of
-// the Checkouts (repo.md) and Queries (tracker.md) tables. Each call parses and
+// the Checkouts table (repo.md). Each call parses and
 // validates the edited text first, and writes nothing when a problem exists.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -10,7 +10,6 @@ const KEY = /^[A-Za-z][A-Za-z0-9_-]*$/;
 
 export const TABLES = {
   checkouts: { kind: 'repo', title: 'Checkouts', code: [0, 1, 2] },
-  queries: { kind: 'tracker', title: 'Queries', code: [0, 1] },
 };
 
 function fileOf(configDir, kind) {
@@ -58,7 +57,7 @@ function setKey(doc, key, value) {
 }
 
 /**
- * Sets frontmatter values. assignments: ["tracker.prefix=APP", ...].
+ * Sets frontmatter values. assignments: ["repo.baseBranch=main", ...].
  * Returns the changed files. Writes nothing when the result is invalid.
  */
 export function setValues(configDir, assignments) {
@@ -66,7 +65,7 @@ export function setValues(configDir, assignments) {
   const docs = {};
   for (const a of assignments) {
     const m = /^([a-z]+)\.([^=]+)=(.*)$/s.exec(a);
-    if (!m) throw new ForgeError(`"${a}" is not <file>.<key>=<value>, for example tracker.prefix=APP.`, 'bad-args');
+    if (!m) throw new ForgeError(`"${a}" is not <file>.<key>=<value>, for example repo.baseBranch=main.`, 'bad-args');
     const [, kind, key, value] = m;
     docs[kind] ??= readDoc(configDir, kind);
     setKey(docs[kind], key, formatValue(value));
@@ -83,8 +82,7 @@ function formatCell(text, code) {
 const firstCell = (line) => line.trim().replace(/^\|/, '').split('|')[0].trim().replace(/^`(.*)`$/, '$1');
 
 /**
- * Adds or replaces the row with the same first cell in the Checkouts or
- * Queries table. With remove, deletes that row. Writes nothing when invalid.
+ * Adds or replaces the row with the same first cell in the Checkouts table. With remove, deletes that row. Writes nothing when invalid.
  */
 export function upsertRow(configDir, table, cells, { remove = false } = {}) {
   const spec = TABLES[table];
